@@ -24,7 +24,7 @@ Every control is a real parameter with its old ID, name and range, shown or not,
 
 Pictures are in `docs/window-v2/`, with the first design kept in `docs/window/` for comparison. They are made by `build/RenderWindow_artefacts/Release/RenderWindow`, which runs real speech from macOS `say` with resonant boosts through the real processor and renders the real window to PNG with no host. `RenderWindow --live` opens a real window with all but one column of pixels off the screen, and measures frames a second and CPU.
 
-Measured on the 16 GB MacBook's 2x screen with nothing else building: 45 frames a second, and about 17% of one core while the window is open with audio playing, down from 27%. That is the drawing and the screen's share together. With nothing moving it does not redraw. Closed, it costs nothing.
+Measured on the 16 GB MacBook's 2x screen with nothing else building: 45 frames a second. Over 5 runs with audio playing, the window's share was 3% to 17% of one core, and about 9% in the last two. The first design measured 27%, with other builds running. That is the drawing and the screen's share together. With nothing moving it does not redraw. Closed, it costs nothing.
 
 The window's font is Inter, under the SIL Open Font License. See `assets/fonts/OFL.txt`.
 

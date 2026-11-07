@@ -62,11 +62,11 @@ PASS  decimal points kept under a comma locale (locale was available)
 PASS  path ignores a redirected HOME: ~/Library/Application Support/SmoothPlugins/key.json
 PASS  the folder is created when missing
 PASS  contents parse as valid JSON with the five fields
-INFO  atomic write test: writes = 13335.000 
-INFO  atomic write test: reads while writing = 112061.000 
+INFO  atomic write test: writes = 13470.000 
+INFO  atomic write test: reads while writing = 115342.000 
 PASS  the atomic test really raced reads against writes
 PASS  reads that saw a partial or missing file = 0.000 
-PASS  each write replaces the file by rename rather than writing into it, replacements = 13335.000 
+PASS  each write replaces the file by rename rather than writing into it, replacements = 13470.000 
 PASS  no temporary files left behind, files in the folder = 1.000 
 PASS  nothing changed: one write in 10 s = 1.000 
 PASS  changing every 0.1 s for 10 s: writes (limit 2 per second) = 20.000 
@@ -77,7 +77,7 @@ PASS  the window shows a note: Could not save key.json, so other plug-ins will n
 PASS  write retries after 5 s and recovers when the folder can be made
 PASS  Manual mode shows all 24 keys at confidence 1 = 100.000 %
 PASS  Manual mode writes all 24 keys to key.json = 100.000 %
-PASS  a Manual Key change reaches key.json within = 0.597 s
+PASS  a Manual Key change reaches key.json within = 0.595 s
 PASS  Relative Swap off shows the detected key
 INFO  Relative Swap, key.json key index matches (1 is yes) = 1.000 
 PASS  Relative Swap off shows the detected key
@@ -96,17 +96,17 @@ PASS  window closed before the plug-in
 PASS  no file written before there is a key
 PASS  real background thread finds G minor through processBlock
 PASS  samples dropped by the queue at 7 times real time = 0.000 
-PASS  key.json writes per second while confidence moves = 0.403 per s
-PASS  key.json is valid: {"key":"G","scale":"minor","confidence":0.96,"time":1794021068.6,"listening":true}
+PASS  key.json writes per second while confidence moves = 0.402 per s
+PASS  key.json is valid: {"key":"G","scale":"minor","confidence":0.96,"time":1794023720.6,"listening":true}
 PASS  key.json holds the key found
 PASS  key.json says listening
 PASS  key.json time is Unix seconds, now
-PASS  readings as AU parameters: G Minor 92.614700
+PASS  readings as AU parameters: G Minor 93.123398
 PASS  readings changing never notify the host as automation, notifications = 0.000 
 PASS  Listening off: reading frozen with another key playing, confidence moved = 0.000 
 PASS  Listening off: key.json says listening false
 PASS  nothing changing: no more writes in 1.2 s, writes = 0.000 
-PASS  no calls from the host for 5 s: confidence falls = 0.129 
+PASS  no calls from the host for 5 s: confidence falls = 0.127 
 PASS  the key stays shown when the host stops
 PASS  Reset: no key and confidence 0
 PASS  Reset: key.json shows confidence 0
@@ -119,7 +119,7 @@ INFO  Stable: confidence before the silence = 0.998
 PASS  Stable: confidence after 10 s of silence = 0.023 
 PASS  Stable: silence does not change the key shown
 PASS  Fast: C major found before the silence
-INFO  Fast: confidence before the silence = 0.989 
+INFO  Fast: confidence before the silence = 0.997 
 PASS  Fast: confidence after 10 s of silence = 0.000 
 PASS  Fast: silence does not change the key shown
 PASS  white noise alone, confidence = 0.000 
@@ -130,38 +130,40 @@ INFO  tempo within 1 BPM at exactly the played tempo = 58.333 %
 INFO  worst tempo error among those found = 0.050 BPM
 PASS  a steady tone shows no tempo = 0.000 BPM
 PASS  Source Single Voice, melody over a clashing low rumble, exact = 100.000 %
-INFO  Source Full Mix on the same clips, exact = 100.000 %
-PASS  Stable: key change followed within 30 s = 91.667 %
-FAIL  Stable: median time to follow a key change = 17.472 s
-INFO  Stable: slowest key change followed = 28.395 s
+INFO  Source Full Mix on the same clips, exact = 50.000 %
+FAIL  Stable: key change followed within 30 s = 79.167 %
+PASS  Stable: median time to follow a key change = 14.059 s
+INFO  Stable: slowest key change followed = 27.541 s
+INFO  Stable: key change ended on the right key or its relative = 100.000 %
 FAIL  Fast: key change followed within 30 s = 79.167 %
-FAIL  Fast: median time to follow a key change = 8.256 s
-INFO  Fast: slowest key change followed = 29.931 s
-PASS  melody only, Single Voice exact (floor only catches a broken detector) = 97.917 %
-PASS  melody only, Single Voice exact, relative or a fifth away (floor) = 99.306 %
+FAIL  Fast: median time to follow a key change = 10.304 s
+INFO  Fast: slowest key change followed = 21.056 s
+INFO  Fast: key change ended on the right key or its relative = 100.000 %
+PASS  melody only, Single Voice exact (floor only catches a broken detector) = 95.833 %
+PASS  melody only, Single Voice exact, relative or a fifth away (floor) = 100.000 %
 INFO  melody only, Single Voice median time to the correct answer = 7.851 s
-INFO  melody only, Single Voice 90th percentile time to the correct answer = 14.507 s
-INFO  melody only, Single Voice mean confidence when right = 0.896 
-INFO  melody only, Full Mix exact = 93.750 %
-INFO  melody only, Full Mix exact, relative or a fifth away = 95.833 %
+INFO  melody only, Single Voice 90th percentile time to the correct answer = 17.579 s
+INFO  melody only, Single Voice mean confidence when right = 0.889 
+INFO  melody only, Full Mix exact = 91.667 %
+INFO  melody only, Full Mix exact, relative or a fifth away = 93.750 %
 INFO  melody only, Full Mix median time to the correct answer = 7.851 s
-INFO  melody only, Full Mix 90th percentile time to the correct answer = 13.483 s
-INFO  melody only, Full Mix mean confidence when right = 0.936 
+INFO  melody only, Full Mix 90th percentile time to the correct answer = 13.995 s
+INFO  melody only, Full Mix mean confidence when right = 0.963 
 INFO  chord clips, all 24 keys, 5 timbres, held out seed = 480.000 
-PASS  chord progressions exact = 96.875 %
-PASS  chord progressions exact, relative or a fifth away = 99.792 %
+PASS  chord progressions exact = 95.417 %
+PASS  chord progressions exact, relative or a fifth away = 100.000 %
 PASS  chords, Stable, median time to the correct answer = 7.851 s
 INFO  chords, Stable, 90th percentile time to the correct answer = 7.851 s
-INFO  chords, mean confidence when right = 0.928 
-INFO  chords, mean confidence when wrong = 0.566 
+INFO  chords, mean confidence when right = 0.919 
+INFO  chords, mean confidence when wrong = 0.499 
 PASS  Stable never goes A to B and back to A, bounces = 0.000 
-FAIL  Stable clips whose reading moves after 8 s = 2.083 %
-INFO  chords, Fast, exact = 87.917 %
-INFO  chords, Fast, exact, relative or a fifth away = 95.417 %
-FAIL  chords, Fast, median time to the correct answer = 6.997 s
-INFO  chords, Fast, bounces (Stable is the setting that promises none) = 221.000 
+FAIL  Stable clips whose reading moves after 8 s = 1.458 %
+INFO  chords, Fast, exact = 94.583 %
+INFO  chords, Fast, exact, relative or a fifth away = 98.750 %
+PASS  chords, Fast, median time to the correct answer = 3.072 s
+INFO  chords, Fast, bounces (Stable is the setting that promises none) = 49.000 
 PASS  chord progressions exact at 44100 Hz = 97.917 %
 PASS  chord progressions exact at 96000 Hz = 97.917 %
-INFO  chords, loop heard from its second chord, exact = 65.000 %
+INFO  chords, loop heard from its second chord, exact = 66.250 %
 INFO  chords, loop heard from its second chord, exact, relative or a fifth away = 100.000 %
-RESULT FAIL  5 failures
+RESULT FAIL  4 failures

@@ -101,7 +101,7 @@ public:
     // Settings a build or a test can vary. The defaults are what ships.
     struct Knobs
     {
-        double tauStable = 22.0, tauFast = 12.0;         // memory of the chroma, seconds
+        double tauStable = 14.0, tauFast = 12.0;         // memory of the chroma, seconds
         double dwellStable = 4.0, dwellFast = 1.5;      // a new key must lead this long
         double marginStable = 0.04, marginFast = 0.03; // and by this much score
         double firstStable = 7.7, firstFast = 3.0;      // earliest first reading, seconds of audio

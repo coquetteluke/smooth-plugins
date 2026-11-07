@@ -81,3 +81,11 @@ target_include_directories(PluginTest PRIVATE src tests)
 target_compile_definitions(PluginTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0 "SPEECH_DIR=\"${CMAKE_SOURCE_DIR}/tests/speech\"")
 target_link_libraries(PluginTest PRIVATE juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME plugin COMMAND PluginTest)
+
+# The window must not change the sound. tests/baseline was written by the build from before the window. See tests/NullTest.cpp.
+juce_add_console_app(NullTest PRODUCT_NAME "NullTest")
+target_sources(NullTest PRIVATE ${SP_SOURCES} tests/NullTest.cpp)
+target_include_directories(NullTest PRIVATE src tests)
+target_compile_definitions(NullTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0 "BASELINE_DIR=\"${CMAKE_SOURCE_DIR}/tests/baseline\"" "SPEECH_DIR=\"${CMAKE_SOURCE_DIR}/tests/speech\"")
+target_link_libraries(NullTest PRIVATE juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+add_test(NAME null COMMAND NullTest)

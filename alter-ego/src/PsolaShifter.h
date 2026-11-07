@@ -29,7 +29,10 @@ public:
     {
         bool voiced = false;         // false: pass the input through at the reported delay
         double inputPeriod = 0.0;    // samples, from the tracker
-        double outputPeriod = 0.0;   // samples, wanted spacing of the grains
+        double periodScale = 1.0;    // output period over input period, from Pitch and Character
+        double robot = 0.0;          // 0 to 1: how far the output period is pulled to robotPeriod, on a log scale
+        double robotPeriod = 0.0;    // samples
+        double vibratoScale = 1.0;   // on the output period, last of all
         bool noCorrection = false;   // the output pitch is the input pitch: pass straight through
         double alternate = 0.0;      // every other grain spacing is this fraction longer, and the next shorter: a subharmonic
         double gainAlternate = 0.0;  // every other grain is this fraction louder, the next quieter
@@ -316,7 +319,10 @@ private:
         else
         {
             const double period = c.inputPeriod;
-            const double wanted = std::clamp (c.outputPeriod > 0.0 ? c.outputPeriod : period, 0.2 * period, 5.0 * period);
+            double want = period * c.periodScale;
+            if (c.robot > 0.0 && c.robotPeriod > 0.0)
+                want = std::exp ((1.0 - c.robot) * std::log (want) + c.robot * std::log (c.robotPeriod));
+            const double wanted = std::clamp (want * c.vibratoScale, 0.2 * period, 8.0 * period);
             flip = ! flip;
             const double bend = 1.0 + (flip ? c.alternate : -c.alternate) + c.jitter;
             spacing = wanted * bend;

@@ -79,7 +79,6 @@ public:
         fadeSmooth = smooth (0.015);
         rangeSmooth = smooth (0.150);
         learnRate = smooth (1.5);
-        spacingSmooth = smooth (0.008);
         breathRate = 1.0 - std::exp (-1.0 / (0.006 * sr));
         levelRate = 1.0 - std::exp (-1.0 / (0.025 * sr));
         levelGainRate = 1.0 - std::exp (-1.0 / (0.015 * sr));
@@ -88,6 +87,8 @@ public:
         historySize = 1;
         while (historySize < total / tickEvery + 4) historySize *= 2;
         history.assign ((size_t) historySize, 0);
+        periodHistory.assign ((size_t) historySize, 0.0);
+        spacingSmooth = smooth (0.002);
         reset();
     }
 
@@ -103,9 +104,10 @@ public:
         tickPhase = 0;
         lfoPhase = 0.0;
         lastPeriod = 0.0;
-        pitchSmoothed = 0.0;
-        wasVoiced = false;
+        readingOutHz = 0.0;
         std::fill (history.begin(), history.end(), 0);
+        std::fill (periodHistory.begin(), periodHistory.end(), 0.0);
+        smoothedPeriod = 0.0;
         historyAt = 0;
         learned = 0.0;
         learnedFrames = 0;
@@ -236,7 +238,7 @@ public:
             ++input;
         }
         readDetected.store ((float) (control.voiced && control.inputPeriod > 0.0 ? sr / control.inputPeriod : 0.0), std::memory_order_relaxed);
-        readOutput.store ((float) (control.voiced && control.outputPeriod > 0.0 ? sr / control.outputPeriod : 0.0), std::memory_order_relaxed);
+        readOutput.store ((float) (control.voiced ? readingOutHz : 0.0), std::memory_order_relaxed);
         readRange.store ((float) rangeHeld, std::memory_order_relaxed);
     }
 
@@ -361,19 +363,28 @@ private:
         const bool voicedOut = voicedNow || voicedThen;
 
         control.voiced = voicedOut && lastPeriod > 0.0;
-        control.inputPeriod = lastPeriod;
-        // Each period is measured on its own and carries a little jitter. Grain spacing should not inherit it, while a voice's
-        // vibrato, far slower, should come through whole. The tracker holds marks at this smoothing's delay anyway.
-        if (voicedNow && period > 0.0)
+
+        // The period for the next grain to land. The output is a whole delay behind the tracker, and the spacing chosen now only
+        // shows one to two periods from now, so read it back from a little history. Best of the offsets tried on real speech.
+        periodHistory[(size_t) ((historyAt - 1) & (historySize - 1))] = voicedNow && period > 0.0 ? period : 0.0;
+        double thenPeriod = lastPeriod;
+        if (lastPeriod > 0.0)
         {
-            const double l = std::log2 (sr / period);
-            pitchSmoothed = wasVoiced ? pitchSmoothed + spacingSmooth * (l - pitchSmoothed) : l;
+            const int ticksBack = std::clamp ((int) ((total - 2.0 * lastPeriod) / tickEvery), 0, historySize - 1);
+            const double older = periodHistory[(size_t) ((historyAt - 1 - ticksBack) & (historySize - 1))];
+            if (older > 0.0)
+                thenPeriod = older;
         }
-        wasVoiced = voicedNow && period > 0.0;
-        const double fromInput = (lastPeriod > 0.0 ? pitchSmoothed : 0.0) + (current.pitch + rangeNow) / 12.0;
+        // Each period is measured on its own and carries a little jitter, which grain spacing should not inherit.
+        smoothedPeriod = control.voiced && smoothedPeriod > 0.0 ? smoothedPeriod + spacingSmooth * (thenPeriod - smoothedPeriod) : thenPeriod;
+        control.inputPeriod = smoothedPeriod;
+        const double fromInput = (smoothedPeriod > 0.0 ? std::log2 (sr / smoothedPeriod) : 0.0) + (current.pitch + rangeNow) / 12.0;
         const double fromRobot = std::log2 (std::max (s.robotHz, 20.0)) + current.userPitch / 12.0;
-        const double logOut = fromInput + current.robot * (fromRobot - fromInput) + vibrato / 1200.0;
-        control.outputPeriod = sr / std::pow (2.0, logOut);
+        control.periodScale = std::pow (2.0, -(current.pitch + rangeNow) / 12.0);
+        control.robot = current.robot;
+        control.robotPeriod = sr / std::pow (2.0, fromRobot);
+        control.vibratoScale = std::pow (2.0, -vibrato / 1200.0);
+        readingOutHz = std::pow (2.0, fromInput + current.robot * (fromRobot - fromInput) + vibrato / 1200.0);
         control.noCorrection = std::abs (current.pitch + rangeNow) < 1.0e-3 && current.robot <= 0.0 && current.monster <= 0.0 && std::abs (current.vibrato) <= 0.0;
         control.alternate = 0.10 * current.monster;
         control.gainAlternate = 0.35 * current.monster;
@@ -397,12 +408,13 @@ private:
     std::array<double, EnvelopeEngine::maxOrder> analysisK {}, synthesisK {};
     double synthesisGain = 1.0, formantRatio = 1.0, sharpen = 1.0;
     std::vector<uint8_t> history;
+    std::vector<double> periodHistory;
+    double spacingSmooth = 0.1, smoothedPeriod = 0.0;
 
     Settings wanted;
     Smoothed current;
     double pitchSmooth = 0.1, formantSmooth = 0.1, blendSmooth = 0.1, fadeSmooth = 0.1, rangeSmooth = 0.01, learnRate = 0.001;
-    double spacingSmooth = 0.1, pitchSmoothed = 0.0;
-    bool wasVoiced = false;
+    double readingOutHz = 0.0;
     double lfoPhase = 0.0, lastPeriod = 0.0, learned = 0.0, rangeHeld = 0.0, rangeNow = 0.0, jitterHeld = 0.0;
     int learnedFrames = 0;
     uint64_t randomState = 0x9E3779B97F4A7C15ull;

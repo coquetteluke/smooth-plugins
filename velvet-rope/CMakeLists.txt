@@ -71,6 +71,13 @@ target_compile_definitions(DspTest PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMITTED
 target_link_libraries(DspTest PRIVATE juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME dsp COMMAND DspTest)
 
+juce_add_console_app(SpeechTest PRODUCT_NAME "SpeechTest")
+target_sources(SpeechTest PRIVATE src/ResonanceEngine.cpp tests/SpeechTest.cpp)
+target_include_directories(SpeechTest PRIVATE src)
+target_compile_definitions(SpeechTest PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0 SPEECH_DIR="${CMAKE_BINARY_DIR}/speech")
+target_link_libraries(SpeechTest PRIVATE juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+add_test(NAME speech COMMAND SpeechTest)
+
 juce_add_console_app(ProcessorTest PRODUCT_NAME "ProcessorTest")
 target_sources(ProcessorTest PRIVATE src/ResonanceEngine.cpp src/PluginProcessor.cpp tests/ProcessorTest.cpp)
 target_include_directories(ProcessorTest PRIVATE src)

@@ -836,8 +836,9 @@ static void testEditor()
         setParam (p, "mode", 1.0f);
         setParam (p, "manualKey", 10.0f);
         setParam (p, "manualScale", 1.0f);
-        sleepMs (100);
-        key->refresh();
+        // The analysis thread runs at low priority and macOS can hold back its 25 ms wake ups, so a single fixed wait was flaky,
+        // in 1.1.1 as well. Wait for the key, up to 2 s.
+        for (int waited = 0; waited < 2000 && key->getKeyText() != "A#"; waited += 50) { sleepMs (50); key->refresh(); }
         check (key->getKeyText() == "A#" && key->getStatusText() == "Set by hand", "window shows the key: " + key->getKeyText().toStdString());
         // The text must be big: readable across a room is about 1/4 of the window height for the key letters. On paper white,
         // the letters are the black pixels inside the area the reading is drawn in. Same limit as the dark window had.

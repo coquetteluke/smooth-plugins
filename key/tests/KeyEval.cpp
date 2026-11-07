@@ -14,6 +14,9 @@ int main (int argc, char** argv)
     const int every = argc > 1 ? std::atoi (argv[1]) : 3;        // keep it quick: every Nth tonic
     KeyAnalyser::Knobs knobs;
     bool chordsOnly = false, verbose = false;
+    unsigned seed = limits::devSeed;       // tune on dev seeds only: 1000, 1001, 1002 ...
+    int seeds = 1;                         // key changes are only 24 clips a seed, so tuning looks at several
+    int parts = 31;                        // 1 chords, 2 key changes, 4 Fast chords, 8 melody, 16 loop from its second chord
     for (int i = 2; i + 1 < argc; i += 2)
     {
         const std::string k = argv[i]; const double v = std::atof (argv[i + 1]);
@@ -43,6 +46,26 @@ int main (int argc, char** argv)
         else if (k == "home") knobs.homeChordWeight = v;
         else if (k == "lead") knobs.firstLeadStable = v;
         else if (k == "verbose") verbose = v > 0.0;
+        else if (k == "seed") seed = (unsigned) v;
+        else if (k == "seeds") seeds = (int) v;
+        else if (k == "parts") parts = (int) v;
+        else if (k == "opentau") knobs.openingTau = v;
+        else if (k == "section") knobs.sectionLookback = v;
+        else if (k == "gap") knobs.sectionMaxGap = v;
+        else if (k == "skip") knobs.sectionSkip = v;
+        else if (k == "secshare") knobs.sectionShare = v;
+        else if (k == "novel") knobs.sectionNovel = v;
+        else if (k == "onmove") knobs.sectionOnMove = v;
+        else if (k == "onloop") knobs.sectionOnLoop = v;
+        else if (k == "loopgo") knobs.loopLetGo = v;
+        else if (k == "openbasstau") knobs.openingBassTau = v;
+        else if (k == "secbass") knobs.sectionBassShare = v;
+        else if (k == "openbass") knobs.openingBassWeight = v;
+        else if (k == "openshare") knobs.openingBassShare = v;
+        else if (k == "loopnotes") knobs.loopNotes = v;
+        else if (k == "holdafter") knobs.holdAfterLetGo = v;
+        else if (k == "rebuild") knobs.rebuildOnLetGo = v;
+        else if (k == "holdstable") knobs.holdStable = v;
     }
     const double sr = 48000.0;
     const auto start = std::chrono::steady_clock::now();
@@ -53,14 +76,14 @@ int main (int argc, char** argv)
     std::map<std::string, Summary> byProg, byTimbre;
     const auto ts = timbres();
     const auto ps = progressions();
-    for (int tonic = 0; tonic < 12; tonic += every)
+    if (parts & 1) for (int tonic = 0; tonic < 12; tonic += every)
         for (size_t p = 0; p < ps.size(); ++p)
             for (size_t ti = 0; ti < ts.size(); ++ti)
             {
                 a.reset();
                 a.setResponse (smoothkey::Response::stable);
                 a.setSource (smoothkey::Source::mix);
-                const auto clip = chordClip (tonic, ps[p], ts[ti], clipSeed (limits::devSeed, tonic, (int) p, (int) ti), sr, 24.0);
+                const auto clip = chordClip (tonic, ps[p], ts[ti], clipSeed (seed, tonic, (int) p, (int) ti), sr, 24.0);
                 const int want = keyIndex (tonic, ps[p].minor);
                 const auto tr = analyse (a, clip, sr, want);
                 if (verbose && (tr.changesAfterEight > 0 || tr.finalKey != want))
@@ -71,37 +94,68 @@ int main (int argc, char** argv)
                 }
                 all.add (tr, want); byProg[ps[p].name].add (tr, want); byTimbre[ts[ti].name].add (tr, want);
             }
-    std::printf ("CHORDS exact %.1f%% related %.1f%% settle median %.1f p90 %.1f bounces %d moved %.1f%% conf right %.2f wrong %.2f (n=%d)\n",
+    if (parts & 1) std::printf ("CHORDS exact %.1f%% related %.1f%% settle median %.1f p90 %.1f bounces %d moved %.1f%% conf right %.2f wrong %.2f (n=%d)\n",
                  all.exactPercent(), all.relatedPercent(), all.percentile (0.5), all.percentile (0.9), all.bounces, all.movedPercent(), all.meanConfCorrect(), all.meanConfWrong(), all.total);
-    for (auto& [n, s] : byProg) std::printf ("  %-14s exact %5.1f related %5.1f\n", n.c_str(), s.exactPercent(), s.relatedPercent());
-    for (auto& [n, s] : byTimbre) std::printf ("  %-20s exact %5.1f related %5.1f\n", n.c_str(), s.exactPercent(), s.relatedPercent());
+    if (parts & 1) for (auto& [n, s] : byProg) std::printf ("  %-14s exact %5.1f related %5.1f\n", n.c_str(), s.exactPercent(), s.relatedPercent());
+    if (parts & 1) for (auto& [n, s] : byTimbre) std::printf ("  %-20s exact %5.1f related %5.1f\n", n.c_str(), s.exactPercent(), s.relatedPercent());
 
-    for (auto response : { smoothkey::Response::stable, smoothkey::Response::fast })
+    if (parts & 2) for (auto response : { smoothkey::Response::stable, smoothkey::Response::fast })
     {
-        std::mt19937 rng (limits::devSeed);
         std::vector<double> times;
         int followed = 0, total = 0;
-        for (int i = 0; i < 24; ++i)
+        for (int sd = 0; sd < seeds; ++sd)
         {
-            const size_t p1 = rng() % ps.size();
-            size_t p2 = rng() % ps.size();
-            const int from = i % 12, to = (from + 1 + (int) (rng() % 11)) % 12;
-            const size_t timbre = rng() % ts.size();
-            auto first = chordClip (from, ps[p1], ts[timbre], clipSeed (limits::devSeed, i, 1, 1), sr, 24.0);
-            const auto second = chordClip (to, ps[p2], ts[timbre], clipSeed (limits::devSeed, i, 2, 2), sr, 30.0);
-            first.insert (first.end(), second.begin(), second.end());
-            a.reset();
-            a.setResponse (response);
-            a.setSource (smoothkey::Source::mix);
-            const int want = keyIndex (to, ps[p2].minor);
-            const auto tr = analyse (a, first, sr, want);
-            ++total;
-            if (tr.settle >= 0.0 && tr.finalKey == want) { ++followed; times.push_back (std::max (0.0, tr.settle - 24.0)); }
-            else if (verbose) { std::printf ("  change %d>%s want %d:", from, ps[p2].name, want); for (auto& h : tr.history) std::printf (" %.1f=%d", h.first, h.second); std::printf ("\n"); }
+            const unsigned kcSeed = seed + (unsigned) sd;
+            std::mt19937 rng (kcSeed);
+            int seedFollowed = 0;
+            std::vector<double> seedTimes;
+            for (int i = 0; i < 24; ++i)
+            {
+                const size_t p1 = rng() % ps.size();
+                size_t p2 = rng() % ps.size();
+                const int from = i % 12, to = (from + 1 + (int) (rng() % 11)) % 12;
+                const size_t timbre = rng() % ts.size();
+                auto first = chordClip (from, ps[p1], ts[timbre], clipSeed (kcSeed, i, 1, 1), sr, 24.0);
+                const auto second = chordClip (to, ps[p2], ts[timbre], clipSeed (kcSeed, i, 2, 2), sr, 30.0);
+                first.insert (first.end(), second.begin(), second.end());
+                a.reset();
+                a.setResponse (response);
+                a.setSource (smoothkey::Source::mix);
+                const int want = keyIndex (to, ps[p2].minor);
+                const auto tr = analyse (a, first, sr, want);
+                ++total;
+                const bool good = tr.settle >= 0.0 && tr.finalKey == want;
+                if (good) { ++followed; ++seedFollowed; times.push_back (std::max (0.0, tr.settle - 24.0)); seedTimes.push_back (std::max (0.0, tr.settle - 24.0)); }
+                if (verbose && (! good || (response == smoothkey::Response::fast && tr.settle - 24.0 > 8.0)))
+                {
+                    std::printf ("  %s seed %u: %s %d>%s %s want %d:", good ? "slow" : "MISS", kcSeed, ps[p1].name, from, ps[p2].name, ts[timbre].name, want);
+                    for (auto& h : tr.history) std::printf (" %.1f=%d", h.first, h.second);
+                    std::printf ("\n");
+                }
+            }
+            std::sort (seedTimes.begin(), seedTimes.end());
+            std::printf ("  seed %u %s followed %d of 24, median %.1f\n", kcSeed, response == smoothkey::Response::fast ? "fast" : "stable", seedFollowed, seedTimes.empty() ? -1.0 : seedTimes[seedTimes.size() / 2]);
         }
         std::sort (times.begin(), times.end());
         std::printf ("KEYCHANGE %s followed %.1f%% median %.1f worst %.1f\n", response == smoothkey::Response::fast ? "fast" : "stable", 100.0 * followed / total, times.empty() ? -1.0 : times[times.size() / 2], times.empty() ? -1.0 : times.back());
     }
+    if (parts & 16)
+    {
+        Summary rotated;
+        for (int tonic = 0; tonic < 12; tonic += std::max (every, 3))
+            for (size_t p = 0; p < ps.size(); ++p)
+                for (size_t ti = 0; ti < ts.size(); ++ti)
+                {
+                    a.reset();
+                    a.setResponse (smoothkey::Response::stable);
+                    a.setSource (smoothkey::Source::mix);
+                    const auto clip = chordClip (tonic, ps[p], ts[ti], clipSeed (seed, tonic, (int) p, (int) ti), sr, 24.0, 1);
+                    const int want = keyIndex (tonic, ps[p].minor);
+                    rotated.add (analyse (a, clip, sr, want), want);
+                }
+        std::printf ("ROTATED exact %.1f%% related %.1f%% moved %.1f%%\n", rotated.exactPercent(), rotated.relatedPercent(), rotated.movedPercent());
+    }
+    if (parts & 4)
     {
         Summary fast;
         for (int tonic = 0; tonic < 12; tonic += every)
@@ -111,13 +165,13 @@ int main (int argc, char** argv)
                     a.reset();
                     a.setResponse (smoothkey::Response::fast);
                     a.setSource (smoothkey::Source::mix);
-                    const auto clip = chordClip (tonic, ps[p], ts[ti], clipSeed (limits::devSeed, tonic, (int) p, (int) ti), sr, 24.0);
+                    const auto clip = chordClip (tonic, ps[p], ts[ti], clipSeed (seed, tonic, (int) p, (int) ti), sr, 24.0);
                     const int want = keyIndex (tonic, ps[p].minor);
                     fast.add (analyse (a, clip, sr, want), want);
                 }
         std::printf ("FAST exact %.1f%% related %.1f%% settle median %.1f p90 %.1f bounces %d\n", fast.exactPercent(), fast.relatedPercent(), fast.percentile (0.5), fast.percentile (0.9), fast.bounces);
     }
-    if (! chordsOnly) for (auto src : { smoothkey::Source::mix, smoothkey::Source::voice })
+    if ((parts & 8) && ! chordsOnly) for (auto src : { smoothkey::Source::mix, smoothkey::Source::voice })
     {
         Summary mel;
         auto mts = ts; mts.push_back (vocalTimbre());
@@ -129,10 +183,16 @@ int main (int argc, char** argv)
                     a.reset();
                     a.setResponse (smoothkey::Response::stable);
                     a.setSource (src);
-                    const auto clip = melodyClip (tonic, minor == 1, mts[ti], clipSeed (limits::devSeed + 7, tonic, minor, (int) ti), sr, 30.0);
+                    const auto clip = melodyClip (tonic, minor == 1, mts[ti], clipSeed (seed + 7, tonic, minor, (int) ti), sr, 30.0);
                     const int want = keyIndex (tonic, minor == 1);
                     const auto tr = analyse (a, clip, sr, want);
                     mel.add (tr, want); byT[mts[ti].name].add (tr, want);
+                    if (verbose && tr.finalKey != want)
+                    {
+                        std::printf ("  melody %s want %d:", mts[ti].name, want);
+                        for (auto& h : tr.history) std::printf (" %.1f=%d", h.first, h.second);
+                        std::printf ("\n");
+                    }
                 }
         std::printf ("MELODY %s exact %.1f%% related %.1f%% settle median %.1f conf right %.2f wrong %.2f (n=%d)\n", src == smoothkey::Source::mix ? "mix" : "voice",
                      mel.exactPercent(), mel.relatedPercent(), mel.percentile (0.5), mel.meanConfCorrect(), mel.meanConfWrong(), mel.total);

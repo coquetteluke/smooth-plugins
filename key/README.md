@@ -75,32 +75,33 @@ Why not plain profile correlation: a note's own harmonics add false fifths and t
 
 ## Measured
 
-Full numbers in `tests/results.txt`. Synthetic test music only: it doesn't prove accuracy on real songs or a real voice. Limits are in `tests/PassLimits.h`, set before results. The final numbers use a seed not seen before the final run; two earlier held out seeds were each run once and the detector was then changed using the dev seed only.
+Full numbers in `tests/results.txt`. Synthetic test music only: it doesn't prove accuracy on real songs or a real voice. Limits are in `tests/PassLimits.h`, set before results. 1.2.0's numbers use a fourth held out seed, 20261109, run at the end. The detector was tuned on dev seeds 1000 to 1002 only. Earlier seeds and how 1.1.1 compares on this one are in `CHANGELOG.md`.
 
 Latency 0 at all rates. Output bit identical over 720 blocks, including NaN and huge samples, listening, paused, manual and bypassed. No malloc on the audio thread, checked with the system hook.
 
 | Test, all 24 keys, 5 timbres | Limit | Result |
 |---|---|---|
-| Chords exact | at least 90% | 95.4% |
+| Chords exact | at least 90% | 97.9% |
 | Chords exact, relative or a fifth away | at least 98% | 100% |
 | Median time to correct, Stable | up to 8 s | 7.85 s |
 | Median time to correct, Fast | up to 5 s | 3.07 s |
 | Stable bounces, A to B and back | 0 | 0 |
-| Stable clips moving after 8 s | up to 1% | **1.46%, FAIL** |
-| Key change followed in 30 s, Stable | at least 90% | **79.2%, FAIL** |
-| Key change median, Stable | up to 15 s | 14.06 s |
-| Key change followed in 30 s, Fast | at least 90% | **79.2%, FAIL** |
-| Key change median, Fast | up to 8 s | **10.30 s, FAIL** |
+| Stable clips moving after 8 s | up to 1% | **2.29%, FAIL** |
+| Key change followed in 30 s, Stable | at least 90% | 91.7% |
+| Key change median, Stable | up to 15 s | 10.13 s |
+| Key change followed in 30 s, Fast | at least 90% | **83.3%, FAIL** |
+| Key change median, Fast | up to 8 s | 6.21 s |
 | Confidence after 10 s silence, Stable | up to 0.10 | 0.023 |
 | Reference pitch error, -40 to +45 cents | up to 1 Hz | 0.525 Hz |
 | Tempo within 1 BPM, half or double counting | at least 90% | 100% (58.3% at exactly the played tempo) |
 
 Other results:
 
-- Melody only, Single Voice: 95.8% exact, 100% within related keys. Full Mix: 91.7% and 93.8%. These tunes land on the tonic often, which real melodies may not.
-- Key changes all ended on the right key or its relative. The misses landed on the relative, which has the same notes.
+- Melody only, Single Voice: 97.9% exact, 100% within related keys. Full Mix: 93.8% and 95.8%. These tunes land on the tonic often, which real melodies may not.
+- Still failing: Fast follows 83.3% of key changes within 30 s, against 90%, and 11 of 480 Stable clips move after 8 s, against 8 in 1.1.1 on the same seed. On the dev seeds those moves were songs that open on their ii chord: read as that chord's minor key at 8 s, then corrected.
+- Key changes in Fast all ended on the right key or its relative, and 95.8% did in Stable. Most misses landed on the relative, which has the same notes.
 - A loop heard from its second chord: 66.3% exact, 100% within related keys. With the opening chord gone, some loops can't be told from their relative. This is the main weakness to expect on real songs joined midway.
 - Silence from the start: no key and no file. White noise: no key.
 - key.json: 13470 writes raced against 115342 reads with no partial file seen. A blocked path shows the note and audio stays bit identical.
 - Window created, painted and destroyed 20 times offline, and 30 more times while audio ran, with audio bit identical throughout.
-- Every detection reading is bit identical to 1.0.0 over 12 clips, checked by a fingerprint in `tests/ReadingFingerprint.h`.
+- Every detection reading is bit identical to the saved 1.2.0 fingerprint over 12 clips, in `tests/ReadingFingerprint.h`, so a window change cannot alter detection unnoticed.

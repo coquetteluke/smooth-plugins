@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.2.0, 2026-11-07
+
+Better at following a key change. Both versions were run on the same new held out seed, 20261109, which nothing was tuned on:
+
+| | 1.1.1 | 1.2.0 | Limit |
+|---|---|---|---|
+| Key change followed in 30 s, Stable | 75.0% | **91.7%** | at least 90% |
+| Key change median, Stable | 12.0 s | 10.1 s | up to 15 s |
+| Key change followed in 30 s, Fast | 62.5% | 83.3% | at least 90% |
+| Key change median, Fast | 9.62 s | **6.21 s** | up to 8 s |
+| Stable clips moving after 8 s | 1.67% | 2.29% | up to 1% |
+| Chords exact | 95.4% | 97.9% | at least 90% |
+| Loop heard from its second chord | 67.5% | 66.3% | none |
+
+Bold now passes. Two limits still fail, and one of them got worse: 11 of 480 Stable clips move after 8 s, against 8 before.
+
+- When the notes leave the key, it finds where the new notes began. What was heard since then stays whole, and only what came before is mostly dropped. Before, everything was cut to 15%, the new notes too.
+- The chord at that point is heard as the opening of the new section, which helps tell the new key from its relative.
+- A chord change not heard lately, after a settled loop, also counts as a new section.
+- Right after a key change the reading may correct itself sooner, while the new memory fills.
+- A little more trust in the opening chord when there is a bass line. More than this made Stable readings move after 8 s.
+- Tuned on dev seeds 1000 to 1002 only. Every detection reading has a new fingerprint, as this changes detection on purpose.
+- Test fix: the window test waited a fixed 100 ms for the Manual key and failed most runs, in 1.1.1 too. It now waits up to 2 s.
+
 ## 1.1.1, 2026-11-07
 
 Renamed to Key, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.

@@ -112,6 +112,8 @@ public:
         double settleSeconds = 18.0;                    // the dwell and margin reach full size after this much audio
         double bassWeight = 0.45;
         double openingWeight = 0.4;
+        double openingBassWeight = 0.1; // more trust in the opening when a bass line says where the chords are, not for a lone tune
+        double openingBassShare = 0.35; // the share of bass notes that earns all of that, from none at 0.15
         double relativeGuard = 2.0;
         double returnGuard = 4.0;
         double outsideShare = 0.30;                     // share of recent notes outside the shown key that counts as outside
@@ -124,6 +126,20 @@ public:
         double cadenceFull = 1.0;
         double openingSeconds = 1.5;
         double openingTau = 60.0;
+        double openingBassTau = 0.0;    // and it is remembered this much longer. Above 0 made more Stable readings move after 8 s
+        double sectionLookback = 1.0;   // on a key change, 1 finds where the new notes began and hears that chord as a new opening
+        double sectionMaxGap = 2.6;     // seconds of notes that fit both keys that can sit inside the new section
+        double sectionShare = 0.15;     // a frame with this share of notes outside the old key belongs to the new section
+        double sectionSkip = 1;         // frames left out after the boundary, as the 0.7 s window still holds the old chord
+        double sectionBassShare = 0.2;  // needs at least this share of bass notes, so a lone tune is left alone
+        double sectionNovel = 1.0;      // 1 also takes the first chord change not heard lately as the start of the section
+        double sectionOnMove = 1.0;     // 1 also looks back when the reading moves with no outside notes having let go
+        double transitionMemory = 40.0; // a chord change heard within this long is not new
+        double sectionOnLoop = 3;       // this many new chord changes after a settled loop start a new section. 0 is off
+        double loopLetGo = 0.5;         // how much of the time on each chord is kept when that happens
+        double loopNotes = 1.0;         // and how much of the note memory
+        double holdAfterLetGo = 1.0;    // 1 shortens the hold in the seconds after a let go, while the new memory is still filling
+        double rebuildOnLetGo = 1.0;    // 1 keeps the notes and chords heard since the new notes began whole when letting go, and drops only what came before
         double harmonicDecay = 0.65;
         double chromaPower = 0.75;      // compression of the long term chroma
         double softness = 14.0;         // turns score gaps into a probability
@@ -152,6 +168,7 @@ public:
         buildProfiles();
         buildDictionary();
         configure (48000.0);
+        reset();
     }
 
     void setKnobs (const Knobs& k) noexcept { knobs = k; buildDictionary(); }
@@ -197,6 +214,15 @@ public:
         std::fill (ring.begin(), ring.end(), 0.0);
         ringPos = 0; hopCounter = 0; windowFilled = 0;
         trebleMemory.fill (0.0); bassMemory.fill (0.0); opening.fill (0.0); chordMemory.fill (0.0); recentMemory.fill (0.0);
+        for (auto& f : frameHistory) f.fill (0.0);
+        for (auto& f : frameTreble) f.fill (0.0);
+        for (auto& f : frameBass) f.fill (0.0);
+        frameChord.fill (-1); frameWeights.fill (0.0);
+        historyPos = historyCount = 0;
+        openingBorn = 0.0;
+        for (auto& row : transitionHeard) row.fill (-1.0e9);
+        changePos = changeCount = 0;
+        freshRun = repeatRun = 0; loopSettled = false;
         outsideSeconds = 0.0; sinceLetGo = 1.0e9;
         scores.fill (0.0); probs.fill (0.0);
         heardSeconds = openingHeard = silenceSeconds = 0.0;
@@ -259,6 +285,8 @@ public:
 
 private:
     static constexpr int fftSize = 8192, hop = 2048;
+    static constexpr int numHistory = 160;                     // about 27 s of the notes in each frame, to look back at a key change
+    static constexpr int numChanges = 64;                      // recent chord changes
     static constexpr int tempoFft = 512, tempoHop = 256, numOnsets = 1024; // about 20 s of onset curve
     static constexpr int maxDecimation = 32, maxTaps = maxDecimation * 32 + 1;
     static constexpr int lowestNote = 33, numNotes = 64;       // A1 to C7 can be sounding notes
@@ -577,6 +605,7 @@ private:
         }
         heardSeconds += hopSeconds;
         sinceLetGo += hopSeconds;
+        rememberFrame (treble, bass, total, frameWeight);
         checkForKeyChange();
 
         // Which chord is this frame closest to? Music tends to spend longest on its home chord.
@@ -594,6 +623,7 @@ private:
             }
             for (auto& c : chordMemory) c *= decay;
             if (bestChord >= 0) chordMemory[(size_t) bestChord] += frameWeight;
+            frameChord[(size_t) ((historyPos - 1 + numHistory) % numHistory)] = bestChord;
         }
 
         if (openingHeard < knobs.openingSeconds && total > 1.0e-12)
@@ -611,31 +641,155 @@ private:
         publishChroma();
     }
 
-    // Notes that keep falling outside the key on show mean the key has changed. Keep only a little of the old memory.
-    void checkForKeyChange() noexcept
+    void rememberFrame (const std::array<double, 12>& treble, const std::array<double, 12>& bass, double total, double weight) noexcept
     {
-        if (current.key < 0) { outsideSeconds = 0.0; return; }
+        auto& f = frameHistory[(size_t) historyPos];
+        for (int i = 0; i < 12; ++i)
+            f[(size_t) i] = total > 1.0e-12 ? weight * (treble[(size_t) i] + 1.5 * bass[(size_t) i]) / total : 0.0;
+        for (int i = 0; i < 12; ++i)
+        {
+            frameTreble[(size_t) historyPos][(size_t) i] = total > 1.0e-12 ? weight * treble[(size_t) i] / total : 0.0;
+            frameBass[(size_t) historyPos][(size_t) i] = total > 1.0e-12 ? weight * bass[(size_t) i] / total : 0.0;
+        }
+        frameChord[(size_t) historyPos] = -1;
+        frameWeights[(size_t) historyPos] = weight;
+        historyPos = (historyPos + 1) % numHistory;
+        historyCount = std::min (historyCount + 1, numHistory);
+    }
+
+    const std::array<double, 12>& frameBack (int framesAgo) const noexcept
+    {
+        return frameHistory[(size_t) ((historyPos - 1 - framesAgo + 2 * numHistory) % numHistory)];
+    }
+
+    // Minor counts both the natural and the raised sixth and seventh, as minor music uses both.
+    double shareOutsideShownKey (const std::array<double, 12>& v) const noexcept
+    {
         double inside = 0.0, total = 0.0;
         for (int i = 0; i < 12; ++i)
         {
             const int step = (i - current.key + 12) % 12;
-            // Minor counts both the natural and the raised sixth and seventh, as minor music uses both.
             const bool member = current.minor ? (step == 0 || step == 2 || step == 3 || step == 5 || step == 7 || step >= 8)
                                               : (step == 0 || step == 2 || step == 4 || step == 5 || step == 7 || step == 9 || step == 11);
-            total += recentMemory[(size_t) i];
-            if (member) inside += recentMemory[(size_t) i];
+            total += v[(size_t) i];
+            if (member) inside += v[(size_t) i];
         }
-        const bool outside = total > 1.0e-9 && 1.0 - inside / total > knobs.outsideShare;
+        return total > 1.0e-9 ? 1.0 - inside / total : 0.0;
+    }
+
+    // How many frames back the notes outside the shown key began, allowing short stretches of notes that fit both keys. -1 if none.
+    int newNotesStart() const noexcept
+    {
+        int start = -1, gap = 0;
+        const int maxGap = (int) (knobs.sectionMaxGap / hopSeconds);
+        for (int back = 0; back < historyCount; ++back)
+        {
+            if (shareOutsideShownKey (frameBack (back)) > knobs.sectionShare) { start = back; gap = 0; }
+            else if (++gap > maxGap) break;
+        }
+        return start;
+    }
+
+    // A lone tune has no chords to start a section on. Its notes wander over a section's first moments without saying much.
+    bool hasBassLine() const noexcept
+    {
+        double t = 0.0, b = 0.0;
+        for (int i = 0; i < 12; ++i) { t += trebleMemory[(size_t) i]; b += bassMemory[(size_t) i]; }
+        return b > knobs.sectionBassShare * (t + b);
+    }
+
+    // A new key usually arrives on its home chord, or close to it, and that is what tells a loop from the relative key with the
+    // same notes. Look back for where the outside notes began, and hear the chord there as the opening of a new section.
+    void hearSectionStart() noexcept
+    {
+        if (! hasBassLine()) return;
+        int start = -1, gap = 0;
+        const int maxGap = (int) (knobs.sectionMaxGap / hopSeconds);
+        for (int back = 0; back < historyCount; ++back)
+        {
+            if (shareOutsideShownKey (frameBack (back)) > knobs.sectionShare) { start = back; gap = 0; }
+            else if (++gap > maxGap) break;
+        }
+        int skip = (int) knobs.sectionSkip;
+
+        // A loop repeats its chord changes, so the first change not heard lately marks where something new began, even when
+        // that chord still fits the old key. Only trusted when older changes were being repeated, so music that never
+        // repeats is left alone.
+        if (knobs.sectionNovel > 0.0)
+        {
+            const double limit = heardSeconds - (historyCount - 1) * hopSeconds;
+            double oldestNew = -1.0;
+            int repeats = 0;
+            bool anchored = false, inRun = false;
+            for (int n = 0; n < changeCount; ++n)
+            {
+                const auto& c = chordChanges[(size_t) ((changePos - 1 - n + 2 * numChanges) % numChanges)];
+                // The new section's own loop may already be repeating: walk back past that to its first new changes.
+                if (c.fresh) { oldestNew = c.time; repeats = 0; inRun = true; }
+                else if (inRun && ++repeats >= 2) { anchored = true; break; }
+            }
+            if (oldestNew < limit) anchored = false;
+            if (anchored && oldestNew >= 0.0)
+            {
+                const int back = (int) ((heardSeconds - oldestNew) / hopSeconds);
+                if (back > start) { start = back; skip = 0; }
+            }
+        }
+        if (start < 0) return;
+        const int frames = (int) (knobs.openingSeconds / hopSeconds);
+        opening.fill (0.0);
+        for (int n = 0; n < frames; ++n)
+        {
+            const int back = start - skip - n;
+            if (back < 0) break;
+            const auto& f = frameBack (back);
+            for (int i = 0; i < 12; ++i) opening[(size_t) i] += f[(size_t) i];
+        }
+        openingBorn = heardSeconds - start * hopSeconds;
+    }
+
+    // Notes that keep falling outside the key on show mean the key has changed. Keep only a little of the old memory.
+    void checkForKeyChange() noexcept
+    {
+        if (current.key < 0) { outsideSeconds = 0.0; return; }
+        const bool outside = shareOutsideShownKey (recentMemory) > knobs.outsideShare;
         outsideSeconds = outside ? outsideSeconds + hopSeconds : 0.0;
         if (outsideSeconds < (response == Response::fast ? knobs.outsideFast : knobs.outsideStable))
             return;
         outsideSeconds = 0.0;
-        for (auto& x : trebleMemory) x *= 0.15;
-        for (auto& x : bassMemory) x *= 0.15;
-        for (auto& x : chordMemory) x *= 0.15;
+        const int start = knobs.rebuildOnLetGo > 0.0 ? newNotesStart() : -1;
+        if (start >= 0)
+        {
+            // What was heard since the new notes began stays whole. Only the part of each memory from before then is mostly dropped.
+            const double decay = std::exp (-hopSeconds / (response == Response::fast ? knobs.tauFast : knobs.tauStable));
+            std::array<double, 12> t {}, b {};
+            std::array<double, 24> c {};
+            double w = 1.0;
+            for (int back = 0; back <= start; ++back)
+            {
+                const int at = (historyPos - 1 - back + 2 * numHistory) % numHistory;
+                for (int i = 0; i < 12; ++i) { t[(size_t) i] += w * frameTreble[(size_t) at][(size_t) i]; b[(size_t) i] += w * frameBass[(size_t) at][(size_t) i]; }
+                if (frameChord[(size_t) at] >= 0) c[(size_t) frameChord[(size_t) at]] += w * frameWeights[(size_t) at];
+                w *= decay;
+            }
+            for (int i = 0; i < 12; ++i)
+            {
+                trebleMemory[(size_t) i] = t[(size_t) i] + 0.15 * std::max (0.0, trebleMemory[(size_t) i] - t[(size_t) i]);
+                bassMemory[(size_t) i] = b[(size_t) i] + 0.15 * std::max (0.0, bassMemory[(size_t) i] - b[(size_t) i]);
+            }
+            for (int k = 0; k < 24; ++k)
+                chordMemory[(size_t) k] = c[(size_t) k] + 0.15 * std::max (0.0, chordMemory[(size_t) k] - c[(size_t) k]);
+        }
+        else
+        {
+            for (auto& x : trebleMemory) x *= 0.15;
+            for (auto& x : bassMemory) x *= 0.15;
+            for (auto& x : chordMemory) x *= 0.15;
+        }
         cadence.fill (0.0);
         opening.fill (0.0); // the opening chord belonged to the old key
         openingHeard = knobs.openingSeconds;
+        if (knobs.sectionLookback > 0.0) hearSectionStart();
         sinceLetGo = 0.0;
         lastMove = -1000.0;
     }
@@ -664,6 +818,31 @@ private:
 
         if (heldChord >= 0 && heldChord < 12 && (heldChord % 12 + 5) % 12 == chord % 12)
             cadence[(size_t) chord] += 1.0;
+        if (heldChord >= 0)
+        {
+            auto& heard = transitionHeard[(size_t) heldChord][(size_t) chord];
+            auto& change = chordChanges[(size_t) changePos];
+            change.time = heardSeconds - (pendingFrames - 1) * hopSeconds;
+            change.fresh = heardSeconds - heard > knobs.transitionMemory;
+            heard = heardSeconds;
+            const bool fresh = change.fresh;
+            changePos = (changePos + 1) % numChanges;
+            changeCount = std::min (changeCount + 1, numChanges);
+            // A loop had settled, and now several changes in a row are new: the song has moved on, maybe with no new notes at all.
+            if (fresh) ++freshRun;
+            else if (++repeatRun >= 2) { freshRun = 0; repeatRun = 0; loopSettled = true; }
+            if (fresh && freshRun >= 2) repeatRun = 0;
+            if (knobs.sectionOnLoop > 0.0 && loopSettled && freshRun >= (int) knobs.sectionOnLoop && hasBassLine())
+            {
+                loopSettled = false;
+                hearSectionStart();
+                for (auto& c : chordMemory) c *= knobs.loopLetGo;
+                for (auto& x : trebleMemory) x *= knobs.loopNotes;
+                for (auto& x : bassMemory) x *= knobs.loopNotes;
+                cadence.fill (0.0);
+                if (knobs.loopNotes < 1.0) { sinceLetGo = 0.0; lastMove = -1000.0; }
+            }
+        }
         heldChord = chord;
     }
 
@@ -693,8 +872,9 @@ private:
         contrast = rawTreble > 1.0e-12 ? std::clamp ((topSeven / rawTreble - 7.0 / 12.0) / (5.0 / 12.0), 0.0, 1.0) : 0.0;
 
         const double bassScale = std::min (1.0, rawBass / std::max (0.1 * (rawTreble + rawBass), 1.0e-12));
-        const double openingAge = std::max (0.0, heardSeconds - knobs.openingSeconds);
-        const double openingGain = source == Source::voice ? 0.0 : knobs.openingWeight * std::exp (-openingAge / knobs.openingTau);
+        const double openingAge = std::max (0.0, heardSeconds - openingBorn - knobs.openingSeconds);
+        const double bassShare = std::clamp ((rawBass / std::max (rawTreble + rawBass, 1.0e-12) - 0.15) / (knobs.openingBassShare - 0.15), 0.0, 1.0);
+        const double openingGain = source == Source::voice ? 0.0 : (knobs.openingWeight + knobs.openingBassWeight * bassShare) * std::exp (-openingAge / (knobs.openingTau + knobs.openingBassTau * bassShare));
         const double bassGain = source == Source::voice ? 0.0 : knobs.bassWeight * bassScale;
 
         double chordTotal = 0.0;
@@ -706,8 +886,7 @@ private:
             double s = correlate (t, keyProfile[(size_t) k]);
             s += chordGain * chordMemory[(size_t) k];
             if (bassGain > 0.0) s += bassGain * correlate (b, bassProfile[(size_t) k]);
-            // The opening chord only helps choose between a key and its relative, which share the same notes. It says
-            // nothing about which set of notes this is, so a song that opens away from home does not mislead the rest.
+            // The opening chord helps choose between a key and its relative, which share the same notes.
             if (openingGain > 0.0) s += openingGain * 0.5 * (correlate (o, triadProfile[(size_t) k]) - correlate (o, triadProfile[(size_t) relativeOf (k)]));
             if (source != Source::voice) s += knobs.cadenceWeight * std::min (1.0, cadence[(size_t) k] / knobs.cadenceFull);
             scores[(size_t) k] = s;
@@ -778,9 +957,17 @@ private:
             // Going back to the key just left needs a much clearer lead, which is what stops a reading bouncing.
             const double back = top == previousShown ? knobs.returnGuard : 1.0;
             const double margin = (stable ? knobs.marginStable : knobs.marginFast) * settled * guard * back;
-            const bool holding = heardSeconds - lastMove < (stable ? knobs.holdStable : knobs.holdFast);
+            const double holdFor = (stable ? knobs.holdStable : knobs.holdFast) * (knobs.holdAfterLetGo > 0.0 ? std::clamp (sinceLetGo / knobs.settleSeconds, 0.25, 1.0) : 1.0);
+            const bool holding = heardSeconds - lastMove < holdFor;
             if (! holding && dwell >= need && scores[(size_t) top] - scores[(size_t) shown] >= margin && gate > 0.5)
             {
+                // A new set of notes won without ever going far outside the old key, so no section start has been heard yet.
+                if (knobs.sectionOnMove > 0.0 && top != relativeOf (shown) && sinceLetGo > knobs.settleSeconds && heardSeconds - openingBorn > knobs.settleSeconds)
+                {
+                    hearSectionStart();
+                    scoreKeys();
+                    if (scores[(size_t) relativeOf (top)] > scores[(size_t) top]) top = relativeOf (top);
+                }
                 lastMove = heardSeconds;
                 previousShown = shown;
                 shown = top;
@@ -839,6 +1026,10 @@ private:
         heldChord = pendingChord = -1;
         pendingFrames = 0;
         heardSeconds = std::min (heardSeconds, knobs.openingSeconds);
+        openingBorn = 0.0;
+        historyCount = 0;
+        changeCount = 0;
+        freshRun = repeatRun = 0; loopSettled = false;
     }
 
     void resetTempo() noexcept
@@ -867,6 +1058,16 @@ private:
     Source source = Source::mix;
 
     std::array<double, 12> trebleMemory {}, bassMemory {}, opening {}, recentMemory {};
+    std::array<std::array<double, 12>, numHistory> frameHistory {}, frameTreble {}, frameBass {};
+    std::array<int, numHistory> frameChord {};
+    std::array<double, numHistory> frameWeights {};
+    int historyPos = 0, historyCount = 0;
+    double openingBorn = 0.0;
+    struct ChordChange { double time = 0.0; bool fresh = false; };
+    std::array<ChordChange, numChanges> chordChanges {};
+    std::array<std::array<double, 24>, 24> transitionHeard {};
+    int changePos = 0, changeCount = 0, freshRun = 0, repeatRun = 0;
+    bool loopSettled = false;
     double outsideSeconds = 0.0, sinceLetGo = 1.0e9;
     std::array<double, 24> scores {}, probs {}, chordMemory {};
     double heardSeconds = 0.0, openingHeard = 0.0, silenceSeconds = 0.0, presence = 0.0, contrast = 0.0;

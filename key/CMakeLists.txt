@@ -8,7 +8,7 @@ set(SP_NAME    "Key")
 set(SP_CODE    SKey)
 set(SP_BUNDLE  "com.lukegarito.smoothkey")
 set(SP_DESC    "Live key, scale and tempo detection")
-set(SP_VERSION 1.1.1)
+set(SP_VERSION 1.2.0)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice

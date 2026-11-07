@@ -3,6 +3,8 @@
 #include "StateGuard.h"
 #include "editor/ResonanceEditor.h"
 
+#include <array>
+
 namespace
 {
     const juce::Identifier windowWidthAttribute { "windowWidth" };
@@ -71,6 +73,19 @@ namespace
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "sideChain", 1 }, "Side Chain", false));
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "sideChainListen", 1 }, "Side Chain Listen", false));
 
+        // Added in 0.5.0. At their defaults these change nothing, so old sessions and presets sound the same.
+        layout.add (makeFloat ("maxCut", "Max Cut", { 0.0f, 24.0f, 0.01f }, defaults.maxCutDb, "dB", oneDecimal));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "quality", 1 }, "Quality",
+                                                                  juce::StringArray { "Low Latency", "Normal", "High" }, (int) defaults.quality));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "bandListen", 1 }, "Band Listen",
+                                                                  juce::StringArray { "Off", "Dot 1", "Dot 2", "Dot 3", "Dot 4", "Dot 5", "Dot 6", "Dot 7", "Dot 8" }, 0));
+
+        for (int b = 0; b < smoothres::Params::numBands; ++b)
+        {
+            const auto number = juce::String (b + 1);
+            layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "band" + number + "On", 1 }, "Band " + number + " On", defaults.bands[b].on));
+        }
+
         return layout;
     }
 
@@ -84,6 +99,12 @@ namespace
         float hardThreshold;
         int midSide, sideChain;
         Band bands[3];
+
+        // Added in 0.5.0. Presets that do not mention these keep today's sound.
+        float maxCut = 24.0f;
+        int quality = 1;
+        unsigned dotsOn = 0b00000111;
+        Band moreBands[5] = { { 150.0f, 0.0f, 1.0f }, { 600.0f, 0.0f, 1.0f }, { 1500.0f, 0.0f, 1.0f }, { 5000.0f, 0.0f, 1.0f }, { 11000.0f, 0.0f, 1.0f } };
     };
 
     constexpr Band flat1 { 300.0f, 0.0f, 1.0f }, flat2 { 3000.0f, 0.0f, 1.0f }, flat3 { 7000.0f, 0.0f, 1.0f };
@@ -98,6 +119,16 @@ namespace
         { "Boxy Low Mids",          8.0f, 40.0f, 45.0f, 30.0f, 220.0f,  180.0f,  1100.0f, 100.0f, 0, -36.0f, 0, 0, { { 400.0f, 3.0f, 1.0f }, flat2, flat3 } },
         { "Hard Whistle Catcher",  14.0f, 80.0f, 70.0f,  5.0f,  80.0f, 1500.0f, 12000.0f, 100.0f, 1, -42.0f, 0, 0, { flat1, flat2, flat3 } },
         { "Side Chain Carve",       6.0f, 30.0f,  0.0f, 10.0f, 120.0f,  300.0f,  8000.0f, 100.0f, 1, -40.0f, 0, 1, { flat1, flat2, flat3 } },
+
+        // These show off what 0.5.0 added. New presets go after the old ones, so the old numbers stay the same.
+        // Cuts quickly with a quarter of the delay. For singing through it while recording.
+        { "Tracking Low Latency",   8.0f, 40.0f, 45.0f,  5.0f,  80.0f, 1000.0f, 12000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, flat2, flat3 }, 24.0f, 0 },
+        // Every dot in use: protects the body of the voice and the air, and looks harder where a vocal gets harsh.
+        { "Eight Dot Vocal Sculpt", 12.0f, 50.0f, 45.0f, 10.0f, 120.0f,  250.0f, 14000.0f, 100.0f, 0, -36.0f, 0, 0,
+          { { 300.0f, -8.0f, 1.0f }, { 3000.0f, 4.0f, 0.8f }, { 7000.0f, 3.0f, 0.7f } }, 24.0f, 1, 0b11111111,
+          { { 500.0f, -5.0f, 0.8f }, { 900.0f, 1.0f, 0.7f }, { 1800.0f, 2.0f, 0.7f }, { 4500.0f, 3.0f, 0.7f }, { 11000.0f, -6.0f, 1.2f } } },
+        // Depth at its strongest with a ceiling: finest detail, wider areas held down, and never more than 6 dB anywhere.
+        { "High Detail With Ceiling", 24.0f, 70.0f, 50.0f, 15.0f, 150.0f, 800.0f, 14000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, flat2, flat3 }, 6.0f, 2 },
     };
 }
 
@@ -127,7 +158,10 @@ SmoothResonanceProcessor::SmoothResonanceProcessor()
       releaseTilt (parameters.getRawParameterValue ("releaseTilt")),
       wetTrim (parameters.getRawParameterValue ("wetTrim")),
       sideChain (parameters.getRawParameterValue ("sideChain")),
-      sideChainListen (parameters.getRawParameterValue ("sideChainListen"))
+      sideChainListen (parameters.getRawParameterValue ("sideChainListen")),
+      maxCut (parameters.getRawParameterValue ("maxCut")),
+      quality (parameters.getRawParameterValue ("quality")),
+      bandListen (parameters.getRawParameterValue ("bandListen"))
 {
     for (int b = 0; b < smoothres::Params::numBands; ++b)
     {
@@ -135,6 +169,7 @@ SmoothResonanceProcessor::SmoothResonanceProcessor()
         bandFreq[b]  = parameters.getRawParameterValue ("band" + number + "Freq");
         bandSens[b]  = parameters.getRawParameterValue ("band" + number + "Sens");
         bandWidth[b] = parameters.getRawParameterValue ("band" + number + "Width");
+        bandOn[b]    = parameters.getRawParameterValue ("band" + number + "On");
     }
 
     using Cat = juce::AudioProcessorParameter::Category;
@@ -145,13 +180,75 @@ SmoothResonanceProcessor::SmoothResonanceProcessor()
 
     // A host can ask for the latency before it prepares us, so have the right answer for the usual rates.
     setLatencySamples (smoothres::ResonanceEngine::fftSizeForRate (48000.0));
+
+    parameters.addParameterListener ("quality", this);
+    startTimerHz (5);
+}
+
+SmoothResonanceProcessor::~SmoothResonanceProcessor()
+{
+    stopTimer();
+    parameters.removeParameterListener ("quality", this);
+}
+
+int SmoothResonanceProcessor::latencyForQuality (smoothres::Quality q) const noexcept
+{
+    const auto rate = getSampleRate();
+    return smoothres::ResonanceEngine::fftSizeForRate (rate > 0.0 ? rate : 48000.0, q);
+}
+
+void SmoothResonanceProcessor::syncLatencyToQuality()
+{
+    const auto want = latencyForQuality ((smoothres::Quality) juce::jlimit (0, smoothres::numQualities - 1, juce::roundToInt (quality->load())));
+
+    if (getLatencySamples() != want)
+        setLatencySamples (want);
+}
+
+void SmoothResonanceProcessor::parameterChanged (const juce::String&, float)
+{
+    if (juce::MessageManager::existsAndIsCurrentThread())
+        syncLatencyToQuality();
+}
+
+void SmoothResonanceProcessor::timerCallback()
+{
+    syncLatencyToQuality();
+}
+
+juce::String SmoothResonanceProcessor::getLayoutName() const
+{
+    return getChannelLayoutOfBus (false, 0).getDescription();
+}
+
+juce::StringArray SmoothResonanceProcessor::getChannelNames() const
+{
+    juce::StringArray names;
+    const auto set = getChannelLayoutOfBus (false, 0);
+
+    for (int ch = 0; ch < set.size(); ++ch)
+        names.add (juce::AudioChannelSet::getAbbreviatedChannelTypeName (set.getTypeOfChannel (ch)));
+
+    return names;
+}
+
+int SmoothResonanceProcessor::getLfeChannel() const
+{
+    return getChannelLayoutOfBus (false, 0).getChannelIndexForType (juce::AudioChannelSet::LFE);
 }
 
 bool SmoothResonanceProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
+    using Set = juce::AudioChannelSet;
     const auto out = layouts.getMainOutputChannelSet();
 
-    if (! ((out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo()) && layouts.getMainInputChannelSet() == out))
+    // In and out must match. Discrete channels are left out on purpose: with no names there is no telling which one is the LFE.
+    static const std::array<Set, 16> allowed { Set::mono(), Set::stereo(), Set::quadraphonic(), Set::createLCRS(), Set::create5point0(), Set::create5point1(),
+                                               Set::create6point0(), Set::create6point1(), Set::create7point0(), Set::create7point1(),
+                                               Set::create5point1point2(), Set::create7point1point2(), Set::create5point1point4(),
+                                               Set::create7point0point4(), Set::create7point1point4(), Set::create9point1point6() };
+
+    if (std::find (allowed.begin(), allowed.end(), out) == allowed.end() || layouts.getMainInputChannelSet() != out)
         return false;
 
     if (layouts.inputBuses.size() < 2)
@@ -163,8 +260,38 @@ bool SmoothResonanceProcessor::isBusesLayoutSupported (const BusesLayout& layout
 
 void SmoothResonanceProcessor::prepareToPlay (double sampleRate, int)
 {
-    engine.prepare (sampleRate, getMainBusNumOutputChannels());
-    setLatencySamples (engine.getLatencySamples());
+    // Which channel is which, from the host's layout. Names decide: the LFE only gets the delay, and left and right side
+    // channels follow Stereo Focus and pick a side chain channel. Any other position counts as centre.
+    using Set = juce::AudioChannelSet;
+    const auto set = getChannelLayoutOfBus (false, 0);
+    std::array<smoothres::ChannelRole, smoothres::maxEngineChannels> roles {};
+
+    for (int ch = 0; ch < juce::jmin (set.size(), smoothres::maxEngineChannels); ++ch)
+    {
+        switch (set.getTypeOfChannel (ch))
+        {
+            case Set::LFE: case Set::LFE2:
+                roles[(size_t) ch] = smoothres::ChannelRole::lfe;
+                break;
+
+            case Set::left: case Set::leftSurround: case Set::leftCentre: case Set::leftSurroundSide: case Set::leftSurroundRear:
+            case Set::wideLeft: case Set::topFrontLeft: case Set::topSideLeft: case Set::topRearLeft:
+                roles[(size_t) ch] = smoothres::ChannelRole::left;
+                break;
+
+            case Set::right: case Set::rightSurround: case Set::rightCentre: case Set::rightSurroundSide: case Set::rightSurroundRear:
+            case Set::wideRight: case Set::topFrontRight: case Set::topSideRight: case Set::topRearRight:
+                roles[(size_t) ch] = smoothres::ChannelRole::right;
+                break;
+
+            default:
+                roles[(size_t) ch] = smoothres::ChannelRole::centre;
+                break;
+        }
+    }
+
+    engine.prepare (sampleRate, getMainBusNumOutputChannels(), roles.data());
+    setLatencySamples (latencyForQuality ((smoothres::Quality) juce::jlimit (0, smoothres::numQualities - 1, juce::roundToInt (quality->load()))));
     maxReduction->setReading (0.0f);
     maxReductionFreq->setReading (0.0f);
 }
@@ -206,7 +333,11 @@ void SmoothResonanceProcessor::render (juce::AudioBuffer<float>& buffer, bool fo
     p.sideChainListen = sideChainListen->load() > 0.5f;
 
     for (int b = 0; b < smoothres::Params::numBands; ++b)
-        p.bands[b] = { bandFreq[b]->load(), bandSens[b]->load(), bandWidth[b]->load() };
+        p.bands[b] = { bandFreq[b]->load(), bandSens[b]->load(), bandWidth[b]->load(), bandOn[b]->load() > 0.5f };
+
+    p.maxCutDb   = maxCut->load();
+    p.quality    = (smoothres::Quality) juce::jlimit (0, smoothres::numQualities - 1, juce::roundToInt (quality->load()));
+    p.bandListen = juce::jlimit (0, smoothres::Params::numBands, juce::roundToInt (bandListen->load()));
 
     engine.setParams (p);
 
@@ -292,13 +423,21 @@ void SmoothResonanceProcessor::setCurrentProgram (int index)
     set ("sideChain", (float) x.sideChain);
     set ("sideChainListen", 0.0f);
 
+    set ("maxCut", x.maxCut);
+    set ("quality", (float) x.quality);
+    set ("bandListen", 0.0f);
+
     for (int b = 0; b < smoothres::Params::numBands; ++b)
     {
         const auto number = juce::String (b + 1);
-        set ("band" + number + "Freq", x.bands[b].hz);
-        set ("band" + number + "Sens", x.bands[b].sens);
-        set ("band" + number + "Width", x.bands[b].width);
+        const auto& band = b < 3 ? x.bands[b] : x.moreBands[b - 3];
+        set ("band" + number + "Freq", band.hz);
+        set ("band" + number + "Sens", band.sens);
+        set ("band" + number + "Width", band.width);
+        set ("band" + number + "On", ((x.dotsOn >> b) & 1u) != 0 ? 1.0f : 0.0f);
     }
+
+    syncLatencyToQuality();
 }
 
 void SmoothResonanceProcessor::getStateInformation (juce::MemoryBlock& destination)
@@ -327,6 +466,7 @@ void SmoothResonanceProcessor::setStateInformation (const void* data, int size)
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (advancedOpenAttribute);
             applySafeState (parameters, *xml);
+            syncLatencyToQuality();
         }
     }
 }

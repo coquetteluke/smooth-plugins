@@ -65,10 +65,13 @@ private:
     std::atomic<float> reading { 0.0f };
 };
 
-class SmoothResonanceProcessor final : public juce::AudioProcessor
+class SmoothResonanceProcessor final : public juce::AudioProcessor,
+                                       private juce::AudioProcessorValueTreeState::Listener,
+                                       private juce::Timer
 {
 public:
     SmoothResonanceProcessor();
+    ~SmoothResonanceProcessor() override;
 
     const juce::String getName() const override  { return "Smooth Resonance"; }
 
@@ -103,6 +106,18 @@ public:
         Call from one thread at a time. Returns false if nothing new has arrived. */
     bool readGraph (smoothres::GraphFrame& destination) noexcept  { return engine.readGraph (destination); }
 
+    /** Tells the host the delay of the Quality now chosen. The audio thread never does this, because it is not real time safe:
+        a parameter change on the message thread calls it straight away, and a slow timer catches changes from anywhere else. */
+    void syncLatencyToQuality();
+
+    /** The delay a Quality has at the current sample rate. */
+    int latencyForQuality (smoothres::Quality) const noexcept;
+
+    /** The surround window needs these: short channel names of the host's layout, and which one is the LFE. */
+    juce::StringArray getChannelNames() const;
+    juce::String getLayoutName() const;
+    int getLfeChannel() const;
+
     juce::AudioProcessorValueTreeState parameters;
 
     /** Window width in points. The height follows from the fixed shape. Saved with the session. */
@@ -116,6 +131,8 @@ public:
     ReadingParameter* maxReductionFreq = nullptr;
 
 private:
+    void parameterChanged (const juce::String&, float) override;
+    void timerCallback() override;
     void render (juce::AudioBuffer<float>&, bool forceBypass) noexcept;
 
     smoothres::ResonanceEngine engine;
@@ -124,8 +141,8 @@ private:
     std::atomic<float>* depth, * sharpness, * selectivity, * attack, * release, * lowFreq, * highFreq,
                       * mix, * outputGain, * delta, * stereoMode, * bypass,
                       * mode, * hardThreshold, * link, * stereoFocus, * sharpnessTilt, * attackTilt, * releaseTilt, * wetTrim,
-                      * sideChain, * sideChainListen;
-    std::atomic<float>* bandFreq[smoothres::Params::numBands], * bandSens[smoothres::Params::numBands], * bandWidth[smoothres::Params::numBands];
+                      * sideChain, * sideChainListen, * maxCut, * quality, * bandListen;
+    std::atomic<float>* bandFreq[smoothres::Params::numBands], * bandSens[smoothres::Params::numBands], * bandWidth[smoothres::Params::numBands], * bandOn[smoothres::Params::numBands];
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SmoothResonanceProcessor)
 };

@@ -26,7 +26,7 @@ namespace
     constexpr float spacingVoicedLevel = 0.45f;   // correlation that counts as a voice with clear harmonics
     constexpr float spacingHoldMs      = 200.0f;  // consonants between vowels do not reset it
     constexpr float spacingToEnvelope  = 0.6f;    // half-width of the envelope, as a share of the spacing
-    constexpr int   spacingEveryHops   = 4;
+    constexpr int   normalSpacingHops  = 4;       // at Normal's hop. Other Qualities keep the same rate in time
     constexpr float sparseFromHz       = 200.0f;  // threshold starts rising with harmonic spacing above this
     constexpr float sparseLiftDb       = 2.0f;    // dB per multiple of that spacing
     constexpr float sparseLiftMaxDb    = 6.0f;
@@ -50,7 +50,10 @@ namespace
     constexpr float hardLiftDbPerOct   = 3.0f;    // Hard: lift above 1 kHz, so one threshold suits a voice's falling highs
     constexpr float sensitivityForOff  = -12.0f;  // a band at this sensitivity removes all treatment at its centre
     constexpr float tiltSpeedRange     = 4.0f;    // Attack and Release Tilt at 100%: 4 times slower one end, 4 times faster the other
-    constexpr int   graphEveryHops     = 4;       // about 47 graph frames a second
+    constexpr int   normalGraphHops    = 4;       // about 47 graph frames a second, at Normal's hop
+    constexpr float qualityFadeMs      = 30.0f;   // the crossfade from one Quality to the next
+    constexpr float noCutLimit         = 1.0e9f;
+    constexpr float maxCutOff          = 23.99f;  // Depth stops at 24, so from here up Max Cut has nothing to do
 
     float coeffForTime (float timeMs, double hopSeconds) noexcept
     {
@@ -88,20 +91,89 @@ namespace
     }
 }
 
-int ResonanceEngine::fftSizeForRate (double rate) noexcept
+int ResonanceEngine::fftSizeForRate (double rate, Quality quality) noexcept
 {
-    const auto order = (int) std::lround (std::log2 (std::max (rate, 8000.0) * 2048.0 / 48000.0));
-    return 1 << juce::jlimit (9, 14, order);
+    const auto order = juce::jlimit (9, 14, (int) std::lround (std::log2 (std::max (rate, 8000.0) * 2048.0 / 48000.0)));
+
+    switch (quality)
+    {
+        case Quality::lowLatency:  return 1 << (order - 2);
+        case Quality::high:        return 1 << (order + 1);
+        case Quality::normal:      break;
+    }
+
+    return 1 << order;
 }
 
-void ResonanceEngine::prepare (double newSampleRate, int numChannels)
+void ResonanceEngine::prepare (double newSampleRate, int numChannels, const ChannelRole* roles)
 {
     sampleRate = newSampleRate;
     numCh      = juce::jlimit (1, maxChannels, numChannels);
-    fftSize    = fftSizeForRate (sampleRate);
+
+    const int normalSize = fftSizeForRate (sampleRate, Quality::normal);
+
+    for (int q = 0; q < numQualities; ++q)
+        cores[(size_t) q].prepare (sampleRate, fftSizeForRate (sampleRate, (Quality) q), normalSize, numCh, roles);
+
+    rampStep = 1.0f / (float) (rampTimeMs * 0.001 * sampleRate);
+    outputGain.reset (sampleRate, rampTimeMs * 0.001);
+    wetTrim.reset (sampleRate, rampTimeMs * 0.001);
+    fadeSamples = std::max (1, juce::roundToInt (qualityFadeMs * 0.001 * sampleRate));
+
+    // Graph axis: 20 Hz up to 20 kHz or the top of the spectrum, log spaced. The tables are the same for all three frames.
+    const double topHz = std::min (20000.0, sampleRate * 0.5);
+
+    for (int i = 0; i < GraphFrame::numPoints; ++i)
+    {
+        const double lo = 20.0 * std::pow (topHz / 20.0, (double) i / GraphFrame::numPoints);
+        const double hi = 20.0 * std::pow (topHz / 20.0, (double) (i + 1) / GraphFrame::numPoints);
+
+        for (auto& frame : graphFrames)
+            frame.hz[(size_t) i] = (float) std::sqrt (lo * hi);
+    }
+
+    reset();
+}
+
+void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalSize, int numChannels, const ChannelRole* roles)
+{
+    sampleRate = newSampleRate;
+    numCh      = numChannels;
+    fftSize    = size;
     hopSize    = fftSize / overlapFactor;
     numBins    = fftSize / 2 + 1;
     binHz      = sampleRate / fftSize;
+
+    // Things that run every so many hops keep the same rate in time at every Quality.
+    graphEveryHops   = std::max (1, normalGraphHops * normalSize / fftSize);
+    spacingEveryHops = std::max (1, normalSpacingHops * normalSize / fftSize);
+
+    numSlots = 0;
+
+    for (int ch = 0; ch < numCh; ++ch)
+    {
+        const auto role = roles != nullptr ? roles[ch]
+                        : numCh == 1       ? ChannelRole::centre
+                        : ch == 0          ? ChannelRole::left
+                        : ch == 1          ? ChannelRole::right
+                                           : ChannelRole::centre;
+        channelRole[(size_t) ch] = role;
+
+        if (role != ChannelRole::lfe)
+        {
+            slotChannel[(size_t) numSlots] = ch;
+            slotRole[(size_t) numSlots] = role;
+            ++numSlots;
+        }
+    }
+
+    if (numSlots == 0)   // a layout of nothing but LFE has nothing to treat, which the rest of the path does not need to care about
+    {
+        slotChannel[0] = 0;
+        slotRole[0] = ChannelRole::centre;
+        channelRole[0] = ChannelRole::centre;
+        numSlots = 1;
+    }
 
     fft = std::make_unique<juce::dsp::FFT> (juce::roundToInt (std::log2 ((double) fftSize)));
 
@@ -125,28 +197,37 @@ void ResonanceEngine::prepare (double newSampleRate, int numChannels)
 
     for (int ch = 0; ch < maxChannels; ++ch)
     {
-        inputRing[ch].assign ((size_t) fftSize, 0.0f);
-        outputRing[ch].assign ((size_t) fftSize, 0.0f);
-        spectrum[ch].assign ((size_t) fftSize * 2, 0.0f);
-        keyRing[ch].assign ((size_t) fftSize, 0.0f);
-        keySpectrum[ch].assign ((size_t) fftSize * 2, 0.0f);
+        const bool used = ch < numCh, treated = ch < numSlots;
+        const auto idx = (size_t) ch;
+        inputRing[idx].assign (used ? (size_t) fftSize : 0, 0.0f);
+        outputRing[idx].assign (used ? (size_t) fftSize : 0, 0.0f);
+        listenRing[idx].assign (used ? (size_t) fftSize : 0, 0.0f);
+        spectrum[idx].assign (treated ? (size_t) fftSize * 2 : 0, 0.0f);
+        listenSpectrum[idx].assign (treated ? (size_t) fftSize * 2 : 0, 0.0f);
 
-        auto& s = slots[ch];
-        s.smoothedPower.assign ((size_t) numBins, 0.0f);
-        s.prefix.assign ((size_t) numBins + 1, 0.0);
-        s.envelope.assign ((size_t) numBins, 0.0f);
-        s.raw.assign ((size_t) numBins, 0.0f);
-        s.spread.assign ((size_t) numBins, 0.0f);
-        s.held.assign ((size_t) numBins, 0.0f);
-        s.applied.assign ((size_t) numBins, 0.0f);
-        s.gain.assign ((size_t) numBins, 1.0f);
-        s.slowExcess.assign ((size_t) numBins, 0.0f);
+        auto& s = slots[idx];
+        const auto bins = treated ? (size_t) numBins : 0;
+        s.smoothedPower.assign (bins, 0.0f);
+        s.prefix.assign (treated ? (size_t) numBins + 1 : 0, 0.0);
+        s.envelope.assign (bins, 0.0f);
+        s.raw.assign (bins, 0.0f);
+        s.spread.assign (bins, 0.0f);
+        s.held.assign (bins, 0.0f);
+        s.applied.assign (bins, 0.0f);
+        s.gain.assign (bins, 1.0f);
+        s.slowExcess.assign (bins, 0.0f);
+    }
+
+    for (int ch = 0; ch < maxKeyChannels; ++ch)
+    {
+        keyRing[(size_t) ch].assign ((size_t) fftSize, 0.0f);
+        keySpectrum[(size_t) ch].assign ((size_t) fftSize * 2, 0.0f);
     }
 
     for (auto* table : { &detectorHalf, &shapeHalf, &refLeftStart, &refLeftEnd, &refRightStart, &refRightEnd })
         table->assign ((size_t) numBins, 0);
 
-    for (auto* table : { &rangeMask, &sensitivity, &tiltPosition, &levelLift, &scratchBins, &scratchDetector, &displayPower })
+    for (auto* table : { &rangeMask, &sensitivity, &tiltPosition, &levelLift, &scratchBins, &scratchDetector, &displayPower, &listenMask })
         table->assign ((size_t) numBins, 0.0f);
 
     depthScale.assign ((size_t) numBins, 1.0f);
@@ -191,11 +272,8 @@ void ResonanceEngine::prepare (double newSampleRate, int numChannels)
     rangeCoeff       = coeffForTime (rangeTimeMs, hopSeconds);
     persistenceCoeff = coeffForTime (persistenceMs, hopSeconds);
     loudestFallCoeff = 1.0f - coeffForTime (loudestFallMs, hopSeconds);
-    rampStep         = 1.0f / (float) (rampTimeMs * 0.001 * sampleRate);
-    outputGain.reset (sampleRate, rampTimeMs * 0.001);
-    wetTrim.reset (sampleRate, rampTimeMs * 0.001);
 
-    // Graph axis: 20 Hz up to 20 kHz or the top of the spectrum, log spaced. The tables are the same for all three frames.
+    // The graph's points in this FFT's bins. Same axis as the frames carry.
     const double topHz = std::min (20000.0, sampleRate * 0.5);
 
     for (int i = 0; i < GraphFrame::numPoints; ++i)
@@ -204,23 +282,39 @@ void ResonanceEngine::prepare (double newSampleRate, int numChannels)
         const double hi = 20.0 * std::pow (topHz / 20.0, (double) (i + 1) / GraphFrame::numPoints);
         graphFirstBin[(size_t) i] = juce::jlimit (0, numBins - 1, (int) std::lround (lo / binHz));
         graphLastBin[(size_t) i]  = juce::jlimit (graphFirstBin[(size_t) i], numBins - 1, (int) std::lround (hi / binHz));
-
-        for (auto& frame : graphFrames)
-            frame.hz[(size_t) i] = (float) std::sqrt (lo * hi);
     }
-
-    reset();
 }
 
 void ResonanceEngine::reset() noexcept
 {
-    for (int ch = 0; ch < maxChannels; ++ch)
-    {
-        std::fill (inputRing[ch].begin(), inputRing[ch].end(), 0.0f);
-        std::fill (outputRing[ch].begin(), outputRing[ch].end(), 0.0f);
-        std::fill (keyRing[ch].begin(), keyRing[ch].end(), 0.0f);
+    for (auto& core : cores)
+        core.reset();
 
-        auto& s = slots[ch];
+    incoming = -1;
+    warmRemaining = 0;
+    fadeDone = 0;
+    keyChannelsNow = 0;
+    snapNextParams = true;
+    maxReductionDb.store (0.0f, std::memory_order_relaxed);
+    maxReductionHz.store (0.0f, std::memory_order_relaxed);
+}
+
+void ResonanceEngine::Core::reset() noexcept
+{
+    for (int ch = 0; ch < numCh; ++ch)
+    {
+        const auto idx = (size_t) ch;
+        std::fill (inputRing[idx].begin(), inputRing[idx].end(), 0.0f);
+        std::fill (outputRing[idx].begin(), outputRing[idx].end(), 0.0f);
+        std::fill (listenRing[idx].begin(), listenRing[idx].end(), 0.0f);
+    }
+
+    for (auto& ring : keyRing)
+        std::fill (ring.begin(), ring.end(), 0.0f);
+
+    for (int slot = 0; slot < numSlots; ++slot)
+    {
+        auto& s = slots[(size_t) slot];
         std::fill (s.smoothedPower.begin(), s.smoothedPower.end(), 0.0f);
         std::fill (s.held.begin(), s.held.end(), 0.0f);
         std::fill (s.applied.begin(), s.applied.end(), 0.0f);
@@ -228,18 +322,100 @@ void ResonanceEngine::reset() noexcept
         s.loudest = 0.0f;
     }
 
+    listenDirty = false;
     envelopeFloorBins = 0;
     builtEnvelopeFloor = -1;
     spacingCounter = 0;
     spacingHeld = 0;
     std::fill (displayPower.begin(), displayPower.end(), 0.0f);
+    channelMost.fill (0.0f);
+    mostDb = mostHz = 0.0f;
     position = 0;
     hopCounter = 0;
     graphCounter = 0;
-    keyChannelsNow = 0;
-    snapNextParams = true;
-    maxReductionDb.store (0.0f, std::memory_order_relaxed);
-    maxReductionHz.store (0.0f, std::memory_order_relaxed);
+}
+
+void ResonanceEngine::Core::snapTo (const Params& p) noexcept
+{
+    focusNow = p.stereoFocus;
+    maxCutNow = p.maxCutDb;
+    smoothedLowHz  = p.lowHz;
+    smoothedHighHz = p.highHz;
+    maskLowHz = maskHighHz = -1.0f;   // force a rebuild
+
+    for (int b = 0; b < Params::numBands; ++b)
+    {
+        bandGlide[b][0] = p.bands[b].hz;
+        bandGlide[b][1] = p.bands[b].on ? p.bands[b].sensitivityDb : 0.0f;
+        bandGlide[b][2] = p.bands[b].widthOctaves;
+        bandBuilt[b][0] = -1.0f;   // force a rebuild
+    }
+
+    listenBuiltBand = -1;
+}
+
+void ResonanceEngine::Core::seedFrom (const Core& from) noexcept
+{
+    // Starts where the other Quality is now, so that the cut does not have to grow back from nothing. Everything is read by
+    // frequency, because the two have different bins.
+    const auto ratio = binHz / from.binHz;
+
+    const auto copyBins = [&] (const std::vector<float>& source, std::vector<float>& destination)
+    {
+        const int last = (int) source.size() - 1;
+
+        for (int k = 0; k < numBins; ++k)
+        {
+            const auto x = juce::jmin ((double) last, (double) k * ratio);
+            const int i = (int) x;
+            const auto f = (float) (x - i);
+            destination[(size_t) k] = source[(size_t) i] + f * (source[(size_t) juce::jmin (last, i + 1)] - source[(size_t) i]);
+        }
+    };
+
+    for (int slot = 0; slot < numSlots; ++slot)
+    {
+        const auto& a = from.slots[(size_t) slot];
+        auto& b = slots[(size_t) slot];
+        copyBins (a.smoothedPower, b.smoothedPower);
+        copyBins (a.held, b.held);
+        copyBins (a.applied, b.applied);
+        copyBins (a.slowExcess, b.slowExcess);
+        b.loudest = a.loudest;
+    }
+
+    copyBins (from.displayPower, displayPower);
+
+    envelopeFloorBins = juce::roundToInt ((double) from.envelopeFloorBins / ratio);
+    spacingHeld = juce::roundToInt ((double) from.spacingHeld * spacingHoldHops / juce::jmax (1, from.spacingHoldHops));
+
+    focusNow = from.focusNow;
+    maxCutNow = from.maxCutNow;
+    smoothedLowHz = from.smoothedLowHz;
+    smoothedHighHz = from.smoothedHighHz;
+    maskLowHz = maskHighHz = -1.0f;
+    builtEnvelopeFloor = -1;
+    builtAttackMs = -1.0f;
+    listenBuiltBand = -1;
+
+    for (int b = 0; b < Params::numBands; ++b)
+    {
+        for (int part = 0; part < 3; ++part)
+            bandGlide[b][part] = from.bandGlide[b][part];
+
+        bandBuilt[b][0] = -1.0f;
+    }
+
+    // The frames need the sound that has gone by. It may not all be there, but what is there is the newest of it.
+    const int count = juce::jmin (fftSize, from.fftSize);
+
+    for (int ch = 0; ch < numCh; ++ch)
+    {
+        const auto idx = (size_t) ch;
+
+        for (int j = 0; j < count; ++j)
+            inputRing[idx][(size_t) (fftSize - 1 - j)] = from.inputRing[idx][(size_t) ((from.position - 1 - j) & (from.fftSize - 1))];
+    }
 }
 
 void ResonanceEngine::setParams (const Params& p) noexcept
@@ -251,23 +427,105 @@ void ResonanceEngine::setParams (const Params& p) noexcept
     if (snapNextParams)
     {
         snapNextParams = false;
+        active    = (int) p.quality;
+        incoming  = -1;
         mixNow    = p.mix;
         deltaNow  = p.delta  ? 1.0f : 0.0f;
         bypassNow = p.bypass ? 1.0f : 0.0f;
         listenNow = 0.0f;
-        focusNow  = p.stereoFocus;
+        bandListenNow = p.bandListen > 0 ? 1.0f : 0.0f;
         outputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (p.outputDb, -200.0f));
         wetTrim.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (p.wetTrimDb, -200.0f));
-        smoothedLowHz  = p.lowHz;
-        smoothedHighHz = p.highHz;
-        maskLowHz = maskHighHz = -1.0f;   // force a rebuild
+        cores[(size_t) active].snapTo (p);
+    }
+}
 
-        for (int b = 0; b < Params::numBands; ++b)
+void ResonanceEngine::startQualityChange (int to) noexcept
+{
+    incoming = to;
+    warmRemaining = cores[(size_t) to].fftSize;   // by then every frame behind the output came after this moment
+    fadeDone = 0;
+    cores[(size_t) to].seedFrom (cores[(size_t) active]);
+}
+
+void ResonanceEngine::updateQualityChange() noexcept
+{
+    const int wanted = (int) params.quality;
+
+    if (incoming < 0)
+    {
+        if (wanted != active)
+            startQualityChange (wanted);
+    }
+    else if (warmRemaining > 0 && wanted != incoming)   // once the fade has begun it finishes first, then the next change starts
+    {
+        cores[(size_t) incoming].reset();
+        incoming = -1;
+
+        if (wanted != active)
+            startQualityChange (wanted);
+    }
+}
+
+inline float ResonanceEngine::stepChannel (Core& c, int ch, float x, float gain, float trim, int keyChannels) noexcept
+{
+    const auto idx = (size_t) ch;
+    const auto role = c.channelRole[idx];
+    auto& in  = c.inputRing[idx][(size_t) c.position];
+    auto& out = c.outputRing[idx][(size_t) c.position];
+    const float dry = in;
+    const float wet = role == ChannelRole::lfe ? dry : out * trim;   // the LFE only goes through the delay
+    in  = x;
+    out = 0.0f;
+
+    const float removed = mixNow * (dry - wet);
+    float y = (dry - removed) * gain;
+    y += deltaNow * (removed - y);
+
+    if (bandListenNow > 0.0f)
+    {
+        // The frames already applied Mix and chose treated or removed. The gain goes on what you would hear as the sound.
+        auto& band = c.listenRing[idx][(size_t) c.position];
+        y += bandListenNow * (band * (gain + deltaNow * (1.0f - gain)) - y);
+        band = 0.0f;
+    }
+
+    if (listenNow > 0.0f)
+    {
+        const float keyed = role == ChannelRole::lfe ? 0.0f
+                          : c.keyRing[role == ChannelRole::right && keyChannels > 1 ? 1 : 0][(size_t) c.position];
+        y += listenNow * (keyed - y);
+    }
+
+    y += bypassNow * (dry - y);
+    return y;
+}
+
+inline void ResonanceEngine::advance (Core& c, int keyChannels) noexcept
+{
+    c.position = (c.position + 1) & (c.fftSize - 1);
+
+    if (++c.hopCounter == c.hopSize)
+    {
+        c.hopCounter = 0;
+        const bool listening = params.bandListen > 0 || bandListenNow > 0.0f;
+        const bool publish = c.processFrame (keyChannels, listening, mixNow, wetTrim.getCurrentValue());
+
+        if (&c == &cores[(size_t) active])
         {
-            bandGlide[b][0] = p.bands[b].hz;
-            bandGlide[b][1] = p.bands[b].sensitivityDb;
-            bandGlide[b][2] = p.bands[b].widthOctaves;
-            bandBuilt[b][0] = -1.0f;   // force a rebuild
+            maxReductionDb.store (c.mostDb, std::memory_order_relaxed);
+            maxReductionHz.store (c.mostHz, std::memory_order_relaxed);
+
+            if (publish)
+            {
+                auto& frame = graphFrames[graphWriteIndex];
+                c.fillGraph (frame, numCh);
+                frame.keyInUse = params.sideChain && keyChannelsNow > 0;
+                frame.maxReductionDb = c.mostDb;
+                frame.maxReductionHz = c.mostHz;
+                frame.sequence = ++graphSequence;
+                graphWriteIndex = graphExchange.exchange (graphWriteIndex | graphNewFlag, std::memory_order_acq_rel) & (graphNewFlag - 1);
+            }
         }
     }
 }
@@ -278,15 +536,27 @@ void ResonanceEngine::process (float* const* channels, int numChannels, int numS
     juce::ScopedNoDenormals noDenormals;
 
     const int chans = std::min (numChannels, numCh);
-    const int keyChans = key != nullptr ? juce::jlimit (0, (int) maxChannels, numKeyChannels) : 0;
+    const int keyChans = key != nullptr ? juce::jlimit (0, (int) maxKeyChannels, numKeyChannels) : 0;
     keyChannelsNow = keyChans;
+
+    updateQualityChange();
 
     const float mixTarget = params.mix, deltaTarget = params.delta ? 1.0f : 0.0f, bypassTarget = params.bypass ? 1.0f : 0.0f;
     const float listenTarget = params.sideChainListen && keyChans > 0 ? 1.0f : 0.0f;
+    const float bandListenTarget = params.bandListen > 0 ? 1.0f : 0.0f;
 
     const auto approach = [this] (float now, float target) noexcept
     {
         return now + juce::jlimit (-rampStep, rampStep, target - now);
+    };
+
+    const auto writeKey = [key, keyChans] (Core& c, int i) noexcept
+    {
+        for (int ch = 0; ch < keyChans; ++ch)
+        {
+            const float k = key[ch][i];
+            c.keyRing[(size_t) ch][(size_t) c.position] = std::abs (k) <= maxSampleMagnitude ? k : 0.0f;
+        }
     };
 
     for (int i = 0; i < numSamples; ++i)
@@ -295,51 +565,84 @@ void ResonanceEngine::process (float* const* channels, int numChannels, int numS
         deltaNow  = approach (deltaNow, deltaTarget);
         bypassNow = approach (bypassNow, bypassTarget);
         listenNow = approach (listenNow, listenTarget);
+        bandListenNow = approach (bandListenNow, bandListenTarget);
         const float gain = outputGain.getNextValue();
         const float trim = wetTrim.getNextValue();
 
-        for (int ch = 0; ch < chans; ++ch)
+        auto& first = cores[(size_t) active];
+
+        if (incoming < 0)
         {
-            float x = channels[ch][i];
+            for (int ch = 0; ch < chans; ++ch)
+            {
+                float x = channels[ch][i];
 
-            if (! (std::abs (x) <= maxSampleMagnitude))   // also catches NaN, so one bad sample can't poison the state
-                x = 0.0f;
+                if (! (std::abs (x) <= maxSampleMagnitude))   // also catches NaN, so one bad sample can't poison the state
+                    x = 0.0f;
 
-            auto& in  = inputRing[ch][(size_t) position];
-            auto& out = outputRing[ch][(size_t) position];
-            const float dry = in;
-            const float wet = out * trim;
-            in  = x;
-            out = 0.0f;
+                channels[ch][i] = stepChannel (first, ch, x, gain, trim, keyChans);
+            }
 
-            const float removed = mixNow * (dry - wet);
-            float y = (dry - removed) * gain;
-            y += deltaNow * (removed - y);
-
-            if (listenNow > 0.0f)
-                y += listenNow * (keyRing[juce::jmin (ch, juce::jmax (0, keyChans - 1))][(size_t) position] - y);
-
-            y += bypassNow * (dry - y);
-            channels[ch][i] = y;
+            writeKey (first, i);
+            advance (first, keyChans);
         }
-
-        for (int ch = 0; ch < keyChans; ++ch)
+        else
         {
-            const float k = key[ch][i];
-            keyRing[ch][(size_t) position] = std::abs (k) <= maxSampleMagnitude ? k : 0.0f;
-        }
+            // Both run. The new one is only heard once its own delay has gone by, so nothing half built ever reaches the output.
+            auto& second = cores[(size_t) incoming];
+            const bool fading = warmRemaining == 0;
+            const float position = fading ? (float) fadeDone / (float) fadeSamples : 0.0f;
+            const float fromOld = fading ? std::cos (position * juce::MathConstants<float>::halfPi) : 1.0f;
+            const float fromNew = fading ? std::sin (position * juce::MathConstants<float>::halfPi) : 0.0f;
 
-        position = (position + 1) & (fftSize - 1);
+            for (int ch = 0; ch < chans; ++ch)
+            {
+                float x = channels[ch][i];
 
-        if (++hopCounter == hopSize)
-        {
-            hopCounter = 0;
-            processFrame();
+                if (! (std::abs (x) <= maxSampleMagnitude))
+                    x = 0.0f;
+
+                const float a = stepChannel (first, ch, x, gain, trim, keyChans);
+                const float b = stepChannel (second, ch, x, gain, trim, keyChans);
+                channels[ch][i] = fromOld * a + fromNew * b;
+            }
+
+            writeKey (first, i);
+            writeKey (second, i);
+            advance (first, keyChans);
+            advance (second, keyChans);
+
+            if (! fading)
+            {
+                --warmRemaining;
+            }
+            else if (++fadeDone >= fadeSamples)
+            {
+                // The old one is wiped now, so it holds nothing to play if it comes back.
+                const int old = active;
+                active = incoming;
+                incoming = -1;
+                cores[(size_t) old].reset();
+            }
         }
     }
+
+    // With Band Listen gone, whatever was left on its way out goes too.
+    if (bandListenNow <= 0.0f && params.bandListen == 0)
+        for (auto& core : cores)
+            if (core.listenDirty)
+                core.clearListen();
 }
 
-void ResonanceEngine::updateWidths() noexcept
+void ResonanceEngine::Core::clearListen() noexcept
+{
+    for (int ch = 0; ch < numCh; ++ch)
+        std::fill (listenRing[(size_t) ch].begin(), listenRing[(size_t) ch].end(), 0.0f);
+
+    listenDirty = false;
+}
+
+void ResonanceEngine::Core::updateWidths() noexcept
 {
     if (std::abs (params.sharpness - widthsSharpness) < 0.002f && std::abs (params.sharpnessTilt - widthsTilt) < 0.002f && builtEnvelopeFloor == envelopeFloorBins)
         return;
@@ -383,7 +686,7 @@ void ResonanceEngine::updateWidths() noexcept
     }
 }
 
-void ResonanceEngine::updateHarmonicSpacing() noexcept
+void ResonanceEngine::Core::updateHarmonicSpacing() noexcept
 {
     // How far apart the harmonics are, from the correlation of the flattened log spectrum with itself. A high voice has
     // harmonics far apart, and the peak envelope has to bridge the gaps or each harmonic would read as a resonance.
@@ -402,8 +705,8 @@ void ResonanceEngine::updateHarmonicSpacing() noexcept
     {
         float power = slots[0].smoothedPower[(size_t) k];
 
-        if (numCh > 1)
-            power += slots[1].smoothedPower[(size_t) k];
+        for (int slot = 1; slot < numSlots; ++slot)
+            power += slots[(size_t) slot].smoothedPower[(size_t) k];
 
         logs[k - first] = std::log (std::max (power, 1.0e-14f));
         sum += logs[k - first];
@@ -488,7 +791,7 @@ void ResonanceEngine::updateHarmonicSpacing() noexcept
     }
 }
 
-void ResonanceEngine::updateRangeMask() noexcept
+void ResonanceEngine::Core::updateRangeMask() noexcept
 {
     smoothedLowHz  += rangeCoeff * (params.lowHz  - smoothedLowHz);
     smoothedHighHz += rangeCoeff * (params.highHz - smoothedHighHz);
@@ -517,13 +820,14 @@ void ResonanceEngine::updateRangeMask() noexcept
     }
 }
 
-void ResonanceEngine::updateSensitivity() noexcept
+void ResonanceEngine::Core::updateSensitivity() noexcept
 {
     bool moved = false;
 
     for (int b = 0; b < Params::numBands; ++b)
     {
-        const float target[3] = { params.bands[b].hz, params.bands[b].sensitivityDb, params.bands[b].widthOctaves };
+        // A dot that is off counts as sensitivity 0, and glides there, so taking it away cannot click.
+        const float target[3] = { params.bands[b].hz, params.bands[b].on ? params.bands[b].sensitivityDb : 0.0f, params.bands[b].widthOctaves };
 
         for (int part = 0; part < 3; ++part)
         {
@@ -535,7 +839,6 @@ void ResonanceEngine::updateSensitivity() noexcept
     if (! moved)
         return;
 
-    sensitivityFlat = true;
     std::fill (sensitivity.begin(), sensitivity.end(), 0.0f);
 
     for (int b = 0; b < Params::numBands; ++b)
@@ -548,7 +851,6 @@ void ResonanceEngine::updateSensitivity() noexcept
         if (std::abs (amount) < 0.01f)
             continue;
 
-        sensitivityFlat = false;
         const float centre = std::log2 (std::max (bandGlide[b][0], 1.0f));
         const float sigma = std::max (bandGlide[b][2], 0.05f) / 2.3548f;   // half-height width to Gaussian sigma
 
@@ -566,7 +868,7 @@ void ResonanceEngine::updateSensitivity() noexcept
         depthScale[(size_t) k] = juce::jlimit (0.0f, 1.0f, 1.0f - sensitivity[(size_t) k] / sensitivityForOff);
 }
 
-void ResonanceEngine::updateTimeConstants() noexcept
+void ResonanceEngine::Core::updateTimeConstants() noexcept
 {
     if (params.attackMs == builtAttackMs && params.attackTilt == builtAttackTilt
         && params.releaseMs == builtReleaseMs && params.releaseTilt == builtReleaseTilt)
@@ -595,7 +897,7 @@ void ResonanceEngine::updateTimeConstants() noexcept
     }
 }
 
-void ResonanceEngine::detect (Slot& s) noexcept
+void ResonanceEngine::Core::detect (Slot& s) noexcept
 {
     const float threshold = juce::jmap (params.selectivity, minThresholdDb, maxThresholdDb);
     const float depth = std::max (0.0f, params.depthDb);
@@ -703,7 +1005,7 @@ void ResonanceEngine::detect (Slot& s) noexcept
     }
 }
 
-void ResonanceEngine::shapeAndApplyBallistics (Slot& s, float focusScale) noexcept
+void ResonanceEngine::Core::shapeAndApplyBallistics (Slot& s, float focusScale) noexcept
 {
     // Widen each reduction first and then average over the same width. A plain average would shave the top
     // off a narrow reduction; this way a notch keeps its full depth at the peak and has smooth sides.
@@ -746,7 +1048,7 @@ void ResonanceEngine::shapeAndApplyBallistics (Slot& s, float focusScale) noexce
     for (int k = 0; k < numBins; ++k)
     {
         const auto idx = (size_t) k;
-        const float target = s.spread[idx];
+        const float target = std::min (s.spread[idx], cutLimit);   // at the limit a release starts straight away, not from where Depth would have gone
         float& held = s.held[idx];
         held += (target > held ? attackCoeffs[idx] : releaseCoeffs[idx]) * (target - held);
 
@@ -759,27 +1061,57 @@ void ResonanceEngine::shapeAndApplyBallistics (Slot& s, float focusScale) noexce
     {
         const float below = s.held[(size_t) std::max (0, k - 1)];
         const float above = s.held[(size_t) std::min (numBins - 1, k + 1)];
-        const float r = (0.25f * below + 0.5f * s.held[(size_t) k] + 0.25f * above) * rangeMask[(size_t) k] * focusScale;
+        const float r = std::min ((0.25f * below + 0.5f * s.held[(size_t) k] + 0.25f * above) * rangeMask[(size_t) k] * focusScale, cutLimit);
         s.applied[(size_t) k] = r;
         s.gain[(size_t) k] = r > 0.0f ? std::exp (-r * 0.11512925f) : 1.0f;
     }
 }
 
-void ResonanceEngine::processFrame() noexcept
+void ResonanceEngine::Core::updateListenMask (int band) noexcept
+{
+    const float hz = bandGlide[band][0], width = bandGlide[band][2];
+
+    if (band == listenBuiltBand && std::abs (hz - listenBuiltHz) < 0.002f * hz && std::abs (width - listenBuiltWidth) < 0.002f)
+        return;
+
+    listenBuiltBand = band;
+    listenBuiltHz = hz;
+    listenBuiltWidth = width;
+
+    // The same bell as the dot's sensitivity, so what you hear is the region the graph marks. Half height at the ends of the
+    // width marker. It is never narrower than this FFT can resolve, or it would fall between two bins.
+    const float centre = std::log2 (std::max (hz, 1.0f));
+    const float narrowest = (float) binHz / (std::max (hz, 1.0f) * 0.6931472f);
+    const float sigma = std::max (std::max (width, 0.05f) / 2.3548f, narrowest);
+
+    listenMask[0] = 0.0f;
+
+    for (int k = 1; k < numBins; ++k)
+    {
+        const float d = (logBinFreq[(size_t) k] - centre) / sigma;
+        listenMask[(size_t) k] = std::abs (d) < 6.0f ? std::exp (-0.5f * d * d) : 0.0f;
+    }
+}
+
+bool ResonanceEngine::Core::processFrame (int keyChannelsNow, bool listening, float mix, float trim) noexcept
 {
     updateWidths();
     updateRangeMask();
     updateSensitivity();
     updateTimeConstants();
 
-    const bool midSide = numCh == 2 && params.midSide;
+    maxCutNow += rangeCoeff * (params.maxCutDb - maxCutNow);
+    cutLimit = maxCutNow >= maxCutOff ? noCutLimit : std::max (0.0f, maxCutNow);
+
+    const bool midSide = numCh == 2 && numSlots == 2 && params.midSide;
+    midSideNow = midSide;
     const bool useKey  = params.sideChain && keyChannelsNow > 0;
     const auto powerScale = 1.0f / ((float) fftSize * (float) fftSize / 16.0f);   // a full-scale sine reads about 1
 
-    for (int ch = 0; ch < numCh; ++ch)
+    for (int slot = 0; slot < numSlots; ++slot)
     {
-        auto* frame = spectrum[ch].data();
-        const auto* ring = inputRing[ch].data();
+        auto* frame = spectrum[(size_t) slot].data();
+        const auto* ring = inputRing[(size_t) slotChannel[(size_t) slot]].data();
 
         for (int i = 0; i < fftSize; ++i)
             frame[i] = ring[(position + i) & (fftSize - 1)] * window[(size_t) i];
@@ -791,8 +1123,8 @@ void ResonanceEngine::processFrame() noexcept
     {
         for (int ch = 0; ch < keyChannelsNow; ++ch)
         {
-            auto* frame = keySpectrum[ch].data();
-            const auto* ring = keyRing[ch].data();
+            auto* frame = keySpectrum[(size_t) ch].data();
+            const auto* ring = keyRing[(size_t) ch].data();
 
             for (int i = 0; i < fftSize; ++i)
                 frame[i] = ring[(position + i) & (fftSize - 1)] * window[(size_t) i];
@@ -811,10 +1143,10 @@ void ResonanceEngine::processFrame() noexcept
         {
             float power = 0.0f;
 
-            for (int ch = 0; ch < numCh; ++ch)
-                power += spectrum[ch][(size_t) k * 2] * spectrum[ch][(size_t) k * 2] + spectrum[ch][(size_t) k * 2 + 1] * spectrum[ch][(size_t) k * 2 + 1];
+            for (int slot = 0; slot < numSlots; ++slot)
+                power += spectrum[(size_t) slot][(size_t) k * 2] * spectrum[(size_t) slot][(size_t) k * 2] + spectrum[(size_t) slot][(size_t) k * 2 + 1] * spectrum[(size_t) slot][(size_t) k * 2 + 1];
 
-            displayPower[(size_t) k] += 0.4f * (power * powerScale / (float) numCh - displayPower[(size_t) k]);
+            displayPower[(size_t) k] += 0.4f * (power * powerScale / (float) numSlots - displayPower[(size_t) k]);
 
             if (displayPower[(size_t) k] < 1.0e-30f)
                 displayPower[(size_t) k] = 0.0f;
@@ -823,12 +1155,14 @@ void ResonanceEngine::processFrame() noexcept
 
     updateHarmonicSpacing();
 
-    // Smoothed power per bin, for L/R or for M/S, of the key when the side chain is on and the signal itself otherwise.
-    for (int slot = 0; slot < numCh; ++slot)
+    // Smoothed power per bin, for each channel or for M/S, of the key when the side chain is on and the signal itself otherwise.
+    for (int slot = 0; slot < numSlots; ++slot)
     {
-        auto* smoothed = slots[slot].smoothedPower.data();
+        auto* smoothed = slots[(size_t) slot].smoothedPower.data();
+        const int keyIndex = slotRole[(size_t) slot] == ChannelRole::right && keyChannelsNow > 1 ? 1 : 0;
+        const auto* own = useKey ? keySpectrum[(size_t) keyIndex].data() : spectrum[(size_t) slot].data();
         const auto* a = useKey ? keySpectrum[0].data() : spectrum[0].data();
-        const auto* b = useKey ? keySpectrum[keyChannelsNow > 1 ? 1 : 0].data() : spectrum[numCh > 1 ? 1 : 0].data();
+        const auto* b = useKey ? keySpectrum[keyChannelsNow > 1 ? 1 : 0].data() : spectrum[numSlots > 1 ? 1 : 0].data();
 
         for (int k = 0; k < numBins; ++k)
         {
@@ -842,9 +1176,8 @@ void ResonanceEngine::processFrame() noexcept
             }
             else
             {
-                const auto* source = slot == 0 ? a : b;
-                re = source[k * 2];
-                im = source[k * 2 + 1];
+                re = own[k * 2];
+                im = own[k * 2 + 1];
             }
 
             const float power = (re * re + im * im) * powerScale;
@@ -854,30 +1187,44 @@ void ResonanceEngine::processFrame() noexcept
                 smoothed[k] = 0.0f;
         }
 
-        detect (slots[slot]);
+        detect (slots[(size_t) slot]);
     }
 
-    // Link pulls both channels toward the larger reduction: at 100% one gain curve, so the image cannot wander.
+    // Link pulls every channel toward the largest reduction: at 100% one gain curve, so the image cannot wander.
     // Mid and side always stay apart, because treating them alike would just be stereo mode.
-    if (numCh == 2 && ! midSide && params.link > 0.0f)
+    if (numSlots >= 2 && ! midSide && params.link > 0.0f)
     {
         for (int k = 0; k < numBins; ++k)
         {
-            float& left = slots[0].raw[(size_t) k];
-            float& right = slots[1].raw[(size_t) k];
-            const float most = std::max (left, right);
-            left  += params.link * (most - left);
-            right += params.link * (most - right);
+            float most = slots[0].raw[(size_t) k];
+
+            for (int slot = 1; slot < numSlots; ++slot)
+                most = std::max (most, slots[(size_t) slot].raw[(size_t) k]);
+
+            for (int slot = 0; slot < numSlots; ++slot)
+            {
+                float& r = slots[(size_t) slot].raw[(size_t) k];
+                r += params.link * (most - r);
+            }
         }
     }
 
     focusNow += rangeCoeff * (params.stereoFocus - focusNow);
 
-    for (int slot = 0; slot < numCh; ++slot)
+    for (int slot = 0; slot < numSlots; ++slot)
     {
-        // Focus left of centre takes treatment off slot 1, right of centre off slot 0.
-        const float scale = numCh < 2 ? 1.0f : slot == 0 ? 1.0f - std::max (focusNow, 0.0f) : 1.0f + std::min (focusNow, 0.0f);
-        shapeAndApplyBallistics (slots[slot], scale);
+        // Focus left of centre takes treatment off the right side channels, right of centre off the left side channels.
+        const auto role = slotRole[(size_t) slot];
+        const float scale = role == ChannelRole::left  ? 1.0f - std::max (focusNow, 0.0f)
+                          : role == ChannelRole::right ? 1.0f + std::min (focusNow, 0.0f)
+                                                       : 1.0f;
+        shapeAndApplyBallistics (slots[(size_t) slot], scale);
+    }
+
+    if (listening)
+    {
+        for (int slot = 0; slot < numSlots; ++slot)
+            std::copy (spectrum[(size_t) slot].begin(), spectrum[(size_t) slot].end(), listenSpectrum[(size_t) slot].begin());
     }
 
     if (midSide)
@@ -901,10 +1248,10 @@ void ResonanceEngine::processFrame() noexcept
     }
     else
     {
-        for (int ch = 0; ch < numCh; ++ch)
+        for (int slot = 0; slot < numSlots; ++slot)
         {
-            auto* frame = spectrum[ch].data();
-            const auto* gain = slots[ch].gain.data();
+            auto* frame = spectrum[(size_t) slot].data();
+            const auto* gain = slots[(size_t) slot].gain.data();
 
             for (int k = 0; k < numBins; ++k)
             {
@@ -914,12 +1261,43 @@ void ResonanceEngine::processFrame() noexcept
         }
     }
 
-    for (int ch = 0; ch < numCh; ++ch)
+    if (listening)
     {
-        auto* frame = spectrum[ch].data();
+        // Band Listen: the dot's bell over what would otherwise be heard. Treated sound normally, what is being removed with
+        // Delta. Delta and Mix are read here, once a frame, so the overlap of the frames makes the change smooth.
+        const int band = juce::jlimit (0, Params::numBands - 1, params.bandListen > 0 ? params.bandListen - 1 : juce::jmax (0, listenBuiltBand));
+        updateListenMask (band);
+
+        const float fromDry = params.delta ? mix : 1.0f - mix;
+        const float fromWet = params.delta ? -mix * trim : mix * trim;
+        listenDirty = true;
+
+        for (int slot = 0; slot < numSlots; ++slot)
+        {
+            auto* frame = listenSpectrum[(size_t) slot].data();
+            const auto* wet = spectrum[(size_t) slot].data();
+
+            for (int k = 0; k < numBins; ++k)
+            {
+                const float m = listenMask[(size_t) k];
+                frame[k * 2]     = m * (fromDry * frame[k * 2]     + fromWet * wet[k * 2]);
+                frame[k * 2 + 1] = m * (fromDry * frame[k * 2 + 1] + fromWet * wet[k * 2 + 1]);
+            }
+
+            fft->performRealOnlyInverseTransform (frame);
+            auto* out = listenRing[(size_t) slotChannel[(size_t) slot]].data();
+
+            for (int i = 0; i < fftSize; ++i)
+                out[(position + i) & (fftSize - 1)] += frame[i] * synthesisWindow[(size_t) i];
+        }
+    }
+
+    for (int slot = 0; slot < numSlots; ++slot)
+    {
+        auto* frame = spectrum[(size_t) slot].data();
         fft->performRealOnlyInverseTransform (frame);
 
-        auto* out = outputRing[ch].data();
+        auto* out = outputRing[(size_t) slotChannel[(size_t) slot]].data();
 
         for (int i = 0; i < fftSize; ++i)
             out[(position + i) & (fftSize - 1)] += frame[i] * synthesisWindow[(size_t) i];
@@ -929,9 +1307,9 @@ void ResonanceEngine::processFrame() noexcept
     float most = 0.0f;
     int mostBin = 0;
 
-    for (int slot = 0; slot < numCh; ++slot)
+    for (int slot = 0; slot < numSlots; ++slot)
     {
-        const auto* applied = slots[slot].applied.data();
+        const auto* applied = slots[(size_t) slot].applied.data();
 
         for (int k = 0; k < numBins; ++k)
         {
@@ -943,21 +1321,21 @@ void ResonanceEngine::processFrame() noexcept
         }
     }
 
-    maxReductionDb.store (most, std::memory_order_relaxed);
-    maxReductionHz.store (most > 0.01f ? (float) (mostBin * binHz) : 0.0f, std::memory_order_relaxed);
+    mostDb = most;
+    mostHz = most > 0.01f ? (float) (mostBin * binHz) : 0.0f;
 
-    if (publish)
-        publishGraph (midSide);
+    return publish;
 }
 
-void ResonanceEngine::publishGraph (bool midSide) noexcept
+void ResonanceEngine::Core::fillGraph (GraphFrame& frame, int numGraphChannels) noexcept
 {
-    auto& frame = graphFrames[graphWriteIndex];
+    const bool apart = numSlots > 2;
 
     for (int i = 0; i < GraphFrame::numPoints; ++i)
     {
         const auto idx = (size_t) i;
         float power = 0.0f, reduction[2] = { 0.0f, 0.0f }, sens = 0.0f, mask = 0.0f;
+        float deepest = 0.0f, shallowest = 1.0e9f;
 
         for (int k = graphFirstBin[idx]; k <= graphLastBin[idx]; ++k)
         {
@@ -965,27 +1343,47 @@ void ResonanceEngine::publishGraph (bool midSide) noexcept
             sens += sensitivity[(size_t) k];
             mask = std::max (mask, rangeMask[(size_t) k]);
 
-            for (int slot = 0; slot < numCh; ++slot)
-                reduction[slot] = std::max (reduction[slot], slots[slot].applied[(size_t) k]);
+            if (apart)
+            {
+                for (int slot = 0; slot < numSlots; ++slot)
+                {
+                    const float r = slots[(size_t) slot].applied[(size_t) k];
+                    deepest = std::max (deepest, r);
+                    shallowest = std::min (shallowest, r);
+                }
+            }
+            else
+            {
+                for (int slot = 0; slot < numSlots; ++slot)
+                    reduction[slot] = std::max (reduction[slot], slots[(size_t) slot].applied[(size_t) k]);
+            }
+        }
+
+        if (apart)
+        {
+            reduction[0] = deepest;
+            reduction[1] = shallowest;
         }
 
         const float inDb = toDb (power);
-        const float both = numCh == 2 ? std::max (reduction[0], reduction[1]) : reduction[0];
+        const float both = numSlots >= 2 ? std::max (reduction[0], reduction[1]) : reduction[0];
         frame.inputDb[idx] = inDb;
         frame.outputDb[idx] = inDb - both;
         frame.reductionDb[0][idx] = reduction[0];
-        frame.reductionDb[1][idx] = numCh == 2 ? reduction[1] : reduction[0];
+        frame.reductionDb[1][idx] = numSlots >= 2 ? reduction[1] : reduction[0];
         frame.sensitivityDb[idx] = mask > 0.0f ? sens / (float) (graphLastBin[idx] - graphFirstBin[idx] + 1) : -96.0f;
     }
 
-    frame.numSlots = numCh;
-    frame.midSide = midSide;
-    frame.keyInUse = params.sideChain && keyChannelsNow > 0;
-    frame.maxReductionDb = maxReductionDb.load (std::memory_order_relaxed);
-    frame.maxReductionHz = maxReductionHz.load (std::memory_order_relaxed);
-    frame.sequence = ++graphSequence;
+    frame.numSlots = juce::jmin (numSlots, 2);
+    frame.midSide = midSideNow;
+    frame.numChannels = numGraphChannels;
+    frame.channelReductionDb.fill (0.0f);
 
-    graphWriteIndex = graphExchange.exchange (graphWriteIndex | graphNewFlag, std::memory_order_acq_rel) & (graphNewFlag - 1);
+    for (int slot = 0; slot < numSlots; ++slot)
+    {
+        const auto* applied = slots[(size_t) slot].applied.data();
+        frame.channelReductionDb[(size_t) slotChannel[(size_t) slot]] = *std::max_element (applied, applied + numBins);
+    }
 }
 
 bool ResonanceEngine::readGraph (GraphFrame& destination) noexcept

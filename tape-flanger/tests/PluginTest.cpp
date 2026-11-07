@@ -872,9 +872,43 @@ static void testGeneralBehaviour()
     }
 }
 
-int main()
+// Fixed render used to hold new versions to the sound of version 1.0.0: default settings and the first seven presets,
+// 6 seconds of noise and tone, stereo, no playhead. Keeps 64 samples out of every 1024 so the file stays small.
+static std::vector<float> goldenRender (int preset)
+{
+    const double sr = 48000.0;
+    const int n = (int) sr * 6;
+    auto in = noiseSignal (n, 0.1, 23);
+    auto tone = sineSignal (n, 330.0, sr, 0.1);
+    for (int i = 0; i < n; ++i) in[(size_t) i] += tone[(size_t) i];
+    PluginProcessor p;
+    if (preset >= 0) p.setCurrentProgram (preset);
+    prepare (p, 2, sr, 512);
+    auto out = render (p, in, 512);
+    std::vector<float> kept;
+    for (int ch = 0; ch < 2; ++ch)
+        for (int pos = 0; pos + 64 <= n; pos += 1024)
+            kept.insert (kept.end(), out.getReadPointer (ch) + pos, out.getReadPointer (ch) + pos + 64);
+    return kept;
+}
+
+static juce::File goldenFile() { return juce::File (__FILE__).getSiblingFile ("golden_v1.bin"); }
+
+int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+    if (argc > 1 && juce::String (argv[1]) == "--write-golden")
+    {
+        juce::MemoryBlock all;
+        for (int i = -1; i < 7; ++i)
+        {
+            const auto v = goldenRender (i);
+            all.append (v.data(), v.size() * sizeof (float));
+        }
+        goldenFile().replaceWithData (all.getData(), all.getSize());
+        std::printf ("wrote %d bytes\n", (int) all.getSize());
+        return 0;
+    }
     GenericOptions opt;
     opt.minPresets = 4;
     runGenericChecks ([] { return std::make_unique<PluginProcessor>(); }, opt);

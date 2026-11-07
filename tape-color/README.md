@@ -92,7 +92,7 @@ Offline, from `tests/PluginTest.cpp`. Full list in `tests/results.txt`. All test
 - **Dropouts:** 48 dips in 30 s at a rate of 2 per second (limit 60 within 30 %), deepest -23.8 dB. **Texture:** -22.1 dB against the tone at 100 %.
 - **Device:** within 0.04 dB of each set shape at 48 and 96 kHz.
 - **Latency:** 355 samples at 48 kHz (7.40 ms): 67 for oversampling, 288 for the tape path. The same when bypassed. Bypass nulls with the delayed input.
-- **CPU:** 9 % of one core for a stereo instance at 48 kHz with everything on.
+- **CPU:** 9 to 11 % of one core across runs for a stereo instance at 48 kHz with everything on.
 
 Three test limits changed after a first run, each because the limit itself was wrong. Why is written beside each one in `tests/PluginTest.cpp`:
 

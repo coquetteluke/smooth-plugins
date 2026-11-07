@@ -60,16 +60,18 @@ inline std::vector<float> glottalTable (double sr, double highestHz)
 }
 
 // A glottal source gliding from startHz to endHz, through the formant filters of the vowel. Peak about 0.25.
-inline std::vector<float> voice (const Vowel& v, double sr, double seconds, double startHz, double endHz, double level = 0.25)
+inline std::vector<float> voice (const Vowel& v, double sr, double seconds, double startHz, double endHz, double level = 0.25, double vibratoCents = 0.0, double vibratoHz = 5.5)
 {
-    const auto table = glottalTable (sr, std::max (startHz, endHz));
+    const auto table = glottalTable (sr, std::max (startHz, endHz) * std::pow (2.0, vibratoCents / 1200.0));
     const int n = (int) (seconds * sr);
     std::vector<double> y ((size_t) n);
     double phase = 0.0;
     const int size = (int) table.size();
     for (int i = 0; i < n; ++i)
     {
-        const double hz = startHz + (endHz - startHz) * i / n;
+        double hz = startHz + (endHz - startHz) * i / n;
+        if (vibratoCents > 0.0)
+            hz *= std::pow (2.0, vibratoCents / 1200.0 * std::sin (twoPi * vibratoHz * i / sr));
         const double at = phase * size;
         const int a = (int) at;
         const double t = at - a;
@@ -272,11 +274,11 @@ inline double peakBetween (const Spectrum& s, double lowHz, double highHz)
             bestDb = s.db[(size_t) k];
         }
     if (best < 0) return 0.0;
-    // The middle of the top 2 dB. Each slot here comes from whichever harmonics passed it, so the very top is rough, and on a broad peak the
+    // The middle of the top 1.2 dB. Each slot here comes from whichever harmonics passed it, so the very top is rough, and on a broad peak the
     // highest point can sit anywhere along it.
     int lo = best, hi = best;
-    while (lo > a && s.db[(size_t) lo - 1] >= bestDb - 2.0) --lo;
-    while (hi < b && s.db[(size_t) hi + 1] >= bestDb - 2.0) ++hi;
+    while (lo > a && s.db[(size_t) lo - 1] >= bestDb - 1.2) --lo;
+    while (hi < b && s.db[(size_t) hi + 1] >= bestDb - 1.2) ++hi;
     return 0.5 * (lo + hi) * s.binHz;
 }
 

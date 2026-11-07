@@ -143,6 +143,8 @@ public:
         fitModel (peakWideningHz, harmonicShare);
         for (int k = 0; k <= half; ++k)
         {
+            if (! std::isfinite (rawModel[(size_t) k]))
+                rawModel[(size_t) k] = model[(size_t) k];
             env[(size_t) k] += amount * (scratch[(size_t) k] - env[(size_t) k]);
             model[(size_t) k] += amount * (rawModel[(size_t) k] - model[(size_t) k]);
             flatEnv[(size_t) k] += amount * (slope[(size_t) k] - flatEnv[(size_t) k]);
@@ -417,8 +419,10 @@ private:
         const double gain = std::sqrt (std::max (error, 1.0e-14));
         for (auto& v : a) v /= gain; // From here on the curve is 1 / |A|^2 with no separate gain
 
+        // Sparse harmonics cannot vouch for a very narrow peak, and a harmonic moving across one with vibrato would swing in level far more
+        // than on a real voice. So high voices get wider peaks.
         if (harmonicShare > 0.5f && tipCount >= minTipsToFit)
-            fitToHarmonics (a, topBin, peakWideningHz, top, nepersFall);
+            fitToHarmonics (a, topBin, std::max (peakWideningHz, 0.2f * pitchHz), top, nepersFall);
 
         std::fill (modelWork.begin(), modelWork.end(), 0.0f);
         for (int n = 0; n <= modelOrder; ++n)
@@ -485,7 +489,7 @@ private:
             const double w = juce::MathConstants<double>::pi * peakWideningHz * n / bandHz;
             r[(size_t) n] = sum / count * std::exp (-0.5 * w * w);
         }
-        r[0] = r[0] * 1.0005 + 1.0e-12;
+        r[0] = r[0] * 1.0003 + 1.0e-12;
 
         // The matrix never changes during the fit, so it is factored once.
         std::array<std::array<double, modelOrder + 1>, modelOrder + 1> chol {};
@@ -504,7 +508,7 @@ private:
                     chol[(size_t) i][(size_t) j] = sum / chol[(size_t) j][(size_t) j];
             }
 
-        for (int round = 0; round < 6; ++round)
+        for (int round = 0; round < 10; ++round)
         {
             std::array<double, modelOrder + 1> h;
             h.fill (0.0);

@@ -1,0 +1,77 @@
+# Smooth Throat
+
+Reshapes the vocal tract of a voice without moving its pitch. It analyses the formants of the voice, then rebuilds them as a tube of a new length and shape would have them. It can also add breath and change how pressed or soft the vocal cords sound. All the code is written from scratch.
+
+## How to load it
+
+In your host: Audio Units > Luke Garito > Smooth Throat. AU code `aufx SThr Luke`. Mono and stereo. Latency is 1536 samples at 44.1 and 48 kHz (34.8 ms and 32.0 ms) and 3072 samples at 88.2 and 96 kHz (34.8 ms and 32.0 ms), the same when bypassed.
+
+## Controls
+
+Ratios read as plain numbers, where 1.00 is the singer's own. Between 0.80 and 1.20 is the realistic range.
+
+- **Throat Length** (0.50 to 2.00, default 1.00): every formant moves by 1 over this number. 1.25 lowers them all to 80%.
+- **Throat Width** (0.50 to 2.00, default 1.00): the whole tract wider or narrower. A wider mouth acts like a slightly longer tube, so formants fall by up to 6% at 2.00 and rise by up to 3% at 0.50. Wider also means less wall loss and so narrower formants, and narrower means broader ones.
+- **Width 1 Vocal Cords, Width 2 Throat, Width 3 Back of Mouth, Width 4 Roof of Mouth, Width 5 Lips** (0.33 to 3.00, default 1.00): local width at five points from the cords to the lips. Between points the shape is a straight line in log width. Formants go where a real tube of that shape has them: narrow lips lower everything, a narrow roof of the mouth lowers F1 and raises F2.
+- **Position 2 Throat** (15 to 38 %, default 27), **Position 3 Back of Mouth** (38 to 58 %, default 45), **Position 4 Roof of Mouth** (58 to 82 %, default 68), **Position 5 Lips** (82 to 100 %, default 100): where along the tract each point sits. 0 is the cords and 100 the lips. The ranges cannot cross. Point 1 stays at the cords. A position does nothing while the widths around it are 1.00.
+- **Breathiness** (0 to 100 %, default 0): noise shaped by the same modelled tract as the voice, so it passes through the same formants. Harmonics to noise above the high pass is about 12 dB at 50 and about -6 dB at 100, a full whisper. Mostly follows voiced sound, with a quarter of it on consonants.
+- **Breath High Pass** (200 to 10000 Hz, default 1500): the breath sits above this, falling at 18 dB per octave below it. Low is raspy and high is whispery.
+- **Source Voice Type** (Soft, Medium, Loud, Intense, default Medium): how hard the input was sung.
+- **Model Voice Type** (Soft, Medium, Loud, Intense, default Medium): how hard it should sound. Only the difference between the two matters: set them the same and the voice source is left alone. Soft is -3 dB per octave from Medium, Loud is +2.5, Intense is +5, above about 500 Hz. Voiced sound only.
+- **Glottal Pulse Width** (-100 to +100 %, default 0): trims the model voice. Wider is darker: +100 is -4.5 dB per octave and -100 is +4.5.
+- **Vocal Range** (Auto, Soprano, Alto Tenor, Bass Baritone, default Auto): limits the pitch search. Auto covers 67 to 1000 Hz. Pick a range if the pitch reading wanders.
+- **Throat Precision** (Subtle, Medium, Extreme, default Medium): how narrow the model's formant peaks can be. Move to Extreme for big changes or if you hear whistling.
+- **Mix** (0 to 100 %, default 100): blend with the dry signal, delayed to match. The wet path has no phase change, so it blends without combing.
+- **Output Gain** (-24 to +12 dB, default 0).
+- **Level Match** (on or off, default on): holds the level steady as formants and the voice type change. About 150 ms from the model, then about 2 s from the real spectrum.
+- **Bypass**: fades to the input, delayed by the same amount. Takes Output Gain out too.
+
+Read only, for a host to read by name. It never writes automation and is never saved:
+
+- **Output Level**: peak after everything, -60 to +24 dBFS.
+
+## Presets
+
+Neutral, A Little Longer, A Little Shorter, Big Chest, Small Bright, Rounded Lips, Open Smile, Pinched Throat, Soft and Airy, Raspy Edge, Full Whisper, Giant, Tiny, Subtle Blend. Every one stays within 0.2 dB of the input level on speech.
+
+## Signal flow
+
+```
+input > clean bad samples > dry delay (same length as the engine) ---------------> Mix > Bypass and Output Gain > output
+      \> long window (43 ms) > pitch, voicing, envelope through the harmonics > formant model
+                                                                                   |
+         tract shape > frequency map > gain per bin = model at mapped place - model here, + source tilt, + level match
+                                                                                   |
+      \> short window (21 ms) ------------------------- gain --- + breath ---> overlap add -> Mix
+```
+
+- The gain is real and smooth, so harmonics stay at their frequencies and pitch cannot move.
+- With nothing asked of it the gain is exactly 1, and the overlap adds back to the input.
+- Both channels share one analysis, so the stereo image holds.
+- The tube is solved exactly, not by a small-change formula. A wave's phase is followed along it through 40 sections.
+- The map is computed at every frequency instead of at tracked formants. There is no formant tracker to lose its place on a consonant.
+- The model is an all-pole curve fitted to the harmonics themselves on voiced sound (discrete all-pole fitting), and to a smoothed envelope on unvoiced sound.
+- The further a frequency moves, the more its harmonics take their level from the model. That removes the ghost of the old formant, which simple filtering leaves behind.
+
+## For other plug-ins
+
+`src/formant` has no plug-in code in it, and can be copied as a whole or in parts:
+
+- `SpectralEnvelope.h`: pitch, voicing, envelope, formant model and formant readings from a power spectrum.
+- `TractModel.h`: tube shape to frequency map.
+- `FormantEngine.h`: the whole frame loop, driven by a Controls struct, with a lock-free Analysis block.
+
+For a later window, `PluginProcessor::analysis()` gives input and output envelopes on 96 log spaced points, F1 to F5, pitch and voicing, without blocking audio.
+
+## What was measured
+
+Full list in `tests/results.txt`. Synthetic voices are a glottal pulse through formant filters, with the pulse's own level taken back off when reading formants. Real speech is two macOS `say` voices, which are synthetic too. **None of this proves it sounds good on a sung vocal.** That needs ears.
+
+- Throat Length 0.70, 0.85, 1.20, 1.50 on four vowels: F1 to F4 within 4.4% of F divided by Length, at 44.1, 48 and 96 kHz.
+- One limit changed: a formant within 3.5 times the pitch has only two or three harmonics on it, so it is held to a quarter of the harmonic spacing instead of 5%. Only the male ee's first formant needs this. It misses by 5 to 10%, which is 18 to 24 Hz on a voice around 100 Hz.
+- Pitch: 0.003 cents at most on a held voice. On speech the first harmonic moves 0.3 to 1.2 cents (median of voiced frames).
+- Width points: all F1 to F3 shifts of 1.5% or more go the way an exact tube calculation does, within a few percent points.
+- Neutral: -142 dB from the input on voice and speech.
+- Mix: Mix 0 is -141 dB from the delayed input, Mix 50 is -143 dB from half and half, no comb notches.
+- Consonants: no added level movement on hiss (0.1 dB at most), plosive pre-echo at -78 dB, speech consonants move 0.65 to 1.00 times as much as the input.
+- Latency: an impulse lands on the reported sample at all four rates, including bypassed.

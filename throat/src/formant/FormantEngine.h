@@ -100,7 +100,7 @@ public:
 
         // Control changes settle in about 40 ms.
         settle = (float) (1.0 - std::exp (-(double) hop / (0.04 * sr)));
-        levelTimeCoef = 1.0 - std::exp (-(double) hop / (0.5 * sr));
+        levelTimeCoef = 1.0 - std::exp (-(double) hop / (2.0 * sr));
         reset();
     }
 
@@ -316,8 +316,8 @@ private:
                 // harmonic keeps its own detail, and the change from that to none at all at a setting of 1 is smooth.
                 // The first two harmonics keep more of their own: the voice source shapes them more than the tract does.
                 resynthesis = hz > 0.0f ? std::min (1.0f, std::abs (std::log (std::max (read, 1.0f) / hz)) / resynthesisFull) : 0.0f;
-                if (hz < 2.2f * sourceTop)
-                    resynthesis *= juce::jlimit (0.0f, 1.0f, (hz - moveAbove) / (2.2f * sourceTop - moveAbove));
+                if (hz < 1.8f * sourceTop)
+                    resynthesis *= juce::jlimit (0.0f, 1.0f, (hz - moveAbove) / (1.8f * sourceTop - moveAbove));
             }
             const int a = std::min ((int) at, analysisHalf - 1);
             float w = readFrom[a] + (at - (float) a) * (readFrom[a + 1] - readFrom[a]);
@@ -332,10 +332,10 @@ private:
         }
 
         // Moving formants must not change the level. This takes two steps.
-        // A fast one compares the model's energy before and after, with the source's fall on it, so each sound keeps its own level from
+        // A quicker one, over about 150 ms, compares the model's energy before and after, with the source's fall on it, so each sound keeps its own level from
         // one moment to the next. It knows nothing of where the harmonics are, so it does not iron out what a harmonic does as it crosses
         // a formant.
-        // A slow one, over about half a second, then compares the frame's real spectrum before and after, plus the breath to be added.
+        // A slow one, over about two seconds, then compares the frame's real spectrum before and after, plus the breath to be added.
         // How much energy really passes depends on where the harmonics fall, which the model cannot say. It is too slow to pump.
         levelAmount += 0.3f * ((target.levelMatch ? 1.0f : 0.0f) - levelAmount);
         float fastWanted = 0.0f, slowWanted = 0.0f;
@@ -365,13 +365,13 @@ private:
             }
             slowEnergyIn += levelTimeCoef * (energyIn - slowEnergyIn);
             slowEnergyOut += levelTimeCoef * (energyOut - slowEnergyOut);
-            slowWanted = slowEnergyIn > 1.0e-9 ? juce::jlimit (-1.0f, 1.0f, (float) (0.5 * std::log ((slowEnergyIn + 1.0e-20) / (slowEnergyOut + 1.0e-20)))) : slowLevelFix;
+            slowWanted = slowEnergyIn > 1.0e-12 ? juce::jlimit (-1.0f, 1.0f, (float) (0.5 * std::log ((slowEnergyIn + 1.0e-20) / (slowEnergyOut + 1.0e-20)))) : slowLevelFix;
         }
         else
         {
             slowEnergyIn = slowEnergyOut = 0.0;
         }
-        fastLevelFix += 0.1f * (fastWanted - fastLevelFix);
+        fastLevelFix += 0.04f * (fastWanted - fastLevelFix);
         slowLevelFix += 0.5f * (slowWanted - slowLevelFix);
         if (std::abs (fastLevelFix) < 1.0e-6f && fastWanted == 0.0f) fastLevelFix = 0.0f;
         if (std::abs (slowLevelFix) < 1.0e-6f && slowWanted == 0.0f) slowLevelFix = 0.0f;

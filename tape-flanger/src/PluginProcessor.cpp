@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "StateGuard.h"
+#include "window/FlangerEditor.h"
 
 namespace
 {
@@ -16,6 +17,8 @@ namespace
     constexpr int kTick = 16;              // oversampled samples between LFO updates
     constexpr float kSatRef = 0.125f;      // -18 dBFS passes at the same level at every Saturation setting
     constexpr double kTwoPi = 6.283185307179586476925286766559;
+    const juce::Identifier kWindowWidth { "windowWidth" };
+    const juce::Identifier kAdvancedOpen { "advancedOpen" };
 
     // Length of one LFO cycle in quarter notes
     constexpr double kDivisionBeats[] = { 32.0, 16.0, 8.0, 4.0, 3.0, 2.0, 4.0 / 3.0, 1.5, 1.0, 2.0 / 3.0, 0.75, 0.5, 1.0 / 3.0, 0.25 };
@@ -573,6 +576,36 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
         readDeck[ch].store ((float) (channels[(size_t) ch].rel * 1000.0 / osRate), std::memory_order_relaxed);
     }
     readGate.store (gateNow, std::memory_order_relaxed);
+
+    // A copy of the output for the window. Reads the finished buffer and nothing in the audio path reads it back.
+    const auto written = outputTapWritten.load (std::memory_order_relaxed);
+    const int tapCount = juce::jmin (total, outputTapSize);
+    for (int ch = 0; ch < numCh; ++ch)
+    {
+        const auto* x = buffer.getReadPointer (ch, total - tapCount);
+        auto& tap = outputTap[(size_t) ch];
+        for (int i = 0; i < tapCount; ++i)
+            tap[(size_t) ((written + (juce::uint32) i) & (juce::uint32) (outputTapSize - 1))].store (x[i], std::memory_order_relaxed);
+    }
+    outputTapWritten.store (written + (juce::uint32) tapCount, std::memory_order_release);
+}
+
+int PluginProcessor::readOutputTap (int channel, float* destination, int numSamples) const noexcept
+{
+    if (! juce::isPositiveAndBelow (channel, 2) || numSamples <= 0 || numSamples > outputTapSize)
+        return 0;
+
+    const auto written = outputTapWritten.load (std::memory_order_acquire);
+    const auto start = written - (juce::uint32) numSamples;
+    const auto& tap = outputTap[(size_t) channel];
+    for (int i = 0; i < numSamples; ++i)
+        destination[i] = tap[(size_t) ((start + (juce::uint32) i) & (juce::uint32) (outputTapSize - 1))].load (std::memory_order_relaxed);
+    return numSamples;
+}
+
+juce::AudioProcessorEditor* PluginProcessor::createEditor()
+{
+    return new FlangerEditor (*this);
 }
 
 void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -656,14 +689,26 @@ void PluginProcessor::setCurrentProgram (int i)
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     if (auto xml = apvts.copyState().createXml())
+    {
+        xml->setAttribute (kWindowWidth, windowWidth.load (std::memory_order_relaxed));
+        xml->setAttribute (kAdvancedOpen, advancedOpen.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, dest);
+    }
 }
 
 void PluginProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
         if (xml->hasTagName (apvts.state.getType()))
+        {
+            // Older sessions have no window state. A damaged size goes back in range. Neither is a parameter, so they stay out of the value tree.
+            if (xml->hasAttribute (kWindowWidth))
+                windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (kWindowWidth, defaultWindowWidth)), std::memory_order_relaxed);
+            advancedOpen.store (xml->getBoolAttribute (kAdvancedOpen, false), std::memory_order_relaxed);
+            xml->removeAttribute (kWindowWidth);
+            xml->removeAttribute (kAdvancedOpen);
             applySafeState (apvts, *xml);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PluginProcessor(); }

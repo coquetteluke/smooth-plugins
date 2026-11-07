@@ -8,11 +8,11 @@ set(SP_NAME    "Smooth Tape Flanger")
 set(SP_CODE    STfl)
 set(SP_BUNDLE  "com.lukegarito.smoothtapeflanger")
 set(SP_DESC    "Through-zero tape style flanger")
-set(SP_VERSION 1.1.1)
+set(SP_VERSION 1.2.0)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice
-set(SP_SOURCES src/PluginProcessor.cpp) # every .cpp except tests
+set(SP_SOURCES src/PluginProcessor.cpp src/window/Theme.cpp src/window/Controls.cpp src/window/CombField.cpp src/window/FlangerEditor.cpp) # every .cpp except tests
 # -------------------------------------
 
 project(${SP_TARGET} VERSION ${SP_VERSION} LANGUAGES C CXX)
@@ -51,6 +51,12 @@ juce_add_plugin(${SP_TARGET}
 
 target_sources(${SP_TARGET} PRIVATE ${SP_SOURCES})
 
+# The window's one font family. SIL OFL, see assets/fonts/OFL.txt.
+juce_add_binary_data(${SP_TARGET}WindowAssets
+    HEADER_NAME WindowAssets.h
+    NAMESPACE WindowAssets
+    SOURCES assets/fonts/Inter-Regular.otf assets/fonts/Inter-Medium.otf)
+
 set(SP_DEFS
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
@@ -60,7 +66,7 @@ set(SP_DEFS
 
 target_compile_definitions(${SP_TARGET} PUBLIC ${SP_DEFS})
 target_link_libraries(${SP_TARGET}
-    PRIVATE juce::juce_audio_utils juce::juce_dsp
+    PRIVATE ${SP_TARGET}WindowAssets juce::juce_audio_utils juce::juce_dsp
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
 # ---- install: cmake --build build --target InstallAU ----
@@ -79,5 +85,20 @@ juce_add_console_app(PluginTest PRODUCT_NAME "PluginTest")
 target_sources(PluginTest PRIVATE ${SP_SOURCES} tests/PluginTest.cpp)
 target_include_directories(PluginTest PRIVATE src tests)
 target_compile_definitions(PluginTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0)
-target_link_libraries(PluginTest PRIVATE juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+target_link_libraries(PluginTest PRIVATE ${SP_TARGET}WindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME plugin COMMAND PluginTest)
+
+# The window's behaviour: gestures, automation, typing, saved state, opening and closing under audio.
+juce_add_console_app(WindowTest PRODUCT_NAME "WindowTest")
+target_sources(WindowTest PRIVATE ${SP_SOURCES} tests/WindowTest.cpp)
+target_include_directories(WindowTest PRIVATE src tests)
+target_compile_definitions(WindowTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=1)
+target_link_libraries(WindowTest PRIVATE ${SP_TARGET}WindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+add_test(NAME window COMMAND WindowTest)
+
+# Renders the real window to PNG with real speech through the real processor. Also measures its CPU. Not a ctest: it writes docs/window.
+juce_add_console_app(RenderWindow PRODUCT_NAME "RenderWindow")
+target_sources(RenderWindow PRIVATE ${SP_SOURCES} tests/RenderWindow.cpp)
+target_include_directories(RenderWindow PRIVATE src tests)
+target_compile_definitions(RenderWindow PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=1 SPEECH_DIR="${CMAKE_BINARY_DIR}/speech")
+target_link_libraries(RenderWindow PRIVATE ${SP_TARGET}WindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)

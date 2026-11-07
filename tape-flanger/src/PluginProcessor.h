@@ -19,7 +19,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor (*this); }
+    juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Smooth Tape Flanger"; }
@@ -48,6 +48,17 @@ public:
         float inputPeak[2], outputPeak[2]; // linear peak of the last host block
     };
     Readings getReadings() const noexcept;
+
+    // The newest output samples of one channel, for the window's spectrum. Lock free. The audio thread only ever writes here,
+    // so this cannot change the sound. Returns how many samples it copied, oldest first. numSamples is at most outputTapSize.
+    static constexpr int outputTapSize = 8192;
+    int readOutputTap (int channel, float* destination, int numSamples) const noexcept;
+    int getActiveOutputChannels() const noexcept { return juce::jlimit (1, 2, getTotalNumOutputChannels()); }
+
+    // Window size and whether Advanced is open. The only things the window adds to a session. They are not parameters.
+    static constexpr int minWindowWidth = 780, maxWindowWidth = 1560, defaultWindowWidth = 1040;
+    std::atomic<int> windowWidth { defaultWindowWidth };
+    std::atomic<bool> advancedOpen { false };
 
     juce::AudioProcessorValueTreeState apvts;
 
@@ -142,6 +153,8 @@ private:
     int currentProgram = 0;
 
     std::atomic<float> readDeck[2], readGate { 1.0f }, readIn[2], readOut[2];
+    std::array<std::array<std::atomic<float>, (size_t) outputTapSize>, 2> outputTap {};
+    std::atomic<juce::uint32> outputTapWritten { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)
 };

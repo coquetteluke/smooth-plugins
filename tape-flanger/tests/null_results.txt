@@ -1,66 +1,65 @@
-Null of 1.1.1 against 1.1.0, both rendered through the real AU. Peak and RMS of the difference in dBFS.
-s48b128: 48 kHz stereo, 128 frame blocks. s44b64: 44.1 kHz stereo, 64. s96b512: 96 kHz stereo, 512. m48b256: 48 kHz mono, 256. auto: random automation and preset changes.
-auto0_s48b128.raw                            peak   -126.4 dBFS  rms   -156.6 dBFS  at   840671  sigpeak   3.53  
-auto1_s48b128.raw                            peak   -132.5 dBFS  rms   -161.9 dBFS  at   840740  sigpeak   1.77  
-auto2_s48b128.raw                            peak   -132.5 dBFS  rms   -163.0 dBFS  at   870773  sigpeak   1.53  
-auto3_s48b128.raw                            peak   -126.4 dBFS  rms   -159.7 dBFS  at   841169  sigpeak   3.23  
-auto4_s44b64.raw                             peak   -132.5 dBFS  rms   -164.0 dBFS  at   786143  sigpeak   2.12  
-auto5_s96b512.raw                            peak   -132.5 dBFS  rms   -167.1 dBFS  at  1772650  sigpeak   2.10  
-auto6_m48.raw                                peak   -132.5 dBFS  rms   -164.2 dBFS  at   290643  sigpeak   1.91  
-m48b256__default.raw                         peak   -138.5 dBFS  rms   -163.0 dBFS  at   120533  sigpeak   1.55  
-m48b256__p0_Slow_Zero_Crossing.raw           peak   -132.5 dBFS  rms   -163.9 dBFS  at   180400  sigpeak   1.55  
-m48b256__p10_Wandering_Tape.raw              peak   -138.5 dBFS  rms   -162.7 dBFS  at   127514  sigpeak   1.58  
-m48b256__p11_Square_Flip.raw                 peak   -132.5 dBFS  rms   -163.0 dBFS  at   168372  sigpeak   1.86  
-m48b256__p12_Phase_Flip_Thin.raw             peak   -132.5 dBFS  rms   -165.0 dBFS  at   168359  sigpeak   1.73  
-m48b256__p1_Wide_Vocal_Sweep.raw             peak   -132.5 dBFS  rms   -162.2 dBFS  at   174388  sigpeak   1.68  
-m48b256__p2_Takeoff_Roar.raw                 peak   -138.5 dBFS  rms   -163.4 dBFS  at   133788  sigpeak   1.12  
-m48b256__p3_Hollow_Inverted.raw              peak   -132.5 dBFS  rms   -163.1 dBFS  at   174377  sigpeak   1.54  
-m48b256__p4_One_Bar_Swirl.raw                peak   -132.5 dBFS  rms   -163.1 dBFS  at   171373  sigpeak   1.66  
-m48b256__p5_Dark_Tape_Haze.raw               peak   -138.5 dBFS  rms   -163.4 dBFS  at   168338  sigpeak   1.24  
-m48b256__p6_Quarter_Note_Wobble.raw          peak   -132.5 dBFS  rms   -163.8 dBFS  at   189469  sigpeak   1.57  
-m48b256__p7_Manual_Ride.raw                  peak   -132.5 dBFS  rms   -161.1 dBFS  at   168425  sigpeak   1.85  
-m48b256__p8_Triangle_Jet.raw                 peak   -138.5 dBFS  rms   -162.4 dBFS  at   149421  sigpeak   1.37  
-m48b256__p9_Off_Zero_Double.raw              peak   -132.5 dBFS  rms   -162.6 dBFS  at   183338  sigpeak   1.29  
-s44b64__default.raw                          peak   -132.5 dBFS  rms   -163.2 dBFS  at   337203  sigpeak   1.63  
-s44b64__p0_Slow_Zero_Crossing.raw            peak   -132.5 dBFS  rms   -164.1 dBFS  at   315116  sigpeak   1.54  
-s44b64__p10_Wandering_Tape.raw               peak   -132.5 dBFS  rms   -162.9 dBFS  at   336977  sigpeak   1.62  
-s44b64__p11_Square_Flip.raw                  peak   -132.5 dBFS  rms   -163.2 dBFS  at   315134  sigpeak   1.70  
-s44b64__p12_Phase_Flip_Thin.raw              peak   -132.5 dBFS  rms   -165.1 dBFS  at   309384  sigpeak   1.83  
-s44b64__p1_Wide_Vocal_Sweep.raw              peak   -132.5 dBFS  rms   -162.8 dBFS  at   315054  sigpeak   1.73  
-s44b64__p2_Takeoff_Roar.raw                  peak   -138.5 dBFS  rms   -163.4 dBFS  at   244778  sigpeak   1.17  
-s44b64__p3_Hollow_Inverted.raw               peak   -138.5 dBFS  rms   -163.3 dBFS  at   247723  sigpeak   1.45  
-s44b64__p4_One_Bar_Swirl.raw                 peak   -138.5 dBFS  rms   -162.8 dBFS  at   221581  sigpeak   1.52  
-s44b64__p5_Dark_Tape_Haze.raw                peak   -138.5 dBFS  rms   -163.8 dBFS  at   309328  sigpeak   1.28  
-s44b64__p6_Quarter_Note_Wobble.raw           peak   -132.5 dBFS  rms   -164.0 dBFS  at   320477  sigpeak   1.80  
-s44b64__p7_Manual_Ride.raw                   peak   -132.5 dBFS  rms   -161.4 dBFS  at   309328  sigpeak   1.78  
-s44b64__p8_Triangle_Jet.raw                  peak   -138.5 dBFS  rms   -162.4 dBFS  at   270819  sigpeak   1.26  
-s44b64__p9_Off_Zero_Double.raw               peak   -132.5 dBFS  rms   -163.0 dBFS  at   309338  sigpeak   1.30  
-s48b128__default.raw                         peak   -132.5 dBFS  rms   -162.7 dBFS  at   709053  sigpeak   1.68  
-s48b128__p0_Slow_Zero_Crossing.raw           peak   -132.5 dBFS  rms   -163.3 dBFS  at   672679  sigpeak   1.75  
-s48b128__p10_Wandering_Tape.raw              peak   -132.5 dBFS  rms   -162.7 dBFS  at   732804  sigpeak   1.74  
-s48b128__p11_Square_Flip.raw                 peak   -132.5 dBFS  rms   -162.7 dBFS  at   672763  sigpeak   1.95  
-s48b128__p12_Phase_Flip_Thin.raw             peak   -132.5 dBFS  rms   -164.5 dBFS  at   709567  sigpeak   1.91  
-s48b128__p1_Wide_Vocal_Sweep.raw             peak   -132.5 dBFS  rms   -162.9 dBFS  at   672911  sigpeak   1.67  
-s48b128__p2_Takeoff_Roar.raw                 peak   -132.5 dBFS  rms   -162.4 dBFS  at   696649  sigpeak   1.50  
-s48b128__p3_Hollow_Inverted.raw              peak   -132.5 dBFS  rms   -162.3 dBFS  at   672975  sigpeak   1.43  
-s48b128__p4_One_Bar_Swirl.raw                peak   -132.5 dBFS  rms   -162.5 dBFS  at   672912  sigpeak   1.79  
-s48b128__p5_Dark_Tape_Haze.raw               peak   -138.5 dBFS  rms   -163.8 dBFS  at   672675  sigpeak   1.29  
-s48b128__p6_Quarter_Note_Wobble.raw          peak   -132.5 dBFS  rms   -163.6 dBFS  at   697112  sigpeak   1.61  
-s48b128__p7_Manual_Ride.raw                  peak   -132.5 dBFS  rms   -161.3 dBFS  at   672666  sigpeak   1.90  
-s48b128__p8_Triangle_Jet.raw                 peak   -135.0 dBFS  rms   -162.4 dBFS  at   721042  sigpeak   1.30  
-s48b128__p9_Off_Zero_Double.raw              peak   -132.5 dBFS  rms   -162.7 dBFS  at   684691  sigpeak   1.33  
-s96b512__default.raw                         peak   -138.5 dBFS  rms   -166.9 dBFS  at   484121  sigpeak   2.00  
-s96b512__p0_Slow_Zero_Crossing.raw           peak   -132.5 dBFS  rms   -167.8 dBFS  at   709764  sigpeak   1.72  
-s96b512__p10_Wandering_Tape.raw              peak   -138.5 dBFS  rms   -166.2 dBFS  at   673302  sigpeak   1.80  
-s96b512__p11_Square_Flip.raw                 peak   -132.5 dBFS  rms   -166.0 dBFS  at   673271  sigpeak   1.73  
-s96b512__p12_Phase_Flip_Thin.raw             peak   -138.5 dBFS  rms   -169.0 dBFS  at   673181  sigpeak   1.84  
-s96b512__p1_Wide_Vocal_Sweep.raw             peak   -132.5 dBFS  rms   -166.7 dBFS  at   685173  sigpeak   1.76  
-s96b512__p2_Takeoff_Roar.raw                 peak   -138.5 dBFS  rms   -166.2 dBFS  at   534156  sigpeak   1.25  
-s96b512__p3_Hollow_Inverted.raw              peak   -138.5 dBFS  rms   -166.6 dBFS  at   540106  sigpeak   1.49  
-s96b512__p4_One_Bar_Swirl.raw                peak   -132.5 dBFS  rms   -166.5 dBFS  at   673624  sigpeak   1.53  
-s96b512__p5_Dark_Tape_Haze.raw               peak   -138.5 dBFS  rms   -167.7 dBFS  at   673370  sigpeak   1.21  
-s96b512__p6_Quarter_Note_Wobble.raw          peak   -138.5 dBFS  rms   -167.5 dBFS  at   552952  sigpeak   1.66  
-s96b512__p7_Manual_Ride.raw                  peak   -132.5 dBFS  rms   -165.4 dBFS  at   685197  sigpeak   1.90  
-s96b512__p8_Triangle_Jet.raw                 peak   -138.5 dBFS  rms   -165.0 dBFS  at   588437  sigpeak   1.28  
-s96b512__p9_Off_Zero_Double.raw              peak   -132.5 dBFS  rms   -166.2 dBFS  at   685197  sigpeak   1.34  
-files 63  not bit-identical 63  worst -126.4 dBFS (auto0_s48b128.raw)  over limit 0
+Null of 1.2.0 against 1.1.1, both rendered through the real AU. s48b128: 48 kHz stereo, 128 frame blocks. s44b64: 44.1 kHz stereo, 64. s96b512: 96 kHz stereo, 512. m48b256: 48 kHz mono, 256. auto: random automation and preset changes. Input is speech, a sweep and silence. The previous null, 1.1.1 against 1.1.0, is in git history.
+auto0_s48b128.raw                    bit identical  signal peak 1.11
+auto1_s48b128.raw                    bit identical  signal peak 1.86
+auto2_s48b128.raw                    bit identical  signal peak 0.77
+auto3_s48b128.raw                    bit identical  signal peak 1.07
+auto4_s44b64.raw                     bit identical  signal peak 0.57
+auto5_s96b512.raw                    bit identical  signal peak 3.79
+auto6_m48b256.raw                    bit identical  signal peak 1.47
+m48b256_default.raw                  bit identical  signal peak 0.44
+m48b256_preset0.raw                  bit identical  signal peak 0.44
+m48b256_preset1.raw                  bit identical  signal peak 0.43
+m48b256_preset10.raw                 bit identical  signal peak 0.47
+m48b256_preset11.raw                 bit identical  signal peak 0.38
+m48b256_preset12.raw                 bit identical  signal peak 0.33
+m48b256_preset2.raw                  bit identical  signal peak 0.43
+m48b256_preset3.raw                  bit identical  signal peak 0.40
+m48b256_preset4.raw                  bit identical  signal peak 0.47
+m48b256_preset5.raw                  bit identical  signal peak 0.44
+m48b256_preset6.raw                  bit identical  signal peak 0.37
+m48b256_preset7.raw                  bit identical  signal peak 0.50
+m48b256_preset8.raw                  bit identical  signal peak 0.36
+m48b256_preset9.raw                  bit identical  signal peak 0.46
+s44b64_default.raw                   bit identical  signal peak 0.49
+s44b64_preset0.raw                   bit identical  signal peak 0.41
+s44b64_preset1.raw                   bit identical  signal peak 0.45
+s44b64_preset10.raw                  bit identical  signal peak 0.47
+s44b64_preset11.raw                  bit identical  signal peak 0.42
+s44b64_preset12.raw                  bit identical  signal peak 0.34
+s44b64_preset2.raw                   bit identical  signal peak 0.41
+s44b64_preset3.raw                   bit identical  signal peak 0.40
+s44b64_preset4.raw                   bit identical  signal peak 0.46
+s44b64_preset5.raw                   bit identical  signal peak 0.42
+s44b64_preset6.raw                   bit identical  signal peak 0.39
+s44b64_preset7.raw                   bit identical  signal peak 0.50
+s44b64_preset8.raw                   bit identical  signal peak 0.37
+s44b64_preset9.raw                   bit identical  signal peak 0.44
+s48b128_default.raw                  bit identical  signal peak 0.44
+s48b128_preset0.raw                  bit identical  signal peak 0.44
+s48b128_preset1.raw                  bit identical  signal peak 0.47
+s48b128_preset10.raw                 bit identical  signal peak 0.47
+s48b128_preset11.raw                 bit identical  signal peak 0.38
+s48b128_preset12.raw                 bit identical  signal peak 0.33
+s48b128_preset2.raw                  bit identical  signal peak 0.44
+s48b128_preset3.raw                  bit identical  signal peak 0.40
+s48b128_preset4.raw                  bit identical  signal peak 0.47
+s48b128_preset5.raw                  bit identical  signal peak 0.44
+s48b128_preset6.raw                  bit identical  signal peak 0.39
+s48b128_preset7.raw                  bit identical  signal peak 0.50
+s48b128_preset8.raw                  bit identical  signal peak 0.36
+s48b128_preset9.raw                  bit identical  signal peak 0.46
+s96b512_default.raw                  bit identical  signal peak 0.43
+s96b512_preset0.raw                  bit identical  signal peak 0.44
+s96b512_preset1.raw                  bit identical  signal peak 0.41
+s96b512_preset10.raw                 bit identical  signal peak 0.46
+s96b512_preset11.raw                 bit identical  signal peak 0.39
+s96b512_preset12.raw                 bit identical  signal peak 0.32
+s96b512_preset2.raw                  bit identical  signal peak 0.43
+s96b512_preset3.raw                  bit identical  signal peak 0.41
+s96b512_preset4.raw                  bit identical  signal peak 0.44
+s96b512_preset5.raw                  bit identical  signal peak 0.40
+s96b512_preset6.raw                  bit identical  signal peak 0.38
+s96b512_preset7.raw                  bit identical  signal peak 0.50
+s96b512_preset8.raw                  bit identical  signal peak 0.48
+s96b512_preset9.raw                  bit identical  signal peak 0.44
+files 63  bit identical 63  worst none  over the -114 dBFS limit 0

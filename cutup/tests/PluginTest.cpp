@@ -1728,6 +1728,8 @@ static void testEditor()
     check (p.waitForLoad (10000), "a dropped file loads through the same path");
 }
 
+#include "WindowTests.h"
+
 // ---- readings, presets, parameters ----
 
 static void testReadingsAndPresets()
@@ -1877,9 +1879,22 @@ static void testCpu()
     juce::ignoreUnused (out);
 }
 
-int main()
+int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+
+    // Prints the sound of each preset as one number each. The numbers in WindowTests.h came from this, at the commit before the custom window.
+    if (argc > 1 && juce::String (argv[1]) == "fingerprints")
+    {
+        const auto file = writeWav ("fingerprint.wav", { windowtests::fingerprintAudio() }, 48000.0);
+        PluginProcessor counter;
+        for (int preset = 0; preset < counter.getNumPrograms(); ++preset)
+            std::printf ("{ %d, %lluull }, // window open: %llu\n", preset,
+                         (unsigned long long) windowtests::outputFingerprint (file, preset, false),
+                         (unsigned long long) windowtests::outputFingerprint (file, preset, true));
+        tempDir().deleteRecursively();
+        return 0;
+    }
 
     // The generic checks run with a generated sample loaded, so the notes they send make sound.
     std::vector<float> x;

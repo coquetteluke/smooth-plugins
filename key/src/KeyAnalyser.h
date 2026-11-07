@@ -14,6 +14,8 @@
 //      each key's home chord, and a tie break between relative keys from the opening chord, because Am F C G and C G Am F
 //      contain exactly the same notes in the same amounts.
 //      A major chord falling a fifth to the next chord (a dominant resolving) also adds to the key it lands on.
+//      When recent notes clearly fall outside the key on show, the old memory is mostly let go, so a real key change is
+//      followed in seconds without making the memory short for everything else.
 //   8. Only move the reading when a new key has led for a set time by a set margin, so it cannot flicker.
 
 #include <algorithm>
@@ -99,16 +101,20 @@ public:
     // Settings a build or a test can vary. The defaults are what ships.
     struct Knobs
     {
-        double tauStable = 22.0, tauFast = 7.0;         // memory of the chroma, seconds
-        double dwellStable = 4.0, dwellFast = 1.0;      // a new key must lead this long
-        double marginStable = 0.04, marginFast = 0.015; // and by this much score
-        double firstStable = 7.0, firstFast = 2.0;      // earliest first reading, seconds of audio
+        double tauStable = 22.0, tauFast = 12.0;         // memory of the chroma, seconds
+        double dwellStable = 4.0, dwellFast = 1.5;      // a new key must lead this long
+        double marginStable = 0.04, marginFast = 0.03; // and by this much score
+        double firstStable = 7.7, firstFast = 3.0;      // earliest first reading, seconds of audio
         double firstLeadStable = 0.08, firstLeadFast = 0.03;
         double settleSeconds = 18.0;                    // the dwell and margin reach full size after this much audio
         double bassWeight = 0.45;
         double openingWeight = 0.4;
         double relativeGuard = 2.0;
         double returnGuard = 4.0;
+        double outsideShare = 0.30;                     // share of recent notes outside the shown key that counts as outside
+        double outsideStable = 3.0, outsideFast = 1.5;  // and how long that must last before the old memory is let go
+        double recentStable = 4.0, recentFast = 2.5;    // memory of the recent notes used for that test, seconds
+        double holdStable = 12.0, holdFast = 6.0;       // after a move the reading stays put at least this long
         double homeChordWeight = 0.5;
         double cadenceWeight = 0.15;
         double cadenceTau = 40.0;
@@ -187,13 +193,14 @@ public:
     {
         std::fill (ring.begin(), ring.end(), 0.0);
         ringPos = 0; hopCounter = 0; windowFilled = 0;
-        trebleMemory.fill (0.0); bassMemory.fill (0.0); opening.fill (0.0); chordMemory.fill (0.0);
+        trebleMemory.fill (0.0); bassMemory.fill (0.0); opening.fill (0.0); chordMemory.fill (0.0); recentMemory.fill (0.0);
+        outsideSeconds = 0.0; sinceLetGo = 1.0e9;
         scores.fill (0.0); probs.fill (0.0);
         heardSeconds = openingHeard = silenceSeconds = 0.0;
         presence = 0.0; contrast = 0.0;
         tunRe = tunIm = 0.0; tuning = 0.0;
         loudest = 0.0;
-        candidate = -1; dwell = 0.0; previousShown = -1;
+        candidate = -1; dwell = 0.0; previousShown = -1; lastMove = -1000.0;
         cadence.fill (0.0); heldChord = pendingChord = -1; pendingFrames = 0;
         current = Reading {};
         resetTempo();
@@ -454,7 +461,10 @@ private:
         double mean = 0.0;
         for (int i = 0; i < count; ++i) mean += onsets[(size_t) ((onsetPos - 1 - i + 2 * numOnsets) % numOnsets)];
         mean /= count;
-        if (mean <= 1.0e-9) { current.tempoBpm = 0.0f; return; }
+        double top = 0.0;
+        for (int i = 0; i < count; ++i) top = std::max (top, onsets[(size_t) ((onsetPos - 1 - i + 2 * numOnsets) % numOnsets)]);
+        // A steady tone only ripples. It takes a real attack to count as a beat.
+        if (top - mean < 20.0) { current.tempoBpm = 0.0f; return; }
         for (int i = 0; i < count; ++i)
         {
             const double w = 0.5 - 0.5 * std::cos (twoPi * (i + 0.5) / count);
@@ -478,8 +488,8 @@ private:
         int tried = 0;
         for (double bpm = 60.0; bpm <= 240.0; bpm += 0.5)
         {
-            // A real pulse also shows at twice its rate. Mild preference for the middle of the range settles half or double.
-            const double fit = strength (bpm) + 0.5 * strength (bpm * 2.0);
+            // A real pulse also shows at two and four times its rate. A mild preference for the middle of the range settles half or double.
+            const double fit = strength (bpm) + strength (bpm * 2.0) + 0.5 * strength (bpm * 4.0);
             const double octaves = std::log2 (bpm / 115.0);
             const double score = fit * std::exp (-0.5 * octaves * octaves);
             total += score;
@@ -490,7 +500,7 @@ private:
         if (best < 2.2 * total / tried) { current.tempoBpm = 0.0f; return; }
         for (double bpm = bestBpm - 0.5; bpm <= bestBpm + 0.5; bpm += 0.05)
         {
-            const double fit = strength (bpm) + 0.5 * strength (bpm * 2.0);
+            const double fit = strength (bpm) + strength (bpm * 2.0) + 0.5 * strength (bpm * 4.0);
             const double octaves = std::log2 (bpm / 115.0);
             const double score = fit * std::exp (-0.5 * octaves * octaves);
             if (score > best) { best = score; bestBpm = bpm; }
@@ -558,8 +568,12 @@ private:
             const double b = total > 1.0e-12 ? bass[(size_t) i] / total : 0.0;
             trebleMemory[(size_t) i] = trebleMemory[(size_t) i] * decay + frameWeight * t;
             bassMemory[(size_t) i] = bassMemory[(size_t) i] * decay + frameWeight * b;
+            const double recentDecay = std::exp (-hopSeconds / (response == Response::fast ? knobs.recentFast : knobs.recentStable));
+            recentMemory[(size_t) i] = recentMemory[(size_t) i] * recentDecay + frameWeight * (t + b);
         }
         heardSeconds += hopSeconds;
+        sinceLetGo += hopSeconds;
+        checkForKeyChange();
 
         // Which chord is this frame closest to? Music tends to spend longest on its home chord.
         if (total > 1.0e-12 && ! voice)
@@ -591,6 +605,35 @@ private:
         scoreKeys();
         updateReading();
         publishChroma();
+    }
+
+    // Notes that keep falling outside the key on show mean the key has changed. Keep only a little of the old memory.
+    void checkForKeyChange() noexcept
+    {
+        if (current.key < 0) { outsideSeconds = 0.0; return; }
+        double inside = 0.0, total = 0.0;
+        for (int i = 0; i < 12; ++i)
+        {
+            const int step = (i - current.key + 12) % 12;
+            // Minor counts both the natural and the raised sixth and seventh, as minor music uses both.
+            const bool member = current.minor ? (step == 0 || step == 2 || step == 3 || step == 5 || step == 7 || step >= 8)
+                                              : (step == 0 || step == 2 || step == 4 || step == 5 || step == 7 || step == 9 || step == 11);
+            total += recentMemory[(size_t) i];
+            if (member) inside += recentMemory[(size_t) i];
+        }
+        const bool outside = total > 1.0e-9 && 1.0 - inside / total > knobs.outsideShare;
+        outsideSeconds = outside ? outsideSeconds + hopSeconds : 0.0;
+        if (outsideSeconds < (response == Response::fast ? knobs.outsideFast : knobs.outsideStable))
+            return;
+        outsideSeconds = 0.0;
+        for (auto& x : trebleMemory) x *= 0.15;
+        for (auto& x : bassMemory) x *= 0.15;
+        for (auto& x : chordMemory) x *= 0.15;
+        cadence.fill (0.0);
+        opening.fill (0.0); // the opening chord belonged to the old key
+        openingHeard = knobs.openingSeconds;
+        sinceLetGo = 0.0;
+        lastMove = -1000.0;
     }
 
     // Follows the chord sounding now, and notes each major chord that falls a fifth to the next chord.
@@ -675,7 +718,7 @@ private:
     double confidenceGate() const noexcept
     {
         // Flat chroma, such as from noise, gives no trust whatever the scores say.
-        const double x = std::clamp ((contrast - 0.22) / 0.2, 0.0, 1.0);
+        const double x = std::clamp ((contrast - 0.35) / 0.25, 0.0, 1.0);
         return x * x * (3.0 - 2.0 * x);
     }
 
@@ -721,15 +764,17 @@ private:
             if (top == candidate) dwell += hopSeconds;
             else { candidate = top; dwell = hopSeconds; }
             // Early on the memory holds little, so a first reading is provisional and may move quickly.
-            const double settled = std::clamp (heardSeconds / knobs.settleSeconds, 0.25, 1.0);
+            const double settled = std::clamp (std::min (heardSeconds, sinceLetGo) / knobs.settleSeconds, 0.25, 1.0);
             // A move to the relative key adds no new notes, so it needs much stronger evidence than a move to anything else.
             const double guard = top == relativeOf (shown) ? knobs.relativeGuard : 1.0;
             const double need = (stable ? knobs.dwellStable : knobs.dwellFast) * settled * guard;
             // Going back to the key just left needs a much clearer lead, which is what stops a reading bouncing.
             const double back = top == previousShown ? knobs.returnGuard : 1.0;
             const double margin = (stable ? knobs.marginStable : knobs.marginFast) * settled * guard * back;
-            if (dwell >= need && scores[(size_t) top] - scores[(size_t) shown] >= margin && gate > 0.5)
+            const bool holding = heardSeconds - lastMove < (stable ? knobs.holdStable : knobs.holdFast);
+            if (! holding && dwell >= need && scores[(size_t) top] - scores[(size_t) shown] >= margin && gate > 0.5)
             {
+                lastMove = heardSeconds;
                 previousShown = shown;
                 shown = top;
                 candidate = -1;
@@ -779,6 +824,7 @@ private:
         for (auto& x : chordMemory) x *= 0.25;
         opening.fill (0.0);
         openingHeard = 0.0;
+       
         cadence.fill (0.0);
         heldChord = pendingChord = -1;
         pendingFrames = 0;
@@ -810,11 +856,13 @@ private:
     Response response = Response::stable;
     Source source = Source::mix;
 
-    std::array<double, 12> trebleMemory {}, bassMemory {}, opening {};
+    std::array<double, 12> trebleMemory {}, bassMemory {}, opening {}, recentMemory {};
+    double outsideSeconds = 0.0, sinceLetGo = 1.0e9;
     std::array<double, 24> scores {}, probs {}, chordMemory {};
     double heardSeconds = 0.0, openingHeard = 0.0, silenceSeconds = 0.0, presence = 0.0, contrast = 0.0;
     double tunRe = 0.0, tunIm = 0.0, tuning = 0.0, loudest = 0.0;
     int candidate = -1, previousShown = -1;
+    double lastMove = -1000.0;
     std::array<double, 24> cadence {};
     int heldChord = -1, pendingChord = -1, pendingFrames = 0;
     double dwell = 0.0, smoothedConfidence = 0.0;

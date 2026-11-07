@@ -4,7 +4,9 @@
 namespace limits
 {
     constexpr unsigned devSeed = 1000u;
-    constexpr unsigned heldOutSeed = 20261106u;
+    // The first held out seed, 20261106, was run once and showed misses, and the detector was then changed using the dev seed only.
+    // So the reported numbers come from this second seed, not looked at before the final run. No limit was changed.
+    constexpr unsigned heldOutSeed = 20261107u;
 
     // Chord progressions in all 24 keys, every timbre, Response Stable, Source Mix, read at the end of the clip.
     constexpr double chordExactPercent = 90.0;

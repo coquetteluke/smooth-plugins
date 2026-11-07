@@ -241,7 +241,7 @@ static void testSilenceAndNoise()
     noise (hiss.data(), (int) hiss.size(), 0.2);
     a.push (hiss.data(), (int) hiss.size());
     check (a.reading().confidence <= limits::noiseConfidence, "white noise alone, confidence", a.reading().confidence);
-    info ("white noise alone, key index shown (-1 is none)", a.reading().key);
+    check (a.reading().key == -1, "white noise alone shows no key, key index (-1 is none)", a.reading().key);
 }
 
 static void testKeyChange()
@@ -255,7 +255,7 @@ static void testKeyChange()
     {
         std::mt19937 rng (limits::heldOutSeed);
         std::vector<double> times;
-        int followed = 0, total = 0;
+        int followed = 0, total = 0, sameNotes = 0;
         for (int i = 0; i < 24; ++i)
         {
             const size_t p1 = rng() % ps.size();
@@ -271,6 +271,8 @@ static void testKeyChange()
             const int want = keyIndex (to, ps[p2].minor);
             const auto tr = analyse (a, first, sr, want);
             ++total;
+            const int relative = want < 12 ? 12 + (want + 9) % 12 : (want - 12 + 3) % 12;
+            if (tr.finalKey == want || tr.finalKey == relative) ++sameNotes;
             if (tr.settle >= 0.0 && tr.finalKey == want)
             {
                 ++followed;
@@ -283,6 +285,8 @@ static void testKeyChange()
         check (100.0 * followed / total >= limits::keyChangeFollowedPercent, tag + ": key change followed within 30 s", 100.0 * followed / total, "%");
         check (median <= (response == Response::stable ? limits::keyChangeMedianStable : limits::keyChangeMedianFast), tag + ": median time to follow a key change", median, "s");
         if (! times.empty()) info (tag + ": slowest key change followed", times.back(), "s");
+        // Some targets are a loop with the same notes as its relative key, heard from mid song, so nothing can tell them apart.
+        info (tag + ": key change ended on the right key or its relative", 100.0 * sameNotes / total, "%");
     }
 }
 

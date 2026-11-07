@@ -1,15 +1,17 @@
 #pragma once
-// Pitch-synchronous grain shifter. Written to be copied into other plug-ins: it knows nothing about keys or scales.
+// Pitch-synchronous grain shifter, copied from Smooth Tune and changed for a voice changer. It runs on the whitened excitation,
+// not on the voice itself: the vocal tract filter goes back on afterwards in MorphEngine, so grains only have to carry pulses.
 //
-// Each grain is a short windowed stretch of the delayed input, centred on one of the tracker's pitch marks. Grains are laid
-// out at the spacing of the wanted output period, so pitch moves while the shape of each period, and so the formants, stays.
+// Each grain is a short windowed stretch of the delayed excitation, centred on a glottal pulse found near one of the tracker's
+// pitch marks. Grains are laid out at the spacing of the wanted output period.
 //
-// Three things it does for sound quality:
-// - A falling grain and the next rising grain share one raised cosine, so the windows sum to exactly 1. With no correction,
-//   or on an unvoiced sound, grains read the input at the reported delay and the output is the delayed input, to rounding.
-//   So consonants and breath really are untouched, and there is no separate path to switch to.
-// - Marks are chosen in order, with a margin, so a sustained note does not flip between two candidate periods.
-// - The grain read point is fixed for the grain, with a 12 point sinc for the fractional part, so high end stays.
+// - A falling grain and the next rising grain share one raised cosine, so the windows sum to exactly 1 when grains read at the
+//   reported delay. With no shift, or on an unvoiced sound, the output is the delayed input, to rounding. Consonants and breath
+//   really are untouched, and there is no separate path to switch to.
+// - The read point is fixed for the grain, with a 12 point sinc for the fractional part, so high end stays.
+// - Changes from Smooth Tune: marks can be ahead of the excitation (the tracker hears the input before whitening is done), grains
+//   are centred on the pulse rather than the mark, Monster's alternating spacing, jitter and gain are added, and the small
+//   reading speed correction Tune needed for formants is gone because the filter takes care of them.
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -28,8 +30,10 @@ public:
         bool voiced = false;         // false: pass the input through at the reported delay
         double inputPeriod = 0.0;    // samples, from the tracker
         double outputPeriod = 0.0;   // samples, wanted spacing of the grains
-        bool noCorrection = false;   // the output pitch is the input pitch: lock to the marks for a clean pass
-        double grainRate = 1.0;      // reading speed inside a grain: above 1 moves formants up
+        bool noCorrection = false;   // the output pitch is the input pitch: pass straight through
+        double alternate = 0.0;      // every other grain spacing is this fraction longer, and the next shorter: a subharmonic
+        double gainAlternate = 0.0;  // every other grain is this fraction louder, the next quieter
+        double jitter = 0.0;         // fraction added to this grain's spacing, chosen fresh by the caller
     };
 
     void prepare (double sampleRate, int numChannels)
@@ -60,9 +64,11 @@ public:
         numActive = 0;
         havePending = false;
         lastMarkUsed = -1;
-        lastOffset = 0.0;
         needDecision = true;
         firstGrain = true;
+        flip = false;
+        pulseShift = 0.0;
+        pulseKnown = false;
     }
 
     // Store one input sample for one channel.
@@ -84,8 +90,7 @@ public:
     // One output sample per channel. tracker indexes count the same input samples as written.
     void step (const PitchTracker& tracker, const Control& control, float* out) noexcept
     {
-        const long long newest = written - 1;
-        const long long n = newest - latency;
+        const long long n = written - 1 - latency;
 
         if (firstGrain)
         {
@@ -137,7 +142,7 @@ public:
             weight += w;
             const double scaled = w * h.gain;
             for (int ch = 0; ch < channels; ++ch)
-                sum[ch] += scaled * read (ch, h, n, t, newest);
+                sum[ch] += scaled * read (ch, h, n);
         }
         numActive = keep;
 
@@ -155,7 +160,6 @@ private:
         double fall = 1.0;          // length of the falling half
         bool fallIsFinal = false;   // false until the next grain has been decided, so the fall length is known
         double offset = 0.0;        // read position minus output position, fixed for the grain
-        double rate = 1.0;
         double gain = 1.0;
         long long whole = 0;        // offset split up for the fixed rate case
         double fraction = 0.0;
@@ -225,32 +229,51 @@ private:
             out[t] = r0[t] + a * (r1[t] - r0[t]);
     }
 
-    float read (int ch, const Grain& g, long long n, double t, long long newest) const noexcept
+    float read (int ch, const Grain& g, long long n) const noexcept
     {
         const float* d = delay[(size_t) ch].data();
         const int mask = size - 1;
-        if (g.rate == 1.0)
-        {
-            const long long index = n + g.whole;
-            if (g.fraction == 0.0)
-                return index < 0 ? 0.0f : d[index & mask];
-            const float* x = d + ((index - (tapCount / 2 - 1)) & mask);
-            float total = 0.0f;
-            for (int i = 0; i < tapCount; ++i)
-                total += x[i] * g.coefficients[(size_t) i];
-            return total;
-        }
-        // The grain is read at a different speed, so its formants move. Never read past the newest sample.
-        double pos = (double) n + g.offset + (g.rate - 1.0) * t;
-        pos = std::min (pos, (double) (newest - interpolatorReach));
-        const double whole = std::floor (pos);
-        std::array<float, tapCount> row;
-        tableRow (pos - whole, row.data());
-        const float* x = d + (((long long) whole - (tapCount / 2 - 1)) & mask);
+        const long long index = n + g.whole;
+        if (g.fraction == 0.0)
+            return index < 0 ? 0.0f : d[index & mask];
+        const float* x = d + ((index - (tapCount / 2 - 1)) & mask);
         float total = 0.0f;
         for (int i = 0; i < tapCount; ++i)
-            total += x[i] * row[(size_t) i];
+            total += x[i] * g.coefficients[(size_t) i];
         return total;
+    }
+
+    // Where the glottal pulse sits against a mark, as a fraction of a period. Marks stay on one point of the waveform, but that
+    // point can be anywhere in the cycle, and when grains spread out, a pulse near the edge of the window would be lost.
+    double pulseNear (double markPosition, double period) noexcept
+    {
+        const double centre = markPosition + (pulseKnown ? pulseShift * period : 0.0);
+        const double reach = pulseKnown ? 0.25 * period : 0.5 * period;
+        const long long from = (long long) std::floor (centre - reach), to = (long long) std::ceil (centre + reach);
+        if (to >= written || from < 0 || written - from >= size)
+            return markPosition + pulseShift * period;
+        const int mask = size - 1;
+        double best = -1.0;
+        long long at = from;
+        for (long long i = from; i <= to; ++i)
+        {
+            double e = 0.0;
+            for (int ch = 0; ch < channels; ++ch)
+            {
+                const double v = delay[(size_t) ch][(size_t) (i & mask)];
+                e += v * v;
+            }
+            if (e > best) { best = e; at = i; }
+        }
+        const double found = ((double) at - markPosition) / period;
+        if (! pulseKnown)
+        {
+            pulseShift = found;
+            pulseKnown = true;
+        }
+        else
+            pulseShift += 0.2 * (found - pulseShift);
+        return markPosition + pulseShift * period;
     }
 
     void addGrain (const Grain& g) noexcept
@@ -267,12 +290,11 @@ private:
         Grain* current = newestGrain();
         const double s = peakOfNewest;
         Grain next;
-        next.rate = 1.0;
 
         double spacing;
         planned = Plan::pass;
 
-        if (! c.voiced || c.inputPeriod <= 0.0)
+        if (! c.voiced || c.noCorrection || c.inputPeriod <= 0.0)
         {
             // Pass: integer spacing and a read point at the reported delay.
             spacing = fallback;
@@ -283,81 +305,49 @@ private:
         else
         {
             const double period = c.inputPeriod;
-            const double wanted = std::clamp (c.outputPeriod > 0.0 ? c.outputPeriod : period, 0.25 * period, 4.0 * period);
-            spacing = wanted;
+            const double wanted = std::clamp (c.outputPeriod > 0.0 ? c.outputPeriod : period, 0.2 * period, 5.0 * period);
+            flip = ! flip;
+            const double bend = 1.0 + (flip ? c.alternate : -c.alternate) + c.jitter;
+            spacing = wanted * bend;
             planned = Plan::mapped;
 
-            if (c.noCorrection && tracker.hasMarks() && lastMarkUsed >= 0)
+            if (lastMarkUsed < 0)
             {
-                // Output pitch is input pitch: step mark to mark at the same delay, so the signal just passes.
-                const long long following = lastMarkUsed + 1;
-                if (following <= tracker.lastMark() && following >= tracker.firstMark())
+                // Coming in from a pass: land the first grain exactly on a mark, at the reported delay, for a clean entry.
+                planned = Plan::pass;
+                spacing = std::min ((double) fallback, std::max (16.0, period));
+                if (tracker.hasMarks())
                 {
-                    const double m = tracker.mark (following).position - lastOffset;
-                    const double gap = m - s;
-                    if (gap > 0.5 * period && gap < 1.6 * period)
+                    const double aim = s + period;
+                    long long found = -1;
+                    double foundGap = 1.0e12;
+                    for (long long q = tracker.lastMark(); q >= tracker.firstMark(); --q)
                     {
-                        spacing = gap;
+                        const double gap = tracker.mark (q).position - s;
+                        if (gap < 0.5 * period)
+                            break;
+                        if (std::abs (s + gap - aim) < foundGap) { foundGap = std::abs (s + gap - aim); found = q; }
+                    }
+                    if (found >= 0)
+                    {
+                        spacing = tracker.mark (found).position - s;
+                        lastMarkUsed = found - 1;
                         planned = Plan::locked;
                     }
                 }
             }
-            else if (lastMarkUsed < 0 && tracker.hasMarks())
-            {
-                // Coming in from a pass: land the first grain exactly on a mark, at the reported delay, for a clean entry.
-                const double aim = s + period;
-                long long found = -1;
-                double foundGap = 1.0e12;
-                for (long long q = tracker.lastMark(); q >= tracker.firstMark(); --q)
-                {
-                    const double gap = tracker.mark (q).position - s;
-                    if (gap < 0.5 * period)
-                        break;
-                    if (std::abs (s + gap - aim) < foundGap) { foundGap = std::abs (s + gap - aim); found = q; }
-                }
-                if (found >= 0)
-                {
-                    spacing = tracker.mark (found).position - s;
-                    lastMarkUsed = found - 1;
-                    lastOffset = 0.0;
-                    planned = Plan::locked;
-                }
-                else
-                {
-                    planned = Plan::pass;
-                    spacing = std::min ((double) fallback, std::max (16.0, period));
-                }
-            }
 
-            // Windows are one input period each side of the mark, the classic choice that keeps exactly one glottal pulse per
-            // grain. Longer ones were measured and only flattened the formants further. The rise never takes longer than the
-            // spacing, because the next grain cannot start before it has been decided.
-            const double shortest = period, longest = period;
-            const double half = std::clamp (spacing, shortest, longest);
+            // Windows are one input period each side at most, so one glottal pulse per grain. When grains are packed closer than
+            // that they shrink to the spacing, so the falling and rising halves still sum to 1.
+            const double half = planned == Plan::mapped ? std::min (spacing, period) : spacing;
             if (current != nullptr) { current->fall = half; current->fallIsFinal = true; }
-            next.rise = std::min (spacing, longest);
+            next.rise = half;
             next.mark = s + spacing;
 
-            if (planned != Plan::pass)
+            if (planned == Plan::mapped)
             {
-                const double ratio = period / spacing;
-                if (planned == Plan::locked || std::abs (ratio - 1.0) < 1.0e-4)
-                    next.gain = 1.0;
-                else
-                {
-                    // Pulses get denser or sparser, so scale for equal power. Once shifted, overlapping grains are no longer
-                    // in phase and their crossfade loses a little energy, which the last factor gives back.
-                    const double power = spacing >= shortest ? 1.0 / std::sqrt (ratio) : std::sqrt (ratio);
-                    next.gain = power * (1.0 + 0.09 * std::min (1.0, std::abs (std::log2 (ratio)) * 12.0 / 1.5));
-                }
-                next.rate = c.grainRate;
-                // The grains' harmonics drag the formants along with a shift, by up to a third of it upwards and less downwards,
-                // measured against a voice with the same vocal tract. Reading the grain a little slower cancels most of that.
-                // Tuned on the test voices: see the formant test and README.
-                if (planned != Plan::locked && ratio > 1.0 + 1.0e-4)
-                    next.rate *= std::pow (ratio, -0.25);
-                else if (planned != Plan::locked && ratio < 1.0 - 1.0e-4)
-                    next.rate *= std::pow (ratio, 0.1);
+                // Pulses get denser or sparser, so scale for equal power.
+                next.gain = std::sqrt (spacing / period) * (1.0 + (flip ? c.gainAlternate : -c.gainAlternate));
             }
         }
 
@@ -370,45 +360,49 @@ private:
     void activate (const PitchTracker& tracker, const Control& c) noexcept
     {
         Grain g = pending;
+        const auto plainRead = [&]
+        {
+            g.offset = 0.0;
+            g.gain = 1.0;
+            lastMarkUsed = -1;
+        };
 
         if (planned == Plan::pass || ! c.voiced || ! tracker.hasMarks() || lastMarkUsed < 0)
         {
-            g.offset = 0.0;
-            g.rate = 1.0;
-            g.gain = 1.0;
-            lastMarkUsed = -1;
-            lastOffset = 0.0;
+            plainRead();
         }
         else if (planned == Plan::locked)
         {
-            const long long following = std::clamp (lastMarkUsed + 1, tracker.firstMark(), tracker.lastMark());
-            g.offset = lastOffset;
-            lastMarkUsed = following;
+            g.offset = 0.0;
+            lastMarkUsed = std::clamp (lastMarkUsed + 1, tracker.firstMark(), tracker.lastMark());
         }
         else
         {
             const double period = c.inputPeriod;
+            const double shift = pulseShift * period;
             // In order, one mark per grain, unless the output has moved over 0.6 periods from where the input is.
             long long q = std::clamp (lastMarkUsed + 1, tracker.firstMark(), tracker.lastMark());
-            while (q < tracker.lastMark() && g.mark - tracker.mark (q).position > 0.6 * period)
+            while (q < tracker.lastMark() && g.mark - (tracker.mark (q).position + shift) > 0.6 * period)
                 ++q;
-            while (q > tracker.firstMark() && tracker.mark (q).position - g.mark > 0.6 * period)
+            while (q > tracker.firstMark() && tracker.mark (q).position + shift - g.mark > 0.6 * period)
                 --q;
-            const double offset = tracker.mark (q).position - g.mark;
-            if (std::abs (offset) > 1.6 * period || offset > (double) latency)
+            // Reading ahead is limited by the reported delay. A grain from a period earlier is as good.
+            const double furthest = (double) (latency - interpolatorReach);
+            while (q > tracker.firstMark() && tracker.mark (q).position + shift - g.mark > furthest)
+                --q;
+            const double centre = pulseNear (tracker.mark (q).position, period);
+            double offset = centre - g.mark;
+            if (offset > furthest)
+                offset = tracker.mark (q).position + pulseShift * period - period - g.mark;
+            if (std::abs (offset) > 2.1 * period || offset > furthest)
             {
                 // No usable mark near here. Fall back to a plain read for one grain rather than jump far.
-                g.offset = 0.0;
-                g.rate = 1.0;
-                g.gain = 1.0;
-                lastMarkUsed = -1;
-                lastOffset = 0.0;
+                plainRead();
             }
             else
             {
                 g.offset = offset;
                 lastMarkUsed = q;
-                lastOffset = offset;
             }
         }
         splitOffset (g);
@@ -429,7 +423,8 @@ private:
     Grain pending;
     bool havePending = false, needDecision = true, firstGrain = true;
     Plan planned = Plan::pass;
-    double peakOfNewest = 0.0, lastOffset = 0.0;
+    double peakOfNewest = 0.0, pulseShift = 0.0;
     long long lastMarkUsed = -1;
+    bool flip = false, pulseKnown = false;
 };
 } // namespace smoothmorph

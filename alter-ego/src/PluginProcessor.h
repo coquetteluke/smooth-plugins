@@ -1,8 +1,41 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
-#include <juce_dsp/juce_dsp.h>
+#include <atomic>
+#include <memory>
+#include "MorphEngine.h"
 
-// Template: a gain with Mix and Bypass. Shows parameters, AU factory presets, state, layouts and the generic editor.
+// A reading shown to the host, by name and value string.
+// It is not automatable, ignores writes, and is never pushed to the host, so it cannot write automation.
+class ReadingParameter final : public juce::AudioProcessorParameterWithID
+{
+public:
+    using Formatter = juce::String (*) (float);
+
+    ReadingParameter (const char* id, const char* name, const char* label, float lowest, float highest, float initial, Formatter f)
+        : juce::AudioProcessorParameterWithID (juce::ParameterID { id, 1 }, name,
+                                               juce::AudioProcessorParameterWithIDAttributes().withLabel (label).withAutomatable (false)),
+          low (lowest), high (highest), start (initial), formatter (f)
+    {
+        value.store (initial, std::memory_order_relaxed);
+    }
+
+    void set (float v) noexcept { value.store (v, std::memory_order_relaxed); }
+    float get() const noexcept { return value.load (std::memory_order_relaxed); }
+
+    float getValue() const override { return juce::jlimit (0.0f, 1.0f, (get() - low) / (high - low)); }
+    void setValue (float) override {}
+    float getDefaultValue() const override { return juce::jlimit (0.0f, 1.0f, (start - low) / (high - low)); }
+    juce::String getText (float normalised, int) const override { return formatter (low + normalised * (high - low)); }
+    float getValueForText (const juce::String& text) const override { return juce::jlimit (0.0f, 1.0f, (text.getFloatValue() - low) / (high - low)); }
+
+private:
+    float low, high, start;
+    Formatter formatter;
+    std::atomic<float> value { 0.0f };
+};
+
+// Parameters, presets, state, latency and bypass. The sound is all in MorphEngine, so a later window only needs this class's
+// getEngine() for its graphs: pitch, range offset and the envelope before and after shifting, all safe to read while audio runs.
 class PluginProcessor final : public juce::AudioProcessor
 {
 public:
@@ -17,12 +50,11 @@ public:
     juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor (*this); }
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "Smooth Template"; }
+    const juce::String getName() const override { return "Smooth Morph"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
-    // These become the AU factory presets.
     int getNumPrograms() override;
     int getCurrentProgram() override { return currentProgram; }
     void setCurrentProgram (int) override;
@@ -34,15 +66,31 @@ public:
 
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
 
+    const smoothmorph::MorphEngine& getEngine() const noexcept { return engine; }
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
+    void run (juce::AudioBuffer<float>&, bool forceBypass) noexcept;
 
-    std::atomic<float>* gainDb = nullptr;
+    smoothmorph::MorphEngine engine;
+    std::atomic<float>* pitch = nullptr;
+    std::atomic<float>* formant = nullptr;
+    std::atomic<float>* character = nullptr;
+    std::atomic<float>* characterAmount = nullptr;
+    std::atomic<float>* robotNote = nullptr;
+    std::atomic<float>* vibratoRate = nullptr;
+    std::atomic<float>* vibratoDepth = nullptr;
+    std::atomic<float>* whisper = nullptr;
+    std::atomic<float>* rangeMatch = nullptr;
+    std::atomic<float>* rangeCentre = nullptr;
     std::atomic<float>* mix = nullptr;
+    std::atomic<float>* output = nullptr;
     juce::AudioParameterBool* bypass = nullptr;
-    juce::SmoothedValue<float> gainSmoothed, mixSmoothed, bypassMix;
+    ReadingParameter* detectedReading = nullptr;
+    ReadingParameter* outputReading = nullptr;
+    ReadingParameter* rangeReading = nullptr;
     int currentProgram = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)

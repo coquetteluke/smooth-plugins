@@ -500,7 +500,7 @@ static void testDepth()
             Settings s; s.rate = 0.5f; s.depth = depth;
             auto p = makeProc (s, sr);
             const int n = (int) (sr * 2.5);
-            auto in = noiseSignal (n);
+            auto in = softNoiseSignal (n, sr);
             auto out = render (*p, in, 512);
             const auto series = relSeries (in, out.getReadPointer (0), n, p->getLatencySamples(), sr, depth, (int) (0.02 * sr), (int) (0.02 * sr));
             const double range = series.maxV - series.minV;

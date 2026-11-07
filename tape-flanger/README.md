@@ -54,7 +54,7 @@ Every number is from `tests/PluginTest.cpp` and saved in `tests/results.txt`. De
 - Notches: first notch follows 1 / (2 x measured delay) on noise, median error 0.7 % after zero and 0.8 % before zero, worst 6.9 %. It moves from 95 Hz to over 1.7 kHz in the range measured (delay of 0.3 ms or more). Flat within 0.18 dB at the crossing.
 - Rate: 0.25, 1 and 5 Hz measure 0.250, 1.000 and 4.998 Hz. Synced values within 0.1 %. No playhead gives 120 BPM.
 - Depth: sweep range within 4 % of twice Depth at 44.1, 48 and 96 kHz.
-- Feedback, Mix 100: peaks stand 0 dB, about 4, 9 and 21 dB above the median at 0, 30, 60 and 90 %, both signs, both sides of zero. Peak positions within 3.8 % of the loop length.
+- Feedback, Mix 100: peaks stand about 4, 9 and 21 dB above the median at 30, 60 and 90 %, both signs, both sides of zero. Peak positions within 3.8 % of the loop length.
 - Feedback bounds: at +95 and -95 %, with full scale noise or sine, peak is +3.4 dBFS or less, and the tail is under -80 dBFS within 3 s.
 - Saturation: THD at 1 kHz, -12 dBFS, 0.000, 0.525, 2.288, 5.773 and 11.772 % at 0, 25, 50, 75 and 100 %. Largest inharmonic product -77.8 dB on a 7.3 kHz sine.
 - Tone: 12 kHz moves -11.8, -5.9 and +11.8 dB at -12, -6 and +12. 200 Hz does not move.

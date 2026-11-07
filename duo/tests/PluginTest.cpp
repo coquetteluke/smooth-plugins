@@ -4,6 +4,8 @@
 #include "PluginProcessor.h"
 #include <juce_dsp/juce_dsp.h>
 #include <chrono>
+#include <cstring>
+#include "NullTest.h"
 
 using namespace testkit;
 
@@ -1395,9 +1397,14 @@ static void testCpu()
     check (took / 10.0 <= 0.1, "worst case at 96 kHz, 3 doubles with split heads, share of one core", took / 10.0);
 }
 
-int main()
+int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+    if (argc > 1 && juce::String (argv[1]) == "fingerprints")
+    {
+        nulltest::printFingerprints();
+        return 0;
+    }
     GenericOptions opt;
     opt.minPresets = 4;
     runGenericChecks ([] { return std::make_unique<PluginProcessor>(); }, opt);

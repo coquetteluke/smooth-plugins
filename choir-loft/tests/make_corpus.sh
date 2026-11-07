@@ -10,11 +10,8 @@ make() { # file voice text
 LINE="She sells bright silver shells by the seashore, and every morning the whole town wakes up singing along."
 make speech_samantha "Samantha" "$LINE"
 make speech_daniel "Daniel" "$LINE"
-make speech_fred "Fred" "$LINE"
 make speech_kathy "Kathy" "$LINE"
-make sung_cellos "Cellos" "Row your boat gently down the stream, merrily merrily life is but a dream."
 make sung_goodnews "Good News" "Congratulations, you just won the whole big sweepstakes and you can go home right now."
-make sung_organ "Organ" "We love to sing along with the band all night long."
 # Long held vowels on a formant voice, with the pitch model turned off where the voice honours it
 say -v Fred -o held_fred.aiff "[[pmod 0; pbas 45; rate 60]] Aaaaaaa. Eeeeeeee. Ooooooo. Aaaaaaa."
 afconvert -f WAVE -d LEI16@48000 -c 1 held_fred.aiff held_fred.wav; rm -f held_fred.aiff

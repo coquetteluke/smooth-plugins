@@ -1,0 +1,295 @@
+PASS  parameter names are clear, unique, no em dash
+INFO  parameter count = 50.000 
+PASS  factory presets = 10.000 
+PASS  preset names are not empty, no em dash
+PASS  presets change the state
+PASS  state save and restore
+PASS  damaged state value 'nan' gives finite output
+PASS  damaged state value 'nan' leaves controls in range
+PASS  damaged state value 'inf' gives finite output
+PASS  damaged state value 'inf' leaves controls in range
+PASS  damaged state value '-inf' gives finite output
+PASS  damaged state value '-inf' leaves controls in range
+PASS  damaged state value '-1e30' gives finite output
+PASS  damaged state value '-1e30' leaves controls in range
+PASS  damaged state value '1e30' gives finite output
+PASS  damaged state value '1e30' leaves controls in range
+PASS  damaged state value '-1' gives finite output
+PASS  damaged state value '-1' leaves controls in range
+PASS  damaged state value 'garbage' gives finite output
+PASS  damaged state value 'garbage' leaves controls in range
+PASS  sweeps finished, mono
+PASS  sweeps finished, stereo
+PASS  no NaN after silence
+PASS  no denormals decaying into silence = 0.000 samples
+PASS  recovers after NaN, inf and huge input, peak in the last second = 0.521 
+INFO  click test baseline step = 0.008 
+PASS  no click when Mode jumps, biggest step = 0.008 
+PASS  no click when Key jumps, biggest step = 0.008 
+PASS  no click when Scale jumps, biggest step = 0.008 
+PASS  no click when Follow Key jumps, biggest step = 0.008 
+PASS  no click when Voices jumps, biggest step = 0.010 
+PASS  no click when Voice 1 Interval jumps, biggest step = 0.009 
+PASS  no click when Voice 1 Level jumps, biggest step = 0.016 
+PASS  no click when Voice 1 Pan jumps, biggest step = 0.008 
+PASS  no click when Voice 1 Drift jumps, biggest step = 0.008 
+PASS  no click when Voice 1 Throat jumps, biggest step = 0.009 
+PASS  no click when Voice 2 Interval jumps, biggest step = 0.009 
+PASS  no click when Voice 2 Level jumps, biggest step = 0.014 
+PASS  no click when Voice 2 Pan jumps, biggest step = 0.010 
+PASS  no click when Voice 2 Drift jumps, biggest step = 0.008 
+PASS  no click when Voice 2 Throat jumps, biggest step = 0.009 
+PASS  no click when Voice 3 Interval jumps, biggest step = 0.008 
+PASS  no click when Voice 3 Level jumps, biggest step = 0.008 
+PASS  no click when Voice 3 Pan jumps, biggest step = 0.008 
+PASS  no click when Voice 3 Drift jumps, biggest step = 0.008 
+PASS  no click when Voice 3 Throat jumps, biggest step = 0.008 
+PASS  no click when Voice 4 Interval jumps, biggest step = 0.008 
+PASS  no click when Voice 4 Level jumps, biggest step = 0.008 
+PASS  no click when Voice 4 Pan jumps, biggest step = 0.008 
+PASS  no click when Voice 4 Drift jumps, biggest step = 0.008 
+PASS  no click when Voice 4 Throat jumps, biggest step = 0.008 
+PASS  no click when Humanize jumps, biggest step = 0.008 
+PASS  no click when Vibrato jumps, biggest step = 0.008 
+PASS  no click when Vibrato Rate jumps, biggest step = 0.008 
+PASS  no click when Lead Level jumps, biggest step = 0.012 
+PASS  no click when Lead Pan jumps, biggest step = 0.010 
+PASS  no click when Harmony Level jumps, biggest step = 0.022 
+PASS  no click when Mix jumps, biggest step = 0.008 
+PASS  no click when Glide jumps, biggest step = 0.008 
+PASS  no click when Follow Lead jumps, biggest step = 0.008 
+PASS  no click when Consonants jumps, biggest step = 0.008 
+PASS  no click when Chord Root jumps, biggest step = 0.008 
+PASS  no click when Chord Type jumps, biggest step = 0.008 
+PASS  no click when Chord Hold jumps, biggest step = 0.008 
+PASS  no click when Input Type jumps, biggest step = 0.008 
+PASS  no click when Tracking jumps, biggest step = 0.008 
+PASS  no click when Reference A4 jumps, biggest step = 0.008 
+PASS  no click when Bypass jumps, biggest step = 0.008 
+PASS  C major: a third above C is E, a major third
+PASS  C major: a third above E is G, a minor third
+PASS  C major: a third above D is F, a minor third
+PASS  C major: a third above B is D, a minor third
+PASS  C major: a fifth above F is C, a perfect fifth
+PASS  C major: a fifth above B is F, a diminished fifth
+PASS  C major: a third below E is C
+PASS  C major: a third below C is A, a minor third
+PASS  A minor: a third above A is C, a minor third
+PASS  A minor: a third above C is E, a major third
+PASS  either size of third in Interval names a third
+PASS  scale aware intervals, every seven note scale, root, degree and interval: wrong out of 74088 = 0.000 
+PASS  pentatonic and blues intervals stay in the scale, on the right side of the lead: wrong out of 4224 = 0.000 
+PASS  Chromatic scale: Interval is plain semitones = 0.000 
+PASS  fresh C chord, 4 voices: lowest note on voice 1, spare voice rests
+PASS  C to F with C on the bottom: voices move the least (C stays, E to F, G to A)
+PASS  letting go of one note rests that voice and moves no other
+PASS  the next note goes to the voice nearest it, others stay
+PASS  five notes, two voices: lowest and highest
+PASS  three voices: lowest, highest and the newest other note, and the first two keep their voices
+PASS  one voice: a single note
+PASS  2000 random chords: voices never cross = 0.000 
+PASS  sustain pedal keeps a released note
+PASS  pedal up lets it go
+PASS  Chord Hold keeps a chord after every key is up
+PASS  Chord Hold: the next new note starts a new chord
+PASS  Chord Hold off lets go
+PASS  MIDI Channel: voice 1 takes channel 1's newest note, voice 3 channel 3's
+PASS  all notes off rests every voice
+PASS  a note out of the shifter's reach moves by octaves to within two octaves of the lead
+PASS  voice note readings show the assignment C4, E4, G4, rest
+PASS  Voices Sounding reads 3 = 3.000 
+PASS  all three notes of the chord are in the output at once, widest difference between fundamentals = 5.065 dB
+PASS  MIDI Chord with no notes: output against the delayed lead = -139.509 dB
+PASS    and no voices read as sounding
+PASS  MIDI Chord: a held note sounds = -18.017 dB
+PASS  MIDI Chord: voices are digital silence after the note is released = -240.000 dB
+PASS  Mix 0: output against the delayed input = -328.718 dB
+PASS  Voice 1 Level -12 dB measures = -12.000 dB
+PASS  Voice 1 Level -6 dB measures = -6.000 dB
+PASS  Voice 1 Level 6 dB measures = 6.000 dB
+PASS  Voices 2 to 4 Level -6 dB, worst error = 0.000 dB
+PASS  Level at the bottom reads Off and is silent = -240.000 dB
+PASS  Pan centre: left against right = 0.000 dB
+PASS  Pan centre: each side is at the voice's level = 0.000 dB
+PASS  Pan full left: right channel against left = -225.005 dB
+PASS  Pan full right: left channel against right = -225.005 dB
+PASS  Pan full left: near side is 3 dB up, the constant power law = 3.010 dB
+PASS  Pan +50: left against the law = -0.000 dB
+PASS  Pan +50: right against the law = 0.000 dB
+PASS  mono in, stereo out is a supported layout
+PASS    and is what is running
+PASS  mono to stereo: voice panned left is on the left, left over right = 81.152 dB
+PASS  mono to stereo: voice panned right is on the right, right over left = 76.983 dB
+PASS  mono to stereo: lead sits in the centre = 0.001 dB
+PASS  mono to stereo: both channels carry signal
+PASS  Lead Level 0 dB leaves the lead alone = 0.001 dB
+PASS  Lead Level -12 dB measures = -12.000 dB
+PASS  Lead Pan full left: right channel against left = -225.005 dB
+PASS  Harmony Level -9 dB on the voices measures = -9.000 dB
+PASS  lead delay equals the reported latency at 44.1, 48 and 96 kHz, every Input Type, bypassed or not
+PASS  latency at 48 kHz, default Alto/Tenor = 13.729 ms
+INFO  latency at 48 kHz, Input Type 0 = 9.021 ms
+INFO  latency at 48 kHz, Input Type 2 = 20.625 ms
+INFO  latency at 48 kHz, Input Type 3 = 20.625 ms
+PASS  changing Input Type reports the new latency = 990.000 
+PASS    and stays clean
+PASS  a voice with Consonants 0 starts with the lead's onset, difference = 2.396 ms
+PASS  a chord change reaches the output at the time played plus latency, difference = 4.271 ms
+INFO  clicks: steady reference, biggest step = 0.083 
+INFO  clicks: steady reference, biggest second difference = 0.011 
+PASS  no click: MIDI chord changes, Glide 0, biggest step against steady = 1.181 times
+PASS  no click: MIDI chord changes, Glide 0, second difference against steady = 1.133 times
+PASS  no click: MIDI chord changes, Glide 20, biggest step against steady = 1.186 times
+PASS  no click: MIDI chord changes, Glide 20, second difference against steady = 1.142 times
+PASS  no click: MIDI notes starting and stopping, biggest step against steady = 1.006 times
+PASS  no click: MIDI notes starting and stopping, second difference against steady = 1.026 times
+PASS  no click: Voices jumping between 1 and 4, biggest step against steady = 1.419 times
+PASS  no click: Voices jumping between 1 and 4, second difference against steady = 1.352 times
+PASS  no click: Interval jumping, biggest step against steady = 0.806 times
+PASS  no click: Interval jumping, second difference against steady = 0.801 times
+PASS  no click: Mode jumping, biggest step against steady = 0.717 times
+PASS  no click: Mode jumping, second difference against steady = 0.722 times
+PASS  no click: lead moving between notes, biggest step against steady = 1.792 times
+PASS  no click: lead moving between notes, second difference against steady = 2.082 times
+PASS  S through a voice at a fifth up, Drift 0: spectrum shape against the lead = 0.008 dB
+PASS  S through a voice at a fifth up, Drift 0: level at Consonants 35, -9.1 dB expected = -9.165 dB
+PASS  S through a voice at a fifth up, Drift 0: no buzz: repeat strength minus the lead's = -0.000 
+PASS  S through a voice at a fifth up, Drift 25: spectrum shape against the lead = 0.127 dB
+PASS  S through a voice at a fifth up, Drift 25: level at Consonants 35, -9.1 dB expected = -9.574 dB
+PASS  S through a voice at a fifth up, Drift 25: no buzz: repeat strength minus the lead's = 0.002 
+PASS  S through a voice at a fifth up, Drift 100: spectrum shape against the lead = 0.187 dB
+PASS  S through a voice at a fifth up, Drift 100: level at Consonants 35, -9.1 dB expected = -10.094 dB
+PASS  S through a voice at a fifth up, Drift 100: no buzz: repeat strength minus the lead's = 0.009 
+PASS  Consonants 0: noise left in the voices = -218.045 dB
+PASS  pure noise at Consonants 100 keeps its level = 0.004 dB
+PASS  pure noise stays noise, repeat strength = 0.026 
+PASS  real S and T sounds in speech_samantha: voice's repeat strength minus the lead's, in 16 hiss frames = -0.002 
+PASS  real S and T sounds in speech_kathy: voice's repeat strength minus the lead's, in 15 hiss frames = 0.000 
+PASS  real S and T sounds in speech_daniel: voice's repeat strength minus the lead's, in 18 hiss frames = 0.000 
+PASS  two voices on one interval, defaults, steady lead: correlation at the best lag, worst pair = 0.533 
+PASS    and at no lag, worst pair = 0.156 
+PASS    level rise from adding the second voice (6 dB is a copy, 3 dB unrelated), worst pair = 3.273 dB
+INFO  Drift, Humanize and Vibrato at 0, one interval: correlation at the best lag = 0.930 
+INFO  Drift, Humanize and Vibrato at 0, one interval: level rise = 2.940 dB
+PASS  a unison voice against the lead, defaults: correlation at the best lag (limit plus 0.15, the lead has no drift of its own) = 0.416 
+PASS    level rise from adding it to the lead = 2.946 dB
+INFO  say material, two voices on one interval: correlation at the best lag = 0.606 
+INFO  say material, two voices on one interval: level rise = 3.166 dB
+PASS  Drift 0: pitch stays on the target = 0.530 cents
+PASS  Drift 0: a unison voice sits on the lead = -0.813 ms
+PASS  Drift 100: pitch wander over 30 s reaches at least = 19.185 cents
+PASS  Drift 100: and no more than = 19.185 cents
+PASS  Drift 100: timing spread over 30 s, 2nd to 98th percentile, at least = 33.229 ms
+PASS  Drift 100: and no more than = 33.229 ms
+INFO  Drift 100: typical lag behind the lead = 18.562 ms
+PASS  Drift 50: pitch wander against Drift 100, half expected = 0.502 times
+PASS  Drift 50: timing spread against Drift 100, half expected = 0.512 times
+INFO  Drift 50: pitch wander = 9.627 cents
+INFO  Drift 50: timing spread = 17.021 ms
+INFO  Drift 25, the default: pitch wander = 4.885 cents
+INFO  Drift 25, the default: timing spread = 9.292 ms
+PASS  Drift: two voices wander independently, correlation of their pitch moves = -0.103 
+PASS  Vibrato 50 on voice 1: depth, 30 cents set = 29.922 cents
+PASS    rate, 5.00 Hz expected for this voice at Vibrato Rate 5 = 5.000 Hz
+PASS  Vibrato 100 on voice 1: depth, 60 cents set = 59.835 cents
+PASS    rate, 5.00 Hz expected for this voice at Vibrato Rate 5 = 5.000 Hz
+PASS  Vibrato 50 on voice 3: depth, 30 cents set = 29.958 cents
+PASS    rate, 5.20 Hz expected for this voice at Vibrato Rate 5 = 5.200 Hz
+PASS  Vibrato 100 on voice 3: depth, 60 cents set = 59.885 cents
+PASS    rate, 5.20 Hz expected for this voice at Vibrato Rate 5 = 5.200 Hz
+PASS  Humanize 0: the start of a note is on target = -0.013 cents
+PASS  Humanize 100: notes start with a scoop from below, typical at 12 ms = -47.029 cents
+PASS  Humanize 100: the note itself stays close, 90th percentile at 200 ms = 6.140 cents
+PASS  Glide 30 ms: time to 63% of a note change = 32.000 ms
+PASS  Glide 100 ms: time to 63% of a note change = 102.000 ms
+PASS  Throat 130: formants move, exact would be 0.769 = 0.773 times
+PASS    and the formant tool reads that known move within 5%
+PASS  Throat 75: formants move, exact would be 1.333 = 1.337 times
+PASS    and the formant tool reads that known move within 5%
+PASS  Follow Lead 0, lead 30 cents sharp: voice off the note by, 0 expected = -0.001 cents
+PASS  Follow Lead 100, lead 30 cents sharp: voice off the note by, 30 expected = 30.002 cents
+PASS  Follow Lead 50, lead 30 cents sharp: voice off the note by, 15 expected = 14.997 cents
+PASS  Chord Tones: A minor, lead C, Interval +3 sings E, off by = 0.011 cents
+PASS    and the reading says E4
+PASS  MIDI Channel: voice 2 sings what channel 2 plays, off by = 0.011 cents
+PASS  Reference A4 432: voice sits on the note at that tuning = 0.010 cents
+PASS  Input Type Low Male: an 80 Hz voice harmonised a fifth up = 0.005 cents
+PASS  Tracking 0 calls a noisy voice pitched this share of the time = 1.245 %
+PASS  Tracking 100 calls the same voice pitched this share of the time = 100.000 %
+PASS  Bypass is the delayed input, biggest difference = 0.000 
+PASS  Interval has a real value string: +4 st (3rd up)
+PASS  Interval down: -7 st (5th down)
+PASS  Interval reads its own value string back
+PASS  Pan has a real value string: 35 L
+PASS  Pan reads its own value string back
+PASS  Level at the bottom reads Off
+PASS  controls are found by name: Voice 3 Drift
+PASS  readings send nothing to the host while audio runs: parameter messages = 0.000 
+PASS  pitch history is filling for a later window = 200.000 
+PASS  Detected Pitch reads the lead = 220.000 Hz
+PASS  Lead Note reads A3
+PASS  Voice Note readings at defaults, A3 in C major: C4 and E4
+PASS  Voices Sounding reads 2
+PASS  presets = 10.000 
+PASS  presets leave Key, Scale, Input Type and Follow Key alone
+PASS  every preset makes sound at a sane level, with no NaN
+PASS  stereo in, lead only: a left only input stays left = -240.000 dB
+PASS  Follow Key with no file uses the manual key = 67.000 
+PASS  Follow Key ignores a file with broken JSON
+PASS  Follow Key ignores a file with empty file
+PASS  Follow Key ignores a file with cut off half way
+PASS  Follow Key ignores a file with unknown key name
+PASS  Follow Key ignores a file with unknown scale
+PASS  Follow Key ignores a file with nan confidence
+PASS  Follow Key ignores a file with stale, one hour old
+PASS  Follow Key ignores a file with from the future
+PASS  Follow Key ignores a file with low confidence
+PASS  Follow Key ignores a file with no time field
+PASS  Follow Key uses a good file: in E major a third above E is G# = 68.000 
+PASS  Active Key reads E Major
+PASS  after a good file, bad data leaves the last good key in place
+PASS  after a good file, the file going missing leaves the last good key in place
+PASS  Follow Key off goes back to the manual key
+PASS  the background thread picks up the file by itself within 0.7 s
+PASS  output does not depend on block size, and so not on a playhead: Scale Interval = 0.000 
+PASS  output does not depend on block size, and so not on a playhead: MIDI Chord = 0.000 
+PASS  prepareToPlay again resets all state = 0.000 
+PASS  fixed fifth at 44100 Hz, off by = 1.983 cents
+PASS  fixed fifth at 96000 Hz, off by = 1.968 cents
+PASS  state holds interval and voice count
+PASS  Scale Interval: third and fifth above, third below, 24 keys, every degree, 95th percentile, worst note = 2.508 cents
+PASS    of which the third above alone = 1.316 cents
+PASS  Fixed Interval: fifth up, fourth down, 24 keys, every degree, worst note = 1.783 cents
+PASS  MIDI Chord: triads on degrees 1, 4 and 5, 24 keys, each voice, worst note = 0.037 cents
+INFO  notes measured = 1056.000 
+PASS  Fixed Interval from 110 to 880 Hz, intervals up to an octave, worst = 0.237 cents
+PASS  Fixed Interval follows the lead's vibrato, in time with it, 95th percentile (twice the steady limit, the pitch is moving) = 1.450 cents
+PASS  formant positions at +/-7 semitones, output against input, worst move = 4.982 %
+PASS  formant positions on vowels and pitches not used for tuning, worst move = 3.082 %
+INFO    the same output against a real voice at the new pitch, worst = 4.563 %
+INFO    and the tool's floor: the input against that same real voice, worst = 3.317 %
+INFO    first formant peak flatter than a real voice at that pitch, worst case = 11.642 dB
+PASS  a voice at Level 0 dB against the lead, at +/-7 semitones, worst = 0.107 dB
+INFO    say material held_fred at 7 semitones: formant shape scale against the input, 400 to 3500 Hz = 0.967 times
+INFO    say material held_fred at -7 semitones: formant shape scale against the input, 400 to 3500 Hz = 0.979 times
+INFO    say material held_kathy at 7 semitones: formant shape scale against the input, 400 to 3500 Hz = 0.971 times
+INFO    say material held_kathy at -7 semitones: formant shape scale against the input, 400 to 3500 Hz = 0.983 times
+INFO    say material sung_goodnews at 7 semitones: formant shape scale against the input, 400 to 3500 Hz = 0.993 times
+INFO    say material sung_goodnews at -7 semitones: formant shape scale against the input, 400 to 3500 Hz = 0.995 times
+INFO    formant move at 3 semitones, a and e around 110 and 165 Hz = 1.717 %
+INFO    formant move at -3 semitones, a and e around 110 and 165 Hz = 0.928 %
+INFO    formant move at 5 semitones, a and e around 110 and 165 Hz = 2.109 %
+INFO    formant move at -5 semitones, a and e around 110 and 165 Hz = 1.323 %
+INFO    formant move at 12 semitones, a and e around 110 and 165 Hz = 5.189 %
+INFO    formant move at -12 semitones, a and e around 110 and 165 Hz = 3.275 %
+INFO  speech_samantha: median distance from lead plus a fifth = 9.777 cents
+INFO  speech_daniel: median distance from lead plus a fifth = 16.488 cents
+INFO  speech_kathy: median distance from lead plus a fifth = 6.268 cents
+INFO  sung_goodnews: median distance from lead plus a fifth = 1.330 cents
+INFO  held_fred: median distance from lead plus a fifth = 12.664 cents
+INFO  held_kathy: median distance from lead plus a fifth = 6.363 cents
+PASS  real speech and say singing: fixed fifth, median distance from lead plus the interval, worst file = 16.488 cents
+PASS  real material: biggest sample step in the voice against the input, worst file = 0.869 times
+PASS  real material: lead with two voices against the lead alone, 99th percentile of 20 ms frames = 5.087 dB
+PASS  CPU on one core, 48 kHz stereo, 4 voices, Wide Range, voice at 180 Hz with vibrato (machine busy with other builds) = 1.041 %
+RESULT PASS  0 failures

@@ -25,6 +25,23 @@ Audio Units > Luke Garito > Smooth Duo. AU code: `aufx SDuo Luke`. Works mono to
 | Extra Delay | 0 to 100 ms | Adds a fixed delay to every copy. Turn it up for a slapback. Moving it bends the pitch for a moment, like moving a tape head. |
 | Bypass | on or off | Fades to the exact dry signal in 20 ms. |
 
+## The window
+
+A stage seen from straight above, with the audience at the bottom. The title reads Duo, and the build name stays Smooth Duo until the rename.
+
+- **Left to right** is where each singer is panned. **Further back** is how far behind the lead a double is singing, read live from the sound. The rows on the floor are marked in ms and squeezed, so a few ms near the lead reads clearly and a 100 ms slapback still fits.
+- **Lanes:** each double has a tape mark where its path is centred, and a lane showing how far it can drift. Tightness makes the lane longer and moves it back. A double wanders inside its lane while you sing.
+- **Turning shoulders:** a moving delay is a pitch change, so each double's shoulders turn with its pitch drift, worked out from how fast its delay is moving.
+- **Pools of light:** as big as the input times that singer's level. A double with no partner across the centre has its light stretched to both sides by Width, because that is what Width does to it.
+- **Size:** Timbre Variation makes a higher throat a smaller singer and a lower throat a bigger one.
+- **Drag a singer:** a double sideways is Width, a double back or forward is Tightness, whichever way the drag starts. The lead sideways is Lead Pan. Double-click resets.
+- **Around the stage:** Width underneath, with one handle under each double. Tightness up the side. Doubles and Bypass above. Level faders on the right, with the note being followed and each double's live delay under them.
+- **Advanced:** Timing, Pitch, Vibrato, Timbre, Vocal Range, Lead Pan, Doubles Pan, Extra Delay.
+- Everything is a real AU parameter with its old ID, name and range. The window adds only its size and whether Advanced is open to a session.
+- With nothing playing, doubles walk back to their marks and the window stops drawing.
+
+Pictures are in `docs/window/`, made by `build/RenderWindow_artefacts/Release/RenderWindow`. Inter is under the SIL OFL, see `assets/fonts/OFL.txt`.
+
 ## Presets
 
 - **Natural Pair**: the default. 2 doubles, one on each side.
@@ -63,9 +80,11 @@ All in `tests/results.txt`, from `tests/PluginTest.cpp`, on synthetic signals. L
 - Sweep rate: the largest spectral line holds a small share of the path's energy, against 96 percent for a plain chorus sweep measured the same way.
 - Timing Amount, Pitch Amount, Extra Delay, both pans, Vibrato Variation, Timbre Variation and Vocal Range each have their own measured checks.
 - Latency: 0 samples at 44.1, 48, 88.2 and 96 kHz, bypassed or not.
+- Null test: every output sample's bits, on real speech and sung-style material from macOS `say`, hash the same as the 0.2.0 source for all 8 presets, as first opened, mono layouts, 44.1 and 96 kHz, and with every control moving. Both with no window and with the window open and drawing. See `tests/NullTest.h` and `tests/WindowTests.h`.
+- Window CPU: 2.4% to 4.4% of one core with Loose Gang playing, nothing drawn when silent. See `docs/window-cpu.md`.
+- Window: every parameter has a control, automation moves each one, each drag is one gesture, double-click resets, typing works. Singers stay on their real delay and inside their lanes. 30 opens and closes with audio running.
 
 ## Not done
 
 - Formant movement is measured on noise and a sawtooth with a formant shape, not on a singer.
 - The pitch follower for vibrato is measured on clean notes. Breathy or noisy singing may follow less well.
-- A custom window comes in a later phase. For it, the processor already offers each double's current delay and the pitch being followed, safe to read from any thread.

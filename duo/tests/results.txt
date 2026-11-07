@@ -436,5 +436,206 @@ PASS  block size 64 gives the same output as 512
 PASS  block size 4096 gives the same output as 512
 PASS  a playhead changes nothing
 PASS  prepare called again restarts cleanly, same bounce
-PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.017 
+PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.023 
+PASS  the sung recording loads
+PASS  null test: bit for bit the same as 0.2.0, no window, as first opened
+PASS  null test: bit for bit the same with the window open and drawing, as first opened
+PASS  null test: bit for bit the same as 0.2.0, no window, Natural Pair
+PASS  null test: bit for bit the same with the window open and drawing, Natural Pair
+PASS  null test: bit for bit the same as 0.2.0, no window, Tight Double
+PASS  null test: bit for bit the same with the window open and drawing, Tight Double
+PASS  null test: bit for bit the same as 0.2.0, no window, Quiet Thickener
+PASS  null test: bit for bit the same with the window open and drawing, Quiet Thickener
+PASS  null test: bit for bit the same as 0.2.0, no window, Wide Stack
+PASS  null test: bit for bit the same with the window open and drawing, Wide Stack
+PASS  null test: bit for bit the same as 0.2.0, no window, Loose Gang
+PASS  null test: bit for bit the same with the window open and drawing, Loose Gang
+PASS  null test: bit for bit the same as 0.2.0, no window, Doubles Only Wide
+PASS  null test: bit for bit the same with the window open and drawing, Doubles Only Wide
+PASS  null test: bit for bit the same as 0.2.0, no window, Two Singers
+PASS  null test: bit for bit the same with the window open and drawing, Two Singers
+PASS  null test: bit for bit the same as 0.2.0, no window, Slapback Double
+PASS  null test: bit for bit the same with the window open and drawing, Slapback Double
+PASS  null test: bit for bit the same as 0.2.0, no window, mono in, stereo out
+PASS  null test: bit for bit the same with the window open and drawing, mono in, stereo out
+PASS  null test: bit for bit the same as 0.2.0, no window, mono in, mono out
+PASS  null test: bit for bit the same with the window open and drawing, mono in, mono out
+PASS  null test: bit for bit the same as 0.2.0, no window, 44.1 kHz, small blocks
+PASS  null test: bit for bit the same with the window open and drawing, 44.1 kHz, small blocks
+PASS  null test: bit for bit the same as 0.2.0, no window, 96 kHz, big blocks
+PASS  null test: bit for bit the same with the window open and drawing, 96 kHz, big blocks
+PASS  null test: bit for bit the same as 0.2.0, no window, every control moving
+PASS  null test: bit for bit the same with the window open and drawing, every control moving
+PASS  the processor opens the Duo window
+PASS  on screen: Doubles
+PASS  on screen: Tightness
+PASS  on screen: Width
+PASS  on screen: Lead Level
+PASS  on screen: Double 1 Level
+PASS  on screen: Double 2 Level
+PASS  on screen: Double 3 Level
+PASS  on screen: Timing Amount
+PASS  on screen: Pitch Amount
+PASS  on screen: Vibrato Variation
+PASS  on screen: Timbre Variation
+PASS  on screen: Lead Pan
+PASS  on screen: Doubles Pan
+PASS  on screen: Extra Delay
+PASS  on screen: Vocal Range
+PASS  on screen: Bypass
+PASS  control is a real parameter: bypass
+PASS  control is a real parameter: double1
+PASS  control is a real parameter: double2
+PASS  control is a real parameter: double3
+PASS  control is a real parameter: doubles
+PASS  control is a real parameter: doublespan
+PASS  control is a real parameter: extradelay
+PASS  control is a real parameter: lead
+PASS  control is a real parameter: leadpan
+PASS  control is a real parameter: pitchamount
+PASS  control is a real parameter: range
+PASS  control is a real parameter: tightness
+PASS  control is a real parameter: timbre
+PASS  control is a real parameter: timingamount
+PASS  control is a real parameter: vibrato
+PASS  control is a real parameter: width
+PASS  the build name is unchanged until the rename
+PASS  found control width
+PASS  automation moves the control: width
+PASS  one begin and one end gesture on a drag: width
+PASS  a drag moves the parameter: width
+PASS  double-click resets: width
+PASS  found control tightness
+PASS  automation moves the control: tightness
+PASS  one begin and one end gesture on a drag: tightness
+PASS  a drag moves the parameter: tightness
+PASS  double-click resets: tightness
+PASS  found control lead
+PASS  automation moves the control: lead
+PASS  one begin and one end gesture on a drag: lead
+PASS  a drag moves the parameter: lead
+PASS  double-click resets: lead
+PASS  found control double1
+PASS  automation moves the control: double1
+PASS  one begin and one end gesture on a drag: double1
+PASS  a drag moves the parameter: double1
+PASS  double-click resets: double1
+PASS  found control double2
+PASS  automation moves the control: double2
+PASS  one begin and one end gesture on a drag: double2
+PASS  a drag moves the parameter: double2
+PASS  double-click resets: double2
+PASS  found control double3
+PASS  automation moves the control: double3
+PASS  one begin and one end gesture on a drag: double3
+PASS  a drag moves the parameter: double3
+PASS  double-click resets: double3
+PASS  found control timingamount
+PASS  automation moves the control: timingamount
+PASS  one begin and one end gesture on a drag: timingamount
+PASS  a drag moves the parameter: timingamount
+PASS  double-click resets: timingamount
+PASS  found control pitchamount
+PASS  automation moves the control: pitchamount
+PASS  one begin and one end gesture on a drag: pitchamount
+PASS  a drag moves the parameter: pitchamount
+PASS  double-click resets: pitchamount
+PASS  found control vibrato
+PASS  automation moves the control: vibrato
+PASS  one begin and one end gesture on a drag: vibrato
+PASS  a drag moves the parameter: vibrato
+PASS  double-click resets: vibrato
+PASS  found control timbre
+PASS  automation moves the control: timbre
+PASS  one begin and one end gesture on a drag: timbre
+PASS  a drag moves the parameter: timbre
+PASS  double-click resets: timbre
+PASS  found control leadpan
+PASS  automation moves the control: leadpan
+PASS  one begin and one end gesture on a drag: leadpan
+PASS  a drag moves the parameter: leadpan
+PASS  double-click resets: leadpan
+PASS  found control doublespan
+PASS  automation moves the control: doublespan
+PASS  one begin and one end gesture on a drag: doublespan
+PASS  a drag moves the parameter: doublespan
+PASS  double-click resets: doublespan
+PASS  found control extradelay
+PASS  automation moves the control: extradelay
+PASS  one begin and one end gesture on a drag: extradelay
+PASS  a drag moves the parameter: extradelay
+PASS  double-click resets: extradelay
+PASS  typing a level = -12.500 dB
+PASS  typing off
+PASS  typing 35 L, and it reads back the same
+PASS  typing nonsense changes nothing
+PASS  typing past the end stops at the end
+PASS  the Doubles buttons set Doubles
+PASS  the Bypass button sets Bypass
+PASS  automation moves Vocal Range
+PASS  the pair stand at Width 0, mirrored
+PASS  the pair stand at Width 25, mirrored
+PASS  the pair stand at Width 70, mirrored
+PASS  the pair stand at Width 100, mirrored
+PASS  a click under hard right on the stage is Width 100 = 100.000 %
+PASS  the lane grows with Tightness at 0 = 8.779 px
+PASS  the mark moves back with Tightness at 0
+PASS  the lane grows with Tightness at 30 = 25.311 px
+PASS  the mark moves back with Tightness at 30
+PASS  the lane grows with Tightness at 60 = 37.614 px
+PASS  the mark moves back with Tightness at 60
+PASS  the lane grows with Tightness at 100 = 49.803 px
+PASS  the mark moves back with Tightness at 100
+PASS  the furthest setting is still on the stage = 68.525 px from the top
+PASS  the lead stands at Lead Pan
+PASS  Doubles Pan moves the pair together
+PASS  one double on stage
+PASS  three doubles on stage
+PASS  live while the voice plays, Natural Pair
+PASS  the singer stays on its real delay, worst, Natural Pair = 0.498 px
+PASS  share of time a singer is outside its lane, Natural Pair = 0.000 %
+PASS  the readout shows the delay: 22 ms
+PASS  live while the voice plays, Wide Stack
+PASS  the singer stays on its real delay, worst, Wide Stack = 0.669 px
+PASS  share of time a singer is outside its lane, Wide Stack = 0.000 %
+PASS  the readout shows the delay: 23 ms
+PASS  live while the voice plays, Loose Gang
+PASS  the singer stays on its real delay, worst, Loose Gang = 1.048 px
+PASS  share of time a singer is outside its lane, Loose Gang = 0.000 %
+PASS  the readout shows the delay: 26 ms
+PASS  live while the voice plays, Slapback Double
+PASS  the singer stays on its real delay, worst, Slapback Double = 0.075 px
+PASS  share of time a singer is outside its lane, Slapback Double = 0.000 %
+PASS  the readout shows the delay: 91 ms
+PASS  moving while the voice plays
+PASS  nothing moving after silence, with audio still running
+PASS  a double is back on its mark in silence
+PASS  dragging a double outward widens = 84.300 %
+PASS  a sideways drag leaves Tightness alone
+PASS  that drag is one Width gesture and nothing else
+PASS  dragging a double back loosens = 58.900 %
+PASS  a drag back leaves Width alone
+PASS  that drag is one Tightness gesture
+PASS  dragging the lead moves Lead Pan = -21.500 %
+PASS  that drag is one Lead Pan gesture
+PASS  double-click on the lead centres it = 0.000 %
+PASS  double-click on a double resets Width and Tightness
+PASS  dragging empty floor does nothing
+PASS  the hint names the singer under the mouse
+PASS  mono layout accepted
+PASS  on a mono track everyone stands in the middle
+PASS  the window opens at the saved size
+PASS  opening Advanced is remembered
+PASS  Advanced is open
+PASS  resizing is remembered
+PASS  window size and Advanced come back with the session
+PASS  they stay out of the sound's value tree
+PASS  a 0.2.0 session opens with the default window
+PASS  a damaged size goes back in range
+PASS  30 opens and closes with audio running
+PASS  30 opens and closes with no audio
+PASS  audio still runs after the window closes
+PASS  no allocation with the new reading
+PASS  the input peak reading
+PASS  reading it clears it
 RESULT PASS  0 failures

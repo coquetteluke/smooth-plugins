@@ -14,7 +14,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor (*this); }
+    juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Smooth Duo"; }
@@ -34,9 +34,17 @@ public:
 
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
 
-    // For a later window: each double's delay behind the lead in ms, and the pitch being followed in Hz. Never blocks audio.
+    // For the window: each double's delay behind the lead in ms, and the pitch being followed in Hz. Never blocks audio.
     float getDelayMs (int doubleIndex) const { return engine.getDelayMs (doubleIndex); }
     float getPitchHz() const { return engine.getPitchHz(); }
+    // The loudest input sample since the window last asked. Only ever read, never fed back into the sound.
+    float takeInputPeak() noexcept { return inputPeak.exchange (0.0f, std::memory_order_relaxed); }
+
+    // Window width in points, the height follows from the fixed shape. Saved with the session, and not a sound setting.
+    static constexpr int defaultWindowWidth = 1180, minWindowWidth = 880, maxWindowWidth = 1900;
+    std::atomic<int> windowWidth { defaultWindowWidth };
+    // Whether the window's Advanced section is open. Saved with the session, and not a sound setting.
+    std::atomic<bool> advancedOpen { false };
 
     juce::AudioProcessorValueTreeState apvts;
 
@@ -50,6 +58,7 @@ private:
     std::atomic<float>* timingAmount = nullptr, *pitchAmount = nullptr, *vibrato = nullptr, *timbre = nullptr, *leadPan = nullptr, *doublesPan = nullptr, *extraDelay = nullptr, *range = nullptr;
     juce::AudioParameterBool* bypass = nullptr;
     DuoEngine engine;
+    std::atomic<float> inputPeak { 0.0f };
     int currentProgram = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)

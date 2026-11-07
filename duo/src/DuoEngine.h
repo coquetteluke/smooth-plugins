@@ -193,9 +193,31 @@ public:
         return juce::Decibels::decibelsToGain (db, offDb - 1.0f);
     }
 
-    // For a later window to draw, safe from any thread: each double's delay behind the lead, and the pitch followed (0 when none).
+    // For the window to draw, safe from any thread: each double's delay behind the lead, and the pitch followed (0 when none).
     float getDelayMs (int v) const { return readDelayMs[(size_t) v].load (std::memory_order_relaxed); }
     float getPitchHz() const { return readPitchHz.load (std::memory_order_relaxed); }
+
+    // Where each double sits at full Width, -1 left to +1 right. A double with no partner across the centre stays
+    // there and is split in time instead, so the stereo picture stays balanced.
+    static constexpr float panAtFullWidth[maxDoubles][maxDoubles] = { { 0.0f, 0.0f, 0.0f }, { -1.0f, 1.0f, 0.0f }, { -1.0f, 1.0f, 0.0f } };
+    static constexpr float splitAtFullWidth[maxDoubles][maxDoubles] = { { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } };
+
+    // The window's picture of the settings, from the same numbers the sound uses. None of these are called from the audio path.
+    // How far behind the lead a double's path is centred, in ms.
+    static double restDelayMs (int v, double loosePct, double timingPct, double pitchPct, double extraMs)
+    {
+        const double l = juce::jlimit (0.0, 1.0, loosePct * 0.01), t = juce::jlimit (0.0, 2.0, timingPct * 0.01), q = juce::jlimit (0.0, 2.0, pitchPct * 0.01);
+        const double room = std::max (0.0, t - 1.0) * timingFullMs (l) + std::max (0.0, q - 1.0) * pitchFullMs (l);
+        return (double) baseTightMs[(size_t) v] + (double) (baseLooseMs[(size_t) v] - baseTightMs[(size_t) v]) * l + room + juce::jlimit (0.0, maxExtraMs, extraMs);
+    }
+
+    // How far a double's path wanders either side of that, in ms.
+    static double driftRangeMs (double loosePct, double timingPct, double pitchPct, double vibratoPct)
+    {
+        const double l = juce::jlimit (0.0, 1.0, loosePct * 0.01);
+        return timingFullMs (l) * juce::jlimit (0.0, 2.0, timingPct * 0.01) + pitchFullMs (l) * juce::jlimit (0.0, 2.0, pitchPct * 0.01)
+             + maxBendMs * juce::jlimit (0.0, 1.0, vibratoPct * 0.01);
+    }
 
 private:
     // A smooth random curve between -1 and +1: a uniform cubic B-spline through random points. The weights are positive
@@ -248,6 +270,8 @@ private:
     static constexpr std::array<float, maxDoubles> baseTightMs { 21.0f, 26.0f, 33.0f }, baseLooseMs { 36.0f, 44.0f, 56.0f };
     // Size of the slow timing curve and the quicker pitch curve, tight to loose. See README for what these measure as.
     static constexpr double minTimingMs = 1.5, maxTimingMs = 14.0, minPitchLayerMs = 0.35, maxPitchLayerMs = 2.5;
+    static double timingFullMs (double l) { return minTimingMs + (maxTimingMs - minTimingMs) * l; }
+    static double pitchFullMs (double l)  { return minPitchLayerMs + (maxPitchLayerMs - minPitchLayerMs) * l; }
     // A split double's two side heads sit this far either side of its centre head.
     static constexpr double splitMs = 3.0, splitDriftMs = 0.8;
     static constexpr double maxExtraMs = 100.0, maxBendMs = 3.0;
@@ -629,11 +653,6 @@ private:
         const double doublesPan = stereo ? juce::jlimit (-1.0, 1.0, (double) p.doublesPanPct * 0.01) : 0.0;
         const double leadPan = stereo ? juce::jlimit (-1.0, 1.0, (double) p.leadPanPct * 0.01) : 0.0;
 
-        // Where each double sits at full Width, -1 left to +1 right. A double with no partner across the centre stays
-        // there and is split in time instead, so the stereo picture stays balanced.
-        static constexpr float pans[maxDoubles][maxDoubles] = { { 0.0f, 0.0f, 0.0f }, { -1.0f, 1.0f, 0.0f }, { -1.0f, 1.0f, 0.0f } };
-        static constexpr float splits[maxDoubles][maxDoubles] = { { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } };
-
         const auto sides = [] (double pan, float& l, float& r, float g)
         {
             // Equal power, and exactly 1 on both sides in the centre, so centred and Width 0 leave left and right identical.
@@ -654,9 +673,9 @@ private:
         for (size_t v = 0; v < maxDoubles; ++v)
         {
             const float g = (off || (int) v >= n) ? 0.0f : levelToGain (p.levelDb[v]);
-            sides ((double) pans[n - 1][v] * width + doublesPan, gainLTarget[v], gainRTarget[v], g);
+            sides ((double) panAtFullWidth[n - 1][v] * width + doublesPan, gainLTarget[v], gainRTarget[v], g);
             // Left and right differ only through the side heads, so correlation falls smoothly as the blend moves to them.
-            const double phi = width * (double) splits[n - 1][v] * juce::MathConstants<double>::halfPi;
+            const double phi = width * (double) splitAtFullWidth[n - 1][v] * juce::MathConstants<double>::halfPi;
             const double cw = std::cos (phi), sw = std::sin (phi);
             centreTarget[v] = cw < 1.0e-9 ? 0.0f : (float) cw;
             sideTarget[v] = sw < 1.0e-9 ? 0.0f : (float) sw;

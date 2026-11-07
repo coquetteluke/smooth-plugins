@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstring>
 #include "NullTest.h"
+#include <thread>
 
 using namespace testkit;
 
@@ -1397,6 +1398,8 @@ static void testCpu()
     check (took / 10.0 <= 0.1, "worst case at 96 kHz, 3 doubles with split heads, share of one core", took / 10.0);
 }
 
+#include "WindowTests.h"
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -1428,5 +1431,6 @@ int main (int argc, char** argv)
     testSampleRates();
     testRepeatable();
     testCpu();
+    testWindow();
     return finish();
 }

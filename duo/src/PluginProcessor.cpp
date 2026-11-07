@@ -1,8 +1,11 @@
 #include "PluginProcessor.h"
 #include "StateGuard.h"
+#include "editor/DuoEditor.h"
 
 namespace
 {
+    const juce::Identifier windowWidthAttribute { "windowWidth" }, advancedOpenAttribute { "advancedOpen" };
+
     struct Preset
     {
         const char* name;
@@ -137,6 +140,15 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
     const int numOut = juce::jmin (getMainBusNumOutputChannels(), buffer.getNumChannels());
     if (numIn < 1 || numOut < 1)
         return;
+
+    // For the window to show who is singing. It reads the input and writes nothing back.
+    float peak = inputPeak.load (std::memory_order_relaxed);
+    const float before = peak;
+    for (int ch = 0; ch < numIn; ++ch)
+        peak = juce::jmax (peak, buffer.getMagnitude (ch, 0, buffer.getNumSamples()));
+    if (peak > before)
+        inputPeak.store (peak, std::memory_order_relaxed);
+
     engine.process (buffer.getArrayOfWritePointers(), numIn, numOut, buffer.getNumSamples(), readParams(), forceBypass);
 }
 
@@ -184,17 +196,31 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("extradelay", pr.extra);
 }
 
+juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new DuoEditor (*this); }
+
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     if (auto xml = apvts.copyState().createXml())
+    {
+        xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
+        xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, dest);
+    }
 }
 
 void PluginProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
         if (xml->hasTagName (apvts.state.getType()))
+        {
+            // Older sessions have no window state. A damaged size goes back in range. Neither is a parameter, so they stay out of the value tree.
+            if (xml->hasAttribute (windowWidthAttribute))
+                windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
+            advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            xml->removeAttribute (windowWidthAttribute);
+            xml->removeAttribute (advancedOpenAttribute);
             applySafeState (apvts, *xml);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PluginProcessor(); }

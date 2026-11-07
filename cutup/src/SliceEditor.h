@@ -82,9 +82,9 @@ private:
     juce::Label statusLabel, selectedLabel, helpLabel;
     std::unique_ptr<juce::FileChooser> chooser;
 
-    Choice sliceMode, grid, playMode, keyMode;
-    Knob sensitivity, minSlice, polyphony, transpose, rootNote, velSens, penvAmount, penvTime, bendRange, output;
-    Knob slotPitch, slotAttack, slotRelease, slotLevel;
+    Choice sliceMode, gridType, grid, gridNote, playMode, keyMode;
+    Knob sensitivity, minSlice, sliceStart, gridTempo, polyphony, transpose, rootNote, velSens, penvAmount, penvTime, bendRange, output, loopFade, decay, sustain;
+    Knob slotPitch, slotPan, slotAttack, slotRelease, slotLevel;
     juce::ToggleButton slotReverse { "Reverse" };
     std::unique_ptr<ButtonAttachment> slotReverseAttachment;
 

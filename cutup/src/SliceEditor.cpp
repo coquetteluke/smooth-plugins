@@ -159,7 +159,7 @@ void SliceEditor::setupKnob (Knob& k, const char* text, const char* paramId)
     k.label.setFont (juce::FontOptions (12.0f));
     k.label.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (k.label);
-    k.slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 62, 18);
+    k.slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 58, 18);
     addAndMakeVisible (k.slider);
     if (paramId != nullptr)
         k.attachment = std::make_unique<SliderAttachment> (processor.apvts, paramId, k.slider);
@@ -195,11 +195,15 @@ SliceEditor::SliceEditor (PluginProcessor& p)
     addAndMakeVisible (helpLabel);
 
     setupChoice (sliceMode, "Slice Mode", "slice_mode");
-    setupChoice (grid, "Grid", "grid");
+    setupChoice (gridType, "Grid Type", "grid_type");
+    setupChoice (grid, "Grid (Equal Parts)", "grid");
+    setupChoice (gridNote, "Grid Note", "grid_note");
     setupChoice (playMode, "Play Mode", "play_mode");
     setupChoice (keyMode, "Key Mode", "key_mode");
     setupKnob (sensitivity, "Sensitivity", "sensitivity");
     setupKnob (minSlice, "Min Slice", "min_slice");
+    setupKnob (sliceStart, "Slice Start", "slice_start");
+    setupKnob (gridTempo, "Grid Tempo", "grid_tempo");
     setupKnob (polyphony, "Polyphony", "polyphony");
     setupKnob (transpose, "Transpose", "transpose");
     setupKnob (rootNote, "Root Note", "root_note");
@@ -208,16 +212,20 @@ SliceEditor::SliceEditor (PluginProcessor& p)
     setupKnob (penvTime, "Pitch Env Time", "penv_time");
     setupKnob (bendRange, "Bend Range", "bend_range");
     setupKnob (output, "Output", "output");
+    setupKnob (loopFade, "Loop Crossfade", "loop_fade");
+    setupKnob (decay, "Decay", "decay");
+    setupKnob (sustain, "Sustain", "sustain");
 
     setupKnob (slotPitch, "Pitch", nullptr);
+    setupKnob (slotPan, "Pan", nullptr);
     setupKnob (slotAttack, "Attack", nullptr);
     setupKnob (slotRelease, "Release", nullptr);
     setupKnob (slotLevel, "Level", nullptr);
     addAndMakeVisible (slotReverse);
 
     setResizable (true, true);
-    setResizeLimits (820, 520, 2000, 1400);
-    setSize (980, 600);
+    setResizeLimits (880, 620, 2200, 1500);
+    setSize (1040, 700);
 
     shownMode = (int) processor.apvts.getRawParameterValue ("slice_mode")->load();
     refresh();
@@ -249,33 +257,47 @@ void SliceEditor::resized()
     const int unit = (row.getWidth() - 30) / 4;
     placeChoice (sliceMode, column (row, unit));
     placeKnob (sensitivity, column (row, unit));
-    placeChoice (grid, column (row, unit));
     placeKnob (minSlice, column (row, unit));
+    placeKnob (sliceStart, column (row, unit));
+    area.removeFromTop (4);
+
+    row = area.removeFromTop (42);
+    placeChoice (gridType, column (row, unit));
+    placeChoice (grid, column (row, unit));
+    placeChoice (gridNote, column (row, unit));
+    placeKnob (gridTempo, column (row, unit));
     area.removeFromTop (6);
 
-    auto bottom = area.removeFromBottom (42);
-    placeKnob (bendRange, column (bottom, unit));
-    placeKnob (penvAmount, column (bottom, unit));
-    placeKnob (penvTime, column (bottom, unit));
-    placeKnob (output, column (bottom, unit));
-    area.removeFromBottom (6);
+    row = area.removeFromBottom (42);
+    placeKnob (bendRange, column (row, unit));
+    placeKnob (penvAmount, column (row, unit));
+    placeKnob (penvTime, column (row, unit));
+    placeKnob (output, column (row, unit));
+    area.removeFromBottom (4);
 
-    auto bottom2 = area.removeFromBottom (42);
-    placeChoice (playMode, column (bottom2, unit));
-    placeChoice (keyMode, column (bottom2, unit));
-    placeKnob (polyphony, column (bottom2, unit));
-    placeKnob (transpose, column (bottom2, unit));
-    area.removeFromBottom (6);
+    row = area.removeFromBottom (42);
+    placeKnob (decay, column (row, unit));
+    placeKnob (sustain, column (row, unit));
+    placeKnob (loopFade, column (row, unit));
+    placeKnob (velSens, column (row, unit));
+    area.removeFromBottom (4);
 
-    auto bottom3 = area.removeFromBottom (42);
-    placeKnob (rootNote, column (bottom3, unit));
-    placeKnob (velSens, column (bottom3, unit));
-    area.removeFromBottom (6);
+    row = area.removeFromBottom (42);
+    placeChoice (playMode, column (row, unit));
+    placeChoice (keyMode, column (row, unit));
+    placeKnob (polyphony, column (row, unit));
+    placeKnob (transpose, column (row, unit));
+    area.removeFromBottom (4);
+
+    row = area.removeFromBottom (42);
+    placeKnob (rootNote, column (row, unit));
+    area.removeFromBottom (4);
 
     auto slot = area.removeFromBottom (42);
-    const int slotUnit = (slot.getWidth() - 50) / 6;
+    const int slotUnit = (slot.getWidth() - 60) / 7;
     selectedLabel.setBounds (column (slot, slotUnit));
     placeKnob (slotPitch, column (slot, slotUnit));
+    placeKnob (slotPan, column (slot, slotUnit));
     placeKnob (slotAttack, column (slot, slotUnit));
     placeKnob (slotRelease, column (slot, slotUnit));
     placeKnob (slotLevel, column (slot, slotUnit));
@@ -293,11 +315,13 @@ void SliceEditor::bindSelected (int index)
     boundSlot = index;
     auto& state = processor.apvts;
     slotPitch.attachment.reset();
+    slotPan.attachment.reset();
     slotAttack.attachment.reset();
     slotRelease.attachment.reset();
     slotLevel.attachment.reset();
     slotReverseAttachment.reset();
     slotPitch.attachment = std::make_unique<SliderAttachment> (state, PluginProcessor::slotId (index, "pitch"), slotPitch.slider);
+    slotPan.attachment = std::make_unique<SliderAttachment> (state, PluginProcessor::slotId (index, "pan"), slotPan.slider);
     slotAttack.attachment = std::make_unique<SliderAttachment> (state, PluginProcessor::slotId (index, "attack"), slotAttack.slider);
     slotRelease.attachment = std::make_unique<SliderAttachment> (state, PluginProcessor::slotId (index, "release"), slotRelease.slider);
     slotLevel.attachment = std::make_unique<SliderAttachment> (state, PluginProcessor::slotId (index, "level"), slotLevel.slider);
@@ -306,7 +330,6 @@ void SliceEditor::bindSelected (int index)
 
 void SliceEditor::refresh()
 {
-    const auto table = processor.getShownTable();
     const int mode = (int) processor.apvts.getRawParameterValue ("slice_mode")->load();
 
     // Picking Manual before any edit starts from the markers that were on show.

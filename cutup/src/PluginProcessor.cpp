@@ -17,9 +17,12 @@ namespace
     constexpr int kTailHeader = 16;
     constexpr float kMaxSampleValue = 16.0f;
     constexpr const char* kSampleTag = "SMOOTH_SLICE";
-    constexpr double kAttackFloorMs = 1.0, kReleaseFloorMs = 3.0, kStealMs = 5.0, kLoopFadeMs = 5.0;
+    constexpr double kAttackFloorMs = 1.0, kReleaseFloorMs = 3.0, kStealMs = 5.0;
     constexpr int kControlSamples = 16;
     constexpr double kMaxPitchSemis = 48.0;
+
+    // 1/2, 1/4, 1/8, 1/16, 1/32, then triplets, then dotted: length in quarter notes.
+    constexpr double gridNoteBeats[] = { 2.0, 1.0, 0.5, 0.25, 0.125, 2.0 / 3.0, 1.0 / 3.0, 1.0 / 6.0, 1.5, 0.75, 0.375 };
 
     struct Preset
     {
@@ -28,24 +31,34 @@ namespace
         int playMode, keyMode, polyphony, transpose;
         float attack, release; bool reverse;
         float penvAmount, penvTime;
+        float decay, sustain, loopFade;
+        int gridType, gridNote;
     };
 
     using P = PluginProcessor;
     constexpr Preset presets[] = {
-        { "Chop Gate",            P::modeTransient, 4, 50.0f,  50.0f, P::playGate,    P::keySlices,    8,   0,   1.0f,  30.0f, false,   0.0f, 100.0f },
-        { "One Shot Stabs",       P::modeTransient, 4, 60.0f,  40.0f, P::playOneShot, P::keySlices,   16,   0,   1.0f,  15.0f, false,   0.0f, 100.0f },
-        { "Mono Cut",             P::modeTransient, 4, 50.0f,  50.0f, P::playGate,    P::keySlices,    1,   0,   1.0f,  10.0f, false,   0.0f, 100.0f },
-        { "Stutter Loop",         P::modeGrid,      6, 50.0f,  50.0f, P::playLoop,    P::keySlices,    1,   0,   1.0f,  15.0f, false,   0.0f, 100.0f },
-        { "Reverse Swell",        P::modeTransient, 4, 40.0f,  80.0f, P::playOneShot, P::keySlices,    4,   0, 120.0f,  10.0f, true,    0.0f, 100.0f },
-        { "Keys From One Slice",  P::modeTransient, 4, 50.0f,  50.0f, P::playGate,    P::keyChromatic, 8,   0,  20.0f, 300.0f, false,   0.0f, 100.0f },
-        { "Pitch Drop Chops",     P::modeTransient, 4, 50.0f,  50.0f, P::playOneShot, P::keySlices,    8,   0,   1.0f,  30.0f, false,  12.0f, 120.0f },
-        { "Octave Down Run",      P::modeTransient, 4, 35.0f,  80.0f, P::playToEnd,   P::keySlices,    2, -12,   5.0f, 120.0f, false,   0.0f, 100.0f },
-        { "Fine Transients",      P::modeTransient, 4, 85.0f,  25.0f, P::playOneShot, P::keySlices,   16,   0,   1.0f,  10.0f, false,   0.0f, 100.0f },
-        { "Even Eighths",         P::modeGrid,      4, 50.0f,  50.0f, P::playOneShot, P::keySlices,    8,   0,   1.0f,  15.0f, false,   0.0f, 100.0f },
+        { "Chop Gate",            P::modeTransient, 4, 50.0f,  50.0f, P::playGate,      P::keySlices,    8,   0,   1.0f,  30.0f, false,   0.0f, 100.0f,  100.0f, 100.0f,  5.0f, P::gridEqual, 2 },
+        { "One Shot Stabs",       P::modeTransient, 4, 60.0f,  40.0f, P::playOneShot,   P::keySlices,   16,   0,   1.0f,  15.0f, false,   0.0f, 100.0f,  100.0f, 100.0f,  5.0f, P::gridEqual, 2 },
+        { "Mono Cut",             P::modeTransient, 4, 50.0f,  50.0f, P::playGate,      P::keySlices,    1,   0,   1.0f,  10.0f, false,   0.0f, 100.0f,  100.0f, 100.0f,  5.0f, P::gridEqual, 2 },
+        { "Stutter Loop",         P::modeGrid,      6, 50.0f,  50.0f, P::playLoop,      P::keySlices,    1,   0,   1.0f,  15.0f, false,   0.0f, 100.0f,  100.0f, 100.0f,  3.0f, P::gridEqual, 2 },
+        { "Vowel Hold",           P::modeTransient, 4, 40.0f,  80.0f, P::playLoop,      P::keySlices,    8,   0,  30.0f, 200.0f, false,   0.0f, 100.0f,  100.0f, 100.0f, 60.0f, P::gridEqual, 2 },
+        { "Reverse Swell",        P::modeTransient, 4, 40.0f,  80.0f, P::playOneShot,   P::keySlices,    4,   0, 120.0f,  10.0f, true,    0.0f, 100.0f,  100.0f, 100.0f,  5.0f, P::gridEqual, 2 },
+        { "Boomerang",            P::modeTransient, 4, 50.0f,  50.0f, P::playBoomerang, P::keySlices,    4,   0,   1.0f,  30.0f, false,   0.0f, 100.0f,  100.0f, 100.0f,  5.0f, P::gridEqual, 2 },
+        { "Keys From One Slice",  P::modeTransient, 4, 50.0f,  50.0f, P::playGate,      P::keyChromatic, 8,   0,  20.0f, 300.0f, false,   0.0f, 100.0f,  100.0f, 100.0f,  5.0f, P::gridEqual, 2 },
+        { "Pluck Chops",          P::modeTransient, 4, 50.0f,  50.0f, P::playGate,      P::keySlices,    8,   0,   1.0f,  40.0f, false,   0.0f, 100.0f,  150.0f,   0.0f,  5.0f, P::gridEqual, 2 },
+        { "Pitch Drop Chops",     P::modeTransient, 4, 50.0f,  50.0f, P::playOneShot,   P::keySlices,    8,   0,   1.0f,  30.0f, false,  12.0f, 120.0f,  100.0f, 100.0f,  5.0f, P::gridEqual, 2 },
+        { "Octave Down Run",      P::modeTransient, 4, 35.0f,  80.0f, P::playToEnd,     P::keySlices,    2, -12,   5.0f, 120.0f, false,   0.0f, 100.0f,  100.0f, 100.0f,  5.0f, P::gridEqual, 2 },
+        { "Fine Transients",      P::modeTransient, 4, 85.0f,  25.0f, P::playOneShot,   P::keySlices,   16,   0,   1.0f,  10.0f, false,   0.0f, 100.0f,  100.0f, 100.0f,  5.0f, P::gridEqual, 2 },
+        { "Even Eighths",         P::modeGrid,      4, 50.0f,  50.0f, P::playOneShot,   P::keySlices,    8,   0,   1.0f,  15.0f, false,   0.0f, 100.0f,  100.0f, 100.0f,  5.0f, P::gridEqual, 2 },
+        { "Tempo Sixteenths",     P::modeGrid,      4, 50.0f,  50.0f, P::playOneShot,   P::keySlices,    8,   0,   1.0f,  10.0f, false,   0.0f, 100.0f,  100.0f, 100.0f,  5.0f, P::gridNote,  3 },
     };
 
     juce::String plain (float v, int decimals) { return juce::String (v, decimals); }
-    juce::String signedText (float v, int decimals) { return (v > 0.0f ? "+" : "") + juce::String (v, decimals); }
+    juce::String signedText (float v, int decimals)
+    {
+        if (std::abs (v) < 0.5f * std::pow (10.0f, (float) -decimals)) return juce::String (0.0f, decimals);
+        return (v > 0.0f ? "+" : "") + juce::String (v, decimals);
+    }
 
     juce::uint64 hashWords (juce::uint64 h, const void* data, size_t bytes) noexcept
     {
@@ -163,6 +176,7 @@ public:
                 if (! hasJob) busy.store (false);
             }
             owner.drainRetired();
+            owner.refreshIdleReadings();
             if (! have) wait (100);
         }
     }
@@ -195,6 +209,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
         layout.add (std::make_unique<AudioParameterFloat> (ParameterID { id, 1 }, name, range, def,
                                                            AudioParameterFloatAttributes().withLabel (label).withStringFromValueFunction (text)));
     };
+    // A plain linear range snaps with start + n * step, which lands a tiny bit off zero. This one is exact at zero, so
+    // Pitch 0 plays at exactly the file's speed and Level 0 dB is exactly unity.
+    const auto stepped = [] (float lo, float hi, float step)
+    {
+        return NormalisableRange<float> (lo, hi,
+                                         [] (float a, float b, float v) { return a + v * (b - a); },
+                                         [] (float a, float b, float v) { return (v - a) / (b - a); },
+                                         [step] (float a, float b, float v) { return jlimit (a, b, std::round (v / step) * step + 0.0f); });
+    };
     const auto timeRange = [] (float lo, float hi) { NormalisableRange<float> r (lo, hi, 0.01f); r.setSkewForCentre (lo + (hi - lo) * 0.05f); return r; };
 
     // IDs are saved in sessions and automation: never rename them once installed.
@@ -203,7 +226,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "grid", 1 }, "Grid", StringArray { "2", "3", "4", "6", "8", "12", "16", "24", "32" }, 4,
                                                         AudioParameterChoiceAttributes().withLabel ("slices")));
     { NormalisableRange<float> r (5.0f, 1000.0f, 1.0f); r.setSkewForCentre (80.0f); addFloat ("min_slice", "Min Slice", r, kDefaultMinSliceMs, "ms", floatText (0)); }
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "play_mode", 1 }, "Play Mode", StringArray { "Gate", "One Shot", "Loop", "To End" }, 0));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "grid_type", 1 }, "Grid Type", StringArray { "Equal Parts", "Note Length" }, 0));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "grid_note", 1 }, "Grid Note", StringArray { "1/2", "1/4", "1/8", "1/16", "1/32", "1/4 Triplet", "1/8 Triplet", "1/16 Triplet", "1/4 Dotted", "1/8 Dotted", "1/16 Dotted" }, 2));
+    addFloat ("grid_tempo", "Grid Tempo", NormalisableRange<float> (40.0f, 300.0f, 0.01f), 120.0f, "BPM", floatText (2));
+    { NormalisableRange<float> r (0.0f, 60000.0f, 1.0f); r.setSkewForCentre (2000.0f); addFloat ("slice_start", "Slice Start", r, 0.0f, "ms", floatText (0)); }
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "play_mode", 1 }, "Play Mode", StringArray { "Gate", "One Shot", "Loop", "To End", "Boomerang" }, 0));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "key_mode", 1 }, "Key Mode", StringArray { "Slices", "Chromatic" }, 0));
     layout.add (std::make_unique<AudioParameterInt> (ParameterID { "root_note", 1 }, "Root Note", 0, 127, 60,
                                                      AudioParameterIntAttributes().withStringFromValueFunction ([] (int v, int) { return MidiMessage::getMidiNoteName (v, true, true, 3); })
@@ -218,20 +245,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterInt> (ParameterID { "polyphony", 1 }, "Polyphony", 1, kMaxPolyphony, 8, AudioParameterIntAttributes().withLabel ("voices")));
     layout.add (std::make_unique<AudioParameterInt> (ParameterID { "transpose", 1 }, "Transpose", -24, 24, 0, AudioParameterIntAttributes().withLabel ("st")));
     layout.add (std::make_unique<AudioParameterInt> (ParameterID { "bend_range", 1 }, "Bend Range", 0, 24, 2, AudioParameterIntAttributes().withLabel ("st")));
-    addFloat ("penv_amount", "Pitch Env Amount", NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, "st", signedFloat (2));
+    addFloat ("penv_amount", "Pitch Env Amount", stepped (-24.0f, 24.0f, 0.01f), 0.0f, "st", signedFloat (2));
     addFloat ("penv_time", "Pitch Env Time", timeRange (1.0f, 2000.0f), 100.0f, "ms", floatText (1));
     addFloat ("vel_sens", "Velocity Sens", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f, "%", floatText (1));
-    addFloat ("output", "Output", NormalisableRange<float> (-60.0f, 12.0f, 0.01f), 0.0f, "dB", signedFloat (2));
+    addFloat ("output", "Output", stepped (-60.0f, 12.0f, 0.01f), 0.0f, "dB", signedFloat (2));
+    addFloat ("loop_fade", "Loop Crossfade", timeRange (1.0f, 500.0f), 5.0f, "ms", floatText (1));
+    addFloat ("decay", "Decay", timeRange (1.0f, 4000.0f), 100.0f, "ms", floatText (1));
+    addFloat ("sustain", "Sustain", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, "%", floatText (1));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "bypass", 1 }, "Bypass", false));
 
     for (int s = 0; s < kSlots; ++s)
     {
         const auto n = "Slice " + String (s + 1).paddedLeft ('0', 2) + " ";
-        addFloat (slotId (s, "pitch"), n + "Pitch", NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, "st", signedFloat (2));
+        addFloat (slotId (s, "pitch"), n + "Pitch", stepped (-24.0f, 24.0f, 0.01f), 0.0f, "st", signedFloat (2));
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { slotId (s, "reverse"), 1 }, n + "Reverse", false));
         addFloat (slotId (s, "attack"), n + "Attack", timeRange (0.0f, 2000.0f), 1.0f, "ms", floatText (1));
         addFloat (slotId (s, "release"), n + "Release", timeRange (1.0f, 4000.0f), 30.0f, "ms", floatText (1));
-        addFloat (slotId (s, "level"), n + "Level", NormalisableRange<float> (-60.0f, 12.0f, 0.01f), 0.0f, "dB", signedFloat (2));
+        addFloat (slotId (s, "level"), n + "Level", stepped (-60.0f, 12.0f, 0.01f), 0.0f, "dB", signedFloat (2));
+        addFloat (slotId (s, "pan"), n + "Pan", stepped (-100.0f, 100.0f, 0.1f), 0.0f, "%", signedFloat (1));
     }
     return layout;
 }
@@ -257,6 +288,13 @@ PluginProcessor::PluginProcessor()
     penvTimeP = apvts.getRawParameterValue ("penv_time");
     velSensP = apvts.getRawParameterValue ("vel_sens");
     outputP = apvts.getRawParameterValue ("output");
+    gridTypeP = apvts.getRawParameterValue ("grid_type");
+    gridNoteP = apvts.getRawParameterValue ("grid_note");
+    gridBpmP = apvts.getRawParameterValue ("grid_tempo");
+    sliceStartP = apvts.getRawParameterValue ("slice_start");
+    loopFadeP = apvts.getRawParameterValue ("loop_fade");
+    decayP = apvts.getRawParameterValue ("decay");
+    sustainP = apvts.getRawParameterValue ("sustain");
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
     for (int s = 0; s < kSlots; ++s)
     {
@@ -265,6 +303,7 @@ PluginProcessor::PluginProcessor()
         attackP[(size_t) s] = apvts.getRawParameterValue (slotId (s, "attack"));
         releaseP[(size_t) s] = apvts.getRawParameterValue (slotId (s, "release"));
         levelP[(size_t) s] = apvts.getRawParameterValue (slotId (s, "level"));
+        panP[(size_t) s] = apvts.getRawParameterValue (slotId (s, "pan"));
     }
 
     addParameter (slicesFoundReading = new ReadingParameter ("slices_found", "Slices Found", "", 0.0f, (float) kSlots, 0.0f, [] (float v) { return juce::String (juce::roundToInt (v)); }));
@@ -282,7 +321,7 @@ PluginProcessor::~PluginProcessor()
 {
     worker->signalThreadShouldExit();
     worker->notify();
-    worker->stopThread (5000);
+    worker->stopThread (20000);
     worker.reset();
     drainRetired();
     keepAlive.clear();
@@ -376,17 +415,24 @@ SliceTable PluginProcessor::deriveTable (const LoadedSample& s, const SliceTable
 {
     const int frames = s.frames();
     if (frames <= 0) return {};
+    const int from = juce::jlimit (0, frames - 1, (int) std::lround (juce::roundToInt (sliceStartP->load()) * 0.001 * s.rate));
     switch ((int) sliceModeP->load())
     {
         case modeGrid:
-            return slicecore::gridSlices (frames, gridParts[juce::jlimit (0, (int) std::size (gridParts) - 1, (int) gridP->load())]);
+            if ((int) gridTypeP->load() == gridNote)
+            {
+                const double beats = gridNoteBeats[juce::jlimit (0, (int) std::size (gridNoteBeats) - 1, (int) gridNoteP->load())];
+                const double bpm = juce::roundToInt (gridBpmP->load() * 100.0f) * 0.01;
+                return slicecore::noteSlices (frames, beats * 60.0 / std::max (1.0, bpm) * s.rate, from);
+            }
+            return slicecore::gridSlices (frames, gridParts[juce::jlimit (0, (int) std::size (gridParts) - 1, (int) gridP->load())], from);
         case modeManual:
             return manual;
         default:
             break;
     }
     const int gap = (int) std::lround (juce::roundToInt (minSliceP->load()) * 0.001 * s.rate);
-    return slicecore::pickTransients (s.onsets.data(), (int) s.onsets.size(), s.firstAudible, frames, juce::roundToInt (sensitivityP->load() * 10.0f) * 0.1f, gap);
+    return slicecore::pickTransients (s.onsets.data(), (int) s.onsets.size(), s.firstAudible, frames, juce::roundToInt (sensitivityP->load() * 10.0f) * 0.1f, gap, from);
 }
 
 void PluginProcessor::refreshAudioTable() noexcept
@@ -398,6 +444,10 @@ void PluginProcessor::refreshAudioTable() noexcept
     k.grid = (int) gridP->load();
     k.minSliceMs = juce::roundToInt (minSliceP->load());
     k.manualVersion = audioManualVersion;
+    k.gridType = (int) gridTypeP->load();
+    k.gridNote = (int) gridNoteP->load();
+    k.gridBpmHundredths = juce::roundToInt (gridBpmP->load() * 100.0f);
+    k.sliceStartMs = juce::roundToInt (sliceStartP->load());
     if (k == audioKey) return;
     audioKey = k;
     audioTable = current != nullptr ? deriveTable (*current, audioManual) : SliceTable {};
@@ -467,6 +517,7 @@ void PluginProcessor::startVoice (int note, int slot, double keyOffset, float ve
     v.reverse = reverseP[(size_t) slot]->load() > 0.5f;
     v.loop = mode == playLoop;
     v.oneShot = mode == playOneShot;
+    v.bounce = mode == playBoomerang;
     if (mode == playToEnd)
     {
         v.start = v.reverse ? 0 : from;
@@ -477,6 +528,7 @@ void PluginProcessor::startVoice (int note, int slot, double keyOffset, float ve
         v.start = from;
         v.len = to - from;
     }
+    v.total = v.bounce ? v.len * 2 : v.len;
 
     v.rateRatio = current->rate / hostRate;
     v.keyOffset = keyOffset;
@@ -494,11 +546,18 @@ void PluginProcessor::startVoice (int note, int slot, double keyOffset, float ve
     v.attackTotal = v.attackLeft = std::max (1, (int) std::lround (attackMs * 0.001 * hostRate));
 
     // A slice that runs out fades over its Release, ending exactly at its end, so it never stops on a step.
-    const double outFrames = v.len / std::max (1.0e-6, v.rateRatio * std::pow (2.0, v.pitchSemis / 12.0));
+    const double outFrames = v.total / std::max (1.0e-6, v.rateRatio * std::pow (2.0, v.pitchSemis / 12.0));
     const double wantTail = std::max (kReleaseFloorMs, (double) releaseP[(size_t) slot]->load()) * 0.001 * hostRate;
     v.tailFrames = std::max (1.0, std::min (wantTail, outFrames * 0.5));
 
-    v.loopFade = v.loop ? std::min (v.len / 4, (int) std::lround (kLoopFadeMs * 0.001 * current->rate)) : 0;
+    v.loopFade = v.loop ? std::min (v.len / 2, (int) std::lround (loopFadeP->load() * 0.001 * current->rate)) : 0;
+
+    v.sustainLevel = juce::jlimit (0.0f, 1.0f, sustainP->load() * 0.01f);
+    v.decayTotal = v.decayLeft = v.sustainLevel < 1.0f ? std::max (1, (int) std::lround (decayP->load() * 0.001 * hostRate)) : 0;
+
+    const float pan = panP[(size_t) slot]->load() * 0.01f;
+    v.panL = pan > 0.0f ? 1.0f - pan : 1.0f;
+    v.panR = pan < 0.0f ? 1.0f + pan : 1.0f;
 }
 
 void PluginProcessor::handleMidi (const juce::MidiMessage& m) noexcept
@@ -567,7 +626,9 @@ void PluginProcessor::renderVoice (Voice& v, juce::AudioBuffer<float>& out, int 
 
     const auto readAt = [&] (double logical, float& l, float& r) noexcept
     {
-        const double src = v.reverse ? (double) (v.start + v.len - 1) - logical : (double) v.start + logical;
+        // A Boomerang's second half walks back over the first, the same samples in the opposite order.
+        const double inSlice = logical >= (double) v.len ? (double) (v.total - 1) - logical : logical;
+        const double src = v.reverse ? (double) (v.start + v.len - 1) - inSlice : (double) v.start + inSlice;
         l = bank.read (srcL, frames, src, v.band);
         r = stereoSource ? bank.read (srcR, frames, src, v.band) : l;
     };
@@ -591,10 +652,14 @@ void PluginProcessor::renderVoice (Voice& v, juce::AudioBuffer<float>& out, int 
 
             const float wanted = juce::Decibels::decibelsToGain (levelP[(size_t) v.slot]->load(), -120.0f);
             v.levelStep = (wanted - v.level) * levelCoef / (float) kControlSamples;
+
+            const float pan = panP[(size_t) v.slot]->load() * 0.01f;
+            v.panLStep = ((pan > 0.0f ? 1.0f - pan : 1.0f) - v.panL) * levelCoef / (float) kControlSamples;
+            v.panRStep = ((pan < 0.0f ? 1.0f + pan : 1.0f) - v.panR) * levelCoef / (float) kControlSamples;
         }
         --v.control;
 
-        if (! v.loop && v.pos >= (double) v.len) { v.active = false; return; }
+        if (! v.loop && v.pos >= (double) v.total) { v.active = false; return; }
 
         float gain = v.level * v.velocityGain;
         v.level += v.levelStep;
@@ -603,6 +668,13 @@ void PluginProcessor::renderVoice (Voice& v, juce::AudioBuffer<float>& out, int 
         {
             gain *= 1.0f - (float) v.attackLeft / (float) v.attackTotal;
             --v.attackLeft;
+        }
+        else if (v.decayTotal > 0)
+        {
+            const float d = (float) v.decayLeft / (float) v.decayTotal;
+            gain *= v.sustainLevel + (1.0f - v.sustainLevel) * d;
+            if (v.decayLeft > 0) --v.decayLeft;
+            else if (v.sustainLevel <= 0.0f) { v.active = false; return; }
         }
         if (v.releaseTotal > 0)
         {
@@ -617,7 +689,7 @@ void PluginProcessor::renderVoice (Voice& v, juce::AudioBuffer<float>& out, int 
         }
         if (! v.loop)
         {
-            const double left = ((double) v.len - v.pos) / v.speed;
+            const double left = ((double) v.total - v.pos) / v.speed;
             if (left < v.tailFrames) gain *= (float) (left / v.tailFrames);
         }
 
@@ -636,10 +708,12 @@ void PluginProcessor::renderVoice (Voice& v, juce::AudioBuffer<float>& out, int 
             }
         }
 
+        v.panL += v.panLStep;
+        v.panR += v.panRStep;
         if (outR != nullptr)
         {
-            outL[n] += l * gain;
-            outR[n] += r * gain;
+            outL[n] += l * gain * v.panL;
+            outR[n] += r * gain * v.panR;
         }
         else
         {
@@ -661,7 +735,8 @@ void PluginProcessor::publishReadings() noexcept
         ++active;
         if (shown < kPlayheads && v.sample == current && v.sample->frames() > 0)
         {
-            const double logical = v.reverse ? (double) (v.start + v.len - 1) - v.pos : (double) v.start + v.pos;
+            const double inSlice = v.pos >= (double) v.len ? (double) (v.total - 1) - v.pos : v.pos;
+            const double logical = v.reverse ? (double) (v.start + v.len - 1) - inSlice : (double) v.start + inSlice;
             playheads[(size_t) shown++].store ((float) (logical / (double) v.sample->frames()), std::memory_order_relaxed);
         }
     }
@@ -713,14 +788,12 @@ void PluginProcessor::renderBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
 
     outputSmoothed.setTargetValue (juce::Decibels::decibelsToGain (outputP->load(), -120.0f));
     bypassSmoothed.setTargetValue (forceBypass || bypass->get() ? 0.0f : 1.0f);
+    float* const* channels = buffer.getArrayOfWritePointers();
     for (int i = 0; i < numSamples; ++i)
     {
         const float g = outputSmoothed.getNextValue() * bypassSmoothed.getNextValue();
         for (int ch = 0; ch < numOut; ++ch)
-        {
-            auto& s = buffer.getWritePointer (ch)[i];
-            s = juce::jlimit (-kMaxSampleValue, kMaxSampleValue, s * g); // a safety stop for silly gain settings, not a limiter
-        }
+            channels[ch][i] = juce::jlimit (-kMaxSampleValue, kMaxSampleValue, channels[ch][i] * g); // a safety stop for silly gain settings, not a limiter
     }
 
     publishReadings();
@@ -766,12 +839,18 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("transpose", (float) pr.transpose);
     set ("penv_amount", pr.penvAmount);
     set ("penv_time", pr.penvTime);
+    set ("decay", pr.decay);
+    set ("sustain", pr.sustain);
+    set ("loop_fade", pr.loopFade);
+    set ("grid_type", (float) pr.gridType);
+    set ("grid_note", (float) pr.gridNote);
     for (int s = 0; s < kSlots; ++s)
     {
         set (slotId (s, "attack"), pr.attack);
         set (slotId (s, "release"), pr.release);
         set (slotId (s, "reverse"), pr.reverse ? 1.0f : 0.0f);
         set (slotId (s, "pitch"), 0.0f);
+        set (slotId (s, "pan"), 0.0f);
     }
 }
 
@@ -876,7 +955,7 @@ void PluginProcessor::loadJob (const juce::File& file, int generation)
     const auto manual = slicecore::pickTransients (s->onsets.data(), (int) s->onsets.size(), s->firstAudible, frames, kDefaultSensitivity,
                                                    (int) std::lround (kDefaultMinSliceMs * 0.001 * rate));
 
-    if (generation != loadGeneration.load()) return;
+    if (worker->threadShouldExit() || generation != loadGeneration.load()) return;
     install (s, manual, false);
     setStatus ({});
 }
@@ -943,6 +1022,12 @@ void PluginProcessor::drainRetired()
         take (scope.startIndex1, scope.blockSize1);
         take (scope.startIndex2, scope.blockSize2);
     }
+}
+
+void PluginProcessor::refreshIdleReadings()
+{
+    // Hosts often stop calling the audio thread when nothing plays. These readings stay true anyway.
+    slicesFoundReading->set ((float) getShownTable().count);
 }
 
 LoadedSample::Ptr PluginProcessor::getSample() const

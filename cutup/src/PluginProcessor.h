@@ -74,7 +74,8 @@ public:
     static constexpr int kPlayheads = 16;
 
     enum SliceMode { modeTransient, modeGrid, modeManual };
-    enum PlayMode { playGate, playOneShot, playLoop, playToEnd };
+    enum PlayMode { playGate, playOneShot, playLoop, playToEnd, playBoomerang };
+    enum GridType { gridEqual, gridNote };
     enum KeyMode { keySlices, keyChromatic };
 
     PluginProcessor();
@@ -142,10 +143,12 @@ private:
     {
         const LoadedSample* sample = nullptr;
         int mode = -1, sensitivityTenths = -1, grid = -1, minSliceMs = -1, manualVersion = -1;
+        int gridType = -1, gridNote = -1, gridBpmHundredths = -1, sliceStartMs = -1;
         bool operator== (const SliceKey& o) const noexcept
         {
             return sample == o.sample && mode == o.mode && sensitivityTenths == o.sensitivityTenths && grid == o.grid
-                && minSliceMs == o.minSliceMs && manualVersion == o.manualVersion;
+                && minSliceMs == o.minSliceMs && manualVersion == o.manualVersion && gridType == o.gridType && gridNote == o.gridNote
+                && gridBpmHundredths == o.gridBpmHundredths && sliceStartMs == o.sliceStartMs;
         }
     };
 
@@ -156,7 +159,11 @@ private:
         int note = -1, slot = 0;
         juce::uint64 order = 0;
         int start = 0, len = 0, loopFade = 0;
-        bool reverse = false, loop = false, oneShot = false, held = true, sustained = false;
+        bool reverse = false, loop = false, oneShot = false, bounce = false, held = true, sustained = false;
+        int total = 0; // logical length: the slice, or twice the slice for a Boomerang
+        float panL = 1.0f, panR = 1.0f, panLStep = 0.0f, panRStep = 0.0f;
+        int decayLeft = 0, decayTotal = 1;
+        float sustainLevel = 1.0f;
         double pos = 0.0, rateRatio = 1.0, speed = 1.0;
         double pitchSemis = 0.0, keyOffset = 0.0;
         double penvAmount = 0.0;
@@ -187,6 +194,7 @@ private:
     void install (LoadedSample::Ptr, const slicecore::SliceTable& manual, bool manualIsEdited);
     void loadEmpty (const juce::String& why, bool resetControls);
     void drainRetired();
+    void refreshIdleReadings();
     void loadJob (const juce::File&, int generation);
     void setStatus (const juce::String&);
     bool applyMarkerEdit (const slicecore::SliceTable&);
@@ -200,7 +208,8 @@ private:
     std::atomic<float>* sliceModeP = nullptr, * sensitivityP = nullptr, * gridP = nullptr, * minSliceP = nullptr, * playModeP = nullptr, * keyModeP = nullptr;
     std::atomic<float>* rootNoteP = nullptr, * selectedP = nullptr, * polyphonyP = nullptr, * transposeP = nullptr, * bendRangeP = nullptr;
     std::atomic<float>* penvAmountP = nullptr, * penvTimeP = nullptr, * velSensP = nullptr, * outputP = nullptr;
-    std::array<std::atomic<float>*, kSlots> pitchP {}, reverseP {}, attackP {}, releaseP {}, levelP {};
+    std::atomic<float>* gridTypeP = nullptr, * gridNoteP = nullptr, * gridBpmP = nullptr, * sliceStartP = nullptr, * loopFadeP = nullptr, * decayP = nullptr, * sustainP = nullptr;
+    std::array<std::atomic<float>*, kSlots> pitchP {}, reverseP {}, attackP {}, releaseP {}, levelP {}, panP {};
     juce::AudioParameterBool* bypass = nullptr;
     ReadingParameter* slicesFoundReading = nullptr, * sampleLengthReading = nullptr, * activeVoicesReading = nullptr;
 

@@ -48,14 +48,37 @@ namespace slicecore
         return t;
     }
 
-    // Exact: boundary i is floor (i * frames / parts), computed in 64 bits.
-    inline SliceTable gridSlices (int frames, int parts) noexcept
+    // Exact: boundary i is from + floor (i * length / parts), computed in 64 bits, where length runs from the Slice Start to the end.
+    inline SliceTable gridSlices (int frames, int parts, int from = 0) noexcept
     {
         SliceTable t;
         if (frames <= 0) return t;
-        parts = std::max (1, std::min ({ parts, kMaxSlots, frames }));
+        from = std::max (0, std::min (from, frames - 1));
+        const int length = frames - from;
+        parts = std::max (1, std::min ({ parts, kMaxSlots, length }));
         t.count = parts;
-        for (int i = 0; i <= parts; ++i) t.start[i] = (int) ((long long) i * frames / parts);
+        for (int i = 0; i <= parts; ++i) t.start[i] = from + (int) ((long long) i * length / parts);
+        return t;
+    }
+
+    // Cuts every stepFrames from the Slice Start. Stops at the 32 slots, and the last slice runs on to the end of the sample.
+    inline SliceTable noteSlices (int frames, double stepFrames, int from = 0) noexcept
+    {
+        SliceTable t;
+        if (frames <= 0) return t;
+        from = std::max (0, std::min (from, frames - 1));
+        stepFrames = std::max (1.0, stepFrames);
+        int count = 0;
+        for (int i = 0; i < kMaxSlots; ++i)
+        {
+            const double at = (double) from + (double) i * stepFrames;
+            if (at >= (double) frames) break;
+            t.start[count++] = (int) std::llround (at);
+        }
+        // Rounding can land a last cut on the end frame.
+        while (count > 1 && t.start[count - 1] >= frames) --count;
+        t.count = count;
+        t.start[count] = frames;
         return t;
     }
 
@@ -69,10 +92,11 @@ namespace slicecore
     // Takes candidates strongest first, so a limit of 32 slices keeps the 32 strongest and Min Slice keeps the stronger of two
     // close onsets. At most kMaxCandidates * kMaxSlots simple steps. A loud lead-in before the first cut becomes its own slice,
     // and silence before the first cut is dropped.
-    inline SliceTable pickTransients (const Candidate* c, int numCandidates, int firstAudible, int frames, float sensitivity, int minGapFrames) noexcept
+    inline SliceTable pickTransients (const Candidate* c, int numCandidates, int firstAudible, int frames, float sensitivity, int minGapFrames, int from = 0) noexcept
     {
         SliceTable t;
         if (frames <= 0) return t;
+        from = std::max (0, std::min (from, frames - 1));
 
         const float thr = thresholdFor (sensitivity);
         const int gap = std::max (1, minGapFrames);
@@ -84,7 +108,7 @@ namespace slicecore
         {
             if (c[i].strength < thr) break;
             const int pos = c[i].pos;
-            if (pos < 0 || pos >= frames) continue;
+            if (pos < from || pos >= frames) continue;
             if (frames - pos < std::min (gap, 64)) continue;
             bool clear = true;
             for (int k = 0; k < num && clear; ++k) clear = std::abs (cuts[k] - pos) >= gap;
@@ -92,13 +116,19 @@ namespace slicecore
         }
 
         std::sort (cuts, cuts + num);
-        if (num == 0) return wholeSample (frames);
+        if (num == 0)
+        {
+            t.count = 1;
+            t.start[0] = from;
+            t.start[1] = frames;
+            return t;
+        }
 
         // Sound before the first cut stays playable. Only silence is dropped.
         const int margin = std::max (1, std::min (leadRoom, 64));
-        const bool leadIn = cuts[0] > 0 && firstAudible + margin < cuts[0];
+        const bool leadIn = cuts[0] > from && std::max (firstAudible, from) + margin < cuts[0];
         int out = 0;
-        if (leadIn) t.start[out++] = 0;
+        if (leadIn) t.start[out++] = from;
         for (int i = 0; i < num && out < kMaxSlots; ++i) t.start[out++] = cuts[i];
         t.count = out;
         t.start[out] = frames;
@@ -179,17 +209,17 @@ namespace slicecore
                 return m;
             };
             const float following = peakIn (coarse, coarse + ms (200.0));
-            const float before = peakIn (coarse - ms (110.0), coarse - ms (80.0));
+            const float before = peakIn (coarse - ms (190.0), coarse - ms (160.0));
             const float thresh = std::max (0.01f * following, 1.6f * before);
 
-            // Walk back from the coarse point to the last place where 5 ms in a row stay under the threshold, so a zero crossing
-            // of a low voice does not stop the walk, and a soft H or P before the vowel is kept. Over a loud sound the threshold
+            // Walk back from the coarse point to the last place where 10 ms in a row stay under the threshold, so a zero crossing
+            // of a low voice does not stop the walk, and a soft H, TH or P before the vowel is kept. Over a loud sound the threshold
             // is above the sound, and the coarse point stands, because it is already exact there.
             int pos = coarse;
             if (following > 2.0f * thresh)
             {
-                const int hold = std::max (1, ms (5.0));
-                const int back = std::max (0, coarse - ms (80.0));
+                const int hold = std::max (1, ms (10.0));
+                const int back = std::max (0, coarse - ms (160.0));
                 const int ahead = std::min (frames - 1, coarse + ms (4.0));
                 int i = coarse;
                 while (i < ahead && std::abs (x[i]) < thresh) ++i;
@@ -205,7 +235,11 @@ namespace slicecore
             }
             if (pos < ms (2.0)) pos = 0;
 
-            const double level = mean (sumBroad, k, k + afterHops) / loudest;
+            // How loud the sound this onset begins gets, so that a soft S or H leading into a vowel counts as the start it is.
+            double ahead = 0.0;
+            for (int j = k; j < std::min (numHops, k + 200); j += afterHops)
+                ahead = std::max (ahead, mean (sumBroad, j, j + afterHops));
+            const double level = ahead / loudest;
             const float strength = (float) (std::sqrt (std::min (1.0, (double) d / 24.0)) * (0.3 + 0.7 * std::pow (level, 0.2)));
             found.push_back ({ pos, strength });
         }

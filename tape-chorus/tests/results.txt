@@ -1,0 +1,169 @@
+PASS  parameter names are clear, unique, no em dash
+INFO  parameter count = 11.000 
+PASS  factory presets = 7.000 
+PASS  preset names are not empty, no em dash
+PASS  presets change the state
+PASS  state save and restore
+PASS  damaged state value 'nan' gives finite output
+PASS  damaged state value 'nan' leaves controls in range
+PASS  damaged state value 'inf' gives finite output
+PASS  damaged state value 'inf' leaves controls in range
+PASS  damaged state value '-inf' gives finite output
+PASS  damaged state value '-inf' leaves controls in range
+PASS  damaged state value '-1e30' gives finite output
+PASS  damaged state value '-1e30' leaves controls in range
+PASS  damaged state value '1e30' gives finite output
+PASS  damaged state value '1e30' leaves controls in range
+PASS  damaged state value '-1' gives finite output
+PASS  damaged state value '-1' leaves controls in range
+PASS  damaged state value 'garbage' gives finite output
+PASS  damaged state value 'garbage' leaves controls in range
+PASS  sweeps finished, mono
+PASS  sweeps finished, stereo
+PASS  no NaN after silence
+PASS  no denormals decaying into silence = 0.000 samples
+PASS  recovers after NaN, inf and huge input, peak in the last second = 0.376 
+INFO  click test baseline step = 0.005 
+PASS  no click when Voices jumps, biggest step = 0.005 
+PASS  no click when Rate jumps, biggest step = 0.005 
+PASS  no click when Depth jumps, biggest step = 0.006 
+PASS  no click when Delay Time jumps, biggest step = 0.005 
+PASS  no click when Wow jumps, biggest step = 0.004 
+PASS  no click when Flutter jumps, biggest step = 0.005 
+PASS  no click when Saturation jumps, biggest step = 0.005 
+PASS  no click when Tone jumps, biggest step = 0.005 
+PASS  no click when Spread jumps, biggest step = 0.005 
+PASS  no click when Mix jumps, biggest step = 0.005 
+PASS  no click when Bypass jumps, biggest step = 0.005 
+PASS  Voices 1: copies of one pulse = 1.000 
+PASS  Voices 2: copies of one pulse = 2.000 
+PASS  Voices 3: copies of one pulse = 3.000 
+PASS  Voices 4: copies of one pulse = 4.000 
+PASS  Voices 1 modulated: copies per pulse (median) = 1.000 
+PASS  Voices 1 modulated: smallest travel of any one copy (Depth 0.8 ms) = 1.562 ms
+PASS  Voices 2 modulated: copies per pulse (median) = 2.000 
+PASS  Voices 2 modulated: smallest travel of any one copy (Depth 0.8 ms) = 1.562 ms
+PASS  Voices 3 modulated: copies per pulse (median) = 3.000 
+PASS  Voices 3 modulated: smallest travel of any one copy (Depth 0.8 ms) = 1.562 ms
+PASS  Voices 4 modulated: copies per pulse (median) = 4.000 
+PASS  Voices 4 modulated: smallest travel of any one copy (Depth 0.8 ms) = 1.562 ms
+PASS  Voices 2: noise level against 1 voice = -0.040 dB
+PASS  Voices 3: noise level against 1 voice = 0.002 dB
+PASS  Voices 4: noise level against 1 voice = 0.006 dB
+INFO  steady sharpest bend, 1 and 4 voices, in thousandths = 0.141 
+PASS  Voices change, no click: sharpest bend while switching, in thousandths = 0.275 
+PASS  Voices change, no click: biggest step while switching = 0.006 
+PASS  Rate measures (set 0.50 Hz, 3.0 ms, 48000 Hz rate) = 0.500 Hz
+PASS  Depth peak swing measures (set 0.50 Hz, 3.0 ms, 48000 Hz rate) = 3.000 ms
+PASS  peak pitch change of 1 kHz sine (set 0.50 Hz, 3.0 ms, 48000 Hz rate) = 9.513 Hz
+PASS  Rate measures (set 2.00 Hz, 1.0 ms, 48000 Hz rate) = 2.000 Hz
+PASS  Depth peak swing measures (set 2.00 Hz, 1.0 ms, 48000 Hz rate) = 0.999 ms
+PASS  peak pitch change of 1 kHz sine (set 2.00 Hz, 1.0 ms, 48000 Hz rate) = 12.714 Hz
+PASS  Rate measures (set 5.00 Hz, 2.0 ms, 48000 Hz rate) = 5.000 Hz
+PASS  Depth peak swing measures (set 5.00 Hz, 2.0 ms, 48000 Hz rate) = 1.992 ms
+PASS  peak pitch change of 1 kHz sine (set 5.00 Hz, 2.0 ms, 48000 Hz rate) = 66.251 Hz
+PASS  Rate measures (set 1.00 Hz, 3.0 ms, 44100 Hz rate) = 1.000 Hz
+PASS  Depth peak swing measures (set 1.00 Hz, 3.0 ms, 44100 Hz rate) = 3.000 ms
+PASS  peak pitch change of 1 kHz sine (set 1.00 Hz, 3.0 ms, 44100 Hz rate) = 19.241 Hz
+PASS  Rate measures (set 1.00 Hz, 3.0 ms, 96000 Hz rate) = 1.000 Hz
+PASS  Depth peak swing measures (set 1.00 Hz, 3.0 ms, 96000 Hz rate) = 3.000 ms
+PASS  peak pitch change of 1 kHz sine (set 1.00 Hz, 3.0 ms, 96000 Hz rate) = 19.198 Hz
+PASS  Depth 0: delay swing = 0.000 ms
+PASS  Delay Time 5 ms at 44100 Hz, pulse arrives at = 4.989 ms
+PASS  Delay Time 15 ms at 44100 Hz, pulse arrives at = 14.989 ms
+PASS  Delay Time 30 ms at 44100 Hz, pulse arrives at = 30.000 ms
+PASS  Delay Time 5 ms at 48000 Hz, pulse arrives at = 5.000 ms
+PASS  Delay Time 15 ms at 48000 Hz, pulse arrives at = 15.000 ms
+PASS  Delay Time 30 ms at 48000 Hz, pulse arrives at = 30.000 ms
+PASS  Delay Time 5 ms at 96000 Hz, pulse arrives at = 5.000 ms
+PASS  Delay Time 15 ms at 96000 Hz, pulse arrives at = 15.000 ms
+PASS  Delay Time 30 ms at 96000 Hz, pulse arrives at = 30.000 ms
+PASS  Delay Time 20 ms with 2 ms Depth, centre of the swing = 19.976 ms
+PASS  Delay Time 20 ms, 3 voices, average of the copies = 20.000 ms
+PASS  Delay Time 20 ms, 4 voices, average of the copies = 20.000 ms
+PASS  Delay 3 ms with everything at maximum: output stays finite
+PASS  Delay 3 ms with everything at maximum: not silent = -17.675 dBFS
+INFO  shortest possible delay at 48 kHz = 1.323 ms
+INFO  oversampling filter delay at 48 kHz, taken off the read head = 59.500 samples
+PASS  read head stays ahead of the filter delay at the shortest delay
+PASS  Wow 100: delay movement (rms) = 1.193 ms
+PASS  Flutter 100: delay movement (rms) = 0.109 ms
+PASS  Wow 100 against Wow 50, movement ratio = 2.000 
+PASS  Flutter 100 against Flutter 50, movement ratio = 2.000 
+PASS  Wow: share of its movement below 3 Hz = 99.979 %
+PASS  Flutter: share of its movement above 4 Hz = 99.939 %
+PASS  Wow 100: peak swing no more than 2.5 ms = 2.224 ms
+PASS  Flutter 100: peak swing no more than 0.25 ms = 0.224 ms
+PASS  Saturation 0: THD at 1 kHz, -12 dBFS = 0.000 %
+PASS  Saturation 25: THD at 1 kHz, -12 dBFS = 1.595 %
+PASS  Saturation 50: THD at 1 kHz, -12 dBFS = 5.344 %
+PASS  Saturation 100: THD at 1 kHz, -12 dBFS = 13.263 %
+PASS  Saturation 100 is plainly audible: THD over 3 percent = 13.263 %
+PASS  Saturation 100: level change of a -12 dBFS tone = 0.088 dB
+PASS  Saturation 100, 5 kHz sine: worst fold back from 2 to 22 kHz, below the tone = -96.201 dB
+INFO  Saturation 100, 5 kHz sine: 23 kHz line, above hearing, below the tone = -51.926 dB
+PASS  Tone -12: change at 12 kHz at 48000 Hz rate = -10.557 dB
+PASS  Tone +6: change at 12 kHz at 48000 Hz rate = 5.913 dB
+PASS  Tone -12: change at 200 Hz at 48000 Hz rate = -0.025 dB
+PASS  Tone +6: change at 200 Hz at 48000 Hz rate = 0.080 dB
+PASS  Tone 0: 12 kHz against 200 Hz through the whole wet path at 48000 Hz rate = -0.441 dB
+PASS  Tone -12: change at 12 kHz at 96000 Hz rate = -10.069 dB
+PASS  Tone +6: change at 12 kHz at 96000 Hz rate = 5.876 dB
+PASS  Tone -12: change at 200 Hz at 96000 Hz rate = -0.026 dB
+PASS  Tone +6: change at 200 Hz at 96000 Hz rate = 0.081 dB
+PASS  Tone 0: 12 kHz against 200 Hz through the whole wet path at 96000 Hz rate = 0.005 dB
+PASS  Spread 0: left and right correlation, dark noise, wet only = 1.000 
+PASS  Spread 25: left and right correlation, dark noise, wet only = 0.480 
+PASS  Spread 50: left and right correlation, dark noise, wet only = 0.259 
+PASS  Spread 75: left and right correlation, dark noise, wet only = 0.111 
+PASS  Spread 100: left and right correlation, dark noise, wet only = 0.050 
+PASS  Spread 100, 3 voices: correlation, dark noise = 0.163 
+PASS  Spread 100, 3 voices: left against right level = -0.380 dB
+PASS  Spread 100, 4 voices: correlation, dark noise = 0.267 
+PASS  Spread 100, 4 voices: left against right level = 0.145 dB
+PASS  Spread 100, 1 voice, Depth 0.5 ms: correlation, dark noise = -0.010 
+PASS  Spread 100, 1 voice, Depth 0.5 ms: correlation, white noise = 0.005 
+PASS  reported latency at 44100 Hz = 0.000 samples
+PASS  reported latency at 48000 Hz = 0.000 samples
+PASS  reported latency at 96000 Hz = 0.000 samples
+PASS  Mix 0: largest difference from the input = -240.000 dB
+PASS  Bypass: largest difference from the input = -240.000 dB
+PASS  Bypass: latency stays = 0.000 samples
+PASS  Host bypass call: largest difference from the input after the fade = -240.000 dB
+PASS  Mix 100: dry left at the input's arrival time = -240.000 dB
+PASS  Mix 50: dry arrives in time at = -3.010 dB
+PASS  Mix 50: wet against Mix 100 = -3.010 dB
+PASS  Mix 25: dry = -0.688 dB
+PASS  Mix 25: wet against Mix 100 = -8.343 dB
+PASS  Mix 25: noise level against the input = -0.119 dB
+PASS  Mix 50: noise level against the input = -0.440 dB
+PASS  Mix 75: noise level against the input = -0.795 dB
+PASS  Mix 100: noise level against the input = -0.961 dB
+PASS  mono in, stereo out is offered
+PASS  Mono to stereo, Spread 0: left and right the same, largest difference = -240.000 dB
+PASS  Mono to stereo, Spread 100, wet only: correlation = 0.005 
+PASS  Mono to stereo, Spread 100: left against right level = -0.011 dB
+PASS  Mono to stereo, Spread 100, Mix 50: correlation, dry stays centred = 0.560 
+PASS  Mono to stereo, Mix 0: stays mono = 1.000 
+PASS  Stereo in with equal sides matches mono in, largest difference = -240.000 dB
+PASS  Stereo in, left only: level on the right = -240.000 dBFS
+PASS  Stereo in, left only: left is playing = -17.272 dBFS
+PASS  Mono in, mono out plays = -17.412 dBFS
+PASS  same output at block 512 and block 37, largest difference = -240.000 dB
+PASS  same output at block 512 and block 1, largest difference = -240.000 dB
+PASS  prepared again after another rate: same output, largest difference = -240.000 dB
+PASS  preset Default Tape Chorus: level against input = -0.620 dB
+PASS  preset Soft Vocal Double: level against input = -0.432 dB
+PASS  preset Wide Four Voices: level against input = -1.199 dB
+PASS  preset Worn Cassette: level against input = -2.203 dB
+PASS  preset Slow Drift: level against input = -1.027 dB
+PASS  preset Fast Shimmer: level against input = 0.057 dB
+PASS  preset Mono Thickener: level against input = -0.601 dB
+PASS  damaged state: every control ends up in range
+PASS  damaged state: NaN depth does not reach the audio
+PASS  damaged state: infinite delay does not reach the audio = 15.000 ms
+PASS  damaged state: huge mix is limited = 100.000 %
+PASS  damaged state: audio stays finite = 0.000 samples
+PASS  damaged state: audio stays at a sane level = 0.414 
+PASS  rubbish state bytes are ignored
+RESULT PASS  0 failures

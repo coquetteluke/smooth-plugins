@@ -401,7 +401,7 @@ void testChordAssignment()
         check (same (notes (c), { 60, 74, -1, -1 }), "five notes, two voices: lowest and highest");
         c.assignChord (3);
         const auto three = notes (c);
-        check (three[0] == 60 && three[1] == 71 && three[2] == 74, "three voices: lowest, highest and the newest other note");
+        check (three[0] == 60 && three[1] == 74 && three[2] == 71, "three voices: lowest, highest and the newest other note, and the first two keep their voices");
         c.assignChord (1);
         check (notes (c)[0] >= 60 && notes (c)[1] == -1, "one voice: a single note");
     }
@@ -687,7 +687,7 @@ void testLevelAndPan()
         setParam (*p, vid (0, "Pan"), -100.0f);
         setParam (*p, vid (1, "Pan"), 100.0f);
         setParam (*p, vid (0, "Interval"), 7.0f);
-        setParam (*p, vid (1, "Interval"), -5.0f);
+        setParam (*p, vid (1, "Interval"), -4.0f); // not -5: its second harmonic would land right on the fifth above, and blur this reading
         auto layout = p->getBusesLayout();
         layout.inputBuses.getReference (0) = juce::AudioChannelSet::mono();
         layout.outputBuses.getReference (0) = juce::AudioChannelSet::stereo();
@@ -699,7 +699,7 @@ void testLevelAndPan()
         const auto b = render (*p, x, 256);
         const auto left = mono (b, 0), right = mono (b, 1);
         const double upL = toneDb (left.data() + 48000, 40000, 220.0 * std::pow (2.0, 7.0 / 12.0), SR), upR = toneDb (right.data() + 48000, 40000, 220.0 * std::pow (2.0, 7.0 / 12.0), SR);
-        const double downL = toneDb (left.data() + 48000, 40000, 220.0 * std::pow (2.0, -5.0 / 12.0), SR), downR = toneDb (right.data() + 48000, 40000, 220.0 * std::pow (2.0, -5.0 / 12.0), SR);
+        const double downL = toneDb (left.data() + 48000, 40000, 220.0 * std::pow (2.0, -4.0 / 12.0), SR), downR = toneDb (right.data() + 48000, 40000, 220.0 * std::pow (2.0, -4.0 / 12.0), SR);
         check (upL - upR >= 30.0, "mono to stereo: voice panned left is on the left, left over right", upL - upR, "dB");
         check (downR - downL >= 30.0, "mono to stereo: voice panned right is on the right, right over left", downR - downL, "dB");
         const double leadL = toneDb (left.data() + 48000, 40000, 220.0, SR), leadR = toneDb (right.data() + 48000, 40000, 220.0, SR);
@@ -1557,7 +1557,22 @@ void testAddedControls()
 
     // Tracking: which sounds count as pitched
     {
-        const auto noisy = voice::synth (voice::steady (220.0, 1.5, SR), voice::vowelA, SR, -4.0);
+        // Noise inside the voice band: hiss above it would read as a consonant at any setting, which is a different test.
+        auto noisy = voice::synth (voice::steady (220.0, 1.5, SR), voice::vowelA, SR);
+        {
+            std::vector<float> n (noisy.size());
+            noise (n.data(), (int) n.size(), 1.0, 9);
+            double low = 0.0, lower = 0.0;
+            const double a3k = 1.0 - std::exp (-2.0 * M_PI * 3000.0 / SR), a100 = 1.0 - std::exp (-2.0 * M_PI * 100.0 / SR);
+            for (auto& v : n)
+            {
+                low += a3k * ((double) v - low);
+                lower += a100 * (low - lower);
+                v = (float) (low - lower);
+            }
+            const double gain = rms (noisy.data(), (int) noisy.size()) * std::pow (10.0, -4.0 / 20.0) / rms (n.data(), (int) n.size());
+            for (size_t i = 0; i < noisy.size(); ++i) noisy[i] += (float) (gain * n[i]);
+        }
         const auto share = [&] (float tracking)
         {
             auto p = clean (modeFixed, 1);
@@ -1568,7 +1583,8 @@ void testAddedControls()
             return 100.0 * voiced / std::max (total, 1);
         };
         const double choosy = share (0.0f), relaxed = share (100.0f);
-        check (choosy < relaxed, "Tracking 0 is choosier than Tracking 100 on a breathy voice, pitched share 0 then 100", relaxed - choosy, "%");
+        check (choosy <= limits::trackingChoosyPercent, "Tracking 0 calls a noisy voice pitched this share of the time", choosy, "%");
+        check (relaxed >= limits::trackingRelaxedPercent, "Tracking 100 calls the same voice pitched this share of the time", relaxed, "%");
     }
 
     // Bypass: the delayed input, no voices

@@ -65,6 +65,8 @@ namespace limits
     constexpr double throatMinMove = 0.10;            // Throat 130 moves formants down, Throat 75 up, at least this
     constexpr double throatRead = 0.05;               // and within this of the exact move
     constexpr double followLeadCents = 5.0;           // Follow Lead 0 stays on the note, 100 copies a sharp lead
+    constexpr double trackingChoosyPercent = 20.0;    // same limits as Smooth Tune, added when the test material was fixed: Tracking 0 calls at most this share pitched
+    constexpr double trackingRelaxedPercent = 70.0;   // Tracking 100 at least this share
     constexpr double harmonyLevelDb = 0.2;            // Harmony Level on all voices together
 
     // Real material

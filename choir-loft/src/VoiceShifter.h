@@ -98,6 +98,8 @@ public:
         lastMarkUsed = -1;
         needDecision = true;
         firstGrain = true;
+        inPlainRead = false;
+        plainOffset = 0.0;
         random = randomSeed;
         planned = Plan::pass;
     }
@@ -114,7 +116,8 @@ public:
             g.mark = (double) n;
             g.fall = fallback;
             g.rise = 1.0;
-            g.offset = -control.lag;
+            g.offset = plainOffset = -control.lag;
+            inPlainRead = true;
             splitOffset (g);
             addGrain (g);
             peakOfNewest = (double) n;
@@ -364,10 +367,19 @@ private:
 
         if (plain)
         {
-            g.offset = -c.lag;
+            // The lag is held for the whole consonant. Grains at the same offset sum to exactly the input. Grains at different offsets
+            // would lose level and comb on noise, because their crossfades are no longer in phase.
+            if (! inPlainRead)
+                plainOffset = -c.lag;
+            inPlainRead = true;
+            g.offset = plainOffset;
             g.rate = 1.0;
             g.gain = 1.0;
             lastMarkUsed = -1;
+        }
+        else
+        {
+            inPlainRead = false;
         }
         splitOffset (g);
         addGrain (g);
@@ -383,9 +395,9 @@ private:
     std::array<Grain, maxGrains> active {};
     int numActive = 0;
     Grain pending;
-    bool havePending = false, needDecision = true, firstGrain = true;
+    bool havePending = false, needDecision = true, firstGrain = true, inPlainRead = false;
     Plan planned = Plan::pass;
-    double peakOfNewest = 0.0;
+    double peakOfNewest = 0.0, plainOffset = 0.0;
     long long lastMarkUsed = -1;
     std::uint32_t random = 1, randomSeed = 1;
 

@@ -240,8 +240,9 @@ private:
         {
             if ((usedVoices >> v) & 1) continue;
             const int was = lastNote[(size_t) v];
-            // A voice that has never sung costs nothing to start, so a fresh chord fills the voices from the first, lowest note first.
-            const int move = was < 0 ? 0 : std::abs (chosen[(size_t) index] - was);
+            // A voice that has never sung costs a fixed amount to wake. All equal on a fresh chord, which fills the voices from the first, lowest
+            // note first. On a change it is more than a usual step, so voices already singing move rather than a new one taking over.
+            const int move = was < 0 ? 12 : std::abs (chosen[(size_t) index] - was);
             trial[(size_t) v] = chosen[(size_t) index];
             search (chosen, k, voices, index + 1, usedVoices | (1 << v), cost + move, trial, best, bestCost);
         }

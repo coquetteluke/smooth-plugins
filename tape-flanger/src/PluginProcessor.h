@@ -22,7 +22,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "Smooth Tape Flanger"; }
+    const juce::String getName() const override { return "Tape Flanger"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 4.0; } // feedback ring out at the top setting, with Delay at its longest

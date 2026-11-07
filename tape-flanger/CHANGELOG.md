@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1, 2026-11-07
+
+Renamed to Tape Flanger, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
 ## 1.2.0
 
 A window of its own, in place of the plain list of controls. The sound is the same: 63 renders of the default, every preset and random automation at 44.1, 48 and 96 kHz and in mono are bit identical to 1.1.1, through the real AU. Parameter IDs, names, ranges, presets, latency and tail are unchanged. Sessions keep working.

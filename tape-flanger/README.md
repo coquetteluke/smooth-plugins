@@ -1,10 +1,10 @@
-# Smooth Tape Flanger
+# Tape Flanger
 
 A through-zero flanger. The dry path sits on a fixed delay and a swept copy moves to either side of it, so the wet to dry delay crosses zero and goes negative, the way two tape machines do when one is slowed by hand. The fixed delay is reported to the host as latency, so the plug-in stays in time.
 
 ## Load it
 
-Audio Units > Luke Garito > Smooth Tape Flanger. AU: `aufx STfl Luke`. Mono and stereo.
+Audio Units > Luke Garito > Tape Flanger. AU: `aufx STfl Luke`. Mono and stereo.
 
 ## The window
 

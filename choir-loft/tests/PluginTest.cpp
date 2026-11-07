@@ -6,10 +6,13 @@
 #include "VoiceSynth.h"
 #include "Analysis.h"
 #include "PluginProcessor.h"
+#include "editor/HarmonyEditor.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include "HumanMetrics.h"
 #include <chrono>
 #include <ctime>
+#include <functional>
+#include <set>
 #include <thread>
 
 using namespace testkit;
@@ -2117,6 +2120,54 @@ void testHuman()
     }
 }
 
+// A fingerprint of the output on one preset: every sample of real sung material, both channels, bit for bit.
+// With a window, it is open from the start and draws after every block, on this thread.
+std::uint64_t outputFingerprintOf (int preset, bool withWindow)
+{
+    const auto input = human::loadCorpus ("sung_goodnews", 9.0);
+    auto p = make();
+    p->setCurrentProgram (preset);
+    setParam (*p, "voices", 4.0f);
+    prepare (*p, 2, SR, 256);
+    std::unique_ptr<juce::AudioProcessorEditor> window (withWindow ? p->createEditor() : nullptr);
+    auto* harmonyWindow = dynamic_cast<HarmonyEditor*> (window.get());
+    juce::Image canvas (juce::Image::ARGB, 1200, 780, true);
+    int blocks = 0;
+    juce::AudioBuffer<float> buf (2, 256);
+    juce::MidiBuffer midi;
+    // A chord for the MIDI presets, held from the start.
+    midi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
+    midi.addEvent (juce::MidiMessage::noteOn (1, 64, (juce::uint8) 100), 0);
+    midi.addEvent (juce::MidiMessage::noteOn (1, 67, (juce::uint8) 100), 0);
+    std::uint64_t sum = 1469598103934665603ull;
+    for (size_t at = 0; at + 256 <= input.size(); at += 256)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            std::copy_n (input.data() + at, 256, buf.getWritePointer (ch));
+        p->processBlock (buf, midi);
+        midi.clear();
+        if (harmonyWindow != nullptr && (++blocks % 6) == 0)
+        {
+            harmonyWindow->tick (1.0 / 30.0);
+            if (blocks % 60 == 0)
+            {
+                juce::Graphics g (canvas);
+                harmonyWindow->paintEntireComponent (g, true);
+            }
+        }
+        for (int ch = 0; ch < 2; ++ch)
+            for (const auto byte : juce::Span<const std::uint8_t> (reinterpret_cast<const std::uint8_t*> (buf.getReadPointer (ch)), 256 * sizeof (float)))
+                sum = (sum ^ byte) * 1099511628211ull;
+    }
+    return sum;
+}
+
+std::uint64_t outputFingerprint (int preset) { return outputFingerprintOf (preset, false); }
+std::uint64_t outputFingerprintWithWindow (int preset) { return outputFingerprintOf (preset, true); }
+
+using ui::StageView;
+#include "WindowTests.h"
+
 // Before and after files for ears. The before files come from the 1.0.0 source, see README.
 void demo()
 {
@@ -2135,6 +2186,12 @@ int main (int argc, char** argv)
 
     if (only == "demo") { demo(); return 0; }
     if (only == "human") { humanNumbers(); return 0; }
+    if (only == "fingerprints")
+    {
+        for (const int preset : { 0, 3, 4, 7, 10 })
+            std::printf ("%d %lluull\n", preset, (unsigned long long) outputFingerprint (preset));
+        return 0;
+    }
 
     if (want ("generic"))
     {
@@ -2161,5 +2218,6 @@ int main (int argc, char** argv)
     if (want ("real")) testRealMaterial();
     if (want ("cpu")) testCpu();
     if (want ("humanchecks")) testHuman();
+    if (want ("window")) testWindow();
     return finish();
 }

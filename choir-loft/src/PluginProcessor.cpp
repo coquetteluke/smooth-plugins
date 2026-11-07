@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "StateGuard.h"
+#include "editor/HarmonyEditor.h"
 #include <algorithm>
 #include <chrono>
 
@@ -18,6 +19,8 @@ namespace
     constexpr int numInputTypes = (int) std::size (inputRanges);
 
     constexpr float levelOffDb = -60.0f;
+
+    const juce::Identifier windowWidthAttribute { "windowWidth" }, advancedOpenAttribute { "advancedOpen" };
 
     // Presets set the arrangement. They leave Key, Scale, Follow Key and Input Type alone, so a preset never fights the song.
     struct Preset
@@ -553,8 +556,15 @@ void PluginProcessor::tick() noexcept
         const auto at = pitchHistoryCount.load (std::memory_order_relaxed);
         auto& point = pitchHistory[(size_t) (at & (pitchHistorySize - 1))];
         point.lead.store ((float) aligned, std::memory_order_relaxed);
+        point.leadLevel.store ((float) leadDisplayPeak, std::memory_order_relaxed);
+        leadDisplayPeak = 0.0;
         for (int v = 0; v < maxVoices; ++v)
+        {
+            auto& voice = voices[(size_t) v];
             point.voice[(size_t) v].store (voiced && brain.voice (v).on ? (float) brain.voice (v).pitch : 0.0f, std::memory_order_relaxed);
+            point.voiceLevel[(size_t) v].store ((float) (voice.displayPeak * harmonyGain), std::memory_order_relaxed);
+            voice.displayPeak = 0.0;
+        }
         pitchHistoryCount.store (at + 1, std::memory_order_relaxed);
     }
 }
@@ -710,6 +720,7 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             if (voice.gain <= 0.0 || voice.level <= 1.0e-7)
                 continue;
             y *= voice.gain * voice.level;
+            voice.displayPeak = std::max (voice.displayPeak, std::abs (y));
             if (right == nullptr)
             {
                 sumL += y; // one channel out: pan does not change the level
@@ -725,6 +736,8 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
 
         const float dryL = history.delayed (InputHistory::left, latencyNow);
         const float dryR = history.delayed (InputHistory::right, latencyNow);
+
+        leadDisplayPeak = std::max (leadDisplayPeak, std::abs ((double) dryL * leadGain));
 
         const double wetL = right != nullptr ? (double) dryL * leadGain * leadL + sumL : (double) dryL * leadGain + sumL;
         const double wetR = (double) dryR * leadGain * leadR + sumR;
@@ -853,17 +866,31 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("breath", preset.breathAmount);
 }
 
+juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new HarmonyEditor (*this); }
+
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     if (auto xml = apvts.copyState().createXml())
+    {
+        xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
+        xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, dest);
+    }
 }
 
 void PluginProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
         if (xml->hasTagName (apvts.state.getType()))
+        {
+            // Older sessions have no window state. A damaged size goes back in range. Neither is a parameter, so they stay out of the value tree.
+            if (xml->hasAttribute (windowWidthAttribute))
+                windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
+            advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            xml->removeAttribute (windowWidthAttribute);
+            xml->removeAttribute (advancedOpenAttribute);
             applySafeState (apvts, *xml);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PluginProcessor(); }

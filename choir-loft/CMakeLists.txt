@@ -8,11 +8,11 @@ set(SP_NAME    "Smooth Harmony")
 set(SP_CODE    SHrm)
 set(SP_BUNDLE  "com.lukegarito.smoothharmony")
 set(SP_DESC    "Up to four formant preserving harmony voices from one lead vocal")
-set(SP_VERSION 1.1.0)
+set(SP_VERSION 1.2.0)
 set(SP_AU_TYPE kAudioUnitType_MusicEffect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN TRUE)                   # TRUE for MusicEffect and MusicDevice
-set(SP_SOURCES src/PluginProcessor.cpp) # every .cpp except tests
+set(SP_SOURCES src/PluginProcessor.cpp src/editor/Theme.cpp src/editor/Controls.cpp src/editor/StageView.cpp src/editor/HarmonyEditor.cpp) # every .cpp except tests
 # -------------------------------------
 
 project(${SP_TARGET} VERSION ${SP_VERSION} LANGUAGES C CXX)
@@ -49,6 +49,14 @@ juce_add_plugin(${SP_TARGET}
     IS_MIDI_EFFECT FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE)   # installed only by the InstallAU target below
 
+# The window's one embedded font family (SIL OFL, see assets/fonts/OFL.txt).
+juce_add_binary_data(SmoothHarmonyWindowAssets
+    HEADER_NAME WindowAssets.h
+    NAMESPACE WindowAssets
+    SOURCES
+        assets/fonts/Inter-Regular.otf
+        assets/fonts/Inter-Medium.otf)
+
 target_sources(${SP_TARGET} PRIVATE ${SP_SOURCES})
 
 set(SP_DEFS
@@ -60,7 +68,7 @@ set(SP_DEFS
 
 target_compile_definitions(${SP_TARGET} PUBLIC ${SP_DEFS})
 target_link_libraries(${SP_TARGET}
-    PRIVATE juce::juce_audio_utils juce::juce_dsp
+    PRIVATE SmoothHarmonyWindowAssets juce::juce_audio_utils juce::juce_dsp
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
 # ---- install: cmake --build build --target InstallAU ----
@@ -79,5 +87,12 @@ juce_add_console_app(PluginTest PRODUCT_NAME "PluginTest")
 target_sources(PluginTest PRIVATE ${SP_SOURCES} tests/PluginTest.cpp)
 target_include_directories(PluginTest PRIVATE src tests)
 target_compile_definitions(PluginTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0 SMOOTH_HARMONY_CORPUS="${CMAKE_CURRENT_SOURCE_DIR}/tests/corpus")
-target_link_libraries(PluginTest PRIVATE juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+target_link_libraries(PluginTest PRIVATE SmoothHarmonyWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME plugin COMMAND PluginTest)
+
+# ---- pictures and CPU of the real window, on real speech (not shipped) ----
+juce_add_console_app(RenderWindow PRODUCT_NAME "RenderWindow")
+target_sources(RenderWindow PRIVATE ${SP_SOURCES} tests/RenderWindow.cpp)
+target_include_directories(RenderWindow PRIVATE src tests)
+target_compile_definitions(RenderWindow PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=1 SPEECH_DIR="${CMAKE_BINARY_DIR}/speech" SMOOTH_HARMONY_CORPUS="${CMAKE_CURRENT_SOURCE_DIR}/tests/corpus")
+target_link_libraries(RenderWindow PRIVATE SmoothHarmonyWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)

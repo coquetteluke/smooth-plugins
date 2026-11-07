@@ -300,7 +300,7 @@ PASS  real speech and say singing: fixed fifth, median distance from lead plus t
 PASS  real material: biggest sample step in the voice against the input, worst file = 0.891 times
 PASS  real material, Tight preset: lead with two voices against the lead alone, 99th percentile of 20 ms frames = 3.943 dB
 INFO  real material, defaults: the same, voices running on behind a lead that has stopped = 8.972 dB
-PASS  CPU on one core, 48 kHz stereo, 4 voices, Wide Range, voice at 180 Hz with vibrato (machine busy with other builds) = 1.613 %
+PASS  CPU on one core, 48 kHz stereo, 4 voices, Wide Range, voice at 180 Hz with vibrato (machine busy with other builds) = 1.659 %
 METRIC  note change, how late voices arrive after the lead, average = 42.477 ms
 METRIC  note change, spread between earliest and latest voice, median = 17.000 ms
 METRIC  body of a note, distance from target, median = 3.486 cents
@@ -420,4 +420,58 @@ PASS  Consonant Scatter 100 spreads an S at least 10 ms more than 0, 100 reads =
 PASS  Consonant Scatter 0 leaves copies, 100 does not, best lag at 100 = 0.053 
 PASS  a breath through a voice at defaults fades, late against early = -7.488 dB
 PASS  Drift 100: level wander, peak to peak = 2.936 dB
+PASS  null test: output identical to 1.1.0, preset 0
+PASS  null test: identical with the window open and drawing, preset 0
+PASS  null test: output identical to 1.1.0, preset 3
+PASS  null test: identical with the window open and drawing, preset 3
+PASS  null test: output identical to 1.1.0, preset 4
+PASS  null test: identical with the window open and drawing, preset 4
+PASS  null test: output identical to 1.1.0, preset 7
+PASS  null test: identical with the window open and drawing, preset 7
+PASS  null test: output identical to 1.1.0, preset 10
+PASS  null test: identical with the window open and drawing, preset 10
+PASS  the processor opens the Harmony window
+PASS  every parameter has a control in the window = 0.000 missing
+PASS  no control exists only in the window = 0.000 window only
+PASS  nothing overlaps in any Mode, Advanced closed = 0.000 overlaps
+PASS  everything fits and is reachable, Advanced closed = 0.000 misplaced
+PASS  nothing overlaps in any Mode, Advanced open = 0.000 overlaps
+PASS  everything fits and is reachable, Advanced open = 0.000 misplaced
+PASS  automation moves the Pan control
+PASS  Pan shows its own value string, 42 R
+PASS  automation moves the Interval control
+PASS  typing a value sets the parameter
+PASS  typing Off turns the voice off
+PASS  and it reads Off
+PASS  typing nonsense changes nothing
+PASS  typing begins and ends a gesture each time = 2.000 gestures
+PASS  double-click on Level returns to its default
+PASS  typing 35 L pans left
+PASS  typing c centres it
+PASS  in key, the up arrow from a 3rd goes to a 4th
+PASS  and back down lands on a 3rd
+PASS  and down again to a 2nd, not to another 3rd
+PASS  in Fixed, the arrow moves one semitone
+PASS  dragging a singer is one gesture on pan and one on interval
+PASS  dragging up three rows adds three semitones
+PASS  dragging right pans right = 16.000 pan
+PASS  with MIDI deciding the notes, a drag leaves the interval alone
+PASS  double-clicking a singer resets its pan and interval
+PASS  the window opens at its default size = 1200.000 wide
+PASS  a window watching audio writes no automation = 0.000 writes
+PASS  the singers follow a voice that is singing
+PASS  the lead reads the note it is on, A3
+PASS  voice 1 reads the note it sings, C4
+PASS  voice 2 reads the note it sings, E4
+PASS  the window opens and shuts 60 times with no audio
+PASS  the window opens, draws and shuts 60 times with audio running = 16992.000 blocks
+PASS  every preset, key extreme and scale draws = 66.000 pictures
+PASS  window size and Advanced come back with the session
+PASS  and the window opens that way = 1500.000 wide
+PASS  the window keeps its shape
+PASS  nothing else new in saved state = 0.000 attributes
+PASS  and the window's size stays out of the parameter tree
+PASS  a damaged window size goes back in range = 1900.000 wide
+PASS  a session from before the window opens at the default size
+PASS  no em dash in any hint
 RESULT PASS  0 failures

@@ -62,7 +62,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor (*this); }
+    juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Smooth Harmony"; }
@@ -81,7 +81,13 @@ public:
 
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
 
-    // For a later window and for tests. Safe from any thread, never blocks audio.
+    // Window width in points. The height follows from the fixed shape. Saved with the session, and not a sound setting.
+    static constexpr int defaultWindowWidth = 1200, minWindowWidth = 900, maxWindowWidth = 1900;
+    std::atomic<int> windowWidth { defaultWindowWidth };
+    // Whether the window's Advanced section is open. Saved with the session, and not a sound setting.
+    std::atomic<bool> advancedOpen { false };
+
+    // For the window and for tests. Safe from any thread, never blocks audio.
     struct Readings
     {
         float detectedHz = 0.0f;
@@ -92,7 +98,12 @@ public:
     Readings getReadings() const noexcept;
 
     // The last few seconds of pitch, one point every 5 ms, for a graph. Read newest back from getPitchHistoryCount() - 1. 0 means no pitch.
-    struct PitchPoint { std::atomic<float> lead { 0.0f }; std::array<std::atomic<float>, maxVoices> voice {}; };
+    // Level is the loudest sample out of that part in those 5 ms, for the display only.
+    struct PitchPoint
+    {
+        std::atomic<float> lead { 0.0f }, leadLevel { 0.0f };
+        std::array<std::atomic<float>, maxVoices> voice {}, voiceLevel {};
+    };
     static constexpr int pitchHistorySize = 2048;
     const PitchPoint& getPitchPoint (long long index) const noexcept { return pitchHistory[(size_t) (index & (pitchHistorySize - 1))]; }
     long long getPitchHistoryCount() const noexcept { return pitchHistoryCount.load (std::memory_order_relaxed); }
@@ -154,6 +165,8 @@ private:
         double toneLow = 0.0, toneNow = 0.0, toneTarget = 0.0;
         double breathEnv = 0.0, breathHigh = 0.0, breathLow = 0.0, breathTrack = 0.0;
         std::uint32_t noiseState = 1;
+
+        double displayPeak = 0.0;                // for the window's history only, nothing reads it back into the sound
     };
 
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&, bool forceBypass) noexcept;
@@ -197,6 +210,7 @@ private:
 
     double sr = 48000.0, smoothing = 0.001, consonantGain = 0.35, envelopeStep = 0.001, matchPower = 0.001, matchGain = 0.001;
     double scatterNow = 0.0, breathNow = 0.0, breathEnvK = 0.01, breathHighK = 0.2, breathLowK = 0.6, toneK = 0.2, mixStep = 0.01, consonantLowK = 0.05;
+    double leadDisplayPeak = 0.0;
     double leadGain = 1.0, leadGainTarget = 1.0, leadL = 1.0, leadR = 1.0, leadLTarget = 1.0, leadRTarget = 1.0;
     double harmonyGain = 1.0, harmonyGainTarget = 1.0, mixNow = 1.0, mixTarget = 1.0;
     std::array<double, maxVoices> throatRate {}, driftNow {};

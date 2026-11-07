@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+
+The custom window. The display shows each voice as a line through time, running into its singer on a stage: up and down is the note, left and right is pan, size is Level. Drag a singer to pan it or change its interval. Voice strips with the note, the interval in words, Level, Pan, Drift and Tone. Everything else is behind Advanced. Replaces the generic window.
+
+Every parameter keeps its ID, name and range. The sound is unchanged, bit for bit against 1.1.0 on 5 presets, with and without the window open. The processor now also stores a level per 5 ms for the display, lock free. New in saved state: window width and whether Advanced is open, nothing else.
+
 ## 1.1.0
 
 More like separate people. Luke heard 1.0.0 on his voice and found it robotic. Nobody has heard this version yet.

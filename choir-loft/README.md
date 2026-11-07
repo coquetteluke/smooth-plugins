@@ -47,7 +47,33 @@ Every control is a real AU parameter that a host can find by name.
 | Reference A4 | 415 to 466 Hz. |
 | Bypass | Keeps the same delay. |
 
-Readings, which never write automation: Detected Pitch, Lead Note, Voice 1 to 4 Note, Voices Sounding, Active Key. The generic window does not redraw them live. Hosts read them by name.
+Readings, which never write automation: Detected Pitch, Lead Note, Voice 1 to 4 Note, Voices Sounding, Active Key. The window draws from them live. Hosts read them by name.
+
+## The window
+
+![The window with four voices](docs/window/four-voices@2x.png)
+
+The top half shows what each voice sings and where it sits. On the left, each voice is a line through the last 8 seconds, the lead in warm white. Each line runs into its singer on the stage on the right.
+
+- **Up and down** is the note, the same scale on both sides. Rows are the notes of your key, stronger on the root.
+- **Left and right on the stage** is pan.
+- **A singer's size** is its Level. The pale ring around it swells with how loud it is right now. A hollow ring means its Level is Off.
+- **The thickness of a line** is how loud that moment was.
+- **With nothing playing,** singers show where they would sit, so you can set up the voices before you sing.
+
+Drag a singer: left and right pans it, up and down changes its interval. In the MIDI modes MIDI decides the note, so a drag only pans. Double-click a singer to reset it.
+
+Below the display, each voice has its note, its interval in words, Level, Pan, Drift and Tone. Under those are Humanize, Vibrato, Lead, Harmony and Mix. Advanced holds Throat, Vibrato Rate, Glide, Follow Lead, Breath, Consonants, Scatter, Lead Pan, Voice range, Tracking and Reference A4. When Advanced opens, the display gets shorter instead of the window getting bigger.
+
+The Mode row says In Key where the parameter is called Scale Interval, and Fixed where it is Fixed Interval. Key and Scale swap with Chord and Type in Chord Tones mode, and Follow Key swaps with Chord Hold in the MIDI modes. Whichever pair is not by the display is in Advanced, so every control always has a place.
+
+Every control is a real parameter with the same ID, name and range as before. Double-click resets, click a value to type it, the arrows on an interval step to the next interval, and Shift gives a finer drag. The size and whether Advanced is open are saved with the session, and nothing else was added to saved state. The line under the controls explains whatever is under the mouse.
+
+`src/editor/`: `StageView` is the display, `Controls` the controls, `HarmonyEditor` the layout, `Theme` the colours. Font: Inter, SIL OFL, license in `assets/fonts/`. Pictures are in `docs/window/`: `build/RenderWindow_artefacts/Release/RenderWindow docs/window` draws them again from the `say` recordings in `tests/corpus`, which are not a singer.
+
+The display reads a pitch and level history and never touches the sound. Two small additions feed it: the audio thread keeps the loudest sample of the lead and of each voice over each 5 ms and stores it in lock-free history. The `window` tests compare a bit for bit fingerprint of the output on 5 presets against the 1.1.0 source, with no window and with the window open and drawing. All are identical.
+
+CPU, real window at 2x on this Mac, Full Stack on sung material, 24 frames a second: 1.7 to 4.4% of one core over 10 runs, about 1% open with nothing playing. Every run is in `docs/window-cpu.md`. `tests/AuViewCheck.mm` opens the installed window through the system 80 times, with and without audio.
 
 ## Modes
 

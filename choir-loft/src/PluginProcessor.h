@@ -139,6 +139,21 @@ private:
         double powerIn = 0.0, powerOut = 0.0, match = 1.0; // slow level match against the lead, voiced sound only
         double level = 1.0, panL = 1.0, panR = 1.0;
         double levelTarget = 1.0, panLTarget = 1.0, panRTarget = 1.0;
+
+        bool voicedNow = false;                  // the part of the lead this voice is singing right now is voiced
+        double attackStep = 0.0, wander = 1.0, lagSamples = 0.0;
+
+        // Consonants: this voice's own version of each one, later and softer, and with its own waveform.
+        static constexpr int numTaps = 16;
+        std::array<int, numTaps> tapDelay {};
+        std::array<float, numTaps> tapSign {};
+        int consonantDelay = 0;
+        double consonantMix = 0.0, consonantSoft = 0.0, consonantLow = 0.0, consonantCorner = 0.3, consonantLevel = 1.0, unvoicedFor = 0.0;
+
+        // Tone, and breath of its own
+        double toneLow = 0.0, toneNow = 0.0, toneTarget = 0.0;
+        double breathEnv = 0.0, breathHigh = 0.0, breathLow = 0.0, breathTrack = 0.0;
+        std::uint32_t noiseState = 1;
     };
 
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&, bool forceBypass) noexcept;
@@ -152,8 +167,9 @@ private:
     std::atomic<float>* modeParam = nullptr, *keyParam = nullptr, *scaleParam = nullptr, *followKey = nullptr, *voicesParam = nullptr,
                        *humanize = nullptr, *vibrato = nullptr, *vibratoRate = nullptr, *leadLevel = nullptr, *leadPan = nullptr, *mix = nullptr,
                        *harmonyLevel = nullptr, *glide = nullptr, *followLead = nullptr, *consonants = nullptr, *inputType = nullptr,
-                       *tracking = nullptr, *reference = nullptr, *chordRoot = nullptr, *chordType = nullptr, *chordHold = nullptr;
-    struct VoiceParams { std::atomic<float>* interval = nullptr, *level = nullptr, *pan = nullptr, *drift = nullptr, *throat = nullptr; };
+                       *tracking = nullptr, *reference = nullptr, *chordRoot = nullptr, *chordType = nullptr, *chordHold = nullptr,
+                       *breath = nullptr, *consonantScatter = nullptr;
+    struct VoiceParams { std::atomic<float>* interval = nullptr, *level = nullptr, *pan = nullptr, *drift = nullptr, *throat = nullptr, *tone = nullptr; };
     std::array<VoiceParams, maxVoices> voiceParams {};
     juce::AudioParameterBool* bypass = nullptr;
     ReadingParameter* hzReading = nullptr, *leadReading = nullptr, *keyReading = nullptr, *soundingReading = nullptr;
@@ -176,9 +192,11 @@ private:
     // Lead pitch per tick, so what a voice follows lines up with the part of the lead coming out.
     static constexpr int pitchRingSize = 256;
     std::array<double, pitchRingSize> pitchRing {};
+    std::array<bool, pitchRingSize> voicedRing {};
     int pitchRingAt = 0;
 
     double sr = 48000.0, smoothing = 0.001, consonantGain = 0.35, envelopeStep = 0.001, matchPower = 0.001, matchGain = 0.001;
+    double scatterNow = 0.0, breathNow = 0.0, breathEnvK = 0.01, breathHighK = 0.2, breathLowK = 0.6, toneK = 0.2, mixStep = 0.01, consonantLowK = 0.05;
     double leadGain = 1.0, leadGainTarget = 1.0, leadL = 1.0, leadR = 1.0, leadLTarget = 1.0, leadRTarget = 1.0;
     double harmonyGain = 1.0, harmonyGainTarget = 1.0, mixNow = 1.0, mixTarget = 1.0;
     std::array<double, maxVoices> throatRate {}, driftNow {};

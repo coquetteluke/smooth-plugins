@@ -77,6 +77,8 @@ public:
         double grainRate = 1.0;      // reading speed inside a grain: above 1 moves formants up
         double jitter = 0.0;         // fraction of the period, random per grain
         double shimmer = 0.0;        // fraction of the level, random per grain
+        bool blendPeriods = false;   // a grain reads between two neighbouring periods instead of repeating or dropping whole ones
+        double readJitter = 0.0;     // samples, random per grain: where it reads, so the high end stops repeating exactly, and pitch does not move at all
     };
 
     void prepare (double sampleRate, unsigned seed)
@@ -181,6 +183,11 @@ private:
         long long whole = 0;        // offset split up for the fixed rate case
         double fraction = 0.0;
         std::array<float, 12> coefficients {};
+        double blend = 0.0;         // how much of the next period this grain mixes in, 0 is none
+        double offsetB = 0.0;
+        long long wholeB = 0;
+        double fractionB = 0.0;
+        std::array<float, 12> coefficientsB {};
     };
 
     static constexpr int tapCount = 12, phases = 256, windowSize = 2048, maxGrains = 16;
@@ -224,15 +231,22 @@ private:
         return win[(size_t) i] + (at - i) * (win[(size_t) i + 1] - win[(size_t) i]);
     }
 
+    void splitOne (double offset, long long& wholeOut, double& fractionOut, float* coefficients) noexcept
+    {
+        const double whole = std::floor (offset);
+        wholeOut = (long long) whole;
+        fractionOut = offset - whole;
+        if (fractionOut < 1.0e-9) { fractionOut = 0.0; }
+        else if (fractionOut > 1.0 - 1.0e-9) { fractionOut = 0.0; ++wholeOut; }
+        if (fractionOut > 0.0)
+            tableRow (fractionOut, coefficients);
+    }
+
     void splitOffset (Grain& g) noexcept
     {
-        const double whole = std::floor (g.offset);
-        g.whole = (long long) whole;
-        g.fraction = g.offset - whole;
-        if (g.fraction < 1.0e-9) { g.fraction = 0.0; }
-        else if (g.fraction > 1.0 - 1.0e-9) { g.fraction = 0.0; ++g.whole; }
-        if (g.fraction > 0.0)
-            tableRow (g.fraction, g.coefficients.data());
+        splitOne (g.offset, g.whole, g.fraction, g.coefficients.data());
+        if (g.blend > 0.0)
+            splitOne (g.offsetB, g.wholeB, g.fractionB, g.coefficientsB.data());
     }
 
     void tableRow (double fraction, float* out) const noexcept
@@ -246,23 +260,20 @@ private:
             out[t] = r0[t] + a * (r1[t] - r0[t]);
     }
 
-    float read (const Grain& g, long long n, double t, long long newest, const InputHistory& history) const noexcept
+    float readFixed (const float* d, int mask, long long index, double fraction, const float* coefficients) const noexcept
     {
-        const float* d = history.grains();
-        const int mask = history.mask();
-        if (g.rate == 1.0)
-        {
-            const long long index = n + g.whole;
-            if (g.fraction == 0.0)
-                return index < 0 ? 0.0f : d[index & mask];
-            const float* x = d + ((index - (tapCount / 2 - 1)) & mask);
-            float total = 0.0f;
-            for (int i = 0; i < tapCount; ++i)
-                total += x[i] * g.coefficients[(size_t) i];
-            return total;
-        }
-        // The grain is read at a different speed, so its formants move. Never read past the newest sample.
-        double pos = (double) n + g.offset + (g.rate - 1.0) * t;
+        if (fraction == 0.0)
+            return index < 0 ? 0.0f : d[index & mask];
+        const float* x = d + ((index - (tapCount / 2 - 1)) & mask);
+        float total = 0.0f;
+        for (int i = 0; i < tapCount; ++i)
+            total += x[i] * coefficients[i];
+        return total;
+    }
+
+    // The grain is read at a different speed, so its formants move. Never read past the newest sample.
+    float readMoving (const float* d, int mask, double pos, long long newest) const noexcept
+    {
         pos = std::min (pos, (double) (newest - interpolatorReach));
         const double whole = std::floor (pos);
         std::array<float, tapCount> row;
@@ -272,6 +283,25 @@ private:
         for (int i = 0; i < tapCount; ++i)
             total += x[i] * row[(size_t) i];
         return total;
+    }
+
+    float read (const Grain& g, long long n, double t, long long newest, const InputHistory& history) const noexcept
+    {
+        const float* d = history.grains();
+        const int mask = history.mask();
+        const float blend = (float) g.blend;
+        if (g.rate == 1.0)
+        {
+            const float a = readFixed (d, mask, n + g.whole, g.fraction, g.coefficients.data());
+            if (g.blend <= 0.0)
+                return a;
+            return a + blend * (readFixed (d, mask, n + g.wholeB, g.fractionB, g.coefficientsB.data()) - a);
+        }
+        const double drift = (g.rate - 1.0) * t;
+        const float a = readMoving (d, mask, (double) n + g.offset + drift, newest);
+        if (g.blend <= 0.0)
+            return a;
+        return a + blend * (readMoving (d, mask, (double) n + g.offsetB + drift, newest) - a);
     }
 
     void addGrain (const Grain& g) noexcept
@@ -363,7 +393,34 @@ private:
             {
                 g.offset = offset;
                 lastMarkUsed = q;
+
+                // Instead of repeating or dropping whole periods, in a pattern the ear can catch, read between the two periods either side of
+                // where this grain falls. Marks sit on the same point of each period, so the two line up. Only when the later mark is already known.
+                if (c.blendPeriods)
+                {
+                    long long lower = q;
+                    while (lower > tracker.firstMark() && tracker.mark (lower).position > aim) --lower;
+                    while (lower < tracker.lastMark() && tracker.mark (lower + 1).position <= aim) ++lower;
+                    if (lower < tracker.lastMark() && tracker.mark (lower).position <= aim)
+                    {
+                        const double p0 = tracker.mark (lower).position, p1 = tracker.mark (lower + 1).position;
+                        if (p1 - g.mark <= (double) latency && p1 > p0)
+                        {
+                            g.offset = p0 - g.mark;
+                            g.offsetB = p1 - g.mark;
+                            g.blend = std::clamp ((aim - p0) / (p1 - p0), 0.0, 1.0);
+                            lastMarkUsed = lower;
+                        }
+                    }
+                }
             }
+        }
+
+        if (! plain && c.readJitter > 0.0)
+        {
+            const double nudge = c.readJitter * nextRandom();
+            g.offset += nudge;
+            g.offsetB += nudge;
         }
 
         if (plain)
@@ -376,6 +433,7 @@ private:
             g.offset = plainOffset;
             g.rate = 1.0;
             g.gain = 1.0;
+            g.blend = 0.0;
             lastMarkUsed = -1;
         }
         else

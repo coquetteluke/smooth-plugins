@@ -14,14 +14,16 @@ enum HarmonyMode { modeScale = 0, modeMidi, modeFixed, modeChord, modeChannel, n
 
 inline constexpr const char* modeNames[numModes] = { "Scale Interval", "MIDI Chord", "Fixed Interval", "Chord Tones", "MIDI Channel" };
 
-// One voice's personality: everything that keeps it from being a copy of the others.
+// One voice's personality: everything that keeps it from being a copy of the others. Part of it is fixed for the voice (where it tends to sit,
+// how far behind the lead it stands) and part is chosen fresh for each note, the way a person never sings a note the same way twice.
 class Singer
 {
 public:
     static constexpr double driftFullCents = 20.0, driftFullMs = 40.0;
     static constexpr double vibratoFullCents = 60.0;
-    static constexpr double humanizeDetuneCents = 8.0, humanizeScoopCents = 70.0, humanizeLagMs = 18.0;
-    static constexpr double scoopSeconds = 0.045, vibratoDelay = 0.18, vibratoRamp = 0.35;
+    static constexpr double humanizeDetuneCents = 8.0, humanizeBiasCents = 5.0, humanizeScoopCents = 70.0, humanizeSettleCents = 18.0, humanizeLagMs = 18.0;
+    static constexpr double settleSeconds = 0.18, vibratoDelay = 0.18, vibratoRamp = 0.35;
+    static constexpr double levelWanderFull = 0.17;   // about +/-1.5 dB at Drift 100
 
     void prepare (int index, double tickSeconds) noexcept
     {
@@ -39,20 +41,33 @@ public:
         {
             pitchPhase[(size_t) i] = nextRandom() * M_PI;
             lagPhase[(size_t) i] = nextRandom() * M_PI;
+            levelPhase[(size_t) i] = nextRandom() * M_PI;
         }
         vibratoPhase = nextRandom() * M_PI;
-        scoop = 0.0;
-        detune = 0.0;
-        extraLagMs = 0.0;
+        scoop = settle = detune = extraLagMs = 0.0;
+        scoopSeconds = 0.045;
+        glideScale = 1.0;
+        delayNow = vibratoDelay;
+        depthScale = 1.0;
+        humanizeNow = 0.0;
         age = 1.0e6;
     }
 
-    // A new note, or a new phrase. Everything random about how this note starts is chosen here.
-    void noteEvent (double humanize) noexcept
+    // A new note, or a new phrase. direction: +1 going up, -1 going down, 0 starting from nothing.
+    void noteEvent (double humanize, int direction) noexcept
     {
-        detune = humanize * humanizeDetuneCents * nextRandom();
-        scoop = -humanize * humanizeScoopCents * (0.7 + 0.3 * nextRandom());
+        static constexpr double tendency[4] = { 0.4, -0.8, 0.9, -0.5 };   // where this singer tends to sit, sharp or flat
+        humanizeNow = humanize;
+        detune = humanize * (humanizeBiasCents * tendency[voice] + humanizeDetuneCents * nextRandom());
+        // In from below, less so when the line is coming down.
+        scoop = -humanize * humanizeScoopCents * (0.7 + 0.3 * nextRandom()) * (direction < 0 ? 0.55 : 1.0);
+        scoopSeconds = 0.035 + humanize * 0.04 * (0.5 + 0.5 * nextRandom());
+        // The rest of the way to where the note ends up takes a while, from either side.
+        settle = humanize * humanizeSettleCents * nextRandom();
         extraLagMs = humanize * humanizeLagMs * (0.5 + 0.5 * nextRandom());
+        glideScale = 1.0 + humanize * 0.9 * (0.5 + 0.5 * nextRandom());
+        delayNow = vibratoDelay + humanize * 0.15 * (0.5 + 0.5 * nextRandom());
+        depthScale = 1.0 + humanize * 0.3 * nextRandom();
         age = 0.0;
     }
 
@@ -60,46 +75,53 @@ public:
     {
         clock += tick;
         age += tick;
-        static constexpr double pitchHz[3] = { 0.19, 0.43, 0.83 }, lagHz[3] = { 0.13, 0.31, 0.67 }, weight[3] = { 0.5, 0.3, 0.2 };
+        static constexpr double pitchHz[3] = { 0.19, 0.43, 0.83 }, lagHz[3] = { 0.13, 0.31, 0.67 }, levelHz[3] = { 0.23, 0.53, 1.07 }, weight[3] = { 0.5, 0.3, 0.2 };
+        static constexpr double standsBehindMs[4] = { 2.0, 16.0, 8.0, 26.0 };
         const double spread = 1.0 + 0.11 * voice;
-        double w = 0.0, l = 0.0;
+        double w = 0.0, l = 0.0, a = 0.0;
         for (int i = 0; i < 3; ++i)
         {
             w += weight[i] * std::sin (2.0 * M_PI * pitchHz[i] * spread * clock + pitchPhase[(size_t) i]);
             l += weight[i] * std::sin (2.0 * M_PI * lagHz[i] * spread * clock + lagPhase[(size_t) i]);
+            a += weight[i] * std::sin (2.0 * M_PI * levelHz[i] * spread * clock + levelPhase[(size_t) i]);
         }
         scoop *= std::exp (-tick / scoopSeconds);
+        settle *= std::exp (-tick / settleSeconds);
 
-        static constexpr double rateScale[4] = { 1.0, 0.96, 1.04, 0.93 };
-        vibratoPhase += 2.0 * M_PI * vibratoHz * rateScale[voice] * tick;
+        vibratoPhase += 2.0 * M_PI * vibratoHz * vibratoRateScale (voice) * tick;
         if (vibratoPhase > 2.0 * M_PI) vibratoPhase -= 2.0 * M_PI;
-        const double vibratoShape = std::clamp ((age - vibratoDelay) / vibratoRamp, 0.0, 1.0);
+        const double vibratoShape = std::clamp ((age - delayNow) / vibratoRamp, 0.0, 1.0);
 
-        cents = drift * driftFullCents * w + detune + scoop
-              + vibratoAmount * vibratoFullCents * vibratoShape * std::sin (vibratoPhase);
-        lagMs = drift * driftFullMs * (0.5 + 0.5 * l) + extraLagMs;
+        cents = drift * driftFullCents * w + detune + scoop + settle
+              + vibratoAmount * vibratoFullCents * depthScale * vibratoShape * std::sin (vibratoPhase);
+        lagMs = drift * driftFullMs * (0.5 + 0.5 * l) + extraLagMs + humanizeNow * standsBehindMs[voice];
+        level = 1.0 + drift * levelWanderFull * a;
     }
 
     double pitchCents() const noexcept { return cents; }
     double lagMilliseconds() const noexcept { return lagMs; }
+    double levelWander() const noexcept { return level; }
+    double glideStretch() const noexcept { return glideScale; }
     static double vibratoRateScale (int v) noexcept
     {
         static constexpr double rateScale[4] = { 1.0, 0.96, 1.04, 0.93 };
         return rateScale[v];
     }
 
-private:
+    // -1 to 1, the same sequence every run, so a bounce always comes out the same.
     double nextRandom() noexcept
     {
         random ^= random << 13; random ^= random >> 17; random ^= random << 5;
         return (double) (random & 0xFFFFFFu) / 8388607.5 - 1.0;
     }
 
+private:
     int voice = 0;
     double tick = 0.001, clock = 0.0, age = 1.0e6;
     std::uint32_t random = 1;
-    std::array<double, 3> pitchPhase {}, lagPhase {};
-    double vibratoPhase = 0.0, scoop = 0.0, detune = 0.0, extraLagMs = 0.0, cents = 0.0, lagMs = 0.0;
+    std::array<double, 3> pitchPhase {}, lagPhase {}, levelPhase {};
+    double vibratoPhase = 0.0, scoop = 0.0, settle = 0.0, detune = 0.0, extraLagMs = 0.0, cents = 0.0, lagMs = 0.0, level = 1.0;
+    double scoopSeconds = 0.045, glideScale = 1.0, delayNow = vibratoDelay, depthScale = 1.0, humanizeNow = 0.0;
 };
 
 class HarmonyBrain
@@ -157,13 +179,18 @@ public:
             remains[(size_t) v] = 0.0;
             lastDiscrete[(size_t) v] = 1000000;
             sounding[(size_t) v] = false;
+            voiceScaleNote[(size_t) v] = -1;
+            voiceChromaticNote[(size_t) v] = -1;
+            midiHeld[(size_t) v] = -1;
+            midiAge[(size_t) v] = 0;
         }
     }
 
     MidiChord& midi() noexcept { return chord; }
 
     // lead: semitones lined up with the output, 0 when there is none. voiced: the tracker has a pitch right now.
-    void update (double lead, bool voiced, const Settings& s) noexcept
+    // voiceLead: the same for each voice, later by how far that voice stands behind the lead. A voice hears the lead late, so it moves late.
+    void update (double lead, const std::array<double, maxVoices>& voiceLead, bool voiced, const Settings& s) noexcept
     {
         chord.setHold (s.chordHold);
         if (s.mode == modeMidi) chord.assignChord (s.voices);
@@ -173,7 +200,13 @@ public:
         if (voiced && lead > 0.0)
         {
             silentFor = 0.0;
-            if (! hasLead) { phraseStart = true; leadScaleNote = leadChromaticNote = -1; }
+            if (! hasLead)
+            {
+                phraseStart = true;
+                leadScaleNote = leadChromaticNote = -1;
+                voiceScaleNote.fill (-1);
+                voiceChromaticNote.fill (-1);
+            }
             hasLead = true;
             leadPitch = lead;
         }
@@ -184,17 +217,25 @@ public:
                 hasLead = false;
         }
 
-        const int oldChromatic = leadChromaticNote;
         if (hasLead)
         {
             leadScaleNote = followWithMargin (leadScaleNote, leadPitch, s.scale);
             leadChromaticNote = followWithMargin (leadChromaticNote, leadPitch, 0x0FFF);
         }
 
-        const double p = leadPitch;
         for (int v = 0; v < maxVoices; ++v)
         {
             auto& out = voices[(size_t) v];
+            // What this voice has heard of the lead so far.
+            const double heard = voiced && voiceLead[(size_t) v] > 0.0 ? voiceLead[(size_t) v] : leadPitch;
+            const double p = heard;
+            const int oldChromatic = voiceChromaticNote[(size_t) v];
+            if (hasLead)
+            {
+                voiceScaleNote[(size_t) v] = followWithMargin (voiceScaleNote[(size_t) v], p, s.scale);
+                voiceChromaticNote[(size_t) v] = followWithMargin (voiceChromaticNote[(size_t) v], p, 0x0FFF);
+            }
+            const int scaleNote = voiceScaleNote[(size_t) v], chromaticNote = voiceChromaticNote[(size_t) v];
             const bool inCount = v < s.voices;
             const int interval = s.interval[(size_t) v];
 
@@ -202,19 +243,31 @@ public:
             double wanted = 0.0, fine = 0.0;
             bool wantsPitch = inCount && hasLead;
             bool on = inCount;
-            const double follow = std::clamp (s.followLead, 0.0, 1.0);
+            static constexpr double copiesLess[4] = { 0.2, 0.5, 0.35, 0.7 };
+            const double follow = std::clamp (s.followLead, 0.0, 1.0) * (1.0 - s.humanize * copiesLess[v]);
 
             switch (s.mode)
             {
                 case modeFixed:
                     discrete = interval;
                     wanted = p + interval;
-                    out.note = hasLead ? leadChromaticNote + interval : -1;
+                    out.note = hasLead ? chromaticNote + interval : -1;
                     break;
                 case modeMidi:
                 case modeChannel:
                 {
-                    const int note = chord.noteFor (v);
+                    // A chord change reaches each voice when that voice would have heard it.
+                    const int played = chord.noteFor (v);
+                    if (played == midiHeld[(size_t) v])
+                    {
+                        midiAge[(size_t) v] = 0;
+                    }
+                    else if (++midiAge[(size_t) v] > (int) (singers[(size_t) v].lagMilliseconds() * 0.001 / tick))
+                    {
+                        midiHeld[(size_t) v] = played;
+                        midiAge[(size_t) v] = 0;
+                    }
+                    const int note = midiHeld[(size_t) v];
                     on = inCount && note >= 0;
                     wantsPitch = on && hasLead;
                     if (note >= 0 && hasLead)
@@ -222,7 +275,7 @@ public:
                         const int folded = foldNear (note, p);
                         discrete = folded;
                         wanted = folded;
-                        fine = follow * std::clamp (p - leadChromaticNote, -1.0, 1.0);
+                        fine = follow * std::clamp (p - chromaticNote, -1.0, 1.0);
                         out.note = folded;
                     }
                     else out.note = note;
@@ -231,10 +284,10 @@ public:
                 case modeChord:
                     if (hasLead)
                     {
-                        const int note = nearestInMask ((double) (leadChromaticNote + interval), s.chord);
+                        const int note = nearestInMask ((double) (chromaticNote + interval), s.chord);
                         discrete = note;
                         wanted = note;
-                        fine = follow * std::clamp (p - leadChromaticNote, -1.0, 1.0);
+                        fine = follow * std::clamp (p - chromaticNote, -1.0, 1.0);
                         out.note = note;
                     }
                     else out.note = -1;
@@ -242,10 +295,10 @@ public:
                 default:
                     if (hasLead)
                     {
-                        const int note = harmonyNote (leadScaleNote, interval, s.scale);
+                        const int note = harmonyNote (scaleNote, interval, s.scale);
                         discrete = note;
                         wanted = note;
-                        fine = follow * std::clamp (p - leadScaleNote, -1.0, 1.0);
+                        fine = follow * std::clamp (p - scaleNote, -1.0, 1.0);
                         out.note = note;
                     }
                     else out.note = -1;
@@ -260,19 +313,19 @@ public:
                 if (! wasSounding || phraseStart)
                 {
                     remains[(size_t) v] = 0.0;
-                    singer.noteEvent (s.humanize);
+                    singer.noteEvent (s.humanize, 0);
                 }
                 else if (discrete != lastDiscrete[(size_t) v] || s.mode != lastMode)
                 {
                     // Keep going from where the voice actually is, then let the difference die away. That is the glide.
                     remains[(size_t) v] = lastPitch[(size_t) v] - aim;
-                    singer.noteEvent (s.humanize);
+                    singer.noteEvent (s.humanize, remains[(size_t) v] > 0.0 ? -1 : 1);
                 }
-                else if (s.mode == modeFixed && leadChromaticNote != oldChromatic)
+                else if (s.mode == modeFixed && chromaticNote != oldChromatic)
                 {
-                    singer.noteEvent (s.humanize);
+                    singer.noteEvent (s.humanize, chromaticNote < oldChromatic ? -1 : 1);
                 }
-                remains[(size_t) v] = s.glideMs < 0.5 ? 0.0 : remains[(size_t) v] * std::exp (-tick * 1000.0 / s.glideMs);
+                remains[(size_t) v] = s.glideMs < 0.5 ? 0.0 : remains[(size_t) v] * std::exp (-tick * 1000.0 / (s.glideMs * singer.glideStretch()));
                 out.target = aim + remains[(size_t) v];
                 lastDiscrete[(size_t) v] = discrete;
                 lastPitch[(size_t) v] = out.target;
@@ -292,6 +345,8 @@ public:
 
     const Voice& voice (int v) const noexcept { return voices[(size_t) v]; }
     double lagMilliseconds (int v) const noexcept { return singers[(size_t) v].lagMilliseconds(); }
+    double levelWander (int v) const noexcept { return singers[(size_t) v].levelWander(); }
+    Singer& singer (int v) noexcept { return singers[(size_t) v]; }
     int leadNote() const noexcept { return hasLead ? leadChromaticNote : -1; }
 
     double periodFor (double semitones, double referenceHz) const noexcept
@@ -325,7 +380,7 @@ private:
     std::array<Singer, maxVoices> singers;
     std::array<Voice, maxVoices> voices {};
     std::array<double, maxVoices> remains {}, lastPitch {};
-    std::array<int, maxVoices> lastDiscrete {};
+    std::array<int, maxVoices> lastDiscrete {}, voiceScaleNote {}, voiceChromaticNote {}, midiHeld {}, midiAge {};
     std::array<bool, maxVoices> sounding {};
     bool hasLead = false;
     double silentFor = 1.0, leadPitch = 0.0;

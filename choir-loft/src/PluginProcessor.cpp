@@ -25,20 +25,22 @@ namespace
         const char* name;
         int mode, voices;
         int interval[4];
-        float level[4], pan[4], drift[4], throat[4];
-        float humanize, vibrato, glide, lead;
+        float level[4], pan[4], drift[4], throat[4], tone[4];
+        float humanize, vibrato, glide, lead, follow, consonantAmount, scatter, breathAmount;
     };
     constexpr Preset presets[] = {
-        { "Pop Thirds And Fifths", modeScale, 2, { 4, 7, -5, 12 },       { -6, -6, -8, -8 },     { -35, 35, -70, 70 },  { 25, 25, 25, 25 }, { 100, 96, 104, 92 }, 20, 10, 20, 0 },
-        { "Third Above",           modeScale, 1, { 4, 7, -5, 12 },       { -5, -6, -8, -8 },     { 15, 35, -70, 70 },   { 20, 25, 25, 25 }, { 97, 96, 104, 92 }, 25, 10, 25, 0 },
-        { "Third Below",           modeScale, 1, { -4, 7, -5, 12 },      { -5, -6, -8, -8 },     { -15, 35, -70, 70 },  { 20, 25, 25, 25 }, { 105, 96, 104, 92 }, 25, 10, 25, 0 },
-        { "Full Stack",            modeScale, 4, { 4, 7, -5, 12 },       { -7, -7, -8, -11 },    { -40, 40, -75, 75 },  { 30, 30, 30, 30 }, { 100, 96, 106, 90 }, 30, 15, 25, 0 },
-        { "Gang Unison",           modeFixed, 4, { 0, 0, 0, 0 },         { -6, -6, -6, -6 },     { -30, 30, -80, 80 },  { 55, 60, 65, 70 }, { 100, 94, 106, 110 }, 45, 15, 15, 0 },
-        { "Wide Octaves",          modeFixed, 2, { 12, -12, 12, -12 },   { -9, -6, -12, -12 },   { -55, 55, -80, 80 },  { 25, 25, 30, 30 }, { 96, 106, 90, 112 }, 20, 5, 15, 0 },
-        { "Power Fifths",          modeFixed, 2, { 7, -5, 12, -12 },     { -7, -7, -10, -10 },   { -30, 30, -60, 60 },  { 15, 15, 20, 20 }, { 98, 103, 94, 108 }, 10, 0, 10, 0 },
-        { "MIDI Choir",            modeMidi,  4, { 4, 7, -5, 12 },       { -6, -6, -6, -6 },     { -60, -20, 20, 60 },  { 30, 30, 30, 30 }, { 106, 102, 97, 92 }, 30, 15, 40, -3 },
-        { "MIDI Chords Only",      modeMidi,  4, { 4, 7, -5, 12 },       { -3, -3, -3, -3 },     { -60, -20, 20, 60 },  { 25, 25, 25, 25 }, { 106, 102, 97, 92 }, 25, 10, 40, -60 },
-        { "Chord Tones Pad",       modeChord, 3, { 4, 7, 12, -5 },       { -7, -7, -9, -9 },     { -50, 50, 0, -80 },   { 30, 30, 30, 30 }, { 100, 96, 92, 106 }, 25, 12, 60, 0 },
+        { "Pop Thirds And Fifths", modeScale, 2, { 4, 7, -5, 12 },     { -6, -6, -8, -8 },   { -35, 35, -70, 70 }, { 30, 30, 30, 30 }, { 97, 106, 91, 111 }, { 20, -35, 40, -55 }, 50, 10, 30, 0, 8, 22, 60, 12 },
+        { "Third Above",           modeScale, 1, { 4, 7, -5, 12 },     { -5, -6, -8, -8 },   { 15, 35, -70, 70 },  { 25, 30, 30, 30 }, { 95, 106, 91, 111 }, { -15, -35, 40, -55 }, 55, 10, 35, 0, 8, 22, 60, 12 },
+        { "Third Below",           modeScale, 1, { -4, 7, -5, 12 },    { -5, -6, -8, -8 },   { -15, 35, -70, 70 }, { 25, 30, 30, 30 }, { 106, 96, 91, 111 }, { -20, -35, 40, -55 }, 55, 10, 35, 0, 8, 22, 60, 12 },
+        { "Full Stack",            modeScale, 4, { 4, 7, -5, 12 },     { -7, -7, -8, -11 },  { -40, 40, -75, 75 }, { 32, 32, 32, 32 }, { 97, 106, 91, 111 }, { 20, -35, 40, -55 }, 55, 12, 40, 0, 8, 18, 70, 14 },
+        { "Gang Unison",           modeFixed, 4, { 0, 0, 0, 0 },       { -6, -6, -6, -6 },   { -30, 30, -80, 80 }, { 55, 60, 65, 70 }, { 97, 92, 106, 112 }, { 15, -30, 35, -45 }, 70, 15, 25, 0, 8, 18, 80, 15 },
+        { "Wide Octaves",          modeFixed, 2, { 12, -12, 12, -12 }, { -9, -6, -12, -12 }, { -55, 55, -80, 80 }, { 25, 25, 30, 30 }, { 94, 108, 90, 112 }, { 20, -30, 30, -40 }, 45, 5, 25, 0, 8, 20, 60, 12 },
+        { "Power Fifths",          modeFixed, 2, { 7, -5, 12, -12 },   { -7, -7, -10, -10 }, { -30, 30, -60, 60 }, { 18, 18, 20, 20 }, { 98, 103, 94, 108 }, { 5, -15, 15, -25 }, 30, 0, 15, 0, 8, 25, 40, 10 },
+        { "MIDI Choir",            modeMidi,  4, { 4, 7, -5, 12 },     { -6, -6, -6, -6 },   { -60, -20, 20, 60 }, { 32, 32, 32, 32 }, { 108, 103, 97, 91 }, { -35, -10, 15, 30 }, 55, 15, 50, -3, 8, 18, 70, 14 },
+        { "MIDI Chords Only",      modeMidi,  4, { 4, 7, -5, 12 },     { -3, -3, -3, -3 },   { -60, -20, 20, 60 }, { 28, 28, 28, 28 }, { 108, 103, 97, 91 }, { -35, -10, 15, 30 }, 50, 10, 50, -60, 8, 25, 60, 12 },
+        { "Chord Tones Pad",       modeChord, 3, { 4, 7, 12, -5 },     { -7, -7, -9, -9 },   { -50, 50, 0, -80 },  { 32, 32, 32, 32 }, { 97, 106, 91, 111 }, { 20, -35, 40, -55 }, 50, 12, 70, 0, 8, 18, 70, 14 },
+        // Exact tuning, no singer character: everything 1.0.0 measured against its limits.
+        { "Tight",                 modeScale, 2, { 4, 7, -5, 12 },     { -6, -6, -8, -8 },   { -35, 35, -70, 70 }, { 0, 0, 0, 0 },     { 100, 100, 100, 100 }, { 0, 0, 0, 0 },     0, 0, 20, 0, 0, 35, 0, 0 },
     };
 
     juce::String noteText (float v)
@@ -95,7 +97,8 @@ namespace
 
     constexpr int defaultInterval[4] = { 4, 7, -5, 12 };
     constexpr float defaultPan[4] = { -35.0f, 35.0f, -70.0f, 70.0f };
-    constexpr float defaultThroat[4] = { 100.0f, 96.0f, 104.0f, 92.0f };
+    constexpr float defaultThroat[4] = { 97.0f, 106.0f, 91.0f, 111.0f };
+    constexpr float defaultTone[4] = { 20.0f, -35.0f, 40.0f, -55.0f };
     constexpr double allPassHz[4][3] = { { 350.0, 1100.0, 2900.0 }, { 520.0, 1500.0, 3700.0 }, { 430.0, 900.0, 3300.0 }, { 650.0, 1800.0, 2400.0 } };
 }
 
@@ -169,10 +172,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
             AudioParameterIntAttributes().withStringFromValueFunction (intervalText).withValueFromStringFunction (intervalFromText)));
         layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Level"), 1 }, name + "Level", levelRange, -6.0f, levelAttributes()));
         layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Pan"), 1 }, name + "Pan", panRange, defaultPan[v], panAttributes()));
-        layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Drift"), 1 }, name + "Drift", percent, 25.0f, fixedText (0, "%")));
+        layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Drift"), 1 }, name + "Drift", percent, 30.0f, fixedText (0, "%")));
         layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Throat"), 1 }, name + "Throat", NormalisableRange<float> (70.0f, 140.0f, 0.1f), defaultThroat[v], fixedText (0, "%")));
+        layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Tone"), 1 }, name + "Tone", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), defaultTone[v], fixedText (0, "%")));
     }
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "humanize", 1 }, "Humanize", percent, 20.0f, fixedText (0, "%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "humanize", 1 }, "Humanize", percent, 50.0f, fixedText (0, "%")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "vibrato", 1 }, "Vibrato", percent, 10.0f, fixedText (0, "%")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "vibratoRate", 1 }, "Vibrato Rate", NormalisableRange<float> (3.0f, 8.0f, 0.01f), 5.5f, fixedText (2, "Hz")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "leadLevel", 1 }, "Lead Level", levelRange, 0.0f, levelAttributes()));
@@ -181,9 +185,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "mix", 1 }, "Mix", percent, 100.0f, fixedText (0, "%")));
     auto glideRange = NormalisableRange<float> (0.0f, 500.0f, 0.1f);
     glideRange.setSkewForCentre (50.0f);
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "glide", 1 }, "Glide", glideRange, 20.0f, fixedText (0, "ms")));
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "followLead", 1 }, "Follow Lead", percent, 25.0f, fixedText (0, "%")));
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "consonants", 1 }, "Consonants", percent, 35.0f, fixedText (0, "%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "glide", 1 }, "Glide", glideRange, 30.0f, fixedText (0, "ms")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "followLead", 1 }, "Follow Lead", percent, 8.0f, fixedText (0, "%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "consonants", 1 }, "Consonants", percent, 22.0f, fixedText (0, "%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "consonantScatter", 1 }, "Consonant Scatter", percent, 60.0f, fixedText (0, "%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "breath", 1 }, "Breath", percent, 12.0f, fixedText (0, "%")));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "chordRoot", 1 }, "Chord Root", keys, 0));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "chordType", 1 }, "Chord Type", chords, (int) chordMajor));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "chordHold", 1 }, "Chord Hold", false));
@@ -213,6 +219,7 @@ PluginProcessor::PluginProcessor (const Options& options)
         vp.pan = apvts.getRawParameterValue (voiceId (v, "Pan"));
         vp.drift = apvts.getRawParameterValue (voiceId (v, "Drift"));
         vp.throat = apvts.getRawParameterValue (voiceId (v, "Throat"));
+        vp.tone = apvts.getRawParameterValue (voiceId (v, "Tone"));
     }
     humanize = apvts.getRawParameterValue ("humanize");
     vibrato = apvts.getRawParameterValue ("vibrato");
@@ -224,6 +231,8 @@ PluginProcessor::PluginProcessor (const Options& options)
     glide = apvts.getRawParameterValue ("glide");
     followLead = apvts.getRawParameterValue ("followLead");
     consonants = apvts.getRawParameterValue ("consonants");
+    consonantScatter = apvts.getRawParameterValue ("consonantScatter");
+    breath = apvts.getRawParameterValue ("breath");
     chordRoot = apvts.getRawParameterValue ("chordRoot");
     chordType = apvts.getRawParameterValue ("chordType");
     chordHold = apvts.getRawParameterValue ("chordHold");
@@ -290,7 +299,33 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
         voice.gain = voice.gainTarget = 0.0;
         voice.powerIn = voice.powerOut = 0.0;
         voice.match = 1.0;
+        voice.voicedNow = false;
+        voice.attackStep = 1.0 / (0.008 * sr);
+        voice.wander = 1.0;
+        voice.lagSamples = 0.0;
+        voice.consonantDelay = 0;
+        voice.consonantMix = voice.consonantSoft = voice.consonantLow = voice.unvoicedFor = 0.0;
+        voice.consonantLevel = 1.0;
+        voice.toneLow = voice.breathEnv = voice.breathHigh = voice.breathLow = voice.breathTrack = 0.0;
+        voice.noiseState = 0xABCD1234u + 977u * (std::uint32_t) v;
+
+        // A fixed scatter of short delays with random signs: this voice's own waveform for every consonant, same spectrum, nothing in common with the others.
+        juce::Random tapRandom (1000 + v);
+        for (int t = 0; t < VoiceChannel::numTaps; ++t)
+        {
+            voice.tapDelay[(size_t) t] = (int) ((0.0005 + 0.013 * tapRandom.nextDouble()) * sr);
+            voice.tapSign[(size_t) t] = tapRandom.nextBool() ? 1.0f : -1.0f;
+        }
+        static constexpr double softCorner[4] = { 6500.0, 4800.0, 7500.0, 4000.0 };
+        voice.consonantCorner = 1.0 - std::exp (-2.0 * juce::MathConstants<double>::pi * juce::jmin (softCorner[v], sr * 0.45) / sr);
     }
+    mixStep = 1.0 / (0.005 * sr);
+    consonantLowK = 1.0 - std::exp (-2.0 * juce::MathConstants<double>::pi * 500.0 / sr);
+    breathEnvK = 1.0 - std::exp (-1.0 / (0.006 * sr));
+    breathHighK = 1.0 - std::exp (-2.0 * juce::MathConstants<double>::pi * 2000.0 / sr);
+    breathLowK = 1.0 - std::exp (-2.0 * juce::MathConstants<double>::pi * juce::jmin (5500.0, sr * 0.45) / sr);
+    toneK = 1.0 - std::exp (-2.0 * juce::MathConstants<double>::pi * 1600.0 / sr);
+    voicedRing.fill (false);
     pitchRing.fill (0.0);
     pitchRingAt = 0;
     midiHead = midiTail = 0;
@@ -320,6 +355,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     for (auto& voice : voices)
     {
         voice.level = voice.levelTarget;
+        voice.toneNow = voice.toneTarget;
         voice.panL = voice.panLTarget;
         voice.panR = voice.panRTarget;
     }
@@ -341,6 +377,7 @@ void PluginProcessor::applyInputType (int type) noexcept
         voice.control = {};
     }
     pitchRing.fill (0.0);
+    voicedRing.fill (false);
 }
 
 void PluginProcessor::readSettings() noexcept
@@ -375,6 +412,7 @@ void PluginProcessor::readSettings() noexcept
         settings.drift[(size_t) v] = vp.drift->load (std::memory_order_relaxed) * 0.01;
         voice.levelTarget = levelGain (vp.level->load (std::memory_order_relaxed));
         panGains (vp.pan->load (std::memory_order_relaxed), voice.panLTarget, voice.panRTarget);
+        voice.toneTarget = vp.tone->load (std::memory_order_relaxed) * 0.01;
         const double throatPercent = vp.throat->load (std::memory_order_relaxed);
         throatRate[(size_t) v] = throatPercent == 100.0 ? 1.0 : 100.0 / throatPercent;
     }
@@ -384,6 +422,8 @@ void PluginProcessor::readSettings() noexcept
     harmonyGainTarget = levelGain (harmonyLevel->load (std::memory_order_relaxed));
     mixTarget = mix->load (std::memory_order_relaxed) * 0.01;
     consonantGain = consonants->load (std::memory_order_relaxed) * 0.01;
+    scatterNow = consonantScatter->load (std::memory_order_relaxed) * 0.01;
+    breathNow = breath->load (std::memory_order_relaxed) * 0.01;
 
     // Tracking 0 is choosy, 100 lets rough, breathy sound through as pitched.
     const float limit = 0.10f + 0.004f * tracking->load (std::memory_order_relaxed);
@@ -431,24 +471,80 @@ void PluginProcessor::tick() noexcept
         }
     }
 
-    brain.update (aligned, voiced, settings);
+    // Each voice stands behind the lead by its own lag, so it hears the lead that much later. Its note changes come late by themselves.
+    std::array<double, maxVoices> voiceLead {};
+    const double back0 = voiced ? ((double) latencyNow - 2.48 * period) / tickSamples : 0.0;
+    for (int v = 0; v < maxVoices; ++v)
+    {
+        const int lagTicks = juce::roundToInt (brain.lagMilliseconds (v) * 0.001 / tickSeconds);
+        int back = juce::jlimit (0, pitchRingSize - 1, juce::jmax (0, juce::roundToInt (back0)) + lagTicks);
+        double heard = 0.0;
+        for (; back >= 0 && heard <= 0.0; --back)
+            heard = pitchRing[(size_t) ((pitchRingAt - back) & (pitchRingSize - 1))];
+        voiceLead[(size_t) v] = heard;
+    }
+
+    brain.update (aligned, voiceLead, voiced, settings);
+
+    voicedRing[(size_t) pitchRingAt] = voiced;
+
+    // When voicing changes, the tracker knows at once, but the audio this voice is reading is still from before that. Ending the grains then would
+    // cut a vowel's last moments short and leave them at the lead's pitch. So voicing is looked up for the moment the voice is reading: the tracker
+    // calls a vowel over a few ms after it ends, and calls a new one about a window after it starts.
+    const auto& range = inputRanges[(size_t) typeNow];
+    // The end is called a little early on purpose: the fade and the switch to this voice's own consonant finish before the lead's reaches the read point.
+    const double seesEndMs = 14.0, seesStartMs = 1000.0 / range.lowHz + 3.0;
 
     for (int v = 0; v < maxVoices; ++v)
     {
         auto& voice = voices[(size_t) v];
         const auto& wanted = brain.voice (v);
         auto& c = voice.control;
-        c.voiced = voiced;
-        c.lag = brain.lagMilliseconds (v) * 0.001 * sr;
-        c.jitter = settings.drift[(size_t) v] * 0.0035;
-        c.shimmer = settings.drift[(size_t) v] * 0.1;
-        if (voiced)
+        const double lagMs = brain.lagMilliseconds (v);
+        const double readsMs = 1000.0 * (double) latencyNow / sr + lagMs;
+        const int endBack = juce::jlimit (0, pitchRingSize - 1, juce::roundToInt ((readsMs - seesEndMs) * 0.001 / tickSeconds));
+        const int startBack = juce::jlimit (0, pitchRingSize - 1, juce::roundToInt ((readsMs - seesStartMs) * 0.001 / tickSeconds));
+        const bool sungNow = voicedRing[(size_t) ((pitchRingAt - endBack) & (pitchRingSize - 1))]
+                          || voicedRing[(size_t) ((pitchRingAt - startBack) & (pitchRingSize - 1))];
+        auto& singer = brain.singer (v);
+
+        if (sungNow && ! voice.voicedNow)
         {
-            c.inputPeriod = period;
+            // A voice's own way into a phrase or a word
+            voice.attackStep = 1.0 / ((0.008 + settings.humanize * 0.03 * (0.5 + 0.5 * singer.nextRandom())) * sr);
+            voice.unvoicedFor = 0.0;
+        }
+        else if (! sungNow && voice.voicedNow)
+        {
+            // This voice's own timing and strength for this consonant. Scatter 100 is up to about 50 ms later and as low as about half the level.
+            static constexpr double standsBack[4] = { 0.0, 0.3, 0.12, 0.45 };
+            voice.consonantDelay = juce::roundToInt ((standsBack[v] + 0.1 + 0.25 * (singer.nextRandom() + 1.0)) * scatterNow * 0.045 * sr);
+            voice.consonantLevel = 1.0 - scatterNow * 0.225 * (singer.nextRandom() + 1.0);
+            voice.unvoicedFor = 0.0;
+        }
+        voice.voicedNow = sungNow;
+        if (! sungNow) voice.unvoicedFor += tickSeconds;
+
+        c.voiced = sungNow;
+        c.lag = lagMs * 0.001 * sr;
+        voice.lagSamples = c.lag;
+        c.jitter = juce::jmax (settings.drift[(size_t) v] * 0.0035, settings.humanize * 0.006);
+        c.shimmer = settings.drift[(size_t) v] * 0.1;
+        c.blendPeriods = settings.humanize > 0.0;
+        c.readJitter = settings.humanize * 3.0 * sr / 48000.0;
+        voice.wander = brain.levelWander (v);
+        if (sungNow)
+        {
+            if (voiced)
+                c.inputPeriod = period;
             c.outputPeriod = brain.periodFor (wanted.pitch, reference_);
             c.grainRate = juce::jlimit (0.5, 2.0, throatRate[(size_t) v]);
         }
-        voice.gainTarget = ! wanted.on ? 0.0 : (voiced ? 1.0 : consonantGain);
+
+        // A long stretch without pitch is a breath, not a consonant, and real singers do not breathe together. It fades on, with Scatter.
+        const double breathFade = 1.0 - scatterNow * juce::jlimit (0.0, 1.0, (voice.unvoicedFor - 0.12) / 0.15);
+        const double consonantTarget = consonantGain * voice.consonantLevel * breathFade;
+        voice.gainTarget = ! wanted.on ? 0.0 : (sungNow ? 1.0 : consonantTarget);
     }
 
     if (++historyPhase >= 5)
@@ -536,18 +632,39 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         mixNow += smooth * (mixTarget - mixNow);
 
         double sumL = 0.0, sumR = 0.0;
-        const double inputNow = (double) history.delayed (InputHistory::mono, latencyNow);
         for (auto& voice : voices)
         {
             double y = (double) voice.shifter.step (tracker, voice.control, history);
+
+            // Consonants with Scatter: instead of a copy of the lead's, this voice's own version, later and softer.
+            // Only once the voice has faded to consonant level: the scatter of a vowel's last moments at full level would make a burst.
+            const double wantMix = (! voice.voicedNow && scatterNow > 0.0 && voice.gain <= voice.gainTarget + 0.02) ? 1.0 : (voice.voicedNow ? 0.0 : voice.consonantMix);
+            voice.consonantMix += juce::jlimit (-mixStep, mixStep, wantMix - voice.consonantMix);
+            if (voice.consonantMix > 0.0)
+            {
+                const int base = latencyNow + voice.consonantDelay + juce::roundToInt (voice.lagSamples);
+                double scattered = 0.0;
+                for (int t = 0; t < VoiceChannel::numTaps; ++t)
+                    scattered += (double) (voice.tapSign[(size_t) t] * history.delayed (InputHistory::mono, base + voice.tapDelay[(size_t) t]));
+                scattered *= 0.25; // one over the root of the number of taps: same power on noise
+                // Nothing low: a consonant has none, and what is left of a vowel should not turn into a low rumble of itself.
+                voice.consonantLow += consonantLowK * (scattered - voice.consonantLow);
+                scattered -= voice.consonantLow;
+                voice.consonantSoft += voice.consonantCorner * (scattered - voice.consonantSoft);
+                const double softened = scattered + scatterNow * (voice.consonantSoft - scattered);
+                y += voice.consonantMix * (softened - y);
+            }
+
             for (auto& a : voice.allpass)
                 y = a.process (y);
 
             // A shift changes how much of a vowel's energy lands on a harmonic, so a voice comes out a dB or two away from the lead, more on
             // vowels with one narrow low formant. A slow match on voiced sound takes that out. Consonants are read as they are, so no match there.
             double wanted = 1.0;
-            if (voice.control.voiced)
+            if (voice.voicedNow)
             {
+                // The part of the lead this voice is reading, or a voice that stands back reads as too quiet at every onset and gets pushed.
+                const double inputNow = (double) history.delayed (InputHistory::mono, latencyNow + juce::roundToInt (voice.lagSamples));
                 voice.powerIn += matchPower * (inputNow * inputNow - voice.powerIn);
                 voice.powerOut += matchPower * (y * y - voice.powerOut);
                 if (voice.powerOut > 1.0e-9 && voice.powerIn > 1.0e-9)
@@ -556,7 +673,36 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             voice.match += matchGain * (wanted - voice.match);
             y *= voice.match;
 
-            voice.gain += juce::jlimit (-step, step, voice.gainTarget - voice.gain);
+            // Tone: brighter or darker than the lead, for good. A first order shelf at 1.6 kHz, about 7 dB up or 6 dB down at the ends.
+            voice.toneNow += smooth * (voice.toneTarget - voice.toneNow);
+            voice.toneLow += toneK * (y - voice.toneLow);
+            if (voice.toneNow != 0.0)
+            {
+                const double up = voice.toneNow * 0.9;   // log gain, about 7 dB at the top
+                const double high = y - voice.toneLow;
+                y = voice.toneLow * (1.0 - 0.15 * up) + high * (1.0 + up * (1.0 + up * (0.5 + up / 6.0)));
+            }
+
+            // Breath of its own: noise that follows this voice's level, never the same as any other voice's. A shifted period repeats its noise too,
+            // which is part of what rings like metal, so fresh noise on top takes some of that off.
+            // It follows the voice's own high end, so a dull vowel gets less, and it is never hiss on top of a voice with nothing up there.
+            voice.breathTrack += breathHighK * (y - voice.breathTrack);
+            voice.breathEnv += breathEnvK * (std::abs (y - voice.breathTrack) - voice.breathEnv);
+            if (breathNow > 0.0 && voice.voicedNow)
+            {
+                auto& state = voice.noiseState;
+                state ^= state << 13; state ^= state >> 17; state ^= state << 5;
+                const double white = (double) (state & 0xFFFFFFu) / 8388607.5 - 1.0;
+                voice.breathHigh += breathHighK * (white - voice.breathHigh);
+                const double high = white - voice.breathHigh;
+                voice.breathLow += breathLowK * (high - voice.breathLow);
+                y += breathNow * 0.2 * voice.breathEnv * voice.breathLow;
+            }
+
+            y *= voice.wander;
+
+            const double rise = voice.gainTarget > voice.gain && voice.voicedNow ? voice.attackStep : step;
+            voice.gain += juce::jlimit (-step, rise, voice.gainTarget - voice.gain);
             voice.level += smooth * (voice.levelTarget - voice.level);
             voice.panL += smooth * (voice.panLTarget - voice.panL);
             voice.panR += smooth * (voice.panRTarget - voice.panR);
@@ -695,11 +841,16 @@ void PluginProcessor::setCurrentProgram (int i)
         set (voiceId (v, "Pan"), preset.pan[v]);
         set (voiceId (v, "Drift"), preset.drift[v]);
         set (voiceId (v, "Throat"), preset.throat[v]);
+        set (voiceId (v, "Tone"), preset.tone[v]);
     }
     set ("humanize", preset.humanize);
     set ("vibrato", preset.vibrato);
     set ("glide", preset.glide);
     set ("leadLevel", preset.lead);
+    set ("followLead", preset.follow);
+    set ("consonants", preset.consonantAmount);
+    set ("consonantScatter", preset.scatter);
+    set ("breath", preset.breathAmount);
 }
 
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)

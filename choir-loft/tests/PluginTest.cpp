@@ -7,6 +7,7 @@
 #include "Analysis.h"
 #include "PluginProcessor.h"
 #include <juce_audio_formats/juce_audio_formats.h>
+#include "HumanMetrics.h"
 #include <chrono>
 #include <ctime>
 #include <thread>
@@ -54,7 +55,10 @@ std::unique_ptr<PluginProcessor> clean (int mode, int voices, int inputType = al
         setParam (*p, vid (v, "Pan"), 0.0f);
         setParam (*p, vid (v, "Drift"), 0.0f);
         setParam (*p, vid (v, "Throat"), 100.0f);
+        setParam (*p, vid (v, "Tone"), 0.0f);
     }
+    setParam (*p, "breath", 0.0f);
+    setParam (*p, "consonantScatter", 0.0f);
     return p;
 }
 
@@ -119,20 +123,6 @@ juce::AudioBuffer<float> loadWav (const char* name)
         r->read (&b, 0, (int) r->lengthInSamples, 0, true, false);
     }
     return b;
-}
-
-void writeWav (const juce::File& f, const juce::AudioBuffer<float>& b)
-{
-    f.getParentDirectory().createDirectory();
-    f.deleteFile();
-    juce::WavAudioFormat w;
-    std::unique_ptr<juce::OutputStream> os (f.createOutputStream().release());
-    std::unique_ptr<juce::AudioFormatWriter> writer (w.createWriterFor (os.get(), SR, (unsigned) b.getNumChannels(), 24, {}, 0));
-    if (writer != nullptr)
-    {
-        os.release();
-        writer->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
-    }
 }
 
 // ------------------------------------------------------------------------------------------------------------- scale logic
@@ -541,9 +531,12 @@ std::vector<double> glide (double centreHz, double seconds)
     return f0;
 }
 
+float formantHumanize = 0.0f; // above 0 turns on period blending, as any Humanize above 0 does
+
 FormantRun glideThroughVoice (const voice::Vowel& v, double centreHz, int interval, float throat = 100.0f)
 {
     auto p = clean (modeFixed, 1, lowMale);
+    setParam (*p, "humanize", formantHumanize);
     setParam (*p, vid (0, "Interval"), (float) interval);
     setParam (*p, vid (0, "Throat"), throat);
     prepare (*p, 1, SR, 256);
@@ -610,6 +603,26 @@ void testFormants()
     info ("  and the tool's floor: the input against that same real voice, worst", std::max (tuned.worstFloor, fresh.worstFloor) * 100.0, "%");
     info ("  first formant peak flatter than a real voice at that pitch, worst case", std::max (tuned.worstFlatten, fresh.worstFlatten), "dB");
     check (std::max (tuned.worstLevel, fresh.worstLevel) <= limits::voiceLevelAgainstLeadDb, "a voice at Level 0 dB against the lead, at +/-7 semitones, worst", std::max (tuned.worstLevel, fresh.worstLevel), "dB");
+
+    // The same set with period blending on, as at the new defaults. Humanize 0.1 changes nothing else that matters here. Reported.
+    {
+        formantHumanize = 0.1f;
+        FormantScore blended;
+        for (auto* v : vowels)
+            for (double centre : { 110.0, 165.0 })
+                for (int shift : { 7, -7 })
+                    formantOne (blended, *v, centre, shift, false);
+        for (auto* v : { &voice::vowelA, &voice::vowelE })
+            for (int shift : { 7, -7 })
+                formantOne (blended, *v, 247.0, shift, false);
+        for (auto* v : { &voice::vowelO, &voice::vowelAe })
+            for (double centre : { 130.0, 196.0 })
+                for (int shift : { 7, -7 })
+                    formantOne (blended, *v, centre, shift, false);
+        formantHumanize = 0.0f;
+        info ("  with period blending: first formant peak flatter, worst case, same voices (Tight is the line above)", blended.worstFlatten, "dB");
+        info ("  with period blending: formant positions, worst move", blended.worst * 100.0, "%");
+    }
 
     // The say voices with held vowels, reported only: their pitch barely moves, so harmonics do not fill in the tract's shape, and this reading is rough.
     for (const char* name : { "held_fred", "held_kathy", "sung_goodnews" })
@@ -1232,6 +1245,7 @@ void testConsonants()
         auto p = clean (modeFixed, 1);
         setParam (*p, vid (0, "Interval"), 7.0f);
         setParam (*p, vid (0, "Drift"), drift);
+        setParam (*p, "consonants", 35.0f);
         prepare (*p, 1, SR, 256);
         const auto out = mono (render (*p, x, 256));
         const auto wantShape = thirdOctaves (lead.data() + sFrom, sLen), gotShape = thirdOctaves (out.data() + sFrom, sLen);
@@ -1474,7 +1488,7 @@ void testAddedControls()
         const double dipOff = dipAtStart (0.0f, bodyOff), dipOn = dipAtStart (100.0f, bodyOn);
         check (std::abs (dipOff) <= limits::humanizeOffCents, "Humanize 0: the start of a note is on target", dipOff, "cents");
         check (dipOn <= -limits::humanizeScoopMinCents, "Humanize 100: notes start with a scoop from below, typical at 12 ms", dipOn, "cents");
-        check (bodyOn <= limits::humanizeBodyCents, "Humanize 100: the note itself stays close, 90th percentile at 200 ms", bodyOn, "cents");
+        check (bodyOn <= limits::humanizeBodyCents11, "Humanize 100: the note itself stays close, 90th percentile at 200 ms", bodyOn, "cents");
     }
 
     // Glide: a one pole move between notes
@@ -1746,6 +1760,8 @@ void testFollowKey()
     setParam (*p, vid (0, "Level"), 0.0f);
     setParam (*p, vid (0, "Drift"), 0.0f);
     setParam (*p, vid (0, "Throat"), 100.0f);
+    setParam (*p, vid (0, "Tone"), 0.0f);
+    setParam (*p, "breath", 0.0f);
     setParam (*p, vid (0, "Interval"), 4.0f);
     setParam (*p, "key", 0.0f);
     setParam (*p, "scale", (float) scaleMajor); // manual: C major
@@ -1859,6 +1875,8 @@ void testBlocksAndState()
             setParam (*p, "humanize", 0.0f);
             setParam (*p, "vibrato", 0.0f);
             setParam (*p, vid (0, "Drift"), 0.0f);
+            setParam (*p, vid (0, "Tone"), 0.0f);
+            setParam (*p, "breath", 0.0f);
             setParam (*p, vid (0, "Pan"), 0.0f);
             setParam (*p, vid (0, "Interval"), 7.0f);
             prepare (*p, 1, sr, 256);
@@ -1884,7 +1902,7 @@ void testBlocksAndState()
 
 void testRealMaterial()
 {
-    double worstMedian = 0.0, worstJump = 0.0, worstLevel = 0.0;
+    double worstMedian = 0.0, worstJump = 0.0, worstLevel = 0.0, worstLevelDefaults = 0.0;
     for (const char* name : { "speech_samantha", "speech_daniel", "speech_kathy", "sung_goodnews", "held_fred", "held_kathy" })
     {
         const auto wav = loadWav (name);
@@ -1918,24 +1936,30 @@ void testRealMaterial()
 
         // Defaults: lead and two voices at -6 dB. How much louder than the lead alone?
         {
-            auto p = make();
-            setParam (*p, "inputType", (float) wideRange);
-            prepare (*p, 1, SR, 256);
-            const auto out = mono (render (*p, in, 256));
-            const int lat = p->getLatencySamples();
-            std::vector<double> rises;
-            const int w = (int) (0.02 * SR);
-            for (int at = lat; at + w < (int) out.size(); at += w)
+            for (int asTight = 0; asTight < 2; ++asTight)
             {
-                const double a = rms (in.data() + at - lat, w), b = rms (out.data() + at, w);
-                if (a > 0.003) rises.push_back (toDb (b) - toDb (a));
+                auto p = make();
+                if (asTight == 1) p->setCurrentProgram (p->getNumPrograms() - 1);
+                setParam (*p, "inputType", (float) wideRange);
+                prepare (*p, 1, SR, 256);
+                const auto out = mono (render (*p, in, 256));
+                const int lat = p->getLatencySamples();
+                std::vector<double> rises;
+                const int w = (int) (0.02 * SR);
+                for (int at = lat; at + w < (int) out.size(); at += w)
+                {
+                    const double a = rms (in.data() + at - lat, w), b = rms (out.data() + at, w);
+                    if (a > 0.003) rises.push_back (toDb (b) - toDb (a));
+                }
+                if (asTight == 1) worstLevel = std::max (worstLevel, percentile (rises, 99.0));
+                else worstLevelDefaults = std::max (worstLevelDefaults, percentile (rises, 99.0));
             }
-            worstLevel = std::max (worstLevel, percentile (rises, 99.0));
         }
     }
     check (worstMedian <= limits::speechMedianCents, "real speech and say singing: fixed fifth, median distance from lead plus the interval, worst file", worstMedian, "cents");
     check (worstJump <= limits::speechJumpRatio, "real material: biggest sample step in the voice against the input, worst file", worstJump, "times");
-    check (worstLevel <= limits::speechFrameLevelDb, "real material: lead with two voices against the lead alone, 99th percentile of 20 ms frames", worstLevel, "dB");
+    check (worstLevel <= limits::speechFrameLevelDb, "real material, Tight preset: lead with two voices against the lead alone, 99th percentile of 20 ms frames", worstLevel, "dB");
+    info ("real material, defaults: the same, voices running on behind a lead that has stopped", worstLevelDefaults, "dB");
 }
 
 // -------------------------------------------------------------------------------------------------------------------------- CPU
@@ -1962,24 +1986,143 @@ void testCpu()
 
 // ---------------------------------------------------------------------------------------------------- demo files for a quick listen
 
+void humanNumbers()
+{
+    human::Numbers n;
+    human::runAll (n);
+    human::onlyMetallicBlend (n);
+}
+
+// 1.1.0: measured against 1.0.0's numbers in tests/human-before-1.0.txt. Limits in PassLimits.h were set after measuring 1.0.0 and before the new code.
+void testHuman()
+{
+    human::Numbers n;
+    human::runAll (n);
+    human::onlyMetallicBlend (n);
+    auto& v = n.values;
+
+    const double late = v["note change, how late voices arrive after the lead, average"];
+    check (late >= limits::humanLateMinMs && late <= limits::humanLateMaxMs, "defaults: voices arrive late on a note change, on average", late, "ms");
+    check (v["note change, spread between earliest and latest voice, median"] >= limits::humanSpreadMinMs, "defaults: voices do not move together, earliest to latest", v["note change, spread between earliest and latest voice, median"], "ms");
+    const double off = v["body of a note, distance from target, median"];
+    check (off >= limits::humanOffMinCents && off <= limits::humanOffMaxCents, "defaults: voices sit off target on purpose, median", off, "cents");
+    check (v["body of a note, distance from target, 95th percentile"] <= limits::humanOffP95Cents, "defaults: and never far, 95th percentile", v["body of a note, distance from target, 95th percentile"], "cents");
+    check (v["voices settle apart: highest voice average minus lowest"] >= limits::humanApartCents, "defaults: voices settle apart, highest average minus lowest", v["voices settle apart: highest voice average minus lowest"], "cents");
+    check (v["lead with vibrato: voices' pitch moves, correlation of the most alike pair"] <= limits::humanLockstep, "defaults: pitch moves are not in lockstep, most alike pair", v["lead with vibrato: voices' pitch moves, correlation of the most alike pair"]);
+    const double gap = v["formants: widest gap between two voices"];
+    check (gap >= limits::humanFormantGapPercent && gap <= limits::humanFormantGapMaxPercent, "defaults: formants differ between voices, widest gap", gap, "%");
+    check (v["brightness: widest gap between two voices"] >= limits::humanBrightGapDb, "defaults: tone differs between voices, widest gap", v["brightness: widest gap between two voices"], "dB");
+    check (v["S sound: spread of when it starts across voices, median"] >= limits::humanSSpreadMs, "defaults: an S does not start together across voices, spread", v["S sound: spread of when it starts across voices, median"], "ms");
+    check (v["S sound: how much two voices' S look like one another, best lag, median"] <= limits::humanSSame, "defaults: two voices' S are not copies, best lag correlation", v["S sound: how much two voices' S look like one another, best lag, median"]);
+    check (v["S sound: voice level against the lead, above 4.5 kHz, median"] <= limits::humanSLevelDb, "defaults: a voice's S sits under the lead's", v["S sound: voice level against the lead, above 4.5 kHz, median"], "dB");
+    check (v["say speech, S and T sounds, lead with 4 voices against the lead alone, median"] <= limits::humanPile4Db, "defaults: S and T do not pile up with 4 voices on say speech", v["say speech, S and T sounds, lead with 4 voices against the lead alone, median"], "dB");
+    check (v["period to period sameness above 3 kHz at 7 st, this version's defaults"] <= limits::humanSamenessDefaults, "defaults: high end is not an exact repeat at +7, period to period", v["period to period sameness above 3 kHz at 7 st, this version's defaults"]);
+
+    const double floorDb = v["for comparison, energy between the harmonics in the lead itself"];
+    for (int shift : { 7, -7, 12 })
+    {
+        const double got = v["with period blending: grain pattern at " + std::to_string (shift) + " st: sideband energy against the harmonics"];
+        check (got <= floorDb + limits::humanPatternOverLeadDb, "period blending: energy between harmonics at " + std::to_string (shift) + " st, against the lead's own " + juce::String (floorDb, 1).toStdString() + " dB", got, "dB");
+    }
+
+    // Tight keeps the 1.0.0 limits.
+    const auto asTight = [] (PluginProcessor& p) { p.setCurrentProgram (p.getNumPrograms() - 1); };
+    {
+        auto p = make();
+        check (p->getProgramName (p->getNumPrograms() - 1) == "Tight", "the last preset is Tight");
+        human::Numbers t;
+        human::pitchHumanity (t, "Tight: ", asTight);
+        check (t.values["Tight: body of a note, distance from target, 95th percentile"] <= limits::voicePitchCents, "Tight: voices on target, 95th percentile", t.values["Tight: body of a note, distance from target, 95th percentile"], "cents");
+        check (t.values["Tight: note change, spread between earliest and latest voice, median"] <= limits::tightSpreadMs, "Tight: voices move together", t.values["Tight: note change, spread between earliest and latest voice, median"], "ms");
+        human::consonants (t, "Tight: ", asTight);
+        check (std::abs (t.values["Tight: S sound: voice level against the lead, above 4.5 kHz, median"] - 20.0 * std::log10 (0.35)) <= limits::consonantLevelDb, "Tight: S level is Consonants 35", t.values["Tight: S sound: voice level against the lead, above 4.5 kHz, median"], "dB");
+    }
+
+    // Tone: brighter and darker, with Breath out of the way
+    {
+        const auto x = voice::synth (human::octaveGlide (165.0, 4.0), voice::vowelA, SR);
+        const auto tilt = [&] (float tone)
+        {
+            auto p = clean (modeFixed, 1);
+            setParam (*p, vid (0, "Interval"), 0.0f);
+            setParam (*p, vid (0, "Tone"), tone);
+            prepare (*p, 1, SR, 256);
+            const auto o = mono (render (*p, x, 256));
+            const auto s = smoothSpectrumDb (o.data() + 14400, (long) o.size() - 15000, SR, 180.0);
+            const auto band = [&] (int a, int b) { double m = 0; for (int i = a; i < b; ++i) m += s[(size_t) i]; return m / (b - a); };
+            return band (3000, 6000) - band (400, 1200);
+        };
+        const double flat = tilt (0.0f), up = tilt (100.0f) - flat, down = tilt (-100.0f) - flat;
+        check (up >= limits::toneFullDb, "Voice Tone +100: brighter, against 0", up, "dB");
+        check (down <= -limits::toneFullDb, "Voice Tone -100: darker, against 0", down, "dB");
+    }
+
+    // Breath: noise of its own above 3 kHz, and none at 0
+    {
+        const auto x = voice::synth (voice::steady (220.0, 3.0, SR), voice::vowelA, SR);
+        const auto high = [&] (float breathAmount)
+        {
+            auto p = clean (modeFixed, 1);
+            setParam (*p, vid (0, "Interval"), 7.0f);
+            setParam (*p, "breath", breathAmount);
+            prepare (*p, 1, SR, 256);
+            const auto o = human::steepHigh (mono (render (*p, x, 256)), 3000.0);
+            return rms (o.data() + 48000, 72000);
+        };
+        const double none = high (0.0f), full = high (100.0f);
+        const double noiseOnly = std::sqrt (std::max (full * full - none * none, 1.0e-20));
+        const double db = toDb (noiseOnly) - toDb (none);
+        check (db >= limits::breathFullLowDb && db <= limits::breathFullHighDb, "Breath 100: noise against the voice above 3 kHz", db, "dB");
+    }
+
+    // Consonant Scatter: more of it, more spread. A long stretch without pitch fades.
+    {
+        human::Numbers s0, s1;
+        human::consonants (s0, "", [] (PluginProcessor& p) { setParam (p, "consonantScatter", 0.0f); });
+        human::consonants (s1, "", [] (PluginProcessor& p) { setParam (p, "consonantScatter", 100.0f); });
+        const std::string spread = "S sound: spread of when it starts across voices, median", same = "S sound: how much two voices' S look like one another, best lag, median";
+        check (s1.values[spread] >= s0.values[spread] + 10.0, "Consonant Scatter 100 spreads an S at least 10 ms more than 0, 100 reads", s1.values[spread], "ms");
+        check (s1.values[same] <= limits::humanSSame && s0.values[same] > limits::humanSSame, "Consonant Scatter 0 leaves copies, 100 does not, best lag at 100", s1.values[same]);
+
+        auto p = make();
+        setParam (*p, "voices", 1.0f);
+        setParam (*p, "leadLevel", -60.0f);
+        setParam (*p, vid (0, "Level"), 0.0f);
+        prepare (*p, 1, SR, 256);
+        auto x = voice::synth (voice::steady (220.0, 0.5, SR), voice::vowelA, SR);
+        std::vector<float> hiss ((size_t) (0.7 * SR));
+        noise (hiss.data(), (int) hiss.size(), 0.03, 12);
+        x.insert (x.end(), hiss.begin(), hiss.end());
+        const auto o = mono (render (*p, x, 256));
+        const double early = rms (o.data() + (long) (0.56 * SR), (int) (0.05 * SR)), later = rms (o.data() + (long) (1.05 * SR), (int) (0.1 * SR));
+        check (toDb (later) - toDb (early) <= limits::breathFadeDb, "a breath through a voice at defaults fades, late against early", toDb (later) - toDb (early), "dB");
+    }
+
+    // Drift also moves level, a little
+    {
+        const auto x = voice::synth (voice::steady (220.0, 20.0, SR), voice::vowelA, SR);
+        auto p = clean (modeFixed, 1);
+        setParam (*p, vid (0, "Interval"), 7.0f);
+        setParam (*p, vid (0, "Drift"), 100.0f);
+        prepare (*p, 1, SR, 256);
+        const auto o = mono (render (*p, x, 256));
+        double low = 1.0e9, high = -1.0e9;
+        const int w = (int) (0.1 * SR);
+        for (long at = 48000; at + w < (long) o.size(); at += w)
+        {
+            const double d = toDb (rms (o.data() + at, w));
+            low = std::min (low, d); high = std::max (high, d);
+        }
+        check (high - low >= limits::driftLevelMinDb && high - low <= limits::driftLevelMaxDb, "Drift 100: level wander, peak to peak", high - low, "dB");
+    }
+}
+
+// Before and after files for ears. The before files come from the 1.0.0 source, see README.
 void demo()
 {
-    const auto dir = juce::File::getCurrentWorkingDirectory().getChildFile ("build/demo");
-    for (const char* name : { "sung_goodnews", "held_kathy", "speech_samantha" })
-    {
-        const auto wav = loadWav (name);
-        const std::vector<float> in (wav.getReadPointer (0), wav.getReadPointer (0) + wav.getNumSamples());
-        auto p = make();
-        p->setCurrentProgram (0);
-        setParam (*p, "inputType", (float) wideRange);
-        prepare (*p, 2, SR, 256);
-        writeWav (dir.getChildFile (juce::String (name) + "_thirds_fifths.wav"), render (*p, in, 256));
-        auto q = make();
-        q->setCurrentProgram (3);
-        setParam (*q, "inputType", (float) wideRange);
-        prepare (*q, 2, SR, 256);
-        writeWav (dir.getChildFile (juce::String (name) + "_full_stack.wav"), render (*q, in, 256));
-    }
+    const auto dir = juce::File::getCurrentWorkingDirectory().getChildFile ("demo");
+    auto p = make();
+    human::renderDemos (dir, "after_1.1", p->getNumPrograms() - 1, "tight");
     std::printf ("demo files in %s\n", dir.getFullPathName().toRawUTF8());
 }
 } // namespace
@@ -1991,6 +2134,7 @@ int main (int argc, char** argv)
     const auto want = [&] (const char* name) { return only.empty() || only == name; };
 
     if (only == "demo") { demo(); return 0; }
+    if (only == "human") { humanNumbers(); return 0; }
 
     if (want ("generic"))
     {
@@ -2016,5 +2160,6 @@ int main (int argc, char** argv)
     if (want ("formants")) testFormants();
     if (want ("real")) testRealMaterial();
     if (want ("cpu")) testCpu();
+    if (want ("humanchecks")) testHuman();
     return finish();
 }

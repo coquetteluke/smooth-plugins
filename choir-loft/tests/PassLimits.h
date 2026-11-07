@@ -69,7 +69,40 @@ namespace limits
     constexpr double trackingRelaxedPercent = 70.0;   // Tracking 100 at least this share
     constexpr double harmonyLevelDb = 0.2;            // Harmony Level on all voices together
 
+    // 1.1.0, more human. Set after measuring 1.0.0 (tests/human-before-1.0.txt) and before measuring any of the new code.
+    // Humanize 100 now also adds a per note landing and a per voice tendency on purpose, so humanizeBodyCents above went from 10 to the value below.
+    constexpr double humanizeBodyCents11 = 20.0;      // Humanize 100: the note itself at 200 ms, 90th percentile
+    constexpr double humanLateMinMs = 15.0;           // defaults: voices arrive after the lead by at least this on average (1.0.0: 13)
+    constexpr double humanLateMaxMs = 60.0;           // and at most this
+    constexpr double humanSpreadMinMs = 15.0;         // defaults: earliest to latest voice on a note change, median (1.0.0: 7)
+    constexpr double humanOffMinCents = 3.0;          // defaults: distance from target in the body of a note, median, at least (1.0.0: 2.7)
+    constexpr double humanOffMaxCents = 10.0;         // and at most: never out of tune
+    constexpr double humanOffP95Cents = 20.0;         // 95th percentile at most (1.0.0: 7.0)
+    constexpr double humanApartCents = 4.0;           // voices settle apart, highest average minus lowest, at least (1.0.0: 1.1)
+    constexpr double humanLockstep = 0.40;            // correlation of pitch moves, most alike pair, at most (1.0.0: 0.68)
+    constexpr double humanFormantGapPercent = 15.0;   // widest formant gap between two voices, at least (1.0.0: 11.8)
+    constexpr double humanFormantGapMaxPercent = 28.0;// and at most: different people, not different species
+    constexpr double humanBrightGapDb = 6.0;          // widest brightness gap between two voices, at least (1.0.0: 4.5)
+    constexpr double humanSSpreadMs = 15.0;           // spread of when an S starts across voices, median, at least (1.0.0: 0)
+    constexpr double humanSSame = 0.40;               // how alike two voices' S are at the best lag, median, at most (1.0.0: 0.86)
+    constexpr double humanSLevelDb = -14.0;           // a voice's S against the lead above 3.5 kHz, at most (1.0.0: -9.7)
+    constexpr double humanPile4Db = 0.35;             // say speech S and T with 4 voices against the lead alone, at most (1.0.0: 0.34)
+    constexpr double humanSamenessDefaults = 0.95;    // period to period sameness above 3 kHz at +7, defaults, at most (1.0.0: 0.996, its lead 0.993)
+    // Was: the grain pattern at -7 improves 3 dB. Dropped after measuring: the test lead's own energy between harmonics sits at -29.7 dB and 1.0.0 at -28.2,
+    // so 3 dB is below what is in the lead. Now: with period blending no shift comes out above the lead's own level by more than this.
+    constexpr double humanPatternOverLeadDb = 0.5;
+    constexpr double driftLevelMinDb = 1.5;           // Drift 100: level wander, peak to peak in 100 ms frames, at least
+    constexpr double driftLevelMaxDb = 4.0;           // and at most
+    constexpr double breathFadeDb = -6.0;             // a long stretch without pitch, a breath, ends at least this much lower than it started, at defaults
+    constexpr double breathFullLowDb = -18.0;         // Breath 100: noise against the voice above 3 kHz in a held vowel, at least
+    constexpr double breathFullHighDb = -6.0;         // and at most
+    constexpr double toneFullDb = 4.0;                // Voice Tone +/-100: brightness moves at least this
+
+    // Tight preset keeps the 1.0.0 limits: voicePitchCents and driftOffMs above, measured through the preset itself.
+    constexpr double tightSpreadMs = 8.0;             // earliest to latest voice on a note change, median, at most
+
     // Real material
+    // Checked on the Tight preset. At the new defaults voices run on behind a lead that has stopped, so frames with the lead nearly silent read high on purpose: reported only.
     constexpr double speechFrameLevelDb = 6.0;        // 99th percentile change in 20 ms frame level, lead plus voices, against the level the lead alone would make with the same gain
     constexpr double speechJumpRatio = 2.5;           // biggest sample step in the voices, against the input
     constexpr double speechMedianCents = 20.0;        // fixed interval on real speech: median distance from lead plus interval

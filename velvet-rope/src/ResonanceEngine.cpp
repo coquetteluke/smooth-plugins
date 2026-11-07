@@ -27,6 +27,9 @@ namespace
     constexpr float spacingHoldMs      = 200.0f;  // consonants between vowels do not reset it
     constexpr float spacingToEnvelope  = 0.6f;    // half-width of the envelope, as a share of the spacing
     constexpr int   spacingEveryHops   = 4;
+    constexpr float sparseFromHz       = 200.0f;  // threshold starts rising with harmonic spacing above this
+    constexpr float sparseLiftDb       = 2.0f;    // dB per multiple of that spacing
+    constexpr float sparseLiftMaxDb    = 6.0f;
     constexpr float referenceMinHz     = 300.0f;  // and at least this far at the low end
     constexpr float rangeTaperOctaves  = 1.0f / 6.0f;
     constexpr float kneeDb             = 2.0f;
@@ -35,6 +38,8 @@ namespace
     constexpr float floorPower         = 1.0e-12f; // -120 dB: anything quieter is left alone
     constexpr float minThresholdDb     = 0.0f;
     constexpr float maxThresholdDb     = 11.5f;
+    constexpr float thresholdOffsetLowDb  = -2.0f;  // first and second formants move fast and are rarely mistaken, so the threshold is lower here
+    constexpr float thresholdOffsetHighDb = 0.75f;  // and a little higher from 2 kHz up, where a voice's own steady peaks live
     constexpr float maxSampleMagnitude = 1.0e6f;
     constexpr float persistenceMs      = 500.0f;  // how long a peak has to last before it counts in full
     constexpr float persistenceWeight  = 0.7f;    // share of the judgement that comes from the long view
@@ -599,6 +604,11 @@ void ResonanceEngine::detect (Slot& s) noexcept
     const bool hard = params.hard;
     const float hardThreshold = params.hardThresholdDb;
 
+    // Harmonics far apart sample the voice's formants more coarsely, so on high notes a single harmonic naturally stands
+    // taller than its neighbours. The bar rises with the spacing, so a sung high note does not lose its strongest harmonics.
+    const float spacingHz = (float) envelopeFloorBins * (float) binHz / spacingToEnvelope;
+    const float sparseLift = juce::jlimit (0.0f, sparseLiftMaxDb, sparseLiftDb * (spacingHz / sparseFromHz - 1.0f));
+
     // In Hard mode Selectivity asks how far a bin must stand out from its surroundings as well. At 0 anything goes.
     const float hardGate = juce::jmap (params.selectivity, -9.0f, 9.0f);
 
@@ -683,7 +693,7 @@ void ResonanceEngine::detect (Slot& s) noexcept
             slow += persistenceCoeff * (std::max (excessDb, 0.0f) - slow);
 
         const float judged = std::min (excessDb, persistenceWeight * slow + (1.0f - persistenceWeight) * excessDb);
-        const float over = judged - (threshold - sensitivity[idx]);
+        const float over = judged - (threshold + sparseLift + juce::jmap (std::max (tiltPosition[idx], 0.0f), thresholdOffsetLowDb, thresholdOffsetHighDb) - sensitivity[idx]);
 
         if (over <= -kneeDb)
             continue;

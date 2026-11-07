@@ -15,6 +15,8 @@ struct Setup
 {
     int doubles = 1;
     float loose = 30.0f, width = 0.0f, lead = -60.0f, d1 = -60.0f, d2 = -60.0f, d3 = -60.0f;
+    float timing = 100.0f, pitch = 100.0f, vibrato = 0.0f, timbre = 0.0f, leadPan = 0.0f, doublesPan = 0.0f, extra = 0.0f;
+    int range = 1;
 };
 
 static void setParam (PluginProcessor& p, const char* id, float v)
@@ -32,6 +34,14 @@ static void apply (PluginProcessor& p, const Setup& s)
     setParam (p, "double1", s.d1);
     setParam (p, "double2", s.d2);
     setParam (p, "double3", s.d3);
+    setParam (p, "timingamount", s.timing);
+    setParam (p, "pitchamount", s.pitch);
+    setParam (p, "vibrato", s.vibrato);
+    setParam (p, "timbre", s.timbre);
+    setParam (p, "leadpan", s.leadPan);
+    setParam (p, "doublespan", s.doublesPan);
+    setParam (p, "extradelay", s.extra);
+    setParam (p, "range", (float) s.range);
     setParam (p, "bypass", 0.0f);
 }
 
@@ -193,42 +203,73 @@ static double strongestLineShare (const std::vector<double>& contour)
 }
 
 // What is left of a sine after taking away a clean sine that follows the voice's slow phase and level. Interpolation
-// noise and any zipper show up here. Returns dB against the carrier and the level ripple in dB, peak to peak.
+// noise and any zipper show up here. Movement slower than about 100 Hz belongs to the voice's own drift and is not counted.
+// Returns dB against the carrier and the level ripple in dB, peak to peak.
 struct Residual { double db = 0, rippleDb = 0; };
 static Residual sineResidual (const std::vector<float>& x, double sr, int period, double skipSeconds = 0.2)
 {
-    // 1 ms phase track, a whole number of cycles per block.
+    // Coarse 1 ms phase track, a whole number of cycles per block.
     const int cycles = juce::jmax (1, (int) std::round (sr * 0.001 / period));
-    auto t = trackSine (x, sr, period, cycles, skipSeconds);
+    const auto t = trackSine (x, sr, period, cycles, skipSeconds);
     const double f = sr / period;
     const int hop = period * cycles;
     const int start0 = (int) (skipSeconds * sr) / period * period;
     // Savitzky-Golay smoothing keeps a curve's slope and bend, so a moving pitch is followed without error.
     static constexpr double sg[11] = { -36, 9, 44, 69, 84, 89, 84, 69, 44, 9, -36 };
-    std::vector<double> smooth (t.delayMs.size(), 0.0);
+    std::vector<double> phase (t.delayMs.size(), 0.0);
     for (size_t k = 5; k + 5 < t.delayMs.size(); ++k)
     {
-        double s = 0; for (int j = -5; j <= 5; ++j) s += sg[j + 5] * t.delayMs[k + (size_t) (j + 5) - 5];
-        smooth[k] = s / 429.0;
+        double s = 0; for (int j = -5; j <= 5; ++j) s += sg[j + 5] * t.delayMs[(size_t) ((int) k + j)];
+        phase[k] = s / 429.0 * 0.001 * twoPi * f;
     }
-    // The block sum reports the phase at the centre of its block.
-    const auto delayAt = [&] (double hopPos)
+    const auto spline = [] (const std::vector<double>& c, double pos)
     {
-        const auto k = (size_t) hopPos;
-        const double u = hopPos - (double) k;
-        const double p0 = smooth[k - 1], p1 = smooth[k], p2 = smooth[k + 1], p3 = smooth[k + 2];
+        const auto k = (size_t) pos;
+        const double u = pos - (double) k, p0 = c[k - 1], p1 = c[k], p2 = c[k + 1], p3 = c[k + 2];
         return p1 + 0.5 * u * (p2 - p0 + u * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + u * (3.0 * (p1 - p2) + p3 - p0)));
     };
-    const int firstK = 8, lastK = (int) t.delayMs.size() - 9;
-    const int from = start0 + firstK * hop + hop / 2, to = start0 + lastK * hop + hop / 2;
-    const int n = to - from;
+    // A block sum reports the phase at the middle of its block.
+    const auto hopPos = [&] (int i) { return (i - start0 - 0.5 * (hop - 1)) / hop; };
+    // Leave room so the wide window and the smoother never reach the unsmoothed ends of the track.
+    const int firstK = 16, lastK = (int) t.delayMs.size() - 17;
+
+    // Three refinements: turn the sine down to nearly nothing with the current reference, then smooth what is left with a
+    // 10 ms Hann window. Its double frequency part cannot get through, unlike the coarse block sums.
+    const int win = (int) (sr * 0.01);
+    std::vector<double> hann ((size_t) win);
+    double hannSum = 0;
+    for (int i = 0; i < win; ++i) { hann[(size_t) i] = 0.5 - 0.5 * std::cos (twoPi * (i + 0.5) / win); hannSum += hann[(size_t) i]; }
+    std::vector<double> level (phase.size(), 0.0);
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        auto next = phase;
+        for (int k = firstK; k <= lastK; ++k)
+        {
+            const int mid = start0 + k * hop + hop / 2; // window centre falls exactly on this block's middle (both lengths are even)
+            double re = 0, im = 0;
+            for (int w = 0; w < win; ++w)
+            {
+                const int i = mid - win / 2 + w;
+                const double a = twoPi * (i % period) / period - spline (phase, hopPos (i));
+                re += hann[(size_t) w] * (double) x[(size_t) i] * std::sin (a);
+                im += hann[(size_t) w] * (double) x[(size_t) i] * std::cos (a);
+            }
+            next[(size_t) k] = phase[(size_t) k] + std::atan2 (-im, re);
+            level[(size_t) k] = 2.0 * std::sqrt (re * re + im * im) / hannSum;
+        }
+        // Ripple the coarse track put in cannot be seen by the wide window, so it comes out here. The smoother keeps slope and bend.
+        phase = next;
+        for (int k = firstK; k <= lastK; ++k)
+        {
+            double sum = 0; for (int j = -5; j <= 5; ++j) sum += sg[j + 5] * next[(size_t) (k + j)];
+            phase[(size_t) k] = sum / 429.0;
+        }
+    }
+
+    const int from = start0 + (firstK + 20) * hop, to = start0 + (lastK - 20) * hop, n = to - from;
     std::vector<double> ref ((size_t) n);
     for (int i = 0; i < n; ++i)
-    {
-        const double hopPos = (double) (from + i - start0 - hop / 2) / hop;
-        // Whole cycle phase keeps precision over long runs.
-        ref[(size_t) i] = std::sin (twoPi * ((from + i) % period) / period - twoPi * f * delayAt (hopPos) * 0.001);
-    }
+        ref[(size_t) i] = std::sin (twoPi * ((from + i) % period) / period - spline (phase, hopPos (from + i)));
     double xr = 0, rr = 0;
     for (int i = 0; i < n; ++i) { xr += (double) x[(size_t) (from + i)] * ref[(size_t) i]; rr += ref[(size_t) i] * ref[(size_t) i]; }
     const double a = xr / rr;
@@ -236,14 +277,8 @@ static Residual sineResidual (const std::vector<float>& x, double sr, int period
     for (int i = 0; i < n; ++i) { const double d = (double) x[(size_t) (from + i)] - a * ref[(size_t) i]; e += d * d; }
     Residual r;
     r.db = 10.0 * std::log10 (std::max (e / (a * a * rr), 1.0e-20));
-    // Level, 5 ms at a time, measured against the reference so the moving pitch does not count as ripple.
-    const int win = (int) (sr * 0.005) / period * period;
     double lo = 1.0e9, hi = 0;
-    for (int w = 0; w + win <= n; w += win)
-    {
-        double s = 0, q = 0; for (int i = 0; i < win; ++i) { s += (double) x[(size_t) (from + w + i)] * ref[(size_t) (w + i)]; q += ref[(size_t) (w + i)] * ref[(size_t) (w + i)]; }
-        const double level = s / q; lo = std::min (lo, level); hi = std::max (hi, level);
-    }
+    for (int k = firstK + 20; k <= lastK - 20; ++k) { lo = std::min (lo, level[(size_t) k]); hi = std::max (hi, level[(size_t) k]); }
     r.rippleDb = 20.0 * std::log10 (hi / lo);
     return r;
 }
@@ -496,6 +531,15 @@ static void testDecorrelation()
     std::vector<float> white ((size_t) n); noise (white.data(), n, 0.25);
     const auto band = voiceBandNoise (n);
     const std::pair<int, int> pairs[] = { { 0, 1 }, { 0, 2 }, { 1, 2 } };
+
+    // The control: a plain fixed copy 20 ms later has to read as fully correlated, or the numbers below prove nothing.
+    {
+        std::vector<float> later ((size_t) n, 0.0f);
+        std::copy_n (white.data(), n - 960, later.data() + 960);
+        const double c = peakCrossCorrelation (white, later, skip, lags);
+        check (c >= 0.95, "control: a fixed copy 20 ms later reads as the same signal, correlation at best lag", c);
+    }
+
     for (float loose : { 0.0f, 30.0f, 100.0f })
     {
         const auto tag = "Tightness " + std::to_string ((int) loose);
@@ -549,6 +593,26 @@ static void testArtifacts()
             else
                 info ("level ripple, double " + std::to_string (v + 1) + ", " + hz + " Hz, peak to peak", r.rippleDb, "dB");
         }
+    }
+
+    // The instrument itself: a perfect moving sine, written directly and moving as fast as the loosest double (about
+    // 26 cents at its peak), must measure far below the limits, and the same sine with a known -60 dB side tone must measure -60 dB.
+    for (auto c : { Case { 48, -70.0 }, Case { 10, -70.0 }, Case { 5, -70.0 }, Case { 3, -50.0 } })
+    {
+        const double f = sr / c.period;
+        std::vector<float> perfect ((size_t) n), marked ((size_t) n);
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = i / sr;
+            const double delay = 0.040 + 0.012 * std::sin (twoPi * 0.1 * t) + 0.0015 * std::sin (twoPi * 0.8 * t);
+            const double whole = twoPi * (i % c.period) / c.period - twoPi * f * delay;
+            perfect[(size_t) i] = (float) (0.5 * std::sin (whole));
+            marked[(size_t) i] = (float) (0.5 * std::sin (whole) + 0.0005 * std::sin (whole + twoPi * 500.0 * t));
+        }
+        const auto hz = std::to_string ((int) f);
+        const auto floor = sineResidual (perfect, sr, c.period), known = sineResidual (marked, sr, c.period);
+        check (floor.db <= c.limit - 10.0, "instrument floor at " + hz + " Hz is at least 10 dB under the limit", floor.db, "dB");
+        check (std::abs (known.db + 60.0) <= 1.0, "instrument reads a known -60 dB side tone at " + hz + " Hz as", known.db, "dB");
     }
 
     // Periodic sweep: how much of each path's energy sits in one line. Five minutes, so a slow repeat would show.
@@ -613,7 +677,7 @@ static void testMethodChoice()
     {
         const auto in = wholeCycleSine (n, period);
         const auto moving = sineResidual (runSolo (in, sr, solo (0, 60.0f)), sr, period);
-        const auto shifted = sineResidual (twoHeadShifter (in, sr, 10.0, 40.0), sr, period);
+        const auto shifted = sineResidual (twoHeadShifter (in, sr, 10.0, 34.7), sr, period);
         const auto hz = std::to_string ((int) (sr / period));
         info ("method: moving delay residual at " + hz + " Hz", moving.db, "dB");
         info ("method: moving delay level ripple at " + hz + " Hz", moving.rippleDb, "dB");
@@ -689,6 +753,30 @@ static void testLayouts()
         }
         check (diff == 0.0, "mono to stereo: junk in the unused channel changes nothing, largest difference", diff);
     }
+
+    // Every rate and small and large blocks, with all controls moving, and bad input from upstream.
+    for (double rate : { 44100.0, 48000.0, 96000.0 })
+        for (int block : { 32, 4096 })
+        {
+            PluginProcessor p; prepareMonoToStereo (p, rate, block);
+            const int len = (int) rate;
+            std::vector<float> sweepIn ((size_t) len); noise (sweepIn.data(), len, 0.2);
+            for (int i = 0; i < 64; ++i) sweepIn[(size_t) (len / 2 + i)] = i % 2 == 0 ? std::numeric_limits<float>::quiet_NaN() : 1.0e30f;
+            long before = 0, total = 0; bool armed = false;
+            auto out = render (p, sweepIn, block, nullptr, [&] (int idx)
+            {
+                if (armed) total += allocs.load() - before;
+                int k = 0;
+                for (auto* prm : p.getParameters())
+                    prm->setValueNotifyingHost (0.5f + 0.5f * (float) std::sin (0.13 * ++k + 0.2 * idx));
+                armed = idx > 0;
+                before = allocs.load();
+            });
+            double pk = 0; for (int ch = 0; ch < 2; ++ch) pk = std::max (pk, peak (out.getReadPointer (ch), out.getNumSamples()));
+            const auto tag = std::to_string ((int) rate) + " Hz block " + std::to_string (block);
+            check (countNonFinite (out) == 0 && pk <= 16.0 * 6.0, "mono to stereo, all controls moving, bad input, stays finite and bounded, " + tag + ", peak", pk);
+            check (total == 0, "mono to stereo, no allocations in the audio path, " + tag, (double) total);
+        }
 
     { // Mono to mono has no left or right to spread: same level at any Width
         Setup s = solo (0, 30.0f, -6.0f, 100.0f, 1);
@@ -778,7 +866,7 @@ static void testLatencyAndBypass()
             check (worst == 0.0, "Bypass control, mono to stereo, exact dry on both sides, " + tag + ", largest difference", worst);
         }
     }
-    check (std::abs (PluginProcessor().getTailLengthSeconds() - 0.1) < 1.0e-9, "reports a 100 ms tail");
+    check (std::abs (PluginProcessor().getTailLengthSeconds() - 0.25) < 1.0e-9, "reports a 250 ms tail");
 }
 
 // Times and pitch stay the same in real terms at every sample rate.
@@ -850,6 +938,429 @@ static void testRepeatable()
     }
 }
 
+// A sudden Tightness jump moves delays, so it bends the pitch for a moment. It must stay a bend, not a jump.
+static void testTightnessGlide()
+{
+    const double sr = 48000.0;
+    const int n = 48000 * 6;
+    const auto in = wholeCycleSine (n, 48);
+    double worst = 0, worstStep = 0;
+    for (int v = 0; v < 3; ++v)
+    {
+        PluginProcessor p; apply (p, solo (v, 0.0f)); prepare (p, 1, sr, 256);
+        auto out = render (p, in, 256, nullptr, [&] (int idx) { if (idx == 3 * 48000 / 256) setParam (p, "tightness", 100.0f); });
+        std::vector<float> y (out.getReadPointer (0), out.getReadPointer (0) + n);
+        worst = std::max (worst, trackSine (y, sr, 48).centsPeak());
+        worstStep = std::max (worstStep, maxJump (y.data() + 48000, n - 48000));
+    }
+    check (worst <= 120.0, "Tightness jumped from 0 to 100: the bend stays under 120 cents, worst", worst, "cents");
+    check (worstStep <= 0.5 * 2.0 * juce::MathConstants<double>::pi * 1000.0 / sr * 1.1, "Tightness jumped from 0 to 100: no sample step beyond the sine's own slope, largest", worstStep);
+}
+
+// Timing Amount and Pitch Amount: the two halves of the drift, each on its own.
+static void testTimingAndPitchAmounts()
+{
+    const double sr = 48000.0;
+    const int n = 48000 * 120;
+    const auto in = wholeCycleSine (n, 48);
+    const auto track = [&] (int v, float timing, float pitch)
+    {
+        Setup s = solo (v, 100.0f); s.timing = timing; s.pitch = pitch;
+        return trackSine (runSolo (in, sr, s), sr, 48);
+    };
+    for (int v = 0; v < 3; ++v)
+    {
+        const auto tag = "Double " + std::to_string (v + 1) + " at Tightness 100: ";
+        const auto normal = track (v, 100.0f, 100.0f), noTiming = track (v, 0.0f, 100.0f), bigTiming = track (v, 200.0f, 100.0f);
+        const auto noPitch = track (v, 100.0f, 0.0f), bigPitch = track (v, 100.0f, 200.0f), neither = track (v, 0.0f, 0.0f);
+        check (noTiming.timingPeak() <= 0.4 * normal.timingPeak(), tag + "Timing Amount 0, timing swing under 40 percent of normal", noTiming.timingPeak(), "ms");
+        check (bigTiming.timingPeak() >= 1.6 * normal.timingPeak(), tag + "Timing Amount 200, timing swing at least 1.6 times normal", bigTiming.timingPeak(), "ms");
+        check (noTiming.centsRms() >= 0.4 * normal.centsRms(), tag + "Timing Amount 0 keeps pitch drift, rms", noTiming.centsRms(), "cents");
+        check (noPitch.centsRms() <= 0.9 * normal.centsRms(), tag + "Pitch Amount 0, pitch rms under 90 percent of normal, some stays because timing drift bends pitch too", noPitch.centsRms(), "cents");
+        check (bigPitch.centsRms() >= 1.3 * normal.centsRms(), tag + "Pitch Amount 200, pitch rms at least 1.3 times normal", bigPitch.centsRms(), "cents");
+        check (noPitch.timingPeak() >= 0.7 * normal.timingPeak(), tag + "Pitch Amount 0 keeps timing drift", noPitch.timingPeak(), "ms");
+        check (neither.centsPeak() <= 0.1 && neither.timingPeak() <= 0.01, tag + "both at 0: no drift at all, pitch peak", neither.centsPeak(), "cents");
+    }
+    // Wide settings stay clear of the delay floor.
+    const auto impulses = impulseTrain (n, 9600);
+    Setup s = solo (0, 100.0f); s.timing = 200.0f; s.pitch = 200.0f;
+    const auto ms = trackImpulses (runSolo (impulses, sr, s), sr, 9600);
+    check (*std::min_element (ms.begin(), ms.end()) >= 12.0, "Timing and Pitch Amount at 200, Tightness 100: nearest double stays 12 ms or more behind", *std::min_element (ms.begin(), ms.end()), "ms");
+}
+
+static void testExtraDelay()
+{
+    const double sr = 48000.0;
+    const int spacing = 24000, n = 48000 * 40;
+    const auto in = impulseTrain (n, spacing);
+    const auto mean = [&] (float extra)
+    {
+        Setup s = solo (0, 0.0f); s.extra = extra;
+        const auto ms = trackImpulses (runSolo (in, sr, s), sr, spacing);
+        double sum = 0; for (auto m : ms) sum += m;
+        return sum / (double) ms.size();
+    };
+    const double none = mean (0.0f);
+    for (float extra : { 25.0f, 50.0f, 100.0f })
+    {
+        const double moved = mean (extra) - none;
+        check (std::abs (moved - extra) <= 0.5, "Extra Delay " + std::to_string ((int) extra) + " ms moves the double by", moved, "ms");
+    }
+    // The lead stays put.
+    Setup s = solo (0, 0.0f); s.extra = 100.0f; s.lead = 0.0f;
+    const auto out = runSolo (in, sr, s);
+    check (std::abs (out[(size_t) spacing] - 1.0f) < 1.0e-4f, "Extra Delay leaves the lead at its own time");
+    // The longest possible reach reads clean.
+    Setup w = solo (2, 100.0f); w.extra = 100.0f; w.timing = 200.0f; w.pitch = 200.0f;
+    const auto far = trackImpulses (runSolo (in, sr, w), sr, spacing);
+    check (*std::max_element (far.begin(), far.end()) >= 150.0, "longest settings reach past 150 ms, longest", *std::max_element (far.begin(), far.end()), "ms");
+}
+
+// Lead Pan and Doubles Pan follow the equal power law within 0.2 dB.
+static void testPans()
+{
+    const double sr = 48000.0;
+    const int n = 48000 * 2, skip = 9600;
+    const auto in = wholeCycleSine (n, 48, 0.25);
+    const double inDb = toDb (rms (in.data() + skip, n - skip));
+    double worstLead = 0, worstDoubles = 0;
+    bool hardOk = true;
+    for (float pan : { -100.0f, -50.0f, 0.0f, 50.0f, 100.0f })
+    {
+        const double th = pan * 0.01 * juce::MathConstants<double>::pi * 0.25;
+        const double wantL = std::cos (th) - std::sin (th), wantR = std::cos (th) + std::sin (th);
+        for (int which : { 0, 1 })
+        {
+            Setup s = which == 0 ? Setup {} : solo (0, 30.0f, 0.0f, 0.0f, 1);
+            if (which == 0) { s.lead = 0.0f; s.leadPan = pan; } else s.doublesPan = pan;
+            PluginProcessor p; apply (p, s); prepareMonoToStereo (p, sr, 512);
+            auto out = render (p, in, 512);
+            const double l = rmsDb (out, 0, skip, n - skip) - inDb, r = rmsDb (out, 1, skip, n - skip) - inDb;
+            auto& worst = which == 0 ? worstLead : worstDoubles;
+            if (wantL > 1.0e-6) worst = std::max (worst, std::abs (l - toDb (wantL))); else hardOk = hardOk && l < -100.0;
+            if (wantR > 1.0e-6) worst = std::max (worst, std::abs (r - toDb (wantR))); else hardOk = hardOk && r < -100.0;
+        }
+    }
+    check (worstLead <= 0.2, "Lead Pan follows the pan law at -100 to +100, worst error", worstLead, "dB");
+    check (worstDoubles <= 0.2, "Doubles Pan follows the pan law at -100 to +100, worst error", worstDoubles, "dB");
+    check (hardOk, "hard pans leave the far side silent, under -100 dB");
+
+    // Doubles Pan moves the whole group. Width still spreads around it.
+    Setup s; s.doubles = 2; s.width = 40.0f; s.doublesPan = 60.0f; s.d1 = s.d2 = 0.0f;
+    std::vector<float> nz ((size_t) (48000 * 8)); noise (nz.data(), (int) nz.size(), 0.25);
+    PluginProcessor p; apply (p, s); prepareMonoToStereo (p, sr, 512);
+    auto out = render (p, nz, 512);
+    const int m = out.getNumSamples();
+    const double diff = rmsDb (out, 1, skip, m - skip) - rmsDb (out, 0, skip, m - skip);
+    check (diff >= 3.0, "Doubles Pan +60 with Width 40 leans the pair to the right, right over left", diff, "dB");
+
+    // Mono out ignores pans.
+    Setup mono; mono.lead = 0.0f; mono.leadPan = 100.0f;
+    PluginProcessor q; apply (q, mono); prepare (q, 1, sr, 512);
+    auto mo = render (q, in, 512);
+    check (std::abs (rmsDb (mo, 0, skip, n - skip) - inDb) <= 0.01, "mono out: Lead Pan has no effect on level");
+}
+
+// A formant shape over noise, with one clear peak near 2 kHz.
+static std::vector<float> formantNoise (int n, double formantHz, double sr)
+{
+    std::vector<float> x ((size_t) n);
+    noise (x.data(), n, 0.4, 11);
+    const double w = twoPi * formantHz / sr, r = std::exp (-juce::MathConstants<double>::pi * 180.0 / sr);
+    const double a1 = -2.0 * r * std::cos (w), a2 = r * r;
+    double y1 = 0, y2 = 0;
+    for (auto& s : x) { const double y = 0.06 * s - a1 * y1 - a2 * y2; y2 = y1; y1 = y; s = (float) y; }
+    return x;
+}
+
+// Long average spectrum, its peak in Hz between lo and hi.
+static double spectrumPeakHz (const std::vector<float>& x, int skip, double sr, double lo, double hi)
+{
+    const int order = 13, size = 1 << order;
+    juce::dsp::FFT fft (order);
+    std::vector<float> buf ((size_t) size * 2), avg ((size_t) size / 2 + 1, 0.0f);
+    for (int start = skip; start + size <= (int) x.size(); start += size / 2)
+    {
+        for (int i = 0; i < size; ++i) buf[(size_t) i] = x[(size_t) (start + i)] * (float) (0.5 - 0.5 * std::cos (twoPi * i / size));
+        fft.performFrequencyOnlyForwardTransform (buf.data());
+        for (int k = 0; k <= size / 2; ++k) avg[(size_t) k] += buf[(size_t) k] * buf[(size_t) k];
+    }
+    // Smooth across bins: this is about the outline, not noise grain.
+    int best = 0; double bestV = -1;
+    for (int k = (int) (lo * size / sr); k <= (int) (hi * size / sr); ++k)
+    {
+        double s = 0; for (int j = -12; j <= 12; ++j) s += avg[(size_t) (k + j)];
+        if (s > bestV) { bestV = s; best = k; }
+    }
+    return best * sr / size;
+}
+
+// A sawtooth like voice: many harmonics through two formants.
+static std::vector<float> formantSaw (int n, double f0, double sr)
+{
+    std::vector<float> x ((size_t) n);
+    double phase = 0;
+    for (auto& s : x) { phase += f0 / sr; phase -= std::floor (phase); s = (float) (0.4 * (2.0 * phase - 1.0)); }
+    for (double formant : { 700.0, 2400.0 })
+    {
+        const double w = twoPi * formant / sr, r = std::exp (-juce::MathConstants<double>::pi * 160.0 / sr);
+        const double a1 = -2.0 * r * std::cos (w), a2 = r * r;
+        double y1 = 0, y2 = 0;
+        for (auto& s : x) { const double y = 0.1 * s - a1 * y1 - a2 * y2; y2 = y1; y1 = y; s = (float) y; }
+    }
+    double top = 0; for (auto s : x) top = std::max (top, (double) std::abs (s));
+    for (auto& s : x) s = (float) (s * 0.5 / top);
+    return x;
+}
+
+static void testTimbre()
+{
+    const double sr = 48000.0;
+    const int n = 48000 * 12, skip = 9600;
+    const auto in = formantNoise (n, 2000.0, sr);
+    const double inPeak = spectrumPeakHz (in, 0, sr, 1000.0, 4500.0);
+    info ("Timbre test signal peak", inPeak, "Hz");
+    for (float amount : { 50.0f, 100.0f })
+        for (int v = 0; v < 3; ++v)
+        {
+            Setup s = solo (v, 0.0f); s.timing = 0.0f; s.pitch = 0.0f; s.timbre = amount;
+            const auto out = runSolo (in, sr, s);
+            const double peakHz = spectrumPeakHz (out, skip, sr, 1000.0, 4500.0);
+            const double wanted = std::pow (2.0, amount * 0.01 * DuoEngine::timbreSemitones[(size_t) v] / 12.0);
+            const double measured = peakHz / inPeak;
+            check (std::abs (measured - wanted) <= 0.04, "Timbre Variation " + std::to_string ((int) amount) + ", double " + std::to_string (v + 1) + ": formant moves by " + std::to_string (wanted).substr (0, 5) + " within 0.04, measured", measured);
+        }
+
+    // The same move at the other sample rates, where the frame sizes differ.
+    for (double rate : { 44100.0, 96000.0 })
+    {
+        const int len = (int) rate * 12;
+        const auto x = formantNoise (len, 2000.0, rate);
+        const double before = spectrumPeakHz (x, 0, rate, 1000.0, 4500.0);
+        for (int v = 0; v < 2; ++v)
+        {
+            Setup s = solo (v, 0.0f); s.timing = 0.0f; s.pitch = 0.0f; s.timbre = 100.0f;
+            const double measured = spectrumPeakHz (runSolo (x, rate, s), (int) (0.2 * rate), rate, 1000.0, 4500.0) / before;
+            const double wanted = std::pow (2.0, DuoEngine::timbreSemitones[(size_t) v] / 12.0);
+            check (std::abs (measured - wanted) <= 0.04, "Timbre Variation 100 at " + std::to_string ((int) rate) + " Hz, double " + std::to_string (v + 1) + ": formant moves by " + std::to_string (wanted).substr (0, 5) + " within 0.04, measured", measured);
+        }
+    }
+
+    // Pitch stays where it was and level holds, on a voice shaped signal.
+    const auto saw = formantSaw (n, 180.0, sr);
+    const double sawDb = toDb (rms (saw.data() + skip, n - skip));
+    for (int v = 0; v < 3; ++v)
+    {
+        Setup s = solo (v, 0.0f); s.timing = 0.0f; s.pitch = 0.0f; s.timbre = 100.0f;
+        const auto out = runSolo (saw, sr, s);
+        const double level = toDb (rms (out.data() + skip, n - skip)) - sawDb;
+        check (std::abs (level) <= 1.0, "Timbre Variation 100, double " + std::to_string (v + 1) + ": level change on a voice shape, limit 1 dB", level, "dB");
+
+        const auto harmonic = [&] (const std::vector<float>& x)
+        {
+            double bestF = 0, bestV = -300;
+            for (double f = 170.0; f <= 190.0; f += 0.05)
+            {
+                const double d = toneDb (x.data() + skip, n - skip, f, sr);
+                if (d > bestV) { bestV = d; bestF = f; }
+            }
+            return bestF;
+        };
+        const double f = harmonic (out);
+        check (std::abs (f - 180.0) <= 0.2, "Timbre Variation 100, double " + std::to_string (v + 1) + ": 180 Hz note stays there, measured", f, "Hz");
+    }
+
+    // Off means off: the path still measures as clean as a plain delay.
+    const auto tone = wholeCycleSine (48000 * 20, 10);
+    Setup off = solo (0, 100.0f);
+    const auto clean = sineResidual (runSolo (tone, sr, off), sr, 10);
+    check (clean.db <= -70.0, "Timbre Variation 0: 4800 Hz read noise stays under -70", clean.db, "dB");
+
+    // Turned on and back off, it settles back to exactly the untouched path.
+    {
+        Setup s = solo (0, 0.0f); s.timing = 0.0f; s.pitch = 0.0f;
+        PluginProcessor a, b; apply (a, s); apply (b, s); prepare (a, 1, sr, 256); prepare (b, 1, sr, 256);
+        auto plain = render (a, saw, 256);
+        auto moved = render (b, saw, 256, nullptr, [&] (int idx)
+        {
+            if (idx == 100) setParam (b, "timbre", 100.0f);
+            if (idx == 600) setParam (b, "timbre", 0.0f);
+        });
+        double worst = 0;
+        for (int i = 48000 * 8; i < n; ++i) worst = std::max (worst, (double) std::abs (plain.getSample (0, i) - moved.getSample (0, i)));
+        check (worst <= 1.0e-5, "Timbre Variation turned up and back down returns to the untouched path, largest difference", worst);
+    }
+}
+
+// A held note with vibrato, written directly.
+static std::vector<float> vibratoNote (int n, double sr, double hz, double vibHz, double depthCents)
+{
+    std::vector<float> x ((size_t) n);
+    double phase = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        const double cents = depthCents * std::sin (twoPi * vibHz * i / sr);
+        phase += hz * std::pow (2.0, cents / 1200.0) / sr;
+        phase -= std::floor (phase);
+        double s = 0;
+        for (int h = 1; h <= 5; ++h) s += std::sin (twoPi * h * phase) / h;
+        x[(size_t) i] = (float) (0.3 * s);
+    }
+    return x;
+}
+
+// Vibrato depth of a note, in cents, from its zero crossings.
+static double vibratoDepth (const std::vector<float>& y, double sr, double hz, double vibHz, int skip)
+{
+    // Follow the fundamental only.
+    const double c = 1.0 - std::exp (-twoPi * hz * 1.5 / sr);
+    double a = 0, b = 0;
+    std::vector<double> times;
+    double prev = 0;
+    for (int i = skip; i < (int) y.size(); ++i)
+    {
+        a += c * ((double) y[(size_t) i] - a);
+        b += c * (a - b);
+        if (prev <= 0.0 && b > 0.0) times.push_back (i - 1 + (-prev) / (b - prev));
+        prev = b;
+    }
+    double re = 0, im = 0; int count = 0;
+    for (size_t k = 3; k + 3 < times.size(); ++k)
+    {
+        const double period = (times[k + 3] - times[k - 3]) / 6.0;
+        const double cents = 1200.0 * std::log2 ((sr / period) / hz);
+        const double w = twoPi * vibHz * times[k] / sr;
+        re += cents * std::cos (w); im += cents * std::sin (w); ++count;
+    }
+    return 2.0 * std::sqrt (re * re + im * im) / std::max (count, 1);
+}
+
+static void testVibrato()
+{
+    const double sr = 48000.0;
+    const int n = 48000 * 12, skip = 48000 * 2;
+    const auto note = vibratoNote (n, sr, 220.0, 5.5, 50.0);
+    const double input = vibratoDepth (note, sr, 220.0, 5.5, skip);
+    info ("Vibrato test note depth", input, "cents");
+    const auto depth = [&] (int v, float amount, const std::vector<float>& x, double hz, int range)
+    {
+        Setup s = solo (v, 0.0f); s.timing = 0.0f; s.pitch = 0.0f; s.vibrato = amount; s.range = range;
+        return vibratoDepth (runSolo (x, sr, s), sr, hz, 5.5, skip);
+    };
+    for (int v = 0; v < 3; ++v)
+    {
+        const auto tag = "Vibrato Variation, double " + std::to_string (v + 1) + ": ";
+        const double off = depth (v, 0.0f, note, 220.0, 1);
+        check (std::abs (off - input) <= 0.05 * input, tag + "at 0 the double has the lead's depth within 5 percent", off, "cents");
+    }
+    const double d1 = depth (0, 100.0f, note, 220.0, 1), d2 = depth (1, 100.0f, note, 220.0, 1), d3 = depth (2, 100.0f, note, 220.0, 1);
+    check (d1 <= 0.5 * input, "Vibrato Variation 100, double 1 sings straighter: depth at most half the lead's", d1, "cents");
+    check (d2 >= 1.25 * input, "Vibrato Variation 100, double 2 sings wider: depth at least 1.25 times the lead's", d2, "cents");
+    check (d3 <= 0.8 * input, "Vibrato Variation 100, double 3 somewhat straighter: depth at most 0.8 times the lead's", d3, "cents");
+    const double half = depth (0, 50.0f, note, 220.0, 1);
+    check (half > d1 && half < input, "Vibrato Variation 50 falls between 0 and 100 on double 1", half, "cents");
+
+    // The same at the other sample rates.
+    for (double rate : { 44100.0, 96000.0 })
+    {
+        const int len = (int) rate * 12;
+        const auto x = vibratoNote (len, rate, 220.0, 5.5, 50.0);
+        const double before = vibratoDepth (x, rate, 220.0, 5.5, (int) rate * 2);
+        Setup s = solo (0, 0.0f); s.timing = 0.0f; s.pitch = 0.0f; s.vibrato = 100.0f;
+        const double after = vibratoDepth (runSolo (x, rate, s), rate, 220.0, 5.5, (int) rate * 2);
+        check (after <= 0.5 * before, "Vibrato Variation 100 at " + std::to_string ((int) rate) + " Hz, double 1: depth at most half the lead's", after, "cents");
+    }
+
+    // The speeds singers actually use, not only the middle one.
+    for (double vibHz : { 4.5, 6.8 })
+    {
+        const auto x = vibratoNote (n, sr, 220.0, vibHz, 50.0);
+        Setup s = solo (0, 0.0f); s.timing = 0.0f; s.pitch = 0.0f; s.vibrato = 100.0f;
+        const double before = vibratoDepth (x, sr, 220.0, vibHz, skip);
+        const double after = vibratoDepth (runSolo (x, sr, s), sr, 220.0, vibHz, skip);
+        check (after <= 0.7 * before, "Vibrato Variation 100, double 1, vibrato at " + std::to_string (vibHz).substr (0, 3) + " Hz: depth at most 0.7 of the lead's", after, "cents");
+    }
+
+    // Vocal Range decides what can be followed: a low note is out of reach for the Soprano setting.
+    const auto low = vibratoNote (n, sr, 110.0, 5.5, 50.0);
+    const double lowInput = vibratoDepth (low, sr, 110.0, 5.5, skip);
+    const double lowSoprano = depth (0, 100.0f, low, 110.0, 0), lowBaritone = depth (0, 100.0f, low, 110.0, 2);
+    check (std::abs (lowSoprano - lowInput) <= 0.1 * lowInput, "Vocal Range Soprano does not follow a 110 Hz note, depth stays", lowSoprano, "cents");
+    check (lowBaritone <= 0.5 * lowInput, "Vocal Range Baritone or Bass follows a 110 Hz note, depth at most half", lowBaritone, "cents");
+
+    // No vibrato to change means nothing to change: a steady note stays steady.
+    const auto steady = wholeCycleSine (n, 218);
+    Setup still = solo (0, 0.0f); still.timing = 0.0f; still.pitch = 0.0f; still.vibrato = 100.0f;
+    const auto t = trackSine (runSolo (steady, sr, still), sr, 218, 2, 1.0);
+    check (t.centsPeak() <= 1.0, "Vibrato Variation 100 on a steady note adds no movement, pitch peak", t.centsPeak(), "cents");
+
+    // Noise has no pitch to follow.
+    std::vector<float> nz ((size_t) n); noise (nz.data(), n, 0.25);
+    Setup ns = solo (0, 0.0f); ns.vibrato = 100.0f;
+    PluginProcessor p; apply (p, ns); prepare (p, 1, sr, 256);
+    int voiced = 0, total = 0;
+    render (p, nz, 256, nullptr, [&] (int idx) { if (idx > 200) { ++total; if (p.getPitchHz() > 0.0f) ++voiced; } });
+    check ((double) voiced / total <= 0.05, "noise reads as no pitch, share of blocks with a pitch", (double) voiced / total);
+
+    // Changing notes is not vibrato. Steps of a fifth every second, read from the delay the plug-in reports.
+    {
+        std::vector<float> steps ((size_t) n);
+        double phase = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            const double hz = (i / 48000) % 2 == 0 ? 220.0 : 330.0;
+            phase += hz / sr; phase -= std::floor (phase);
+            steps[(size_t) i] = (float) (0.4 * std::sin (twoPi * phase));
+        }
+        Setup s = solo (0, 0.0f); s.timing = 0.0f; s.pitch = 0.0f; s.vibrato = 100.0f;
+        PluginProcessor q; apply (q, s); prepare (q, 1, sr, 64);
+        double last = 0, worst = 0; bool have = false;
+        render (q, steps, 64, nullptr, [&] (int idx)
+        {
+            const double d = q.getDelayMs (0);
+            if (have && idx > 1000) worst = std::max (worst, std::abs (1731.2 * (d - last) * 0.001 / (64.0 / sr)));
+            last = d; have = true;
+        });
+        check (worst <= 30.0, "note steps of a fifth with Vibrato Variation 100: bend added stays under 30 cents, worst", worst, "cents");
+    }
+
+    // A slide is slower than the jump detector, so the vibrato filter sees it. Three semitones in a quarter second, every second.
+    {
+        std::vector<float> slide ((size_t) n);
+        double phase = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = std::fmod (i / sr, 2.0);
+            const double cents = t < 1.0 ? juce::jlimit (0.0, 300.0, (t - 0.5) * 1200.0) : juce::jlimit (0.0, 300.0, 300.0 - (t - 1.5) * 1200.0);
+            phase += 220.0 * std::pow (2.0, cents / 1200.0) / sr; phase -= std::floor (phase);
+            slide[(size_t) i] = (float) (0.4 * std::sin (twoPi * phase));
+        }
+        Setup s = solo (0, 0.0f); s.timing = 0.0f; s.pitch = 0.0f; s.vibrato = 100.0f;
+        PluginProcessor q; apply (q, s); prepare (q, 1, sr, 64);
+        double last = 0, worst = 0; bool have = false;
+        render (q, slide, 64, nullptr, [&] (int idx)
+        {
+            const double d = q.getDelayMs (0);
+            if (have && idx > 1000) worst = std::max (worst, std::abs (1731.2 * (d - last) * 0.001 / (64.0 / sr)));
+            last = d; have = true;
+        });
+        check (worst <= 40.0, "slides of 3 semitones with Vibrato Variation 100: bend added stays under 40 cents, worst", worst, "cents");
+    }
+}
+
+// What a later window will read agrees with the audio.
+static void testReadings()
+{
+    const double sr = 48000.0;
+    const auto in = wholeCycleSine (48000 * 3, 218);
+    Setup s = solo (1, 0.0f); s.timing = 0.0f; s.pitch = 0.0f; s.extra = 10.0f;
+    PluginProcessor p; apply (p, s); prepare (p, 1, sr, 256);
+    render (p, in, 256);
+    const auto ms = trackImpulses (runSolo (impulseTrain (48000 * 3, 24000), sr, s), sr, 24000);
+    check (std::abs (p.getDelayMs (1) - ms.back()) <= 0.1, "delay reading matches the delay measured from the audio, reading", p.getDelayMs (1), "ms");
+    check (std::abs (p.getPitchHz() - sr / 218.0) <= 1.0, "pitch reading matches a 220 Hz note, reading", p.getPitchHz(), "Hz");
+}
+
 static void testPresets()
 {
     const double sr = 48000.0;
@@ -896,6 +1407,13 @@ int main()
     testDoublesCount();
     testDriftRanges();
     testLevels();
+    testTightnessGlide();
+    testTimingAndPitchAmounts();
+    testExtraDelay();
+    testPans();
+    testTimbre();
+    testVibrato();
+    testReadings();
     testWidth();
     testDecorrelation();
     testArtifacts();

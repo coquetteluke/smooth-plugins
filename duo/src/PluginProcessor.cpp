@@ -8,6 +8,7 @@ namespace
         const char* name;
         int doubles;
         float tightness, width, lead, level1, level2, level3;
+        float timing = 100.0f, pitch = 100.0f, vibrato = 0.0f, timbre = 0.0f, leadPan = 0.0f, doublesPan = 0.0f, extra = 0.0f;
     };
 
     // The first preset is the default state of the plug-in.
@@ -15,9 +16,11 @@ namespace
         { "Natural Pair",      2, 30.0f,  70.0f,   0.0f,  -6.0f,  -6.0f,  -8.0f },
         { "Tight Double",      1, 10.0f,  50.0f,   0.0f,  -8.0f,  -8.0f,  -8.0f },
         { "Quiet Thickener",   2, 15.0f,  15.0f,   0.0f, -12.0f, -12.0f, -12.0f },
-        { "Wide Stack",        3, 45.0f, 100.0f,  -1.0f,  -6.0f,  -6.0f,  -8.0f },
-        { "Loose Gang",        3, 85.0f, 100.0f,  -2.0f,  -5.0f,  -5.0f,  -5.0f },
+        { "Wide Stack",        3, 45.0f, 100.0f,  -1.0f,  -6.0f,  -6.0f,  -8.0f, 100.0f, 100.0f, 20.0f, 15.0f },
+        { "Loose Gang",        3, 85.0f, 100.0f,  -2.0f,  -5.0f,  -5.0f,  -5.0f, 100.0f, 120.0f, 40.0f, 25.0f },
         { "Doubles Only Wide", 2, 35.0f, 100.0f, -60.0f,   0.0f,   0.0f,  -3.0f },
+        { "Two Singers",       1, 40.0f,   0.0f,   0.0f,   0.0f,   0.0f,   0.0f, 100.0f, 100.0f, 30.0f, 40.0f, -40.0f, 40.0f },
+        { "Slapback Double",   1, 20.0f,  30.0f,   0.0f,  -9.0f,  -9.0f,  -9.0f, 100.0f, 100.0f,  0.0f,  0.0f,   0.0f,  0.0f, 70.0f },
     };
 
     juce::String dbText (float v, int)
@@ -39,7 +42,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     const auto level = [&layout] (const char* id, const char* name, float def)
     {
         layout.add (std::make_unique<AudioParameterFloat> (ParameterID { id, 1 }, name, NormalisableRange<float> (DuoEngine::offDb, 6.0f, 0.1f), def,
-                                                           AudioParameterFloatAttributes().withLabel ("dB").withStringFromValue (dbText).withValueFromString (dbFromText)));
+                                                           AudioParameterFloatAttributes().withLabel ("dB").withStringFromValueFunction (dbText).withValueFromStringFunction (dbFromText)));
     };
     // IDs are saved in sessions and automation: never rename them once installed.
     layout.add (std::make_unique<AudioParameterInt> (ParameterID { "doubles", 1 }, "Doubles", 1, DuoEngine::maxDoubles, d.doubles));
@@ -51,6 +54,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     level ("double1", "Double 1 Level", d.level1);
     level ("double2", "Double 2 Level", d.level2);
     level ("double3", "Double 3 Level", d.level3);
+    const auto percent = [&layout] (const char* id, const char* name, float lo, float hi, float def, const char* label)
+    {
+        layout.add (std::make_unique<AudioParameterFloat> (ParameterID { id, 1 }, name, NormalisableRange<float> (lo, hi, 0.1f), def,
+                                                           AudioParameterFloatAttributes().withLabel (label)));
+    };
+    percent ("timingamount", "Timing Amount", 0.0f, 200.0f, d.timing, "%");
+    percent ("pitchamount", "Pitch Amount", 0.0f, 200.0f, d.pitch, "%");
+    percent ("vibrato", "Vibrato Variation", 0.0f, 100.0f, d.vibrato, "%");
+    percent ("timbre", "Timbre Variation", 0.0f, 100.0f, d.timbre, "%");
+    percent ("leadpan", "Lead Pan", -100.0f, 100.0f, d.leadPan, "%");
+    percent ("doublespan", "Doubles Pan", -100.0f, 100.0f, d.doublesPan, "%");
+    percent ("extradelay", "Extra Delay", 0.0f, 100.0f, d.extra, "ms");
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "range", 1 }, "Vocal Range",
+                                                        StringArray { "Soprano", "Alto or Tenor", "Baritone or Bass", "Instrument" }, (int) DuoEngine::altoTenor));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "bypass", 1 }, "Bypass", false));
     return layout;
 }
@@ -67,6 +84,14 @@ PluginProcessor::PluginProcessor()
     levels[0] = apvts.getRawParameterValue ("double1");
     levels[1] = apvts.getRawParameterValue ("double2");
     levels[2] = apvts.getRawParameterValue ("double3");
+    timingAmount = apvts.getRawParameterValue ("timingamount");
+    pitchAmount = apvts.getRawParameterValue ("pitchamount");
+    vibrato = apvts.getRawParameterValue ("vibrato");
+    timbre = apvts.getRawParameterValue ("timbre");
+    leadPan = apvts.getRawParameterValue ("leadpan");
+    doublesPan = apvts.getRawParameterValue ("doublespan");
+    extraDelay = apvts.getRawParameterValue ("extradelay");
+    range = apvts.getRawParameterValue ("range");
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
 }
 
@@ -86,6 +111,14 @@ DuoEngine::Params PluginProcessor::readParams() const
     p.leadDb = lead->load();
     for (size_t v = 0; v < levels.size(); ++v)
         p.levelDb[v] = levels[v]->load();
+    p.timingPct = timingAmount->load();
+    p.pitchPct = pitchAmount->load();
+    p.vibratoPct = vibrato->load();
+    p.timbrePct = timbre->load();
+    p.leadPanPct = leadPan->load();
+    p.doublesPanPct = doublesPan->load();
+    p.extraMs = extraDelay->load();
+    p.range = juce::roundToInt (range->load());
     p.bypass = bypass->get();
     return p;
 }
@@ -142,6 +175,13 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("double1", pr.level1);
     set ("double2", pr.level2);
     set ("double3", pr.level3);
+    set ("timingamount", pr.timing);
+    set ("pitchamount", pr.pitch);
+    set ("vibrato", pr.vibrato);
+    set ("timbre", pr.timbre);
+    set ("leadpan", pr.leadPan);
+    set ("doublespan", pr.doublesPan);
+    set ("extradelay", pr.extra);
 }
 
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)

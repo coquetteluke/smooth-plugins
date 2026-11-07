@@ -20,7 +20,7 @@ public:
     const juce::String getName() const override { return "Smooth Duo"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.1; }
+    double getTailLengthSeconds() const override { return 0.25; }
 
     // These become the AU factory presets.
     int getNumPrograms() override;
@@ -34,6 +34,10 @@ public:
 
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
 
+    // For a later window: each double's delay behind the lead in ms, and the pitch being followed in Hz. Never blocks audio.
+    float getDelayMs (int doubleIndex) const { return engine.getDelayMs (doubleIndex); }
+    float getPitchHz() const { return engine.getPitchHz(); }
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
@@ -43,6 +47,7 @@ private:
 
     std::atomic<float>* doubles = nullptr, *tightness = nullptr, *width = nullptr, *lead = nullptr;
     std::array<std::atomic<float>*, DuoEngine::maxDoubles> levels {};
+    std::atomic<float>* timingAmount = nullptr, *pitchAmount = nullptr, *vibrato = nullptr, *timbre = nullptr, *leadPan = nullptr, *doublesPan = nullptr, *extraDelay = nullptr, *range = nullptr;
     juce::AudioParameterBool* bypass = nullptr;
     DuoEngine engine;
     int currentProgram = 0;

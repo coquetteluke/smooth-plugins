@@ -53,7 +53,7 @@ Exact and reported, the same bypassed. At 48 kHz: Soprano 9.0 ms, Alto/Tenor 13.
 All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before any DSP existed. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`.
 
 - Tracking error 80 Hz to 1 kHz: steady 0.02 cents median, 0.12 cents at the 95th percentile. Vibrato 1.2 cents median. Octave errors: 0 per minute across 246 s of synthetic voice, with scoops, leaps and breath.
-- Real speech and `say` singing: 16 octave disagreements per minute against a slow two-sided reference, which is not ground truth, nearly all on the Organ voice, which is chords.
+- Real speech and `say` singing: 16 octave disagreements per minute against a slow two-sided reference, which is not ground truth. 9 of the 14 are on the Organ voice, which is chords.
 - Output pitch at instant speed: 3.5 cents worst, at the top near 1 kHz. Mostly under 0.01. On real speech, median distance from a note goes from about 25 cents to 10 or less.
 - Retune Speed 25, 50, 100, 200, 400 ms measures 22, 48, 97, 197, 398 ms.
 - Formant positions at +/-1 and +/-3 semitones: worst move 4.98% on the voices used for tuning, 4.6% on others, against a 5% limit. Thin margin: see below.
@@ -68,8 +68,8 @@ All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before
 
 ## What was hard to measure, and what the numbers do not say
 
-- Formants are the weak point of any grain shifter when shifts are large and the voice is high. Peak positions hold, but peaks get flatter: the first formant reads up to 11.6 dB flatter than a real voice at that pitch, at +/-3 semitones around 247 Hz. Correction under a semitone is much closer to the input. Longer grains were tried and were worse.
-- Reading formants needed three tries. Picking peaks could not read a real voice to better than 3 to 10%. The final test glides the voice over an octave so harmonics fill in the shape, then matches the shape in bands holding two formants. It reads known moves within 1.5%, and two real voices with the same vocal tract within 1.9%. A single narrow first formant on its own, as in /i/, cannot be read this way, so it is not claimed separately.
+- Formants are the weak point of any grain shifter when shifts are large and the voice is high. Peak positions hold, but peaks get flatter: the first formant reads up to 11.6 dB flatter than a real voice at that pitch, worst case across +/-1 and +/-3 semitones. At no correction it is identical to the input. Longer grains were tried and were worse.
+- Reading formants needed three tries. Picking peaks could not read a real voice to better than 3 to 10%. The final test glides the voice over an octave so harmonics fill in the shape, then matches the shape in bands holding two formants. It reads known moves within 2%, and two real voices with the same vocal tract within 1.9%. A single narrow first formant on its own, as in /i/, cannot be read this way, so it is not claimed separately.
 - A small grain reading speed correction in the shifter was tuned on the test voices to bring formants within the limit, hence the thin margin.
 - The test for Tracking uses noise at -4 dB, moved from -8 dB after the first run: at -8 dB even Tracking 0 calls the voice pitched, which is correct, so that level did not test anything.
 

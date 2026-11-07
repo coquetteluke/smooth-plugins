@@ -1,12 +1,12 @@
-# Smooth Tape Color
+# Tape Color
 
 Oversampled tape saturation with the things that make tape sound like tape: head bump and top end loss that follow the tape speed, wow, flutter, hiss, wear, a noise reduction compander, and the sound of small old equipment.
 
-Load it in a host: Audio Units > Luke Garito > Smooth Tape Color. Mono and stereo. AU code: `aufx STcl Luke`.
+Load it in a host: Audio Units > Luke Garito > Tape Color. Mono and stereo. AU code: `aufx STcl Luke`.
 
 ## The window
 
-Load it and the window says Tape Color. The build keeps the name Smooth Tape Color for now.
+Load it and the window says Tape Color. The build keeps the name Tape Color for now.
 
 - **Age** is the big idea, right across the window: drag the ribbon from a fresh reel to a worn cassette, or click the number to type one. Top end, Hiss and Wobble beside it show what that setting costs. The reel beside it turns at the tape speed, shakes with the real read head, stops when nothing is playing, and shrinks into a cassette hub at Age 55.
 - **The picture:** cream is the real spectrum going in, amber is the real spectrum coming out, on a scale tilted 3 dB an octave. The line is the tone of the tape from its settings, on the dB scale at the right. Rust is what Age has taken from the same settings at Age 0.

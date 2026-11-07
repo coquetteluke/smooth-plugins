@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1, 2026-11-07
+
+Renamed to Tape Color, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
 ## 0.3.0
 
 Its own window, called Tape Color, in deep brown, amber and cream. Age is the big idea: one wide ribbon that narrows from a fresh reel to a worn cassette, next to a flat reel that turns at the tape speed, shakes with the real read head and shrinks into a cassette hub. Above them is the real spectrum going in and coming out, the drawn tone of the tape, what Age has taken in rust, and the saturation curve with the part in use lit up. The main controls are in view and the rest open under Advanced in five sections. Every control is still the same AU parameter with the same ID, name and range.

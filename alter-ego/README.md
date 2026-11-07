@@ -6,6 +6,21 @@ A real time voice changer. Pitch and formants move independently, five character
 
 Measured on synthetic voices and macOS `say`, which is synthetic too. **That does not prove it sounds good on a real singer.** That needs ears.
 
+## The window
+
+Called Alter Ego inside. The build name stays Smooth Morph until the rename.
+
+- **Pad:** left and right is Pitch, up and down is Formant Shift, one semitone the same distance either way. You are the ring in the middle and the dot is the voice, including what the Character adds. Drag it, hold Shift for whole semitones, double-click to go back. The rings show where each Character would land from here.
+- **Disc under the dot:** where the voice really is right now, read from the engine, and how loud. Vibrato swings it. Robot throws it about as the sung pitch moves against the held note. Range Match shows in it too.
+- **Mirror, the live cue:** your voice on the left and what comes out on the right, each one's real spectrum, low notes at the bottom. Natural is a perfect ink blot, because the two really are the same. Pitch slides the teeth (harmonics), Formant Shift slides the humps, Whisper melts the teeth, Monster fills in between them. The line across the middle joins the note going in to the note coming out.
+- **Advanced:** Range Match, Range Centre, Mix and Output. Closed, it says which of them have moved.
+
+Every control is the same AU parameter as before, with the same ID and name. Readings stay readings. Only the window's size and whether Advanced is open are added to saved state, and they stay out of the parameter tree.
+
+The mirror reads `src/VoiceTap.h`: a fixed ring of relaxed atomics, written by the processor only while a window is open, read on the window's thread. Frequency analysis runs on the window's thread, never the audio thread.
+
+Pictures are in `docs/window/`. Make them with `build/RenderWindow_artefacts/Release/RenderWindow`, which runs real speech from macOS `say` through the real processor. `--live 5 8` measures the window's CPU the way `~/smooth-resonance/docs/window-cpu.md` says to.
+
 ## Controls
 
 Every control is a real AU parameter that a host can find by name.
@@ -68,6 +83,10 @@ Reported, and the same when bypassed. 1165 samples at 48 kHz (24.3 ms), 1123 at 
 
 All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before any DSP existed. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`.
 
+- Window against audio: the output with the window open, ticking and painting nulls to exact zero against the window closed, on real speech at three settings. Through the installed AU, 1.1.0 is bit identical to 1.0.0 at 8 settings on `say` speech (`tests/au_null.sh`, then `cmp`). A double-click on the pad nulls at -142 dB against the delayed input.
+- The mirror is honest: Natural matches side to side within 0.000 of its width. Pitch +12 moves the lowest tooth 11.4 st, Formant Shift +7 moves the humps 7.6 st, Whisper 100 leaves 17% of the teeth, Robot names 220.0 Hz for a set 220 Hz. Vibrato at 100 cents swings the disc 1.8 st of a true 2.
+- Window CPU, real window at 2x, voice playing, main thread at user interactive, 5 runs: 3.7, 3.8, 3.8, 4.3, 4.1% of one core (other agents' work was running). Fast core work 3.6 to 3.7%. Silent: 0.8, 0.8, 0.9% with no repaints. Audio CPU unchanged at 3.2% on `AuBench`. WindowServer's own compositing is not in these numbers.
+- That the mirror and the sound agree on a real singer needs a real singer. Speech from `say` is synthetic.
 - Pitch +/-1 to +/-12, notes 98 to 349 Hz: 4.4 cents at worst (95th percentile). Level within 0.3 dB.
 - Formants across Pitch +/-3 to +/-12: 4.6% at worst, 2.1% on vowels and pitches kept back from tuning. Two cases cannot be judged. See below.
 - Formant Shift +/-2 to +/-7: within 4.8% of the expected ratio. Pitch within 1.4 cents out to +/-12.

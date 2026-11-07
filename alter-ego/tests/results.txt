@@ -192,6 +192,94 @@ PASS  every preset sounds different from every other
 PASS  any block size gives the same output, biggest difference = 0.000 
 PASS  preparing again starts clean, biggest difference = 0.000 
 PASS  stereo balance holds: right was 6 dB down, reads = -6.021 dB
-PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 6.472 %
-PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 24.098 %
+PASS  the window is the custom one
+PASS  every one of the 13 parameters has a visible control in the window = 13.000 
+PASS  the pad is there
+PASS  parameter names and order are unchanged, so automation and old sessions still find them
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  no em dash in a hint
+PASS  every hint fits on the hint line at the smallest window, widest in points = 339.266 
+PASS  a click on the pad sets Pitch and Formant Shift, Pitch = 6.000 
+PASS  and opens one gesture on each = 2.000 
+PASS  dragging moves both = -4.000 
+PASS  with no new gesture while dragging
+PASS  letting go closes both = 2.000 
+PASS  automation moves the dot
+PASS  Deep moves the dot by the Character's own amounts
+PASS  dragging with a Character sets what is left after it = 3.000 
+PASS  holding Shift lands on whole semitones = 8.000 
+PASS  double-click on the pad resets the dot = -0.000 
+PASS  the Pitch value is there
+PASS  typing a pitch sets it
+PASS  the minus sign the window shows can be typed back = -3.000 
+PASS  a word that is not a number changes nothing
+PASS  too much stops at the end of the range = 24.000 
+PASS  double-click on the value resets it = -0.000 
+PASS  the sliders are there
+PASS  typing a value sets it, as one gesture = 40.000 
+PASS  automation moves the slider
+PASS  and it reads what it says
+PASS  double-click on a slider resets it = 0.000 
+PASS  a note can be typed by name = 60.000 
+PASS  and is shown by name
+PASS  clicking a chip picks that Character, as one gesture
+PASS  automation moves the chips
+PASS  double-click goes back to Natural
+PASS  a preset just loaded is not edited
+PASS  moving a control marks it edited
+PASS  Clean Slate says the voice is untouched: Your voice, untouched.
+PASS  and says what the Character adds: Monster adds −8 st pitch, −5 st formant and a growl.
+PASS  no em dash in it
+PASS  the size and Advanced come back with the session = 1000.000 
+PASS  they stay out of the parameter tree
+PASS  only the size and Advanced were added to saved state = 3.000 
+PASS  a damaged size goes back in range = 1600.000 
+PASS  a session from before the window opens at the default size
+PASS  a window opens within limits from a damaged size = 638.000 
+PASS  with no window open, the read is not even written
+PASS  opening a window turns it on
+PASS  no allocation on the audio thread with the read on = 0.000 
+PASS  the read counts every sample = 47872.000 
+PASS  the output side of the read is the output, sample for sample = 0.000 
+PASS  the input side is the input, one plug-in delay earlier, so both sides show the same moment = 0.000 
+PASS  closing the window turns it off
+PASS  Natural: the two sides of the mirror match = 0.000 
+PASS  and they are really showing a voice = 1.000 
+PASS  Pitch +12: the lowest tooth moves up, semitones = 11.386 
+PASS  Formant Shift +7: the humps move up, semitones = 7.591 
+PASS  Whisper 100: the teeth melt, what is left against your side = 0.169 
+PASS  Robot: the note shown is the note set, Hz = 220.000 
+PASS  and the window names both: You 196 Hz  |  Alter Ego 220 Hz
+PASS  Vibrato: the disc on the pad swings with the voice, semitones end to end = 1.797 
+PASS  and it has a size while the voice sounds = 45.235 
+PASS  with a voice going through, the display reports it is moving
+PASS  the window reading and painting writes no parameter and no automation = 0.000 
+PASS  with the host stopped, the display stops moving
+PASS  a Character chosen in silence leaves nothing moving
+PASS  60 windows opened, painted and closed, 30 of them with audio running = 60.000 
+PASS  and the read is off again after the last one
+PASS  a window opens and paints before the host has prepared the plug-in
+PASS  the mirror follows a sample rate change under an open window
+PASS  after a double-click on the pad the voice nulls against the delayed input, dB = -142.142 
+PASS  audio with the window open and painting nulls to exact zero against closed, Natural = 0.000 
+PASS  audio with the window open and painting nulls to exact zero against closed, Child with Whisper = 0.000 
+PASS  audio with the window open and painting nulls to exact zero against closed, Monster with Vibrato = 0.000 
+PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 6.455 %
+PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 23.967 %
 RESULT PASS  0 failures

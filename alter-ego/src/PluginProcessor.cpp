@@ -1,8 +1,11 @@
 #include "PluginProcessor.h"
+#include "MorphEditor.h"
 #include "StateGuard.h"
 
 namespace
 {
+    const juce::Identifier windowWidthAttribute { "windowWidth" }, windowHeightAttribute { "windowHeight" }, advancedOpenAttribute { "advancedOpen" };
+
     struct Preset
     {
         const char* name;
@@ -130,6 +133,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
 {
     engine.prepare (sampleRate, getTotalNumOutputChannels());
     setLatencySamples (engine.getLatency());
+    tap.prepare (sampleRate, engine.getLatency());
 }
 
 void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass) noexcept
@@ -152,7 +156,14 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass) n
     engine.set (s);
 
     if (buffer.getNumChannels() >= getTotalNumOutputChannels())
+    {
+        // The window's copies. Skipped with no window open, and neither one writes to the buffer.
+        const bool tapped = tap.isWanted();
+        const int tapChannels = juce::jmin (2, getTotalNumOutputChannels());
+        if (tapped) tap.pushInput (buffer.getArrayOfReadPointers(), tapChannels, buffer.getNumSamples());
         engine.process (buffer.getArrayOfWritePointers(), buffer.getNumSamples());
+        if (tapped) tap.pushOutput (buffer.getArrayOfReadPointers(), tapChannels, buffer.getNumSamples());
+    }
 
     detectedReading->set (engine.detectedHz());
     outputReading->set (engine.outputHz());
@@ -167,6 +178,17 @@ int PluginProcessor::getNumPrograms() { return (int) std::size (presets); }
 const juce::String PluginProcessor::getProgramName (int i)
 {
     return juce::isPositiveAndBelow (i, getNumPrograms()) ? presets[i].name : "";
+}
+
+bool PluginProcessor::isCurrentProgramEdited() const
+{
+    if (! juce::isPositiveAndBelow (currentProgram, (int) std::size (presets)))
+        return false;
+    const auto& p = presets[currentProgram];
+    const auto differs = [] (const std::atomic<float>* value, float wanted) { return std::abs (value->load (std::memory_order_relaxed) - wanted) > 0.005f; };
+    return differs (pitch, p.pitch) || differs (formant, p.formant) || differs (character, (float) p.character)
+        || differs (characterAmount, p.amount) || differs (robotNote, (float) p.robotNote) || differs (vibratoRate, p.vibratoRate)
+        || differs (vibratoDepth, p.vibratoDepth) || differs (whisper, p.whisper) || differs (mix, p.mix) || differs (output, p.output);
 }
 
 void PluginProcessor::setCurrentProgram (int i)
@@ -195,14 +217,32 @@ void PluginProcessor::setCurrentProgram (int i)
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     if (auto xml = apvts.copyState().createXml())
+    {
+        xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
+        xml->setAttribute (windowHeightAttribute, windowHeight.load (std::memory_order_relaxed));
+        xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, dest);
+    }
 }
 
 void PluginProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
         if (xml->hasTagName (apvts.state.getType()))
+        {
+            // Older sessions have no window state. A damaged size goes back in range. Neither is a parameter, so they stay out of the value tree.
+            if (xml->hasAttribute (windowWidthAttribute))
+                windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
+            if (xml->hasAttribute (windowHeightAttribute))
+                windowHeight.store (juce::jlimit (minWindowHeight, maxWindowHeight, xml->getIntAttribute (windowHeightAttribute, defaultWindowHeight)), std::memory_order_relaxed);
+            advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            xml->removeAttribute (windowWidthAttribute);
+            xml->removeAttribute (windowHeightAttribute);
+            xml->removeAttribute (advancedOpenAttribute);
             applySafeState (apvts, *xml);
+        }
 }
+
+juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new MorphEditor (*this); }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PluginProcessor(); }

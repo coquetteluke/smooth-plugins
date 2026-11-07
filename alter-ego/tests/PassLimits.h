@@ -58,4 +58,13 @@ namespace limits
     // CPU
     constexpr double cpuPercent = 15.0;               // of one core, 48 kHz stereo, machine busy with other builds
     constexpr double cpuPercent96 = 30.0;             // the same at 96 kHz
+
+    // The window, set before the window's cue was first measured. Shape widths are shares of the mirror's half width.
+    constexpr double mirrorNaturalShape = 0.02;       // Natural: the two sides of the mirror match at every point to this much
+    constexpr double mirrorPitchSemitones = 1.0;      // Pitch +12: the voice's lowest tooth moves up 12 semitones, to this much
+    constexpr double mirrorFormantSemitones = 2.5;    // Formant Shift +7: the humps move up 7 semitones, to this much
+    constexpr double mirrorWhisperRoughness = 0.6;    // Whisper 100: what is left of the teeth, against your side, at most
+    constexpr double mirrorRobotFraction = 0.02;      // Robot: the note shown against the set note
+    constexpr double padResetNullDb = -100.0;         // double-click on the pad: output against the delayed input
+    constexpr double padVibratoSemitones = 1.0;       // Vibrato 100 cents: the disc swings at least this far, end to end (2 st true)
 }

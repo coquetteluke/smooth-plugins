@@ -3,6 +3,7 @@
 #include <atomic>
 #include <memory>
 #include "MorphEngine.h"
+#include "VoiceTap.h"
 
 // A reading shown to the host, by name and value string.
 // It is not automatable, ignores writes, and is never pushed to the host, so it cannot write automation.
@@ -47,7 +48,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor (*this); }
+    juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Smooth Morph"; }
@@ -68,6 +69,18 @@ public:
 
     const smoothmorph::MorphEngine& getEngine() const noexcept { return engine; }
 
+    // A copy of the voice going in and coming out, for the window. Filled only while a window is open, and it only ever reads the audio.
+    smoothmorph::VoiceTap& getTap() noexcept { return tap; }
+
+    // True when a sound control has moved away from the current preset. Asked by the window, not used by audio.
+    bool isCurrentProgramEdited() const;
+
+    // The window's size and whether Advanced is open. Saved with the session, kept in range when loaded, and not parameters.
+    static constexpr int defaultWindowWidth = 980, defaultWindowHeight = 620;
+    static constexpr int minWindowWidth = 880, minWindowHeight = 580, maxWindowWidth = 1600, maxWindowHeight = 1200;
+    std::atomic<int> windowWidth { defaultWindowWidth }, windowHeight { defaultWindowHeight };
+    std::atomic<bool> advancedOpen { false };
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
@@ -75,6 +88,7 @@ private:
     void run (juce::AudioBuffer<float>&, bool forceBypass) noexcept;
 
     smoothmorph::MorphEngine engine;
+    smoothmorph::VoiceTap tap;
     std::atomic<float>* pitch = nullptr;
     std::atomic<float>* formant = nullptr;
     std::atomic<float>* character = nullptr;

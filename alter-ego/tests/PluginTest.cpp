@@ -6,8 +6,10 @@
 #include "VoiceSynth.h"
 #include "Analysis.h"
 #include "PluginProcessor.h"
+#include "MorphEditor.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <ctime>
+#include <thread>
 
 using namespace testkit;
 using namespace measure;
@@ -1062,6 +1064,602 @@ void testBlocksAndStereo()
     check (std::abs (balance + 6.02) <= 0.2, "stereo balance holds: right was 6 dB down, reads", balance, "dB");
 }
 
+// ---- the window ----------------------------------------------------------------------------------------------------
+
+struct ParamWatch final : juce::AudioProcessorParameter::Listener
+{
+    explicit ParamWatch (juce::AudioProcessor& proc) : p (proc)
+    {
+        for (auto* prm : p.getParameters())
+            prm->addListener (this);
+    }
+    ~ParamWatch() override
+    {
+        for (auto* prm : p.getParameters())
+            prm->removeListener (this);
+    }
+    void parameterValueChanged (int, float) override { ++changes; }
+    void parameterGestureChanged (int, bool starting) override { if (starting) ++begins; else ++ends; }
+    void reset() { changes = begins = ends = 0; }
+
+    juce::AudioProcessor& p;
+    std::atomic<int> changes { 0 }, begins { 0 }, ends { 0 };
+};
+
+juce::MouseEvent mouseAt (juce::Component& c, juce::Point<float> at, int clicks = 1, juce::ModifierKeys mods = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier), juce::Point<float> downAt = { -1.0f, -1.0f })
+{
+    const auto now = juce::Time::getCurrentTime();
+    return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c, now,
+                             downAt.x < 0.0f ? at : downAt, now, clicks, downAt.x >= 0.0f);
+}
+
+float realValue (PluginProcessor& p, const char* id) { return p.apvts.getRawParameterValue (id)->load(); }
+
+void paintAt (juce::Component& c, float scale)
+{
+    auto snapshot = c.createComponentSnapshot (c.getLocalBounds(), true, scale);
+    juce::ignoreUnused (snapshot);
+}
+
+// Runs a voice through with a window open, a frame at a time, and leaves the mirror showing its end.
+void playWith (PluginProcessor& p, MorphEditor& w, const std::vector<float>& x, std::function<void()> eachFrame = nullptr)
+{
+    juce::AudioBuffer<float> buffer (2, 256);
+    juce::MidiBuffer midi;
+    for (int pos = 0; pos + 256 <= (int) x.size(); pos += 256)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            buffer.copyFrom (ch, 0, x.data() + pos, 256);
+        p.processBlock (buffer, midi);
+        if (pos % 1600 < 256)
+        {
+            w.tick();
+            if (eachFrame != nullptr)
+                eachFrame();
+        }
+    }
+}
+
+double semitonesOfPoint (int point) { return 12.0 * point * std::log2 (Mirror::highestHz / Mirror::lowestHz) / (Mirror::numPoints - 1); }
+
+int pointOfHz (double hz) { return juce::roundToInt (std::log2 (hz / Mirror::lowestHz) / std::log2 (Mirror::highestHz / Mirror::lowestHz) * (Mirror::numPoints - 1)); }
+
+// The first real tooth up from the bottom.
+int lowestTooth (const std::vector<float>& shape)
+{
+    for (int i = 2; i + 2 < (int) shape.size(); ++i)
+        if (shape[(size_t) i] > 0.35f && shape[(size_t) i] >= shape[(size_t) i - 1] && shape[(size_t) i] >= shape[(size_t) i + 1]
+            && shape[(size_t) i] - shape[(size_t) juce::jmax (0, i - 6)] > 0.08f)
+            return i;
+    return -1;
+}
+
+std::vector<float> smoothed (const std::vector<float>& shape, int reach)
+{
+    std::vector<float> out (shape.size());
+    for (int i = 0; i < (int) shape.size(); ++i)
+    {
+        float sum = 0.0f;
+        int n = 0;
+        for (int k = juce::jmax (0, i - reach); k <= juce::jmin ((int) shape.size() - 1, i + reach); ++k) { sum += shape[(size_t) k]; ++n; }
+        out[(size_t) i] = sum / (float) n;
+    }
+    return out;
+}
+
+void shapesOf (Mirror& m, std::vector<float>& you, std::vector<float>& ego)
+{
+    you.resize (Mirror::numPoints);
+    ego.resize (Mirror::numPoints);
+    for (int i = 0; i < Mirror::numPoints; ++i) { you[(size_t) i] = m.youAt (i); ego[(size_t) i] = m.egoAt (i); }
+}
+
+void testWindow()
+{
+    using ui::DotSlider;
+    auto holder = make();
+    auto& p = *holder;
+    prepare (p, 2, SR, 256);
+    std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+    auto* w = dynamic_cast<MorphEditor*> (ed.get());
+    check (w != nullptr, "the window is the custom one");
+    if (w == nullptr)
+        return;
+    w->setAdvancedOpen (true);
+
+    // Nothing lost: every parameter a person can change has a control in the window, under its own ID, and keeps its name.
+    {
+        int missing = 0, controls = 0;
+        for (auto* prm : p.getParameters())
+        {
+            const auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (prm);
+            if (withId == nullptr || dynamic_cast<ReadingParameter*> (prm) != nullptr)
+                continue;
+            ++controls;
+            juce::String id = withId->paramID;
+            // Pitch and Formant Shift live on the pad and in the two big values.
+            if (id == "pitch" || id == "formant")
+                id += "Value";
+            auto* c = ed->findChildWithID (id);
+            if (c == nullptr || c->getWidth() < 20 || ! c->isVisible())
+            {
+                ++missing;
+                std::printf ("  no control for %s\n", withId->paramID.toRawUTF8());
+            }
+        }
+        check (missing == 0 && controls == 13, "every one of the 13 parameters has a visible control in the window", (double) controls);
+        check (ed->findChildWithID ("pad") != nullptr, "the pad is there");
+
+        const juce::StringArray names { "Pitch", "Formant Shift", "Character", "Character Amount", "Robot Note", "Vibrato Rate", "Vibrato Depth", "Whisper", "Range Match", "Range Centre", "Mix", "Output", "Bypass", "Detected Pitch", "Output Pitch", "Range Offset" };
+        bool same = names.size() == p.getParameters().size();
+        for (int i = 0; same && i < names.size(); ++i)
+            same = p.getParameters()[i]->getName (64) == names[i];
+        check (same, "parameter names and order are unchanged, so automation and old sessions still find them");
+    }
+
+    // The hint line is one line, at the smallest window.
+    {
+        const float room = (float) (PluginProcessor::minWindowWidth - 40 - 12 - 260) * 0.6f;
+        float widest = 0.0f;
+        const auto hintFont = ui::font (ui::Weight::regular, 13.0f);
+        for (const auto& hint : MorphEditor::allHints (*w))
+        {
+            widest = juce::jmax (widest, juce::GlyphArrangement::getStringWidth (hintFont, hint));
+            check (! hint.containsChar ((juce::juce_wchar) 0x2014), "no em dash in a hint");
+        }
+        check (widest > 100.0f && widest <= room, "every hint fits on the hint line at the smallest window, widest in points", (double) widest);
+    }
+
+    // The pad: one gesture a drag, on both parameters, and the dot follows automation.
+    {
+        auto& pad = w->getPad();
+        ParamWatch watch (p);
+        const auto start = pad.pointFor (6.0, 3.0);
+        pad.mouseDown (mouseAt (pad, start));
+        check (std::abs (realValue (p, "pitch") - 6.0f) < 0.05f && std::abs (realValue (p, "formant") - 3.0f) < 0.05f, "a click on the pad sets Pitch and Formant Shift, Pitch", (double) realValue (p, "pitch"));
+        check (watch.begins == 2 && watch.ends == 0, "and opens one gesture on each", (double) watch.begins.load());
+        const auto next = pad.pointFor (-9.0, -4.0);
+        pad.mouseDrag (mouseAt (pad, next, 1, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier), start));
+        check (std::abs (realValue (p, "pitch") + 9.0f) < 0.05f && std::abs (realValue (p, "formant") + 4.0f) < 0.05f, "dragging moves both", (double) realValue (p, "formant"));
+        check (watch.begins == 2, "with no new gesture while dragging");
+        pad.mouseUp (mouseAt (pad, next));
+        check (watch.begins == 2 && watch.ends == 2, "letting go closes both", (double) watch.ends.load());
+
+        setParam (p, "pitch", 12.0f);
+        setParam (p, "formant", 6.0f);
+        check (pad.voiceAt().getDistanceFrom (pad.pointFor (12.0, 6.0)) < 0.5f, "automation moves the dot");
+
+        // The dot is the voice, so a Character's part shows in it, and comes off again when dragging.
+        setParam (p, "pitch", 0.0f);
+        setParam (p, "formant", 0.0f);
+        setParam (p, "character", 1.0f);
+        check (pad.voiceAt().getDistanceFrom (pad.pointFor (-5.0, -3.0)) < 0.5f, "Deep moves the dot by the Character's own amounts");
+        pad.mouseDown (mouseAt (pad, pad.pointFor (-5.0, -3.0)));
+        pad.mouseDrag (mouseAt (pad, pad.pointFor (-2.0, -1.0), 1, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier), pad.pointFor (-5.0, -3.0)));
+        pad.mouseUp (mouseAt (pad, pad.pointFor (-2.0, -1.0)));
+        check (std::abs (realValue (p, "pitch") - 3.0f) < 0.1f && std::abs (realValue (p, "formant") - 2.0f) < 0.1f, "dragging with a Character sets what is left after it", (double) realValue (p, "pitch"));
+
+        // Shift snaps the voice to whole semitones.
+        const auto shift = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier | juce::ModifierKeys::shiftModifier);
+        pad.mouseDown (mouseAt (pad, pad.pointFor (3.3, 2.4), 1, shift));
+        pad.mouseUp (mouseAt (pad, pad.pointFor (3.3, 2.4)));
+        check (std::abs (realValue (p, "pitch") - 8.0f) < 0.02f && std::abs (realValue (p, "formant") - 5.0f) < 0.02f, "holding Shift lands on whole semitones", (double) realValue (p, "pitch"));
+
+        setParam (p, "character", 0.0f);
+        pad.mouseDoubleClick (mouseAt (pad, pad.pointFor (3.0, 3.0), 2));
+        check (std::abs (realValue (p, "pitch")) < 0.005f && std::abs (realValue (p, "formant")) < 0.005f, "double-click on the pad resets the dot", (double) realValue (p, "pitch"));
+    }
+
+    // The big values type and reset, and take the sign they show.
+    {
+        auto* value = dynamic_cast<ui::ValueField*> (ed->findChildWithID ("pitchValue"));
+        check (value != nullptr, "the Pitch value is there");
+        value->applyTyped ("7.5");
+        check (std::abs (realValue (p, "pitch") - 7.5f) < 0.01f, "typing a pitch sets it");
+        value->applyTyped (juce::String::fromUTF8 ("\xe2\x88\x92" "3"));
+        check (std::abs (realValue (p, "pitch") + 3.0f) < 0.01f, "the minus sign the window shows can be typed back", (double) realValue (p, "pitch"));
+        value->applyTyped ("hello");
+        check (std::abs (realValue (p, "pitch") + 3.0f) < 0.01f, "a word that is not a number changes nothing");
+        value->applyTyped ("999");
+        check (std::abs (realValue (p, "pitch") - 24.0f) < 0.005f, "too much stops at the end of the range", (double) realValue (p, "pitch"));
+        value->mouseDoubleClick (mouseAt (*value, { 5.0f, 5.0f }, 2));
+        check (std::abs (realValue (p, "pitch")) < 0.005f, "double-click on the value resets it", (double) realValue (p, "pitch"));
+    }
+
+    // Sliders: drag gestures come from the attachment, and typing and double-click work.
+    {
+        auto* whisper = dynamic_cast<DotSlider*> (ed->findChildWithID ("whisper"));
+        auto* note = dynamic_cast<DotSlider*> (ed->findChildWithID ("robotNote"));
+        check (whisper != nullptr && note != nullptr, "the sliders are there");
+        ParamWatch watch (p);
+        whisper->applyTyped ("40");
+        check (std::abs (realValue (p, "whisper") - 40.0f) < 0.1f && watch.begins == 1 && watch.ends == 1, "typing a value sets it, as one gesture", (double) realValue (p, "whisper"));
+        setParam (p, "whisper", 70.0f);
+        check (std::abs (whisper->getValue() - 70.0) < 0.1, "automation moves the slider");
+        check (whisper->valueText() == "70%", "and it reads what it says");
+        whisper->mouseDoubleClick (mouseAt (*whisper, { 40.0f, 35.0f }, 2));
+        check (realValue (p, "whisper") == 0.0f, "double-click on a slider resets it", (double) realValue (p, "whisper"));
+        note->applyTyped ("C4");
+        check (juce::roundToInt (realValue (p, "robotNote")) == 60, "a note can be typed by name", (double) realValue (p, "robotNote"));
+        check (note->valueText() == "C4", "and is shown by name");
+        setParam (p, "robotNote", 45.0f);
+    }
+
+    // Chips.
+    {
+        auto& chips = w->getChips();
+        ParamWatch watch (p);
+        const auto robot = chips.chipBounds (3).getCentre();
+        chips.mouseDown (mouseAt (chips, robot));
+        check (juce::roundToInt (realValue (p, "character")) == 3 && watch.begins == 1 && watch.ends == 1, "clicking a chip picks that Character, as one gesture");
+        setParam (p, "character", 2.0f);
+        check (chips.getSelected() == 2, "automation moves the chips");
+        chips.mouseDoubleClick (mouseAt (chips, robot, 2));
+        check (juce::roundToInt (realValue (p, "character")) == 0, "double-click goes back to Natural");
+    }
+
+    // Presets, and the window's sentence.
+    {
+        setParam (p, "character", 0.0f);
+        p.setCurrentProgram (4);
+        w->tick();
+        check (! p.isCurrentProgramEdited(), "a preset just loaded is not edited");
+        setParam (p, "whisper", 30.0f);
+        check (p.isCurrentProgramEdited(), "moving a control marks it edited");
+        p.setCurrentProgram (0);
+        for (int i = 0; i < 8; ++i) w->tick();
+        check (w->statusText() == "Your voice, untouched.", "Clean Slate says the voice is untouched: " + w->statusText().toStdString());
+        setParam (p, "character", 4.0f);
+        for (int i = 0; i < 8; ++i) w->tick();
+        check (w->statusText().contains ("Monster") && w->statusText().contains ("growl"), "and says what the Character adds: " + w->statusText().replace ("\n", " ").toStdString());
+        check (! w->statusText().containsChar ((juce::juce_wchar) 0x2014), "no em dash in it");
+        setParam (p, "character", 0.0f);
+    }
+
+    // Size and Advanced are saved, nothing else is added, and damage goes back in range.
+    {
+        w->setAdvancedOpen (true);
+        p.windowWidth = 1000;
+        p.windowHeight = 800;
+        juce::MemoryBlock saved;
+        p.getStateInformation (saved);
+        auto other = make();
+        other->setStateInformation (saved.getData(), (int) saved.getSize());
+        check (other->windowWidth.load() == 1000 && other->windowHeight.load() == 800 && other->advancedOpen.load(), "the size and Advanced come back with the session", (double) other->windowWidth.load());
+        check (! other->apvts.state.hasProperty ("windowWidth") && ! other->apvts.state.hasProperty ("windowHeight") && ! other->apvts.state.hasProperty ("advancedOpen"), "they stay out of the parameter tree");
+
+        auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+        const int savedAttributes = xml->getNumAttributes();
+        check (savedAttributes == 3, "only the size and Advanced were added to saved state", (double) savedAttributes);
+        xml->setAttribute ("windowWidth", 99999);
+        xml->setAttribute ("windowHeight", "nonsense");
+        juce::MemoryBlock damaged;
+        juce::AudioProcessor::copyXmlToBinary (*xml, damaged);
+        other->setStateInformation (damaged.getData(), (int) damaged.getSize());
+        check (other->windowWidth.load() == PluginProcessor::maxWindowWidth && other->windowHeight.load() == PluginProcessor::minWindowHeight, "a damaged size goes back in range", (double) other->windowWidth.load());
+
+        xml->removeAttribute ("windowWidth");
+        xml->removeAttribute ("windowHeight");
+        xml->removeAttribute ("advancedOpen");
+        juce::MemoryBlock old;
+        juce::AudioProcessor::copyXmlToBinary (*xml, old);
+        auto fresh = make();
+        fresh->setStateInformation (old.getData(), (int) old.getSize());
+        check (fresh->windowWidth.load() == PluginProcessor::defaultWindowWidth && ! fresh->advancedOpen.load(), "a session from before the window opens at the default size");
+
+        std::unique_ptr<juce::AudioProcessorEditor> reopened (other->createEditor());
+        check (reopened->getWidth() == PluginProcessor::maxWindowWidth && reopened->getHeight() >= PluginProcessor::minWindowHeight, "a window opens within limits from a damaged size", (double) reopened->getHeight());
+    }
+
+    ed.reset();
+
+    // The read: off with no window, exact with one, and it never allocates.
+    {
+        const auto x = voice::synth (voice::steady (196.0, 1.0, SR), voice::vowelA, SR);
+        auto q = make();
+        prepare (*q, 2, SR, 256);
+        render (*q, x, 256);
+        check (q->getTap().position() == 0, "with no window open, the read is not even written");
+
+        std::unique_ptr<juce::AudioProcessorEditor> open (q->createEditor());
+        check (q->getTap().isWanted(), "opening a window turns it on");
+        const auto before = allocs.load();
+        long during = 0;
+        juce::AudioBuffer<float> buffer (2, 256);
+        juce::MidiBuffer midi;
+        std::vector<float> outputs;
+        for (int pos = 0; pos + 256 <= (int) x.size(); pos += 256)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                buffer.copyFrom (ch, 0, x.data() + pos, 256);
+            const auto a = allocs.load();
+            q->processBlock (buffer, midi);
+            during += allocs.load() - a;
+            outputs.insert (outputs.end(), buffer.getReadPointer (0), buffer.getReadPointer (0) + 256);
+        }
+        juce::ignoreUnused (before);
+        check (during == 0, "no allocation on the audio thread with the read on", (double) during);
+
+        const int blocks = (int) x.size() / 256;
+        const auto end = q->getTap().position();
+        check (end == (long long) blocks * 256, "the read counts every sample", (double) end);
+        std::vector<float> seen (4096);
+        q->getTap().readOutput (end, seen.data(), 4096);
+        double worst = 0.0;
+        for (int i = 0; i < 4096; ++i)
+            worst = juce::jmax (worst, (double) std::abs (seen[(size_t) i] - outputs[outputs.size() - 4096 + (size_t) i]));
+        check (worst == 0.0, "the output side of the read is the output, sample for sample", worst);
+        q->getTap().readInput (end, seen.data(), 4096);
+        worst = 0.0;
+        const auto latency = q->getLatencySamples();
+        for (int i = 0; i < 4096; ++i)
+            worst = juce::jmax (worst, (double) std::abs (seen[(size_t) i] - x[(size_t) blocks * 256 - 4096 + (size_t) i - (size_t) latency]));
+        check (worst < 1.0e-6, "the input side is the input, one plug-in delay earlier, so both sides show the same moment", worst);
+        open.reset();
+        check (! q->getTap().isWanted(), "closing the window turns it off");
+    }
+
+    // The mirror really shows the transformation.
+    {
+        const auto x = voice::synth (voice::steady (196.0, 1.5, SR), voice::vowelA, SR);
+        std::vector<float> you, ego;
+
+        const auto look = [&] (std::function<void (PluginProcessor&)> setUp, std::vector<float>& a, std::vector<float>& b) -> std::unique_ptr<PluginProcessor>
+        {
+            auto q = make();
+            prepare (*q, 2, SR, 256);
+            setUp (*q);
+            std::unique_ptr<juce::AudioProcessorEditor> open (q->createEditor());
+            auto* me = dynamic_cast<MorphEditor*> (open.get());
+            playWith (*q, *me, x);
+            shapesOf (me->getMirror(), a, b);
+            return q;
+        };
+
+        look ([] (PluginProcessor&) {}, you, ego);
+        double worst = 0.0;
+        for (int i = 0; i < Mirror::numPoints; ++i)
+            worst = juce::jmax (worst, (double) std::abs (you[(size_t) i] - ego[(size_t) i]));
+        check (worst <= limits::mirrorNaturalShape, "Natural: the two sides of the mirror match", worst);
+        double loudest = 0.0;
+        for (auto v : you) loudest = juce::jmax (loudest, (double) v);
+        check (loudest > 0.5, "and they are really showing a voice", loudest);
+
+        look ([] (PluginProcessor& q) { setParam (q, "pitch", 12.0f); }, you, ego);
+        const int y = lowestTooth (you), e = lowestTooth (ego);
+        const double moved = y >= 0 && e >= 0 ? semitonesOfPoint (e) - semitonesOfPoint (y) : 99.0;
+        check (std::abs (moved - 12.0) <= limits::mirrorPitchSemitones, "Pitch +12: the lowest tooth moves up, semitones", moved);
+
+        look ([] (PluginProcessor& q) { setParam (q, "formant", 7.0f); }, you, ego);
+        const auto ys = smoothed (you, 7), es = smoothed (ego, 7);
+        const int from = pointOfHz (500.0), to = pointOfHz (4500.0);
+        int bestLag = 0;
+        double bestScore = 1.0e30;
+        for (int lag = -6; lag <= 30; ++lag)
+        {
+            double sum = 0.0;
+            for (int i = from; i < to && i + lag < Mirror::numPoints; ++i)
+                sum += std::abs (ys[(size_t) i] - es[(size_t) (i + lag)]);
+            if (sum < bestScore) { bestScore = sum; bestLag = lag; }
+        }
+        const double humps = semitonesOfPoint (bestLag);
+        check (std::abs (humps - 7.0) <= limits::mirrorFormantSemitones, "Formant Shift +7: the humps move up, semitones", humps);
+
+        look ([] (PluginProcessor& q) { setParam (q, "whisper", 100.0f); }, you, ego);
+        const auto roughness = [] (const std::vector<float>& s)
+        {
+            const auto calm = smoothed (s, 5);
+            double sum = 0.0;
+            for (int i = pointOfHz (300.0); i < pointOfHz (2000.0); ++i)
+                sum += std::abs (s[(size_t) i] - calm[(size_t) i]);
+            return sum;
+        };
+        check (roughness (ego) <= limits::mirrorWhisperRoughness * roughness (you), "Whisper 100: the teeth melt, what is left against your side", roughness (ego) / roughness (you));
+
+        {
+            auto q = make();
+            prepare (*q, 2, SR, 256);
+            setParam (*q, "character", 3.0f);
+            setParam (*q, "robotNote", 57.0f);
+            std::unique_ptr<juce::AudioProcessorEditor> open (q->createEditor());
+            auto* me = dynamic_cast<MorphEditor*> (open.get());
+            playWith (*q, *me, x);
+            check (std::abs (me->getMirror().getEgoHz() / 220.0 - 1.0) <= limits::mirrorRobotFraction, "Robot: the note shown is the note set, Hz", me->getMirror().getEgoHz());
+            check (me->readingText().contains ("220 Hz") && me->readingText().contains ("196 Hz"), "and the window names both: " + me->readingText().toStdString());
+        }
+
+        {
+            auto q = make();
+            prepare (*q, 2, SR, 256);
+            setParam (*q, "vibratoDepth", 100.0f);
+            std::unique_ptr<juce::AudioProcessorEditor> open (q->createEditor());
+            auto* me = dynamic_cast<MorphEditor*> (open.get());
+            float low = 1.0e9f, high = -1.0e9f;
+            int frame = 0;
+            playWith (*q, *me, x, [&]
+            {
+                if (++frame > 10)
+                {
+                    low = juce::jmin (low, me->getPad().liveX());
+                    high = juce::jmax (high, me->getPad().liveX());
+                }
+            });
+            const float perSemitone = me->getPad().pointFor (1.0, 0.0).x - me->getPad().pointFor (0.0, 0.0).x;
+            check ((double) (high - low) / perSemitone >= limits::padVibratoSemitones, "Vibrato: the disc on the pad swings with the voice, semitones end to end", (double) (high - low) / perSemitone);
+            check (me->getPad().discSize() > 12.0f, "and it has a size while the voice sounds", (double) me->getPad().discSize());
+        }
+    }
+
+    // The window only reads: frames and paints, with a voice going through, move no parameter and start no gesture.
+    {
+        const auto x = voice::synth (voice::steady (220.0, 1.0, SR), voice::vowelA, SR);
+        auto q = make();
+        prepare (*q, 2, SR, 256);
+        std::unique_ptr<juce::AudioProcessorEditor> open (q->createEditor());
+        auto* me = dynamic_cast<MorphEditor*> (open.get());
+        ParamWatch watch (*q);
+        bool moved = false;
+        juce::AudioBuffer<float> buffer (2, 256);
+        juce::MidiBuffer midi;
+        for (int pos = 0; pos + 256 <= (int) x.size(); pos += 256)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                buffer.copyFrom (ch, 0, x.data() + pos, 256);
+            q->processBlock (buffer, midi);
+            if (pos % 1600 < 256)
+            {
+                moved = me->tick() || moved;
+                paintAt (*open, pos % 3200 < 1600 ? 1.0f : 2.0f);
+            }
+        }
+        check (moved, "with a voice going through, the display reports it is moving");
+        check (watch.changes == 0 && watch.begins == 0 && watch.ends == 0, "the window reading and painting writes no parameter and no automation", (double) watch.changes.load());
+
+        // With no more audio, the display settles and says so, so the timer can slow down and nothing repaints.
+        bool still = true;
+        for (int i = 0; i < 200; ++i)
+            still = me->tick();
+        check (! still, "with the host stopped, the display stops moving");
+
+        // And it stays that way after a Character moves the dot with no sound going: only the picture changes, not the timer.
+        setParam (*q, "character", 2.0f);
+        for (int i = 0; i < 40; ++i)
+            still = me->tick();
+        check (! still, "a Character chosen in silence leaves nothing moving");
+    }
+
+    // Opening and closing, over and over, with audio running on another thread and with none.
+    {
+        auto q = make();
+        prepare (*q, 2, SR, 256);
+        std::atomic<bool> running { true };
+        const auto x = voice::synth (voice::steady (196.0, 1.0, SR), voice::vowelA, SR);
+        std::thread audio ([&]
+        {
+            juce::AudioBuffer<float> buffer (2, 256);
+            juce::MidiBuffer midi;
+            int pos = 0;
+            while (running.load())
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    buffer.copyFrom (ch, 0, x.data() + pos, 256);
+                pos = (pos + 256) % ((int) x.size() - 256);
+                q->processBlock (buffer, midi);
+            }
+        });
+        int opened = 0;
+        for (int i = 0; i < 30; ++i)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> e (q->createEditor());
+            auto* me = dynamic_cast<MorphEditor*> (e.get());
+            me->tick();
+            paintAt (*e, i % 2 == 0 ? 2.0f : 1.0f);
+            me->setAdvancedOpen (i % 3 == 0);
+            me->tick();
+            paintAt (*e, 1.0f);
+            ++opened;
+        }
+        running = false;
+        audio.join();
+        for (int i = 0; i < 30; ++i)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> e (q->createEditor());
+            paintAt (*e, 2.0f);
+            ++opened;
+        }
+        check (opened == 60, "60 windows opened, painted and closed, 30 of them with audio running", (double) opened);
+        check (! q->getTap().isWanted(), "and the read is off again after the last one");
+
+        auto unprepared = make();
+        std::unique_ptr<juce::AudioProcessorEditor> before (unprepared->createEditor());
+        paintAt (*before, 2.0f);
+        check (before->getWidth() > 0, "a window opens and paints before the host has prepared the plug-in");
+
+        // Every sample rate the plug-in takes, including one changing under an open window.
+        auto r = make();
+        prepare (*r, 2, 44100.0, 256);
+        std::unique_ptr<juce::AudioProcessorEditor> e (r->createEditor());
+        auto* me = dynamic_cast<MorphEditor*> (e.get());
+        juce::AudioBuffer<float> buffer (2, 256);
+        juce::MidiBuffer midi;
+        bool finite = true;
+        for (double rate : { 44100.0, 48000.0, 96000.0 })
+        {
+            r->prepareToPlay (rate, 256);
+            for (int i = 0; i < 40; ++i)
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    buffer.copyFrom (ch, 0, x.data() + i * 256, 256);
+                r->processBlock (buffer, midi);
+                me->tick();
+            }
+            paintAt (*e, 2.0f);
+            for (int i = 0; i < Mirror::numPoints; ++i)
+                finite = finite && std::isfinite (me->getMirror().egoAt (i));
+        }
+        check (finite, "the mirror follows a sample rate change under an open window");
+    }
+
+    // A double-click on the pad really does put the voice back: the output is the delayed input again.
+    {
+        const auto x = loadWav ("speech_samantha.wav");
+        auto q = make();
+        prepare (*q, 2, SR, 256);
+        std::unique_ptr<juce::AudioProcessorEditor> open (q->createEditor());
+        auto* me = dynamic_cast<MorphEditor*> (open.get());
+        auto& pad = me->getPad();
+        const auto at = pad.pointFor (7.0, 4.0);
+        pad.mouseDown (mouseAt (pad, at));
+        pad.mouseUp (mouseAt (pad, at));
+        pad.mouseDoubleClick (mouseAt (pad, at, 2));
+        q->reset();
+        prepare (*q, 2, SR, 256);
+        const auto out = render (*q, x, 256);
+        const int delay = q->getLatencySamples();
+        double error = 0.0, signal = 0.0;
+        for (int i = delay + 4800; i < out.getNumSamples(); ++i)
+        {
+            const double d = (double) out.getSample (0, i) - (double) x[(size_t) (i - delay)];
+            error += d * d;
+            signal += (double) x[(size_t) (i - delay)] * x[(size_t) (i - delay)];
+        }
+        check (10.0 * std::log10 ((error + 1.0e-30) / signal) <= limits::padResetNullDb, "after a double-click on the pad the voice nulls against the delayed input, dB", 10.0 * std::log10 ((error + 1.0e-30) / signal));
+    }
+
+    // The null test: the same audio with the window open, ticking and painting is identical to the audio with it closed.
+    {
+        const auto x = loadWav ("speech_samantha.wav");
+        for (int setting = 0; setting < 3; ++setting)
+        {
+            const auto setUp = [setting] (PluginProcessor& q)
+            {
+                prepare (q, 2, SR, 256);
+                if (setting == 1) { setParam (q, "character", 2.0f); setParam (q, "whisper", 30.0f); }
+                if (setting == 2) { setParam (q, "character", 4.0f); setParam (q, "vibratoDepth", 60.0f); }
+            };
+            auto a = make();
+            auto b = make();
+            setUp (*a);
+            setUp (*b);
+            std::unique_ptr<juce::AudioProcessorEditor> open (b->createEditor());
+            auto* me = dynamic_cast<MorphEditor*> (open.get());
+            const auto first = render (*a, x, 256);
+            int block = 0;
+            const auto second = render (*b, x, 256, nullptr, [&] (int)
+            {
+                me->tick();
+                if (++block % 16 == 0)
+                    paintAt (*open, 2.0f);
+            });
+            double worst = 0.0;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < first.getNumSamples(); ++i)
+                    worst = juce::jmax (worst, (double) std::abs (first.getSample (ch, i) - second.getSample (ch, i)));
+            check (worst == 0.0, std::string ("audio with the window open and painting nulls to exact zero against closed, ") + (setting == 0 ? "Natural" : (setting == 1 ? "Child with Whisper" : "Monster with Vibrato")), worst);
+        }
+    }
+}
+
 void testCpu()
 {
     for (double sr : { 48000.0, 96000.0 })
@@ -1136,6 +1734,7 @@ int main (int argc, char** argv)
     if (want ("range")) testRangeMatch();
     if (want ("presets")) testOutputAndPresets();
     if (want ("blocks")) testBlocksAndStereo();
+    if (want ("window")) testWindow();
     if (want ("cpu")) testCpu();
     return finish();
 }

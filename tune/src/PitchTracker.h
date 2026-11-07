@@ -555,7 +555,7 @@ private:
                 }
                 const double off = (double) (from + best) - older.position;
                 if (std::abs (off) > 0.1 * period)
-                    position += 0.01 * off;
+                    position += 0.002 * off;
             }
         }
         addMark (position, lagExact, bestMatch);

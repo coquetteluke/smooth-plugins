@@ -77,8 +77,8 @@ PASS  a saved Input Type restores its latency
 PASS  tracking error, steady notes 80 Hz to 1 kHz, 4 vowels, median = 0.024 cents
 PASS  tracking error, steady notes, 95th percentile = 0.115 cents
 PASS  tracking error, vibrato +/-50 cents at 5.5 Hz, median = 1.150 cents
-INFO  tracking error, vibrato, 95th percentile = 5.021 cents
-INFO  tracking error, breath -18 dB, median = 3.048 cents
+INFO  tracking error, vibrato, 95th percentile = 5.047 cents
+INFO  tracking error, breath -18 dB, median = 3.047 cents
 INFO  tracking error, notes with scoops and octave leaps, median = 0.042 cents
 INFO  lowest voiced share on a steady note = 100.000 %
 PASS  steady notes are found voiced, worst case = 100.000 %
@@ -92,9 +92,9 @@ PASS  Input Type Alto/Tenor tracks both ends of its range, median = 0.053 cents
 PASS  Input Type Low Male tracks both ends of its range, median = 0.016 cents
 PASS  tracking error at 44100 Hz, median = 0.039 cents
 PASS  tracking error at 96000 Hz, median = 0.022 cents
-PASS  output pitch error at instant speed, steady notes 82 Hz to 1 kHz, worst 95th percentile = 3.443 cents
+PASS  output pitch error at instant speed, steady notes 82 Hz to 1 kHz, worst 95th percentile = 1.011 cents
 INFO    worst case is at = 987.767 Hz
-PASS  output pitch error at instant speed, vibrato +/-30 cents with breath, worst 95th percentile = 4.361 cents
+PASS  output pitch error at instant speed, vibrato +/-30 cents with breath, worst 95th percentile = 1.521 cents
 PASS  output pitch error at instant speed, voice with wander, jitter and breath, 95th percentile = 0.318 cents
 INFO    non-harmonic energy on that voice, in then out = -20.507 dB
 INFO    non-harmonic energy on that voice, out = -30.122 dB
@@ -108,18 +108,18 @@ PASS  Retune Speed 100 ms, measured time constant = 97.000 ms
 PASS  Retune Speed 200 ms, measured time constant = 197.000 ms
 PASS  Retune Speed 400 ms, measured time constant = 398.000 ms
 PASS  Retune Speed 0 after a 40 cent step, frames from 50 ms on, 95th percentile = 0.005 cents
-PASS  formant positions at +/-1 and +/-3 semitones, output against input, worst move = 4.982 %
+PASS  formant positions at +/-1 and +/-3 semitones, output against input, worst move = 4.428 %
 PASS  formant positions on vowels and pitches not used for tuning, worst move = 4.619 %
 INFO    the same output against a real voice at the new pitch, worst = 4.809 %
 INFO    and the tool's floor: the input against that same real voice, which share a vocal tract, worst = 1.913 %
-INFO    first formant peak flatter than a real voice at that pitch, worst case = 11.590 dB
-PASS  level stays put at +/-1 and +/-3 semitones, worst change = 1.154 dB
-PASS  hard settings flatten vibrato, kept = 1.022 %
-PASS  Flex Amount 60 cents keeps a +/-40 cent vibrato, kept = 99.083 %
-PASS  Humanize 100 keeps vibrato on the sustained part, kept = 98.645 %
-PASS  Retune Speed 400 ms keeps vibrato, kept = 98.605 %
-PASS  Natural Vibrato -100 takes vibrato down, left = 19.767 %
-PASS  Natural Vibrato +100 takes vibrato up, now = 191.430 %
+INFO    first formant peak flatter than a real voice at that pitch, worst case = 11.224 dB
+PASS  level stays put at +/-1 and +/-3 semitones, worst change = 1.381 dB
+PASS  hard settings flatten vibrato, kept = 1.033 %
+PASS  Flex Amount 60 cents keeps a +/-40 cent vibrato, kept = 99.084 %
+PASS  Humanize 100 keeps vibrato on the sustained part, kept = 98.699 %
+PASS  Retune Speed 400 ms keeps vibrato, kept = 98.656 %
+PASS  Natural Vibrato -100 takes vibrato down, left = 19.798 %
+PASS  Natural Vibrato +100 takes vibrato up, now = 191.481 %
 PASS  hard tune step between two notes a tone apart, 10% to 90% = 5.000 ms
 PASS  after the step the new note is on pitch, 95th percentile = 0.009 cents
 PASS  a slow glide comes out as steps, frames within 10 cents of a note = 99.120 %
@@ -195,13 +195,13 @@ PASS  the background thread picks up the file by itself within 0.7 s
 PASS  a large junk file changes nothing
 PASS  a folder at that path changes nothing
 INFO  speech_samantha.wav: 3.8 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  speech_samantha.wav: distance from a note, median, before 21.4 cents, after 5.5 cents, 827 voiced frames
+INFO  speech_samantha.wav: distance from a note, median, before 21.4 cents, after 5.5 cents, 828 voiced frames
 PASS    speech_samantha.wav gives finite output
 INFO  speech_kathy.wav: 4.9 s voiced in both, 1 octave disagreements, 12.2 per minute
-INFO  speech_kathy.wav: distance from a note, median, before 27.0 cents, after 1.5 cents, 998 voiced frames
+INFO  speech_kathy.wav: distance from a note, median, before 27.0 cents, after 1.5 cents, 997 voiced frames
 PASS    speech_kathy.wav gives finite output
 INFO  speech_daniel.wav: 3.4 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  speech_daniel.wav: distance from a note, median, before 27.5 cents, after 10.2 cents, 727 voiced frames
+INFO  speech_daniel.wav: distance from a note, median, before 27.5 cents, after 9.9 cents, 730 voiced frames
 PASS    speech_daniel.wav gives finite output
 INFO  speech_fred.wav: 4.5 s voiced in both, 0 octave disagreements, 0.0 per minute
 INFO  speech_fred.wav: distance from a note, median, before 23.6 cents, after 2.5 cents, 918 voiced frames
@@ -213,23 +213,23 @@ INFO  held_kathy.wav: 5.0 s voiced in both, 0 octave disagreements, 0.0 per minu
 INFO  held_kathy.wav: distance from a note, median, before 26.6 cents, after 2.3 cents, 1015 voiced frames
 PASS    held_kathy.wav gives finite output
 INFO  sung_cellos.wav: 7.9 s voiced in both, 1 octave disagreements, 7.6 per minute
-INFO  sung_cellos.wav: distance from a note, median, before 16.9 cents, after 3.4 cents, 1564 voiced frames
+INFO  sung_cellos.wav: distance from a note, median, before 16.9 cents, after 1.5 cents, 1566 voiced frames
 PASS    sung_cellos.wav gives finite output
 INFO  sung_goodnews.wav: 12.9 s voiced in both, 3 octave disagreements, 13.9 per minute
-INFO  sung_goodnews.wav: distance from a note, median, before 6.4 cents, after 0.4 cents, 2657 voiced frames
+INFO  sung_goodnews.wav: distance from a note, median, before 6.4 cents, after 0.4 cents, 2656 voiced frames
 PASS    sung_goodnews.wav gives finite output
 INFO  sung_organ.wav: 4.5 s voiced in both, 9 octave disagreements, 119.6 per minute
-INFO  sung_organ.wav: distance from a note, median, before 31.7 cents, after 3.9 cents, 831 voiced frames
+INFO  sung_organ.wav: distance from a note, median, before 31.7 cents, after 1.7 cents, 846 voiced frames
 PASS    sung_organ.wav gives finite output
 PASS  real material at instant speed: 99th percentile change in 20 ms frame level, worst file = 2.776 dB
 PASS  real material at instant speed: biggest sample step against the input's, worst file = 1.000 times
 PASS  real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth = 16.100 per minute
-PASS  real speech at instant speed: worst file's median distance from a note = 10.244 cents
-PASS  say singing and held vowels at instant speed: worst file's median distance from a note = 3.863 cents
+PASS  real speech at instant speed: worst file's median distance from a note = 9.895 cents
+PASS  say singing and held vowels at instant speed: worst file's median distance from a note = 2.494 cents
 PASS  Transpose +7 on A3 gives E4, offset = -0.004 cents
 PASS  Transpose -12 on A4 gives A3, offset = 0.000 cents
 PASS  Reference A4 432 Hz puts A3 at 216 Hz, offset = 0.000 cents
-PASS  Formant Preserve off: formants follow +3 semitones up, scale (19% would be exact) = 1.149 times
+PASS  Formant Preserve off: formants follow +3 semitones up, scale (19% would be exact) = 1.146 times
 PASS    and the formant tool reads that known move within 5%
 PASS  Throat Length 130%: formants move down, scale (0.77 would be exact) = 0.752 times
 PASS    and the formant tool reads that known move within 5%
@@ -251,8 +251,8 @@ PASS  output does not depend on block size (and so not on a playhead)
 PASS  prepareToPlay again resets all state
 PASS  stereo: a voice on the left stays on the left, right against left = -240.000 dB
 PASS  hard and natural presets are both there, presets = 8.000 
-PASS  preset Hard Tune flattens vibrato, kept = 1.022 %
-PASS  preset Natural Pop keeps more vibrato, kept = 97.506 %
+PASS  preset Hard Tune flattens vibrato, kept = 1.033 %
+PASS  preset Natural Pop keeps more vibrato, kept = 97.561 %
 PASS  presets leave Key, Scale and Input Type alone
-PASS  CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 0.677 %
+PASS  CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 0.528 %
 RESULT PASS  0 failures

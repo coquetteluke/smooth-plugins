@@ -2,6 +2,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "FlangerDsp.h"
+#include "FastOversampler.h"
 #include <array>
 #include <vector>
 
@@ -94,7 +95,7 @@ private:
     juce::AudioParameterBool* randomUnsync = nullptr;
     juce::AudioParameterBool* feedbackComp = nullptr;
 
-    std::unique_ptr<juce::dsp::Oversampling<float>> oversampler;
+    std::unique_ptr<FastOversampler> oversampler;
     int osFactor = 4;
     int maxBlock = 512;
     double hostRate = 48000.0, osRate = 192000.0;

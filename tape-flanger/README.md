@@ -80,6 +80,10 @@ The processor also offers `getReadings()` for a later window: the wet to dry del
 
 ## Measured
 
+CPU through the real AU at 48 kHz with 128 frame blocks, percent of one core: default 1.0, worst preset 1.1 (Square Flip), worst single block 3.
+
+Same sound after the CPU work: `tests/null_results.txt` holds the null of 1.1.1 against 1.1.0 for the default, every preset and random automation. Worst peak -126.4 dBFS.
+
 Every number is from `tests/PluginTest.cpp` and saved in `tests/results.txt`. Delays are read from outside the plug-in, by cross correlating the output with the input.
 
 - Latency: 324 samples at 48 kHz (6.75 ms), 303 at 44.1 kHz, 535 at 88.2 kHz, 577 at 96 kHz. Measured dry delay matches at each rate, with Mix at 0 and with Bypass on.

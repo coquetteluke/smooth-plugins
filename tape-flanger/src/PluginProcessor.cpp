@@ -185,7 +185,7 @@ void PluginProcessor::configure (double sampleRate, int samplesPerBlock)
     const int stages = hostRate > 120000.0 ? 0 : (hostRate > 60000.0 ? 1 : 2);
     osFactor = 1 << stages;
     osRate = hostRate * osFactor;
-    oversampler = std::make_unique<juce::dsp::Oversampling<float>> (2, (size_t) stages, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, false);
+    oversampler = std::make_unique<FastOversampler> (2, (size_t) stages, false);
     oversampler->initProcessing ((size_t) maxBlock);
     oversampler->reset();
 

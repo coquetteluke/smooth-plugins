@@ -141,6 +141,8 @@ namespace flanger
 
     inline void smoothTo (float& value, float target, float coeff) noexcept
     {
+        if (value == target)
+            return;
         value += coeff * (target - value);
         if (std::abs (target - value) < 1.0e-6f)
             value = target;

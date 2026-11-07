@@ -34,13 +34,14 @@ namespace
     constexpr float hardSlope          = 1.0f;    // Hard: holds a bin at the threshold, up to Depth
     constexpr float floorPower         = 1.0e-12f; // -120 dB: anything quieter is left alone
     constexpr float minThresholdDb     = 0.0f;
-    constexpr float maxThresholdDb     = 12.0f;
+    constexpr float maxThresholdDb     = 11.5f;
     constexpr float maxSampleMagnitude = 1.0e6f;
     constexpr float persistenceMs      = 500.0f;  // how long a peak has to last before it counts in full
     constexpr float persistenceWeight  = 0.7f;    // share of the judgement that comes from the long view
     constexpr float gateBelowLoudestDb = 50.0f;   // pauses and tails do not count against a peak's persistence
     constexpr float loudestFallMs      = 1000.0f;
-    constexpr float tiltAllowanceDb    = 6.0f;    // how far the two sides of a bin may differ and still count as tilt
+    constexpr float tiltAllowanceLowDb  = 14.0f;  // how far the two sides of a bin may differ and still count as tilt: first formants fall away steeply
+    constexpr float tiltAllowanceHighDb = 6.0f;   // and in the highs, where a much larger difference means the edge of a band-limited source
     constexpr float hardLiftDbPerOct   = 3.0f;    // Hard: lift above 1 kHz, so one threshold suits a voice's falling highs
     constexpr float sensitivityForOff  = -12.0f;  // a band at this sensitivity removes all treatment at its centre
     constexpr float tiltSpeedRange     = 4.0f;    // Attack and Release Tilt at 100%: 4 times slower one end, 4 times faster the other
@@ -643,7 +644,8 @@ void ResonanceEngine::detect (Slot& s) noexcept
             // The mean of the two sides is the geometric mean of their powers, so a steady spectral tilt cancels out.
             // A band only counts as sticking out if it clears both sides, within what a tilt can explain: otherwise
             // the top of a band-limited source, with nothing above it, would read as one huge resonance.
-            excessDb = std::min (0.5f * (overLeft + overRight), std::min (overLeft, overRight) + tiltAllowanceDb);
+            excessDb = std::min (0.5f * (overLeft + overRight),
+                                 std::min (overLeft, overRight) + juce::jmap (std::max (tiltPosition[idx], 0.0f), tiltAllowanceLowDb, tiltAllowanceHighDb));
         }
         else if (hasRight)
         {

@@ -15,7 +15,18 @@ namespace
     constexpr float envelopeMaxHz      = 250.0f;  // spans the gap between harmonics up to a 500 Hz fundamental
     constexpr float envelopeMinHz      = 100.0f;  // and no wider at the low end than it has to be, so nearby bands stay usable
     constexpr float envelopeRatio      = 0.12f;
-    constexpr float referenceOctaves   = 0.5f;    // reference reaches this far on each side of a bin
+    constexpr float referenceNearLow   = 0.12f;   // reference starts this many octaves out from a bin, at 1 kHz and below
+    constexpr float referenceNearHigh  = 0.25f;   // and at 2 kHz and above
+    constexpr float referenceFarLow    = 0.5f;    // and reaches this far
+    constexpr float referenceFarHigh   = 0.75f;
+    constexpr float spacingLowHz       = 300.0f;  // harmonic spacing is read from this part of the spectrum
+    constexpr float spacingHighHz      = 4000.0f;
+    constexpr float spacingMinHz       = 90.0f;
+    constexpr float spacingMaxHz       = 900.0f;
+    constexpr float spacingVoicedLevel = 0.45f;   // correlation that counts as a voice with clear harmonics
+    constexpr float spacingHoldMs      = 200.0f;  // consonants between vowels do not reset it
+    constexpr float spacingToEnvelope  = 0.6f;    // half-width of the envelope, as a share of the spacing
+    constexpr int   spacingEveryHops   = 4;
     constexpr float referenceMinHz     = 300.0f;  // and at least this far at the low end
     constexpr float rangeTaperOctaves  = 1.0f / 6.0f;
     constexpr float kneeDb             = 2.0f;
@@ -23,7 +34,7 @@ namespace
     constexpr float hardSlope          = 1.0f;    // Hard: holds a bin at the threshold, up to Depth
     constexpr float floorPower         = 1.0e-12f; // -120 dB: anything quieter is left alone
     constexpr float minThresholdDb     = 0.0f;
-    constexpr float maxThresholdDb     = 9.0f;
+    constexpr float maxThresholdDb     = 12.0f;
     constexpr float maxSampleMagnitude = 1.0e6f;
     constexpr float persistenceMs      = 500.0f;  // how long a peak has to last before it counts in full
     constexpr float persistenceWeight  = 0.7f;    // share of the judgement that comes from the long view
@@ -153,10 +164,23 @@ void ResonanceEngine::prepare (double newSampleRate, int numChannels)
 
     tiltPosition[0] = -1.0f;
 
-    for (int k = 0; k < numBins; ++k)
-        envelopeHalf[(size_t) k] = std::max (1, juce::roundToInt (juce::jlimit (envelopeMinHz, envelopeMaxHz, envelopeRatio * (float) (k * binHz)) / binHz));
-
     const auto hopSeconds = (double) hopSize / sampleRate;
+    envelopeHalfBase.assign ((size_t) numBins, 1);
+
+    for (int k = 0; k < numBins; ++k)
+    {
+        envelopeHalfBase[(size_t) k] = std::max (1, juce::roundToInt (juce::jlimit (envelopeMinHz, envelopeMaxHz, envelopeRatio * (float) (k * binHz)) / binHz));
+        envelopeHalf[(size_t) k] = envelopeHalfBase[(size_t) k];
+    }
+
+    spacingFirstBin = juce::jlimit (1, numBins - 2, juce::roundToInt (spacingLowHz / binHz));
+    spacingLastBin  = juce::jlimit (spacingFirstBin + 1, numBins - 1, juce::roundToInt (spacingHighHz / binHz));
+    spacingMinLag   = std::max (2, juce::roundToInt (spacingMinHz / binHz));
+    spacingMaxLag   = std::max (spacingMinLag + 1, juce::roundToInt (spacingMaxHz / binHz));
+    spacingLog.assign ((size_t) numBins + 1, 0.0f);
+    spacingFlat.assign ((size_t) numBins, 0.0f);
+    spacingHoldHops = juce::roundToInt ((double) spacingHoldMs * 0.001 / (hopSeconds * spacingEveryHops));
+
     detectorCoeff    = coeffForTime (detectorTimeMs, hopSeconds);
     rangeCoeff       = coeffForTime (rangeTimeMs, hopSeconds);
     persistenceCoeff = coeffForTime (persistenceMs, hopSeconds);
@@ -198,6 +222,10 @@ void ResonanceEngine::reset() noexcept
         s.loudest = 0.0f;
     }
 
+    envelopeFloorBins = 0;
+    builtEnvelopeFloor = -1;
+    spacingCounter = 0;
+    spacingHeld = 0;
     std::fill (displayPower.begin(), displayPower.end(), 0.0f);
     position = 0;
     hopCounter = 0;
@@ -309,19 +337,19 @@ void ResonanceEngine::process (float* const* channels, int numChannels, int numS
 
 void ResonanceEngine::updateWidths() noexcept
 {
-    if (std::abs (params.sharpness - widthsSharpness) < 0.002f && std::abs (params.sharpnessTilt - widthsTilt) < 0.002f)
+    if (std::abs (params.sharpness - widthsSharpness) < 0.002f && std::abs (params.sharpnessTilt - widthsTilt) < 0.002f && builtEnvelopeFloor == envelopeFloorBins)
         return;
 
+    builtEnvelopeFloor = envelopeFloorBins;
     widthsSharpness = params.sharpness;
     widthsTilt = params.sharpnessTilt;
 
-    const auto refDown = std::pow (2.0, -(double) referenceOctaves);
-    const auto refUp   = std::pow (2.0,  (double) referenceOctaves);
     const auto refMinBins = std::max (2, juce::roundToInt (referenceMinHz / binHz));
 
     for (int k = 0; k < numBins; ++k)
     {
         const auto idx = (size_t) k;
+        envelopeHalf[idx] = std::max (envelopeHalfBase[idx], envelopeFloorBins);
 
         // Sharpness sets the width of a notch: a third of an octave at 0, a 24th of an octave at 1.
         const float local = juce::jlimit (0.0f, 1.0f, widthsSharpness + 0.5f * widthsTilt * tiltPosition[idx]);
@@ -329,7 +357,13 @@ void ResonanceEngine::updateWidths() noexcept
         const auto halfBins = 0.5 * (std::pow (2.0, octaves) - 1.0) * k;
         const int shape = std::max (1, juce::roundToInt (halfBins));
         const int det   = std::max (1, juce::roundToInt (halfBins * 0.5));
-        const int guard = det + envelopeHalf[idx] + 2;   // the bin's own peak, smeared by the envelope, stays out
+        // The reference starts a quarter octave out in the highs, past the skirts of a resonance, and closer in the
+        // lows, where the first formants would otherwise tower over everything above them.
+        const float highness = juce::jlimit (0.0f, 1.0f, tiltPosition[idx]);
+        const double nearOctaves = juce::jmap (highness, referenceNearLow, referenceNearHigh);
+        const double farOctaves  = juce::jmap (highness, referenceFarLow, referenceFarHigh);
+        const int guard = std::max (det + envelopeHalf[idx] + 2, juce::roundToInt (k * (std::pow (2.0, nearOctaves) - 1.0)));   // the bin's own peak, smeared by the envelope, stays out
+        const auto refDown = std::pow (2.0, -farOctaves), refUp = std::pow (2.0, farOctaves);
 
         const int leftEnd    = k - guard - 1;
         const int leftStart  = std::max (1, std::min (juce::roundToInt (k * refDown), leftEnd - refMinBins + 1));
@@ -342,6 +376,111 @@ void ResonanceEngine::updateWidths() noexcept
         refLeftEnd[idx]    = leftEnd;
         refRightStart[idx] = rightStart;
         refRightEnd[idx]   = rightEnd;
+    }
+}
+
+void ResonanceEngine::updateHarmonicSpacing() noexcept
+{
+    // How far apart the harmonics are, from the correlation of the flattened log spectrum with itself. A high voice has
+    // harmonics far apart, and the peak envelope has to bridge the gaps or each harmonic would read as a resonance.
+    if (++spacingCounter < spacingEveryHops)
+        return;
+
+    spacingCounter = 0;
+
+    const int first = spacingFirstBin, last = spacingLastBin, minLag = spacingMinLag, maxLag = spacingMaxLag;
+    auto* logs = spacingLog.data();
+    auto* flat = spacingFlat.data();
+    const int count = last - first + 1;
+    float sum = 0.0f;
+
+    for (int k = first; k <= last; ++k)
+    {
+        float power = slots[0].smoothedPower[(size_t) k];
+
+        if (numCh > 1)
+            power += slots[1].smoothedPower[(size_t) k];
+
+        logs[k - first] = std::log (std::max (power, 1.0e-14f));
+        sum += logs[k - first];
+    }
+
+    if (sum / (float) count < -30.0f)   // silence or close to it
+    {
+        if (spacingHeld > 0 && --spacingHeld == 0)
+            envelopeFloorBins = 0;
+
+        return;
+    }
+
+    // Take away the slow shape of the spectrum, formants and tilt, so only the fine structure is left.
+    const int slowHalf = maxLag;
+    float running = 0.0f;
+    int low = 0, high = -1;
+
+    for (int i = 0; i < count; ++i)
+    {
+        const int wantHigh = std::min (count - 1, i + slowHalf), wantLow = std::max (0, i - slowHalf);
+
+        while (high < wantHigh) running += logs[++high];
+        while (low < wantLow)   running -= logs[low++];
+
+        flat[i] = logs[i] - running / (float) (high - low + 1);
+    }
+
+    float best = 0.0f, previous = 0.0f, current = 0.0f;
+    int chosen = 0;
+
+    // First pass finds the strongest correlation. Second takes the smallest lag close to it, so a multiple of the
+    // spacing is not mistaken for the spacing.
+    const auto correlation = [flat, count] (int lag) noexcept
+    {
+        float cross = 0.0f, a = 0.0f, b = 0.0f;
+
+        for (int i = 0; i + lag < count; ++i)
+        {
+            cross += flat[i] * flat[i + lag];
+            a += flat[i] * flat[i];
+            b += flat[i + lag] * flat[i + lag];
+        }
+
+        return cross / std::sqrt (std::max (a * b, 1.0e-12f));
+    };
+
+    auto* scores = scratchBins.data();
+
+    for (int lag = minLag - 1; lag <= maxLag + 1; ++lag)
+    {
+        scores[lag] = correlation (lag);
+
+        if (lag >= minLag && lag <= maxLag)
+            best = std::max (best, scores[lag]);
+    }
+
+    if (best >= spacingVoicedLevel)
+    {
+        for (int lag = minLag; lag <= maxLag && chosen == 0; ++lag)
+        {
+            previous = scores[lag - 1];
+            current = scores[lag];
+
+            if (current >= 0.85f * best && current >= previous && current >= scores[lag + 1])
+                chosen = lag;
+        }
+    }
+
+    if (chosen > 0)
+    {
+        const int wanted = juce::roundToInt ((float) chosen * spacingToEnvelope);
+        spacingHeld = spacingHoldHops;
+
+        // Small changes are left alone, so the tables are not rebuilt for every wobble of a note.
+        if (std::abs (wanted - envelopeFloorBins) >= std::max (2, envelopeFloorBins / 6))
+            envelopeFloorBins = wanted;
+    }
+    else if (spacingHeld > 0 && --spacingHeld == 0)
+    {
+        envelopeFloorBins = 0;
     }
 }
 
@@ -671,6 +810,8 @@ void ResonanceEngine::processFrame() noexcept
                 displayPower[(size_t) k] = 0.0f;
         }
     }
+
+    updateHarmonicSpacing();
 
     // Smoothed power per bin, for L/R or for M/S, of the key when the side chain is on and the signal itself otherwise.
     for (int slot = 0; slot < numCh; ++slot)

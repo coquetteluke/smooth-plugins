@@ -147,6 +147,7 @@ private:
     void detect (Slot&) noexcept;
     void shapeAndApplyBallistics (Slot&, float focusScale) noexcept;
     void updateWidths() noexcept;
+    void updateHarmonicSpacing() noexcept;
     void updateRangeMask() noexcept;
     void updateSensitivity() noexcept;
     void updateTimeConstants() noexcept;
@@ -166,10 +167,12 @@ private:
     Slot slots[maxChannels];
 
     // Per-bin tables. Rebuilt when Sharpness, the range, the bands or the times move.
-    std::vector<int> envelopeHalf, detectorHalf, shapeHalf, refLeftStart, refLeftEnd, refRightStart, refRightEnd;
+    std::vector<int> envelopeHalfBase, envelopeHalf, detectorHalf, shapeHalf, refLeftStart, refLeftEnd, refRightStart, refRightEnd;
     std::vector<float> logBinFreq, tiltPosition, levelLift, rangeMask, sensitivity, depthScale, attackCoeffs, releaseCoeffs;
     std::vector<int> scratchDeque;
-    std::vector<float> scratchBins, scratchDetector, displayPower;
+    std::vector<float> scratchBins, scratchDetector, displayPower, spacingLog, spacingFlat;
+    int spacingFirstBin = 0, spacingLastBin = 0, spacingMinLag = 0, spacingMaxLag = 0, spacingCounter = 0, spacingHeld = 0, spacingHoldHops = 0;
+    int envelopeFloorBins = 0, builtEnvelopeFloor = -1;
 
     Params params;
     bool snapNextParams = true;

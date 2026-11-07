@@ -72,15 +72,15 @@ All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before
 
 - Tuning at default settings: 0.7 cents worst, 110 Hz to 988 Hz, 95th percentile. 1.5 cents with vibrato and breath. Limit 5.
 - Sweep of A2 to E5 on five vowels, worst 95th percentile: default settings 1.0 cents, Pitch +7, -5 and +12 1.3 cents, Harmony +7 1.2 cents, held MIDI note 1.1 cents.
-- `say` material at default settings: see `tests/results.txt` for each file. Median distance from a note goes from 16 to 27 cents down to 10 cents or less on speech and 2.5 or less on sung and held material.
+- `say` material at default settings: see `tests/results.txt` for each file. Median distance from a note goes from 6 to 27 cents before, down to 10 cents or less on speech and 2.5 or less on sung and held material.
 - MIDI target: 0.02 cents on a clean voice, 1.2 cents with vibrato and breath. Pitch reaches a new note 6 ms from its place in the delayed audio.
 - Follow Key: 10 kinds of bad file ignored, good file used, last good held, off goes back to manual, the thread picks it up by itself, a held note wins over a followed key.
 - Retune Speed 25, 50, 100, 200 ms measures 22, 48, 97, 197 ms. Humanize 100 keeps 99% of a vibrato, default leaves 1%.
 
 | Module | Off | Main control |
 |---|---|---|
-| Pitch | stays on A3 | Octave and Semitones on the wanted note within 0.02 cents. Formants held within 3.7% at +/-1 octave |
-| Throat | formants stay, 1.00 | Length 130 moves formants by 0.79 (0.77 exact), Length 75 by 1.35 (1.33 exact) |
+| Pitch | stays on A3 | Octave and Semitones on the wanted note within 0.02 cents. Formants held within 3.7% at +/-1 octave, 3.3% at +/-5 semitones |
+| Throat | formants stay, 1.00 | Length 130 moves formants by 0.78 (0.77 exact), Length 75 by 1.35 (1.33 exact) |
 | Motion | no steps | Trill on pitch within 0.01 cents, steps land within 6.5 ms |
 | Harmony | -147 dB at the interval | +7 lands on E4 within 0.5 cents, Level -6 measures -6.0 dB on a voice |
 | Doubler | -107 dB at the detune | Detune 30 reads 28.5 and 30 cents, Timing 30 ms reads 30 ms, Level -6 reads -5.9 dB |

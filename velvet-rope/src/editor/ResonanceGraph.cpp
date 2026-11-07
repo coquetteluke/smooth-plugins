@@ -113,6 +113,12 @@ namespace ui
         addCorner (w, 0.0f, -1.0f, 1.0f);
         addCorner (0.0f, h, 1.0f, -1.0f);
         addCorner (w, h, -1.0f, -1.0f);
+
+        for (int i = 0; i < numDense; ++i)
+            denseX[(size_t) i] = w * (float) (i + 1) / (float) (numDense + 1);
+
+        fullRepaint = true;
+        staticLayerStale = true;
     }
 
     float ResonanceGraph::xForHz (float hz) const noexcept
@@ -183,13 +189,11 @@ namespace ui
     bool ResonanceGraph::advance (double dtSeconds)
     {
         const float dt = (float) juce::jlimit (0.001, 0.1, dtSeconds);
-        bool changed = false;
 
         if (processor.readGraph (frame))
         {
             staleSeconds = 0.0;
             buildTargets();
-            changed = true;
         }
         else
         {
@@ -204,19 +208,17 @@ namespace ui
             }
         }
 
-        float loudest = -200.0f, deepest = 0.0f, moved = 0.0f;
+        float loudest = -200.0f, deepest = 0.0f;
 
         for (size_t i = 0; i < (size_t) numPoints; ++i)
         {
             const float nextLevel = glide (shownLevel[i], targetLevel[i], 0.016f, 0.095f, dt);
-            moved = juce::jmax (moved, std::abs (nextLevel - shownLevel[i]));
             shownLevel[i] = nextLevel;
             loudest = juce::jmax (loudest, nextLevel);
 
             for (int slot = 0; slot < 2; ++slot)
             {
                 const float nextCut = glide (shownCut[slot][i], targetCut[slot][i], 0.018f, 0.070f, dt);
-                moved = juce::jmax (moved, std::abs (nextCut - shownCut[slot][i]));
                 shownCut[slot][i] = nextCut;
                 deepest = juce::jmax (deepest, nextCut);
             }
@@ -224,10 +226,12 @@ namespace ui
 
         peakDb = deepest;
 
+        bool fades = false;
+
         const auto settle = [&] (float& v, float target, float tau)
         {
             const float next = v + (target - v) * (1.0f - std::exp (-dt / tau));
-            moved = juce::jmax (moved, std::abs (next - v) * 40.0f);
+            fades = fades || std::abs (next - v) > 0.0003f;
             v = std::abs (next - target) < 0.002f ? target : next;
         };
 
@@ -253,10 +257,114 @@ namespace ui
         if (stamp != paramStamp)
         {
             paramStamp = stamp;
-            changed = true;
+            staticLayerStale = true;
+            fullRepaint = true;
         }
 
-        return changed || moved > 0.01f;
+        if (fades)
+            fullRepaint = true;
+
+        refreshCurves();
+        return fullRepaint || ! voiceDirty.isEmpty() || ! goldDirty.isEmpty();
+    }
+
+    void ResonanceGraph::refreshCurves()
+    {
+        for (size_t i = 0; i < (size_t) numPoints; ++i)
+        {
+            yLevel[i] = yForLevel (shownLevel[i]);
+            yAfter[i] = yForLevel (shownLevel[i] - juce::jmax (shownCut[0][i], shownCut[1][i]) * (1.0f - bypassShown));
+            yCut[0][i] = yForReduction (shownCut[0][i]);
+            yCut[1][i] = yForReduction (shownCut[1][i]);
+        }
+
+        upsample (yLevel, yVoice);
+        upsample (yAfter, yShaved);
+        upsample (yCut[0], yGold[0]);
+        upsample (yCut[1], yGold[1]);
+
+        // What has moved by more than a quarter of a pixel on a 2x screen since the screen last showed it. Each point only
+        // counts as shown once it has been asked for, so small changes add up instead of being lost.
+        constexpr float threshold = 0.12f, margin = 3.0f;
+
+        const auto compare = [&] (const std::array<float, numDense>& now, std::array<float, numDense>& shown, juce::Rectangle<float>& dirty)
+        {
+            for (size_t i = 0; i < (size_t) numDense; ++i)
+            {
+                if (std::abs (now[i] - shown[i]) > threshold)
+                {
+                    const auto area = juce::Rectangle<float> (denseX[i] - margin, juce::jmin (now[i], shown[i]) - margin,
+                                                              margin * 2.0f, std::abs (now[i] - shown[i]) + margin * 2.0f);
+                    dirty = dirty.isEmpty() ? area : dirty.getUnion (area);
+                    shown[i] = now[i];
+                }
+            }
+        };
+
+        compare (yVoice, shownVoice, voiceDirty);
+        compare (yShaved, shownShaved, voiceDirty);
+        compare (yGold[0], shownGold[0], goldDirty);
+        compare (yGold[1], shownGold[1], goldDirty);
+    }
+
+    void ResonanceGraph::flushRepaint()
+    {
+        if (fullRepaint)
+        {
+            repaint();
+        }
+        else
+        {
+            if (! voiceDirty.isEmpty())
+                repaint (voiceDirty.getSmallestIntegerContainer());
+
+            if (! goldDirty.isEmpty())
+                repaint (goldDirty.getSmallestIntegerContainer());
+        }
+
+        fullRepaint = false;
+        voiceDirty = {};
+        goldDirty = {};
+    }
+
+    void ResonanceGraph::simplify (const std::array<float, numDense>& ys, int from, int to)
+    {
+        // Keeps a sleeve of slopes from the last kept point, and only keeps a new point when the sleeve closes.
+        constexpr float tolerance = 0.15f;   // under a third of a pixel on a 2x screen
+
+        const auto keep = [this, &ys] (int i)
+        {
+            simpleX[(size_t) numSimple] = denseX[(size_t) i];
+            simpleY[(size_t) numSimple] = ys[(size_t) i];
+            ++numSimple;
+        };
+
+        keep (from);
+        int anchor = from;
+        float low = -1.0e9f, high = 1.0e9f;
+
+        for (int i = from + 1; i <= to; ++i)
+        {
+            const float run = (float) (i - anchor);
+            const float rise = ys[(size_t) i] - ys[(size_t) anchor];
+            const float newLow = juce::jmax (low, (rise - tolerance) / run), newHigh = juce::jmin (high, (rise + tolerance) / run);
+
+            if (newLow > newHigh)
+            {
+                keep (i - 1);
+                anchor = i - 1;
+                const float restart = ys[(size_t) i] - ys[(size_t) anchor];
+                low = restart - tolerance;
+                high = restart + tolerance;
+            }
+            else
+            {
+                low = newLow;
+                high = newHigh;
+            }
+        }
+
+        keep (to);
     }
 
     void ResonanceGraph::upsample (const std::array<float, numPoints>& from, std::array<float, numDense>& to) const
@@ -321,35 +429,49 @@ namespace ui
     {
         const auto w = (float) getWidth();
         ++paintCount;
-
-        for (size_t i = 0; i < (size_t) numPoints; ++i)
-        {
-            yLevel[i] = yForLevel (shownLevel[i]);
-            yAfter[i] = yForLevel (shownLevel[i] - juce::jmax (shownCut[0][i], shownCut[1][i]) * (1.0f - bypassShown));
-            yCut[0][i] = yForReduction (shownCut[0][i]);
-            yCut[1][i] = yForReduction (shownCut[1][i]);
-        }
-
-        upsample (yLevel, yVoice);
-        upsample (yAfter, yShaved);
-        upsample (yCut[0], yGold[0]);
-        upsample (yCut[1], yGold[1]);
-
-        for (int i = 0; i < numDense; ++i)
-            denseX[(size_t) i] = w * (float) (i + 1) / (float) (numDense + 1);
+        paintedArea += (double) g.getClipBounds().getWidth() * (double) g.getClipBounds().getHeight();
+        const auto started = juce::Time::getMillisecondCounterHiRes();
 
         const float lowX = juce::jlimit (0.0f, w, xForHz (getReal (*lowParam)));
         const float highX = juce::jlimit (lowX, w, xForHz (getReal (*highParam)));
+        const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
 
         drawVoice (g, lowX, highX);
-        drawGrid (g);
         drawGold (g);
-        drawSensitivity (g, lowX, highX);
-        drawHandles (g);
+
+        refreshStaticLayer (scale, lowX, highX);
+        g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
+        g.drawImageTransformed (staticLayer, juce::AffineTransform::scale (1.0f / scale));
+
         drawOverlays (g);
 
-        g.setColour (tone::base);
-        g.fillPath (corners);
+        paintSeconds += (juce::Time::getMillisecondCounterHiRes() - started) * 0.001;
+    }
+
+    void ResonanceGraph::refreshStaticLayer (float scale, float lowX, float highX)
+    {
+        const int pixelsWide = juce::jmax (1, juce::roundToInt ((float) getWidth() * scale)), pixelsHigh = juce::jmax (1, juce::roundToInt ((float) getHeight() * scale));
+
+        if (staticLayer.getWidth() != pixelsWide || staticLayer.getHeight() != pixelsHigh)
+        {
+            staticLayer = juce::Image (juce::Image::ARGB, pixelsWide, pixelsHigh, true);
+            staticLayerStale = true;
+        }
+
+        if (! staticLayerStale && scale == staticScale)
+            return;
+
+        staticLayerStale = false;
+        staticScale = scale;
+        staticLayer.clear (staticLayer.getBounds());
+
+        juce::Graphics layer (staticLayer);
+        layer.addTransform (juce::AffineTransform::scale (scale));
+        drawGrid (layer);
+        drawSensitivity (layer, lowX, highX);
+        drawHandles (layer);
+        layer.setColour (tone::base);
+        layer.fillPath (corners);
     }
 
     void ResonanceGraph::refreshVoicePicture (float scale, float lowX, float highX)
@@ -404,15 +526,19 @@ namespace ui
         g.drawImageTransformed (voicePicture, juce::AffineTransform::scale (1.0f / scale));
 
         // Everything above what you hear after treatment.
+        numSimple = 0;
+        simplify (yShaved, 0, numDense - 1);
+        const int shavedPoints = numSimple;
+
         shape.clear();
         shape.startNewSubPath (-2.0f, -2.0f);
         shape.lineTo (w + 2.0f, -2.0f);
-        shape.lineTo (w + 2.0f, yShaved[numDense - 1]);
+        shape.lineTo (w + 2.0f, simpleY[(size_t) shavedPoints - 1]);
 
-        for (int i = numDense; --i >= 0;)
-            shape.lineTo (denseX[(size_t) i], yShaved[(size_t) i]);
+        for (int i = shavedPoints; --i >= 0;)
+            shape.lineTo (simpleX[(size_t) i], simpleY[(size_t) i]);
 
-        shape.lineTo (-2.0f, yShaved[0]);
+        shape.lineTo (-2.0f, simpleY[0]);
         shape.closeSubPath();
         g.setColour (tone::well);
         g.fillPath (shape);
@@ -435,24 +561,63 @@ namespace ui
         {
             first = juce::jmax (0, first - 1);
             last = juce::jmin (numDense - 1, last + 1);
+
+            numSimple = 0;
+            simplify (yVoice, first, last);
             shape.clear();
-            shape.startNewSubPath (denseX[(size_t) first], yVoice[(size_t) first]);
+            shape.startNewSubPath (simpleX[0], simpleY[0]);
 
-            for (int i = first + 1; i <= last; ++i)
-                shape.lineTo (denseX[(size_t) i], yVoice[(size_t) i]);
+            for (int i = 1; i < numSimple; ++i)
+                shape.lineTo (simpleX[(size_t) i], simpleY[(size_t) i]);
 
-            for (int i = last + 1; --i >= first;)
-                shape.lineTo (denseX[(size_t) i], yShaved[(size_t) i]);
+            numSimple = 0;
+            simplify (yShaved, first, last);
+
+            for (int i = numSimple; --i >= 0;)
+                shape.lineTo (simpleX[(size_t) i], simpleY[(size_t) i]);
 
             shape.closeSubPath();
             g.setColour (tone::gold.interpolatedWith (tone::faint, bypassShown).withAlpha (0.82f - 0.5f * bypassShown));
             g.fillPath (shape);
         }
 
-        // The edge is the sound after treatment.
+        // The edge is the sound after treatment, bright inside Low and High and faint outside them.
         const float presence = 1.0f - 0.7f * deltaShown;
-        fillRangedRibbon (g, yShaved.data(), denseX.data(), numDense, denseIndexForX (lowX), denseIndexForX (highX), 0.6f,
-                          tone::voiceEdge.withAlpha (presence), tone::voiceEdge.withAlpha (0.32f * presence));
+        const int lowIndex = denseIndexForX (lowX), highIndex = denseIndexForX (highX);
+
+        // The two faint ends go in one path, because each extra fill costs more than its points.
+        ribbon.clear();
+        auto faintEnds = juce::Path();
+        faintEnds.preallocateSpace (256);
+
+        const auto addEnd = [&] (int from, int to)
+        {
+            if (to > from)
+            {
+                numSimple = 0;
+                simplify (yShaved, from, to);
+                buildRibbon (simpleY.data(), simpleX.data(), numSimple, 0.6f);
+                faintEnds.addPath (ribbon);
+            }
+        };
+
+        addEnd (0, lowIndex);
+        addEnd (highIndex, numDense - 1);
+
+        if (! faintEnds.isEmpty())
+        {
+            g.setColour (tone::voiceEdge.withAlpha (0.32f * presence));
+            g.fillPath (faintEnds);
+        }
+
+        if (highIndex > lowIndex)
+        {
+            numSimple = 0;
+            simplify (yShaved, lowIndex, highIndex);
+            buildRibbon (simpleY.data(), simpleX.data(), numSimple, 0.6f);
+            g.setColour (tone::voiceEdge.withAlpha (presence));
+            g.fillPath (ribbon);
+        }
     }
 
     void ResonanceGraph::drawGrid (juce::Graphics& g)
@@ -500,26 +665,29 @@ namespace ui
             first = juce::jmax (0, first - 1);
             last = juce::jmin (numDense - 1, last + 1);
 
+            numSimple = 0;
+            simplify (ys, first, last);
+
             if (slot == 1)
             {
-                buildRibbon (ys.data() + first, denseX.data() + first, last - first + 1, 0.7f);
+                buildRibbon (simpleY.data(), simpleX.data(), numSimple, 0.7f);
                 g.setColour (tone::second.withAlpha (dim));
                 g.fillPath (ribbon);
                 continue;
             }
 
             shape.clear();
-            shape.startNewSubPath (denseX[(size_t) first], -4.0f);
+            shape.startNewSubPath (simpleX[0], -4.0f);
 
-            for (int i = first; i <= last; ++i)
-                shape.lineTo (denseX[(size_t) i], ys[(size_t) i]);
+            for (int i = 0; i < numSimple; ++i)
+                shape.lineTo (simpleX[(size_t) i], simpleY[(size_t) i]);
 
-            shape.lineTo (juce::jmin (w, denseX[(size_t) last]), -4.0f);
+            shape.lineTo (juce::jmin (w, simpleX[(size_t) numSimple - 1]), -4.0f);
             shape.closeSubPath();
             g.setColour (gold.withAlpha (0.86f * dim));
             g.fillPath (shape);
 
-            buildRibbon (ys.data() + first, denseX.data() + first, last - first + 1, 0.7f);
+            buildRibbon (simpleY.data(), simpleX.data(), numSimple, 0.7f);
             g.setColour (edge.withAlpha (dim));
             g.fillPath (ribbon);
         }
@@ -763,6 +931,8 @@ namespace ui
         {
             hover = now;
 
+            staticLayerStale = true;
+
             setMouseCursor (now == Grab::none ? juce::MouseCursor::NormalCursor
                                               : (now == Grab::low || now == Grab::high ? juce::MouseCursor::LeftRightResizeCursor
                                                                                        : juce::MouseCursor::DraggingHandCursor));
@@ -790,6 +960,10 @@ namespace ui
     void ResonanceGraph::mouseExit (const juce::MouseEvent&)
     {
         mouseInside = false;
+
+        if (hover != Grab::none)
+            staticLayerStale = true;
+
         hover = Grab::none;
 
         if (onHint != nullptr)
@@ -805,6 +979,7 @@ namespace ui
         if (band != selectedBand)
         {
             selectedBand = band;
+            staticLayerStale = true;
             repaint();
 
             if (onBandSelected != nullptr)
@@ -824,6 +999,7 @@ namespace ui
     void ResonanceGraph::mouseDown (const juce::MouseEvent& e)
     {
         endGesture();
+        staticLayerStale = true;
         drag = grabAt (e.position);
         lastDrag = e.position;
         logicalPos = e.position;
@@ -928,6 +1104,7 @@ namespace ui
         }
 
         drag = Grab::none;
+        staticLayerStale = true;
     }
 
     void ResonanceGraph::mouseDoubleClick (const juce::MouseEvent& e)

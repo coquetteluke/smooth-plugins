@@ -24,6 +24,9 @@ namespace ui
         /** Moves the display on by dt seconds. Returns true if anything visible changed and a repaint is needed. */
         bool advance (double dt);
 
+        /** Asks for a repaint of only what the last advance() changed. */
+        void flushRepaint();
+
         void paint (juce::Graphics&) override;
         void resized() override;
 
@@ -48,6 +51,11 @@ namespace ui
 
         /** Times the graph has been drawn. For measuring the real frame rate. */
         int getPaintCount() const noexcept  { return paintCount; }
+
+        /** Where the frames' time goes, for the CPU measurements. Wall clock, in seconds, on the message thread. */
+        double getPaintSeconds() const noexcept  { return paintSeconds; }
+        double getPaintedArea() const noexcept   { return paintedArea; }
+        float getPictureScale() const noexcept   { return pictureScale; }
 
         /** Where the axes go, so that the static labels around the graph line up. */
         float xForHz (float hz) const noexcept;
@@ -76,7 +84,9 @@ namespace ui
         void endGesture();
         juce::String tagFor (Grab) const;
 
+        void refreshCurves();
         void refreshVoicePicture (float scale, float lowX, float highX);
+        void refreshStaticLayer (float scale, float lowX, float highX);
         void drawVoice (juce::Graphics&, float lowX, float highX);
         void drawGrid (juce::Graphics&);
         void drawGold (juce::Graphics&);
@@ -91,6 +101,10 @@ namespace ui
         void buildRibbon (const float* ys, const float* xs, int count, float halfWidth);
         void fillRangedRibbon (juce::Graphics&, const float* ys, const float* xs, int count, int lowIndex, int highIndex, float halfWidth, juce::Colour inside, juce::Colour outside);
         void upsample (const std::array<float, numPoints>& from, std::array<float, numDense>& to) const;
+
+        // Drops the points a curve does not need, keeping it within a fraction of a pixel. Fewer edges is what makes a
+        // filled path cheap for CoreAnimation. Appends to simpleX and simpleY.
+        void simplify (const std::array<float, numDense>& ys, int from, int to);
 
         SmoothResonanceProcessor& processor;
         BandParams bands[numBands];
@@ -109,7 +123,18 @@ namespace ui
         std::array<float, numPoints> yLevel {}, yAfter {}, yCut[2] {};
         std::array<float, numDense> denseX {}, yVoice {}, yShaved {}, yGold[2] {}, normalX {}, normalY {};
         std::array<float, numSensSteps> sensX {}, sensY {};
+        std::array<float, numDense + 4> simpleX {}, simpleY {};
+        int numSimple = 0;
+        std::array<float, numDense> shownVoice {}, shownShaved {}, shownGold[2] {};   // what the screen shows, for finding what changed
+        juce::Rectangle<float> voiceDirty, goldDirty;
+        bool fullRepaint = true;
         juce::Path ribbon, shape, corners;
+
+        // Everything on the graph that does not move with the sound, as one picture: grid, curve, dots, handles, corners.
+        // Only redrawn when a parameter or the hover changes.
+        juce::Image staticLayer;
+        bool staticLayerStale = true;
+        float staticScale = 0.0f;
 
         // The voice's colours as one finished picture. Only redrawn when Low, High, Delta or the size changes.
         juce::Image voicePicture;
@@ -120,6 +145,7 @@ namespace ui
         bool slotsApart = false;
         juce::uint32 paramStamp = 0;
         int paintCount = 0;
+        double paintSeconds = 0.0, paintedArea = 0.0;
 
         int selectedBand = 1;
         Grab hover = Grab::none, drag = Grab::none;

@@ -22,9 +22,9 @@ A calm, near-flat dark window with the colour kept for the graph. Your voice is 
 
 Every control is a real parameter with its old ID, name and range, shown or not, so automation moves the window and the window moves them, with begin and end of gesture. The window keeps no sound settings of its own. Its graph data comes from the lock free `readGraph`, so it cannot block the audio thread.
 
-Pictures are in `docs/window-v2/`, with the first design kept in `docs/window/` for comparison. They are made by `build/RenderWindow_artefacts/Release/RenderWindow`, which runs real speech from macOS `say` with resonant boosts through the real processor and renders the real window to PNG with no host. `RenderWindow --live` opens a real window with all but one column of pixels off the screen, and measures frames a second and CPU.
+Pictures are in `docs/window-v2/`, with the first design kept in `docs/window/` for comparison. They are made by `build/RenderWindow_artefacts/Release/RenderWindow`, which runs real speech from macOS `say` with resonant boosts through the real processor and renders the real window to PNG with no host. `RenderWindow --live` opens a real window with all but one column of pixels off the screen, and measures frames a second, CPU and instructions.
 
-Measured on the 16 GB MacBook's 2x screen with nothing else building: 45 frames a second. Over 5 runs with audio playing, the window's share was 3% to 17% of one core, and about 9% in the last two. The first design measured 27%, with other builds running. That is the drawing and the screen's share together. With nothing moving it does not redraw. Closed, it costs nothing.
+Measured on the 16 GB MacBook's 2x screen with other builds running: 30 frames a second, and 3.0% to 5.0% of one core over 8 runs with audio playing. If macOS puts it on the slow cores it reads 7% to 9% for the same work. With nothing moving it hardly redraws. Closed, it costs nothing. Details are in `docs/window-cpu.md`.
 
 The window's font is Inter, under the SIL Open Font License. See `assets/fonts/OFL.txt`.
 

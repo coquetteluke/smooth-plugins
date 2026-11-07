@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+Window CPU pinned down and cut: 3.0% to 5.0% of one core over 8 runs, down from a swing of 3.2% to 17.4%. The swing came from which CPU cores macOS picks, not from the work. If macOS puts the window on the slow cores it still reads 7% to 9%. Findings are in `docs/window-cpu.md`.
+
+The window now runs at 30 frames a second instead of 45, keeps everything that does not move with the sound in one cached picture, and only repaints what moved. Grid lines now draw over the gold instead of under it, which is too faint to see. The DSP is unchanged. `RenderWindow --live` now reports instructions as well as CPU time.
+
 ## 0.4.0
 
 A more modern window, after Luke's first look. Keeps the blue voice with gold reduction, the layout and the graph as the hero. The glazed texture, bevels, dial bodies and dividers are gone: a calm near-flat dark base, thin rings, slim sliders, quiet pill switches, softer gold with no glow. Inter replaces Source Sans. The axes moved outside the plot.

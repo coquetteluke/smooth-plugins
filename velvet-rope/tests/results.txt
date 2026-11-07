@@ -161,7 +161,7 @@ PASS  graph gain curve is deepest at the tone (limit 400 Hz) = 2404.961 Hz
 PASS  graph gain curve depth (limit 0.3) = 12.000 dB
 PASS  graph sensitivity curve marks what is outside Low and High = 119.000 
 PASS  graph sensitivity curve shows a +6 band at its centre (limit 0.3) = 5.990 dB
-PASS  graph reader thread while audio runs: reads with 0 bad values = 937.000 
+PASS  graph reader thread while audio runs: reads with 0 bad values = 936.000 
 PASS  at least 4 presets = 8.000 
 PASS  preset names are all different
 PASS  first preset is the default settings
@@ -175,10 +175,11 @@ PASS  preset Hard Whistle Catcher: finite, not silent, Max Reduction within its 
 PASS  preset Side Chain Carve: finite, not silent, Max Reduction within its Depth = 6.000 dB
 PASS  no allocation with side chain, bands and tilts all moving = 0.000 
 PASS  the window opens, draws and closes 40 times with no audio = 40.000 
-PASS  audio kept running while the window opened and closed 12 times = 27364.000 blocks
+PASS  audio kept running while the window opened and closed 12 times = 23607.000 blocks
 PASS  the graph's reduction follows the live audio (limit 3 dB shown on a 12 dB cut)
 PASS  with no audio and nothing moving, the graph does not repaint
 PASS  automation moving a dot repaints with no audio running
+PASS  and then stops again
 PASS  every changeable parameter has a control in the window, of 31 = 0.000 missing
 PASS  Advanced starts closed
 PASS  Depth, Sharpness, Selectivity, Attack, Release and Mode show with Advanced closed
@@ -373,9 +374,9 @@ PASS  60 s run: level change -1.651 dB early, -1.620 dB late
 
 == Real-time safety and CPU
 PASS  48 kHz: 0 allocations while processing
-PASS  48 kHz stereo with moving controls: 1.57% of one core (64x faster than real time, limit 5%)
+PASS  48 kHz stereo with moving controls: 1.60% of one core (62x faster than real time, limit 5%)
 PASS  96 kHz: 0 allocations while processing
-PASS  96 kHz stereo with moving controls: 3.22% of one core (31x faster than real time, limit 5%)
+PASS  96 kHz stereo with moving controls: 3.29% of one core (30x faster than real time, limit 5%)
 
 89 passed, 0 failed
 

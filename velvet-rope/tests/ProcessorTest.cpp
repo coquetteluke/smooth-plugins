@@ -935,6 +935,8 @@ static void testWindow()
         check (! graph.advance (1.0 / 60.0), "with no audio and nothing moving, the graph does not repaint");
         setParam (p, "band1Sens", 5.0f);
         check (graph.advance (1.0 / 60.0), "automation moving a dot repaints with no audio running");
+        graph.flushRepaint();
+        check (! graph.advance (1.0 / 60.0), "and then stops again");
     }
 
     // Every parameter you can change has a control, and every control is a real parameter.

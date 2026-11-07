@@ -14,10 +14,10 @@ namespace
     constexpr int axisHeight = 22;        // the frequency labels under the plot
     constexpr int labelColumn = 84;
 
-    // How many display frames a second, at most. The engine publishes about 47 graph frames a second, so drawing more than
-    // that only adds in-between frames. This cap is about a quarter off the window's CPU at 60 frames, and the graph's
-    // glide hides the odd skipped refresh.
-    constexpr double maxFramesPerSecond = 45.0;
+    // How many display frames a second, at most. Every frame costs about 7.5 million instructions, nearly half of it AppKit and
+    // CoreAnimation overhead that no drawing change can remove, so this is the number that sets the window's CPU. 30 is an
+    // even cadence on a 60 or 120 Hz screen, where 45 would skip every fourth refresh. See docs/window-cpu.md.
+    constexpr double maxFramesPerSecond = 30.0;
 
     const juce::String restingHint = "Drag the dots on the graph. Double-click anything to reset it.";
 }
@@ -140,6 +140,7 @@ public:
     explicit PeakReading (SmoothResonanceProcessor& p) : processor (p)
     {
         setInterceptsMouseClicks (false, false);
+        setOpaque (true);   // so a new number does not repaint the panel behind it
     }
 
     void advance (double dt)
@@ -171,7 +172,7 @@ public:
 
         if (refreshCountdown <= 0.0f)
         {
-            refreshCountdown = 0.1f;
+            refreshCountdown = 0.15f;
 
             auto top = juce::String (juce::jmax (0.0f, shownDb), 1) + " dB";
             auto where = shownDb < 0.3f ? juce::String ("Nothing right now") : "around " + hertzText (shownHz);
@@ -188,6 +189,8 @@ public:
 
     void paint (juce::Graphics& g) override
     {
+        g.fillAll (tone::base);
+
         auto b = getLocalBounds().toFloat();
         const bool active = shownDb >= 0.3f;
 
@@ -668,6 +671,7 @@ ResonanceEditor::ResonanceEditor (SmoothResonanceProcessor& p)
       panel ((setLookAndFeel (&lookAndFeel), *this), p)
 {
     addAndMakeVisible (panel);
+    setOpaque (true);   // saves clearing the window under every frame
 
     using Proc = SmoothResonanceProcessor;
     const double ratio = (double) designWidth / (double) designHeight;
@@ -714,7 +718,11 @@ ResonanceEditor::~ResonanceEditor()
 
 void ResonanceEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (tone::base);
+    // The panel covers everything but the sliver rounding can leave at some window sizes. JUCE does not skip this paint for
+    // a child with a transform, so filling the whole window here would run on every frame.
+    g.setColour (tone::base);
+    g.fillRect (getWidth() - 2, 0, 2, getHeight());
+    g.fillRect (0, getHeight() - 2, getWidth(), 2);
 }
 
 void ResonanceEditor::resized()
@@ -747,7 +755,7 @@ void ResonanceEditor::setAdvancedOpen (bool shouldBeOpen, bool animate)
 void ResonanceEditor::tick (double dtSeconds)
 {
     if (panel.graph.advance (dtSeconds))
-        panel.graph.repaint();
+        panel.graph.flushRepaint();
 
     panel.reading->advance (dtSeconds);
     panel.presets->refresh();

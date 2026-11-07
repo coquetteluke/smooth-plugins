@@ -13,7 +13,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <algorithm>
+#include <libproc.h>
+#include <mach/mach_time.h>
+#include <pthread/qos.h>
 #include <sys/resource.h>
+#include <time.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <atomic>
 #include <chrono>
@@ -184,30 +190,99 @@ struct Session
     }
 };
 
-static double processCpuSeconds()
+/** One reading of everything in this process, from the kernel. Times are CPU seconds. P-core time shows how much of it ran on the fast cores. */
+struct CpuReading
 {
-    rusage usage {};
-    getrusage (RUSAGE_SELF, &usage);
-    return (double) usage.ru_utime.tv_sec + (double) usage.ru_utime.tv_usec * 1.0e-6
-         + (double) usage.ru_stime.tv_sec + (double) usage.ru_stime.tv_usec * 1.0e-6;
+    double total = 0.0, pCores = 0.0;
+    unsigned long long instructions = 0, cycles = 0;
+
+    static CpuReading now()
+    {
+        rusage_info_v6 info {};
+        CpuReading r;
+
+        if (proc_pid_rusage (getpid(), RUSAGE_INFO_V6, (rusage_info_t*) &info) == 0)
+        {
+            mach_timebase_info_data_t base {};
+            mach_timebase_info (&base);
+            const double toSeconds = 1.0e-9 * (double) base.numer / (double) base.denom;
+            r.total = (double) (info.ri_user_time + info.ri_system_time) * toSeconds;
+            r.pCores = (double) (info.ri_user_ptime + info.ri_system_ptime) * toSeconds;
+            r.instructions = info.ri_instructions;
+            r.cycles = info.ri_cycles;
+        }
+
+        return r;
+    }
+};
+
+static double threadCpuSeconds()
+{
+    return (double) clock_gettime_nsec_np (CLOCK_THREAD_CPUTIME_ID) * 1.0e-9;
 }
 
-/** The real thing: a real window with all but one column of pixels off the edge of the screen, painted by the system at the screen's real pixel density,
-    with speech running in real time on another thread. Measures frames a second and CPU, against the same audio with no window. */
-static int runLive()
+/** The real thing: a real window with all but one column of pixels off the edge of the screen, painted by the system at the
+    screen's real pixel density, with speech running in real time on another thread.
+    The window's share is everything this process used except the audio thread, timed by that thread itself in the same run.
+    There is no second "audio only" run to subtract, because that baseline moves by several percent between runs. */
+static int runLive (int repeats, int seconds, bool withAudio, bool background)
 {
     auto voice = loadVoice();
     addResonance (voice, 2600.0, 7.0, 11.0);
     addResonance (voice, 4300.0, 8.0, 10.0);
     addResonance (voice, 7400.0, 6.0, 9.0);
 
-    const auto run = [&] (bool withWindow)
+    const auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+    std::printf ("screen %.0fx, %d seconds a run, audio %s\n", display != nullptr ? display->scale : 0.0, seconds, withAudio ? "on" : "off");
+    pthread_set_qos_class_self_np (background ? QOS_CLASS_BACKGROUND : QOS_CLASS_USER_INTERACTIVE, 0);   // a host's main thread is user interactive
+    std::printf ("main thread is %s\n", background ? "background, so it stays on the slow cores: the worst case" : "user interactive, like a host's");
+    std::printf ("run  cpu%%   fastcore-equiv%%  Pcore%%  fps   ms/paint  area   main%%  audio%%  Minstr/s  Minstr/frame  load  builds\n");
+
+    std::vector<double> results, instructionRates;
+
+    // Instructions are the one number that does not depend on which core ran them, so the audio's share can fairly be
+    // measured apart and taken off. A fast core gets through about 8 billion a second, which turns the rate into a percentage.
+    constexpr double instructionsPerFastCoreSecond = 8.0e9;
+    double audioInstructionRate = 0.0;
+
+    if (withAudio)
+    {
+        Session s;
+        s.processor.setCurrentProgram (1);
+        setParam (s.processor, "depth", 14.0f);
+        s.editor.reset();
+        juce::AudioBuffer<float> buffer (2, kBlock);
+        juce::MidiBuffer midi;
+        const auto before = CpuReading::now();
+        size_t at = 0;
+        constexpr int blocks = (int) (kRate * 3.0) / kBlock;
+        auto next = std::chrono::steady_clock::now();
+
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < kBlock; ++i)
+                    buffer.setSample (ch, i, voice[(at + (size_t) i) % voice.size()]);
+
+            at += kBlock;
+            s.processor.processBlock (buffer, midi);
+            next += std::chrono::microseconds ((long long) (1.0e6 * kBlock / kRate));
+            std::this_thread::sleep_until (next);
+        }
+
+        audioInstructionRate = (double) (CpuReading::now().instructions - before.instructions) / 3.0;
+        std::printf ("audio alone: %.0f million instructions a second\n", audioInstructionRate * 1.0e-6);
+    }
+
+    for (int run = 0; run < repeats; ++run)
     {
         Session s;
         s.processor.setCurrentProgram (1);
         setParam (s.processor, "depth", 14.0f);
 
         std::atomic<bool> running { true };
+        std::atomic<double> audioCpu { 0.0 };
+
         std::thread audio ([&]
         {
             juce::AudioBuffer<float> buffer (2, kBlock);
@@ -217,52 +292,71 @@ static int runLive()
 
             while (running.load())
             {
-                for (int ch = 0; ch < 2; ++ch)
-                    for (int i = 0; i < kBlock; ++i)
-                        buffer.setSample (ch, i, voice[(at + (size_t) i) % voice.size()]);
+                if (withAudio)
+                {
+                    for (int ch = 0; ch < 2; ++ch)
+                        for (int i = 0; i < kBlock; ++i)
+                            buffer.setSample (ch, i, voice[(at + (size_t) i) % voice.size()]);
 
-                at += kBlock;
-                s.processor.processBlock (buffer, midi);
+                    at += kBlock;
+                    s.processor.processBlock (buffer, midi);
+                }
+
+                audioCpu.store (threadCpuSeconds());
                 next += std::chrono::microseconds ((long long) (1.0e6 * kBlock / kRate));
                 std::this_thread::sleep_until (next);
             }
         });
 
-        if (withWindow)
-        {
-            s.editor->setVisible (false);
-            s.editor->setTopLeftPosition (1 - s.editor->getWidth(), 300);   // one column of pixels on screen, or macOS skips painting it
-            s.editor->addToDesktop (juce::ComponentPeer::windowIgnoresKeyPresses | juce::ComponentPeer::windowIgnoresMouseClicks);
-            s.editor->setVisible (true);
-        }
+        s.editor->setVisible (false);
+        s.editor->setTopLeftPosition (1 - s.editor->getWidth(), 300);   // one column of pixels on screen, or macOS skips painting it
+        s.editor->addToDesktop (juce::ComponentPeer::windowIgnoresKeyPresses | juce::ComponentPeer::windowIgnoresMouseClicks);
+        s.editor->setVisible (true);
 
-        constexpr int seconds = 8;
-        juce::MessageManager::getInstance()->runDispatchLoopUntil (1000);
-        const int paintsBefore = s.editor->getGraph().getPaintCount();
-        const double cpuBefore = processCpuSeconds();
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (1500);
+
+        auto& graph = s.editor->getGraph();
+        const int paintsBefore = graph.getPaintCount();
+        const double paintBefore = graph.getPaintSeconds(), areaBefore = graph.getPaintedArea();
+        const auto before = CpuReading::now();
+        const double audioBefore = audioCpu.load(), mainBefore = threadCpuSeconds();
+        const double wallBefore = juce::Time::getMillisecondCounterHiRes();
+
         juce::MessageManager::getInstance()->runDispatchLoopUntil (seconds * 1000);
-        const double cpu = (processCpuSeconds() - cpuBefore) / seconds;
-        const int paints = s.editor->getGraph().getPaintCount() - paintsBefore;
 
-        if (withWindow)
-        {
-            auto* peer = s.editor->getPeer();
-            const auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
-            std::printf ("real window: %.1f frames a second, screen %.0fx, peer %s\n", (double) paints / seconds,
-                         display != nullptr ? display->scale : 0.0, peer != nullptr ? "open" : "none");
-            s.editor->removeFromDesktop();
-        }
+        const double wall = (juce::Time::getMillisecondCounterHiRes() - wallBefore) * 0.001;
+        const auto after = CpuReading::now();
+        const double audioUsed = audioCpu.load() - audioBefore, mainUsed = threadCpuSeconds() - mainBefore;
+        const int paints = juce::jmax (1, graph.getPaintCount() - paintsBefore);
+        const double window = (after.total - before.total - audioUsed) / wall;
 
+        double load[1] { 0.0 };
+        getloadavg (load, 1);
+
+        const double instructionRate = juce::jmax (0.0, (double) (after.instructions - before.instructions) / wall - audioInstructionRate);
+        const auto builds = std::system ("exit $(pgrep -f 'clang|cmake --build' | wc -l)") >> 8;
+
+        std::printf ("%3d  %5.1f  %12.1f  %8.0f  %5.1f  %7.2f  %4.0f%%  %5.1f  %5.1f  %8.0f  %11.1f  %4.1f  %5d\n", run + 1, window * 100.0,
+                     instructionRate / instructionsPerFastCoreSecond * 100.0,
+                     (after.pCores - before.pCores) / juce::jmax (1.0e-6, after.total - before.total) * 100.0,
+                     paints / wall,
+                     (graph.getPaintSeconds() - paintBefore) * 1000.0 / paints,
+                     (graph.getPaintedArea() - areaBefore) / paints / juce::jmax (1.0, (double) graph.getWidth() * graph.getHeight()) * 100.0,
+                     mainUsed / wall * 100.0, audioUsed / wall * 100.0,
+                     instructionRate * 1.0e-6, instructionRate / (paints / wall) * 1.0e-6, load[0], builds);
+        instructionRates.push_back (instructionRate / instructionsPerFastCoreSecond * 100.0);
+        std::fflush (stdout);
+        results.push_back (window * 100.0);
+
+        s.editor->removeFromDesktop();
         running = false;
         audio.join();
-        return cpu;
-    };
+    }
 
-    const double without = run (false);
-    const double with = run (true);
-    std::printf ("process CPU with audio only: %.1f%% of one core\n", without * 100.0);
-    std::printf ("process CPU with the real window open: %.1f%% of one core\n", with * 100.0);
-    std::printf ("the window's share: %.1f%% of one core\n", (with - without) * 100.0);
+    std::sort (results.begin(), results.end());
+    std::sort (instructionRates.begin(), instructionRates.end());
+    std::printf ("cpu time: lowest %.1f%%, median %.1f%%, highest %.1f%% of one core\n", results.front(), results[results.size() / 2], results.back());
+    std::printf ("work, in fast core terms: lowest %.1f%%, median %.1f%%, highest %.1f%%\n", instructionRates.front(), instructionRates[instructionRates.size() / 2], instructionRates.back());
     return 0;
 }
 
@@ -270,8 +364,9 @@ int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
 
+    // --live [runs] [seconds] [silent or background]
     if (argc > 1 && juce::String (argv[1]) == "--live")
-        return runLive();
+        return runLive (argc > 2 ? atoi (argv[2]) : 5, argc > 3 ? atoi (argv[3]) : 6, ! (argc > 4 && juce::String (argv[4]) == "silent"), argc > 4 && juce::String (argv[4]) == "background");
 
     const bool cpuOnly = argc > 1 && juce::String (argv[1]) == "--cpu";
     const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 && ! cpuOnly ? argv[1] : "docs/window-v2");

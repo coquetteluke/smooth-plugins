@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1, 2026-11-07
+
+Renamed to Alter Ego, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
 ## 1.1.0
 
 Custom window, called Alter Ego inside. A large Pitch and Formant pad where the dot is the voice, Character chips, Vibrato and Whisper, and a live mirror: your voice and what comes out, back to back.

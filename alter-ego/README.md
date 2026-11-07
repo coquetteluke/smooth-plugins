@@ -1,14 +1,14 @@
-# Smooth Morph
+# Alter Ego
 
 A real time voice changer. Pitch and formants move independently, five characters do different things to the voice, and it can sing with vibrato or turn into a whisper. Consonants pass through unshifted, so words stay words.
 
-**Load it:** Audio Units > Luke Garito > Smooth Morph. AU code `aufx SMet Luke`. Mono and stereo. No MIDI.
+**Load it:** Audio Units > Luke Garito > Alter Ego. AU code `aufx SMet Luke`. Mono and stereo. No MIDI.
 
 Measured on synthetic voices and macOS `say`, which is synthetic too. **That does not prove it sounds good on a real singer.** That needs ears.
 
 ## The window
 
-Called Alter Ego inside. The build name stays Smooth Morph until the rename.
+Called Alter Ego inside. The build name stays Alter Ego until the rename.
 
 - **Pad:** left and right is Pitch, up and down is Formant Shift, one semitone the same distance either way. You are the ring in the middle and the dot is the voice, including what the Character adds. Drag it, hold Shift for whole semitones, double-click to go back. The rings show where each Character would land from here.
 - **Disc under the dot:** where the voice really is right now, read from the engine, and how loud. Vibrato swings it. Robot throws it about as the sung pitch moves against the held note. Range Match shows in it too.

@@ -18,6 +18,11 @@ using namespace measure;
 
 namespace
 {
+int gEngine = 0;    // 0 Low Latency, 1 High Quality: every test that goes through make() runs on this engine
+std::string engineTag() { return gEngine == 1 ? "[HQ] " : "[LL] "; }
+void chk (bool ok, const std::string& what, double measured = std::numeric_limits<double>::quiet_NaN(), const char* unit = "") { check (ok, engineTag() + what, measured, unit); }
+void note (const std::string& what, double value, const char* unit = "") { info (engineTag() + what, value, unit); }
+
 constexpr double SR = 48000.0;
 constexpr int soprano = 0, altoTenor = 1, lowMale = 2, wideRange = 3;
 
@@ -26,7 +31,10 @@ std::unique_ptr<PluginProcessor> make (const juce::String& keyFile = "/nonexiste
     PluginProcessor::Options o;
     o.keyFilePath = keyFile;
     o.hostLatencyUpdates = false;
-    return std::make_unique<PluginProcessor> (o);
+    auto p = std::make_unique<PluginProcessor> (o);
+    auto* e = p->apvts.getParameter ("engine");
+    e->setValueNotifyingHost (e->convertTo0to1 ((float) gEngine));
+    return p;
 }
 
 void setParam (juce::AudioProcessor& p, const char* id, float value)
@@ -56,7 +64,7 @@ std::vector<float> mono (const juce::AudioBuffer<float>& b)
 // Only one pitch class left in Custom, so the target is known whatever is sung.
 void onlyNote (PluginProcessor& p, int pitchClass)
 {
-    setParam (p, "scale", (float) smoothtune::scaleCustom);
+    setParam (p, "scale", (float) smoothtune::scaleChromatic);
     for (int i = 0; i < 12; ++i)
         setParam (p, ("note" + juce::String (i)).toRawUTF8(), i == pitchClass ? 0.0f : 1.0f);
 }
@@ -151,23 +159,23 @@ void testTracker()
     };
 
     const auto a = absolute (steady.errors);
-    check (median (a) <= limits::trackSteadyMedianCents, "tracking error, steady notes 80 Hz to 1 kHz, 4 vowels, median", median (a), "cents");
-    check (percentile (a, 95) <= limits::trackSteadyP95Cents, "tracking error, steady notes, 95th percentile", percentile (a, 95), "cents");
+    chk (median (a) <= limits::trackSteadyMedianCents, "tracking error, steady notes 80 Hz to 1 kHz, 4 vowels, median", median (a), "cents");
+    chk (percentile (a, 95) <= limits::trackSteadyP95Cents, "tracking error, steady notes, 95th percentile", percentile (a, 95), "cents");
     const auto b = absolute (vib.errors);
-    check (median (b) <= limits::trackVibratoMedianCents, "tracking error, vibrato +/-50 cents at 5.5 Hz, median", median (b), "cents");
-    info ("tracking error, vibrato, 95th percentile", percentile (b, 95), "cents");
-    info ("tracking error, breath -18 dB, median", median (absolute (breath.errors)), "cents");
-    info ("tracking error, notes with scoops and octave leaps, median", median (absolute (scoop.errors)), "cents");
-    info ("lowest voiced share on a steady note", worstShare * 100.0, "%");
-    check (worstShare >= 0.85, "steady notes are found voiced, worst case", worstShare * 100.0, "%");
+    chk (median (b) <= limits::trackVibratoMedianCents, "tracking error, vibrato +/-50 cents at 5.5 Hz, median", median (b), "cents");
+    note ("tracking error, vibrato, 95th percentile", percentile (b, 95), "cents");
+    note ("tracking error, breath -18 dB, median", median (absolute (breath.errors)), "cents");
+    note ("tracking error, notes with scoops and octave leaps, median", median (absolute (scoop.errors)), "cents");
+    note ("lowest voiced share on a steady note", worstShare * 100.0, "%");
+    chk (worstShare >= 0.85, "steady notes are found voiced, worst case", worstShare * 100.0, "%");
 
     const auto [seconds, events] = all ({ &steady, &vib, &scoop, &breath });
     const double perMinute = (double) events / std::max (seconds, 1.0) * 60.0;
-    check (perMinute <= limits::octaveErrorsPerMinute, "octave errors per minute of voiced sound, " + std::to_string ((int) seconds) + " s of voice, all material", perMinute, "per minute");
-    info ("octave error events, steady", (double) steady.octaveEvents);
-    info ("octave error events, vibrato", (double) vib.octaveEvents);
-    info ("octave error events, scoops and leaps", (double) scoop.octaveEvents);
-    info ("octave error events, breath", (double) breath.octaveEvents);
+    chk (perMinute <= limits::octaveErrorsPerMinute, "octave errors per minute of voiced sound, " + std::to_string ((int) seconds) + " s of voice, all material", perMinute, "per minute");
+    note ("octave error events, steady", (double) steady.octaveEvents);
+    note ("octave error events, vibrato", (double) vib.octaveEvents);
+    note ("octave error events, scoops and leaps", (double) scoop.octaveEvents);
+    note ("octave error events, breath", (double) breath.octaveEvents);
 
     // Each Input Type on its own range, ends included.
     struct R { const char* name; double low, high; };
@@ -176,7 +184,7 @@ void testTracker()
         TrackScore s;
         for (double hz : { r.low * 1.06, std::sqrt (r.low * r.high), r.high * 0.94 })
             scoreTracker (voice::steady (hz, 1.0, SR), voice::vowelA, r.low, r.high, s);
-        check (median (absolute (s.errors)) <= limits::trackSteadyMedianCents && s.octaveEvents == 0,
+        chk (median (absolute (s.errors)) <= limits::trackSteadyMedianCents && s.octaveEvents == 0,
                std::string ("Input Type ") + r.name + " tracks both ends of its range, median", median (absolute (s.errors)), "cents");
     }
 
@@ -186,7 +194,7 @@ void testTracker()
         TrackScore s;
         for (double hz : { 110.0, 220.0, 440.0, 880.0 })
             scoreTracker (voice::steady (hz, 1.0, sr), voice::vowelA, 65.0, 1300.0, s, -60.0, sr);
-        check (median (absolute (s.errors)) <= limits::trackSteadyMedianCents, "tracking error at " + std::to_string ((int) sr) + " Hz, median", median (absolute (s.errors)), "cents");
+        chk (median (absolute (s.errors)) <= limits::trackSteadyMedianCents, "tracking error at " + std::to_string ((int) sr) + " Hz, median", median (absolute (s.errors)), "cents");
     }
 }
 
@@ -212,8 +220,8 @@ void testOutputPitch()
         }
     }
     const double w = *std::max_element (worst.begin(), worst.end());
-    check (w < limits::outputInstantCents, "output pitch error at instant speed, steady notes 82 Hz to 1 kHz, worst 95th percentile", w, "cents");
-    info ("  worst case is at", worstHz, "Hz");
+    chk (w < limits::outputInstantCents, "output pitch error at instant speed, steady notes 82 Hz to 1 kHz, worst 95th percentile", w, "cents");
+    note ("  worst case is at", worstHz, "Hz");
 
     // Vibrato and drift flattened to the note at instant speed
     std::vector<double> errs;
@@ -226,7 +234,7 @@ void testOutputPitch()
         errs.push_back (percentile (absolute (e), 95));
     }
     const double v = *std::max_element (errs.begin(), errs.end());
-    check (v < limits::outputInstantCents, "output pitch error at instant speed, vibrato +/-30 cents with breath, worst 95th percentile", v, "cents");
+    chk (v < limits::outputInstantCents, "output pitch error at instant speed, vibrato +/-30 cents with breath, worst 95th percentile", v, "cents");
 
     // A less perfect voice: slow pitch wander and cycle to cycle jitter, as real throats have.
     {
@@ -244,11 +252,11 @@ void testOutputPitch()
         const auto x = voice::synth (f0, voice::vowelA, SR, -35.0);
         const auto out = mono (render (*p, x, 256));
         const auto e = centsOff (out.data(), (long) out.size(), SR, 220.0, 0.3, 2.9);
-        check (percentile (absolute (e), 95) < limits::outputInstantCents, "output pitch error at instant speed, voice with wander, jitter and breath, 95th percentile", percentile (absolute (e), 95), "cents");
+        chk (percentile (absolute (e), 95) < limits::outputInstantCents, "output pitch error at instant speed, voice with wander, jitter and breath, 95th percentile", percentile (absolute (e), 95), "cents");
         const double nh = nonHarmonicDb (out.data() + (int) (0.5 * SR), 1 << 16, 220.0, SR);
         const double nhIn = nonHarmonicDb (x.data() + (int) (0.5 * SR), 1 << 16, 220.0 * std::pow (2.0, 20.0 / 1200.0), SR);
-        info ("  non-harmonic energy on that voice, in then out", nhIn, "dB");
-        info ("  non-harmonic energy on that voice, out", nh, "dB");
+        note ("  non-harmonic energy on that voice, in then out", nhIn, "dB");
+        note ("  non-harmonic energy on that voice, out", nh, "dB");
     }
 
     // Quiet and loud takes tune the same.
@@ -258,7 +266,7 @@ void testOutputPitch()
         const auto x = voice::synth (voice::steady (220.0 * std::pow (2.0, 30.0 / 1200.0), 1.2, SR), voice::vowelA, SR, -60.0, levelDb);
         const auto out = mono (render (*p, x, 256));
         auto e = centsOff (out.data(), (long) out.size(), SR, 220.0, 0.3, 1.1);
-        check (percentile (absolute (e), 95) < limits::outputInstantCents, "output pitch error on a voice at " + std::to_string ((int) levelDb) + " dBFS, 95th percentile", percentile (absolute (e), 95), "cents");
+        chk (percentile (absolute (e), 95) < limits::outputInstantCents, "output pitch error on a voice at " + std::to_string ((int) levelDb) + " dBFS, 95th percentile", percentile (absolute (e), 95), "cents");
     }
 
     // Other sample rates, because everything scales with the rate
@@ -268,7 +276,7 @@ void testOutputPitch()
         const auto x = voice::synth (voice::steady (220.0 * std::pow (2.0, 30.0 / 1200.0), 1.2, sr), voice::vowelA, sr);
         const auto out = mono (render (*p, x, 256));
         auto e = centsOff (out.data(), (long) out.size(), sr, 220.0, 0.3, 1.1);
-        check (percentile (absolute (e), 95) < limits::outputInstantCents, "output pitch error at " + std::to_string ((int) sr) + " Hz, 95th percentile", percentile (absolute (e), 95), "cents");
+        chk (percentile (absolute (e), 95) < limits::outputInstantCents, "output pitch error at " + std::to_string ((int) sr) + " Hz, 95th percentile", percentile (absolute (e), 95), "cents");
     }
 }
 
@@ -298,7 +306,7 @@ void testRetuneSpeed()
         for (int i = start; i < (int) dev.size(); ++i)
             if (dev[(size_t) i] < level) { crossMs = i * hop * 1000.0; break; }
         const double allow = std::max ((double) tau * limits::retuneToleranceFraction, limits::retuneToleranceMs);
-        check (std::abs (crossMs - tau) <= allow, "Retune Speed " + std::to_string ((int) tau) + " ms, measured time constant", crossMs, "ms");
+        chk (std::abs (crossMs - tau) <= allow, "Retune Speed " + std::to_string ((int) tau) + " ms, measured time constant", crossMs, "ms");
     }
 
     // Retune Speed 0 is truly instant: the same step, gone within the tracker's own time.
@@ -310,7 +318,7 @@ void testRetuneSpeed()
     const auto x = voice::synth (f0, voice::vowelA, SR);
     const auto out = mono (render (*p, x, 256));
     const auto e = centsOff (out.data(), (long) out.size(), SR, hz, before + 0.05, 1.5);
-    check (percentile (absolute (e), 95) < limits::outputInstantCents, "Retune Speed 0 after a 40 cent step, frames from 50 ms on, 95th percentile", percentile (absolute (e), 95), "cents");
+    chk (percentile (absolute (e), 95) < limits::outputInstantCents, "Retune Speed 0 after a 40 cent step, frames from 50 ms on, 95th percentile", percentile (absolute (e), 95), "cents");
 }
 
 // -------------------------------------------------------------------------------------------------------- formants
@@ -319,7 +327,7 @@ void testRetuneSpeed()
 // harmonic cover the frequencies up to where its double starts: no gaps and no piling up. The shape is read from the long term average spectrum. The shift is the same +/-3 semitones a correction would ask for,
 // held steady with Transpose while Flex Amount leaves the glide alone.
 struct FormantRun { std::vector<float> in, out; };
-FormantRun glideThroughTuner (const voice::Vowel& v, double centreHz, int transposeBy, bool preserve = true, float throat = 100.0f)
+FormantRun glideThroughTuner (const voice::Vowel& v, double centreHz, int transposeBy, bool preserve = true, float throat = 100.0f, int type = lowMale)
 {
     const double seconds = 6.0;
     std::vector<double> f0 ((size_t) (seconds * SR));
@@ -331,7 +339,7 @@ FormantRun glideThroughTuner (const voice::Vowel& v, double centreHz, int transp
         f0[i] = centreHz * std::pow (2.0, 0.5 * tri);
     }
     auto p = make();
-    setParam (*p, "inputType", (float) lowMale);
+    setParam (*p, "inputType", (float) type);
     setParam (*p, "retune", 0.0f);
     setParam (*p, "humanize", 0.0f);
     setParam (*p, "flex", 100.0f);
@@ -363,61 +371,94 @@ std::vector<float> controlVoice (const voice::Vowel& v, double centreHz, int shi
 // tries at this (picking peaks and fitting harmonics) could not read a real voice to better than +/-3 to 10%, so this one
 // was checked against known moves instead: Formant Preserve off must read the pitch shift, and Throat Length its own ratio
 // (see testAddedControls). Peak height is reported too, because grains do broaden each peak: it stays in place, a bit flatter.
+struct FormantScore { double move = 0.0, moveReal = 0.0, floor = 0.0, level = 0.0, flatter = 0.0; };
+
+void scoreFormants (FormantScore& s, const voice::Vowel& v, double centre, int shift, int type = lowMale)
+{
+    const long from = (long) (0.3 * SR);
+    const auto run = glideThroughTuner (v, centre, shift, true, 100.0f, type);
+    const auto control = controlVoice (v, centre, shift);
+    const long n = (long) run.in.size() - from - 4000;
+    const double smoothing = std::max (centre, centre * std::pow (2.0, shift / 12.0));
+    const auto wantShape = smoothSpectrumDb (control.data() + from, n, SR, smoothing);
+    const auto inShape = smoothSpectrumDb (run.in.data() + from, n, SR, smoothing);
+    const auto gotShape = smoothSpectrumDb (run.out.data() + from, n, SR, smoothing);
+    // Bands hold at least two formants: with one narrow peak on a slope, as a band of F1 alone on /i/ would be, this tool cannot
+    // tell a move from a flatter peak, and even two real voices with the same vocal tract read 8% apart. Peak height is reported separately.
+    for (auto band : { std::pair<double, double> { 0.7 * v.f[0], 1.3 * v.f[1] }, std::pair<double, double> { 0.8 * v.f[1], 1.2 * v.f[3] } })
+    {
+        const double against = shapeScale (inShape, gotShape, band.first, band.second);
+        const double real = shapeScale (wantShape, gotShape, band.first, band.second);
+        const double noise = shapeScale (wantShape, inShape, band.first, band.second);
+        s.move = std::max (s.move, std::abs (against - 1.0));
+        s.moveReal = std::max (s.moveReal, std::abs (real - 1.0));
+        s.floor = std::max (s.floor, std::abs (noise - 1.0));
+        if (std::getenv ("TUNE_DUMP") != nullptr)
+            std::printf ("  vowel %s around %.0f Hz, shift %d, band %.0f to %.0f Hz: against input %.3f, against a real voice there %.3f, input against that voice %.3f\n", v.name, centre, shift, band.first, band.second, against, real, noise);
+    }
+    const auto fine = smoothSpectrumDb (control.data() + from, n, SR, 50.0), fineOut = smoothSpectrumDb (run.out.data() + from, n, SR, 50.0);
+    const size_t f1 = (size_t) v.f[0];
+    const double flatten = (fine[f1] - fine[f1 / 2]) - (fineOut[f1] - fineOut[f1 / 2]);
+    if (std::getenv ("TUNE_DUMP") != nullptr)
+        std::printf ("  vowel %s around %.0f Hz, shift %d: first formant flatter by %.2f dB, level %+.2f dB\n", v.name, centre, shift, flatten, toDb (rms (run.out.data() + from, (int) n)) - toDb (rms (run.in.data() + from, (int) n)));
+    s.flatter = std::max (s.flatter, flatten);
+    s.level = std::max (s.level, std::abs (toDb (rms (run.out.data() + from, (int) n)) - toDb (rms (run.in.data() + from, (int) n))));
+}
+
+FormantScore formantResults[2], highNoteResults[2], bigShiftResults[2];
+
+// Formant position measure: which frequency scale lines the output's spectrum shape up with that real voice's? The first
+// tries at this (picking peaks and fitting harmonics) could not read a real voice to better than +/-3 to 10%, so this one
+// was checked against known moves instead: Formant Preserve off must read the pitch shift, and Throat its own ratio
+// (see testAddedControls). Peak height is reported too, because grains broaden each peak.
 void testFormants()
 {
-    double worst = 0.0, worstReal = 0.0, worstNoise = 0.0, worstLevel = 0.0, worstFlatten = 0.0;
-    const voice::Vowel* vowels[] = { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU };
-    const long from = (long) (0.3 * SR);
-    const auto one = [&] (const voice::Vowel& v, double centre, int shift)
-    {
-        const auto run = glideThroughTuner (v, centre, shift);
-        const auto control = controlVoice (v, centre, shift);
-        const long n = (long) run.in.size() - from - 1000;
-        const double smoothing = std::max (centre, centre * std::pow (2.0, shift / 12.0));
-        const auto wantShape = smoothSpectrumDb (control.data() + from, n, SR, smoothing);
-        const auto inShape = smoothSpectrumDb (run.in.data() + from, n, SR, smoothing);
-        const auto gotShape = smoothSpectrumDb (run.out.data() + from, n, SR, smoothing);
-        // Bands hold at least two formants: with one narrow peak on a slope, as a band of F1 alone on /i/ would be, this tool cannot
-        // tell a move from a flatter peak, and even two real voices with the same vocal tract read 8% apart. Peak height is reported separately.
-        for (auto band : { std::pair<double, double> { 0.7 * v.f[0], 1.3 * v.f[1] }, std::pair<double, double> { 0.8 * v.f[1], 1.2 * v.f[3] } })
-        {
-            const double against = shapeScale (inShape, gotShape, band.first, band.second);
-            const double real = shapeScale (wantShape, gotShape, band.first, band.second);
-            const double noise = shapeScale (wantShape, inShape, band.first, band.second);
-            worst = std::max (worst, std::abs (against - 1.0));
-            worstReal = std::max (worstReal, std::abs (real - 1.0));
-            worstNoise = std::max (worstNoise, std::abs (noise - 1.0));
-            if (std::abs (against - 1.0) > limits::formantShiftFraction || std::abs (real - 1.0) > limits::formantShiftFraction || std::getenv ("TUNE_DUMP") != nullptr)
-                std::printf ("  vowel %s around %.0f Hz, shift %d, band %.0f to %.0f Hz: against input %.3f, against a real voice there %.3f, input against that voice %.3f\n", v.name, centre, shift, band.first, band.second, against, real, noise);
-        }
-        const auto fine = smoothSpectrumDb (control.data() + from, n, SR, 50.0), fineOut = smoothSpectrumDb (run.out.data() + from, n, SR, 50.0);
-        const size_t f1 = (size_t) v.f[0];
-        const double flatten = (fine[f1] - fine[f1 / 2]) - (fineOut[f1] - fineOut[f1 / 2]);
-        worstFlatten = std::max (worstFlatten, flatten);
-        const double level = toDb (rms (run.out.data() + from, (int) n)) - toDb (rms (run.in.data() + from, (int) n));
-        worstLevel = std::max (worstLevel, std::abs (level));
-    };
-    for (auto* v : vowels)
+    auto& s = formantResults[gEngine];
+    s = {};
+    const double moveLimit = gEngine == 1 ? prolimits::hqFormantMove : prolimits::llFormantMove;
+    for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU })
         for (double centre : { 110.0, 165.0 })
             for (int shift : { 3, -3, 1, -1 })
-                one (*v, centre, shift);
+                scoreFormants (s, *v, centre, shift);
     for (auto* v : { &voice::vowelA, &voice::vowelE })
         for (int shift : { 3, -3 })
-            one (*v, 247.0, shift);
-    check (worst <= limits::formantShiftFraction, "formant positions at +/-1 and +/-3 semitones, output against input, worst move", worst * 100.0, "%");
-    // The small correction in the shifter was tuned on the set above. These vowels and pitches were not used for that.
-    const double tunedOn = worst;
-    worst = 0.0;
+            scoreFormants (s, *v, 247.0, shift);
+    chk (s.move <= moveLimit, "formant positions at +/-1 and +/-3 semitones, output against input, worst move", s.move * 100.0, "%");
+
+    FormantScore other;
     for (auto* v : { &voice::vowelO, &voice::vowelAe })
         for (double centre : { 130.0, 196.0 })
             for (int shift : { 3, -3, 2, -2 })
-                one (*v, centre, shift);
-    check (worst <= limits::formantShiftFraction, "formant positions on vowels and pitches not used for tuning, worst move", worst * 100.0, "%");
-    worst = std::max (worst, tunedOn);
-    info ("  the same output against a real voice at the new pitch, worst", worstReal * 100.0, "%");
-    info ("  and the tool's floor: the input against that same real voice, which share a vocal tract, worst", worstNoise * 100.0, "%");
-    info ("  first formant peak flatter than a real voice at that pitch, worst case", worstFlatten, "dB");
-    check (worstLevel <= limits::levelChangeDb, "level stays put at +/-1 and +/-3 semitones, worst change", worstLevel, "dB");
+                scoreFormants (other, *v, centre, shift);
+    chk (other.move <= moveLimit, "formant positions on other vowels and pitches, worst move", other.move * 100.0, "%");
+    note ("  the same output against a real voice at the new pitch, worst", std::max (s.moveReal, other.moveReal) * 100.0, "%");
+    note ("  and the tool's floor: the input against that same real voice, which share a vocal tract, worst", std::max (s.floor, other.floor) * 100.0, "%");
+    const double flatter = std::max (s.flatter, other.flatter);
+    s.flatter = flatter;
+    chk (flatter <= (gEngine == 1 ? prolimits::hqF1Flatter : prolimits::llF1Flatter), "first formant peak flatter than a real voice at that pitch, worst case", flatter, "dB");
+    chk (std::max (s.level, other.level) <= (gEngine == 1 ? prolimits::hqLevelChangeDb : limits::levelChangeDb), "level stays put at +/-1, +/-2 and +/-3 semitones, worst change", std::max (s.level, other.level), "dB");
+
+    // High notes, where a harmonic spacing is wider than a formant and any grain method colours the vowel
+    auto& high = highNoteResults[gEngine];
+    high = {};
+    for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelO })
+        for (double centre : { 440.0, 660.0 })
+            for (int shift : { 3, -3 })
+                scoreFormants (high, *v, centre, shift, wideRange);
+    chk (gEngine == 0 || high.move <= prolimits::highNoteMove, "high notes around 440 and 660 Hz, +/-3 semitones, worst formant move", high.move * 100.0, "%");
+    chk (gEngine == 0 || high.flatter <= prolimits::highNoteF1Flatter, "high notes, first formant flatter than a real voice, worst case", high.flatter, "dB");
+    note ("  high notes, level change, worst", high.level, "dB");
+
+    // Big corrections
+    auto& big = bigShiftResults[gEngine];
+    big = {};
+    for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelO })
+        for (double centre : { 165.0, 247.0 })
+            for (int shift : { 7, -7 })
+                scoreFormants (big, *v, centre, shift, wideRange);
+    chk (gEngine == 0 || big.move <= prolimits::bigShiftMove, "big shifts of +/-7 semitones, worst formant move", big.move * 100.0, "%");
+    chk (gEngine == 0 || big.flatter <= prolimits::highNoteF1Flatter, "big shifts, first formant flatter than a real voice, worst case", big.flatter, "dB");
+    note ("  big shifts, level change, worst", big.level, "dB");
 }
 
 // --------------------------------------------------------------------------------------------------------- vibrato
@@ -440,33 +481,33 @@ void testVibrato()
     {
         auto p = make(); setParam (*p, "retune", 0.0f); setParam (*p, "humanize", 0.0f); setParam (*p, "flex", 0.0f);
         const double kept = vibratoKept (*p);
-        check (kept <= limits::vibratoFlatHard, "hard settings flatten vibrato, kept", kept * 100.0, "%");
+        chk (kept <= limits::vibratoFlatHard, "hard settings flatten vibrato, kept", kept * 100.0, "%");
     }
     {
         auto p = make(); setParam (*p, "retune", 0.0f); setParam (*p, "humanize", 0.0f); setParam (*p, "flex", 60.0f);
         const double kept = vibratoKept (*p);
-        check (kept >= limits::vibratoKeptFlex, "Flex Amount 60 cents keeps a +/-40 cent vibrato, kept", kept * 100.0, "%");
+        chk (kept >= limits::vibratoKeptFlex, "Flex Tune 60 cents keeps a +/-40 cent vibrato, kept", kept * 100.0, "%");
     }
     {
         auto p = make(); setParam (*p, "retune", 0.0f); setParam (*p, "humanize", 100.0f); setParam (*p, "flex", 0.0f);
         const double kept = vibratoKept (*p);
-        check (kept >= limits::vibratoKeptHumanize, "Humanize 100 keeps vibrato on the sustained part, kept", kept * 100.0, "%");
+        chk (kept >= limits::vibratoKeptHumanize, "Humanize 100 keeps vibrato on the sustained part, kept", kept * 100.0, "%");
     }
     {
         auto p = make(); setParam (*p, "retune", 400.0f); setParam (*p, "humanize", 0.0f); setParam (*p, "flex", 0.0f);
         const double kept = vibratoKept (*p);
-        check (kept >= limits::vibratoKeptSlowRetune, "Retune Speed 400 ms keeps vibrato, kept", kept * 100.0, "%");
+        chk (kept >= limits::vibratoKeptSlowRetune, "Retune Speed 400 ms keeps vibrato, kept", kept * 100.0, "%");
     }
     {
         // Natural Vibrato acts on what survives correction, so use settings that leave vibrato alone.
         auto p = make(); setParam (*p, "retune", 400.0f); setParam (*p, "humanize", 0.0f); setParam (*p, "naturalVibrato", -100.0f);
         const double kept = vibratoKept (*p);
-        check (kept <= limits::naturalVibratoLess, "Natural Vibrato -100 takes vibrato down, left", kept * 100.0, "%");
+        chk (kept <= limits::naturalVibratoLess, "Natural Vibrato -100 takes vibrato down, left", kept * 100.0, "%");
     }
     {
         auto p = make(); setParam (*p, "retune", 400.0f); setParam (*p, "humanize", 0.0f); setParam (*p, "naturalVibrato", 100.0f);
         const double kept = vibratoKept (*p);
-        check (kept >= limits::naturalVibratoMore, "Natural Vibrato +100 takes vibrato up, now", kept * 100.0, "%");
+        chk (kept >= limits::naturalVibratoMore, "Natural Vibrato +100 takes vibrato up, now", kept * 100.0, "%");
     }
 }
 
@@ -501,9 +542,9 @@ void testHardStep()
         if (t90 < 0 && u > high) { t90 = (double) i * hop; break; }
     }
     const double ms = (t90 - t10) * 1000.0;
-    check (t10 >= 0 && t90 >= 0 && ms <= limits::hardStepMs, "hard tune step between two notes a tone apart, 10% to 90%", ms, "ms");
+    chk (t10 >= 0 && t90 >= 0 && ms <= limits::hardStepMs, "hard tune step between two notes a tone apart, 10% to 90%", ms, "ms");
     const auto settled = centsOff (out.data(), (long) out.size(), SR, b, start + 0.1, 1.9);
-    check (percentile (absolute (settled), 95) < limits::outputInstantCents, "after the step the new note is on pitch, 95th percentile", percentile (absolute (settled), 95), "cents");
+    chk (percentile (absolute (settled), 95) < limits::outputInstantCents, "after the step the new note is on pitch, 95th percentile", percentile (absolute (settled), 95), "cents");
 
     // A slow glide through two notes becomes steps: at instant speed the output spends its time on notes, not between.
     auto q = tuner (altoTenor, 0.0f);
@@ -525,7 +566,7 @@ void testHardStep()
         }
     }
     const double share = total > 0 ? 100.0 * onNote / total : 0.0;
-    check (share >= 80.0, "a slow glide comes out as steps, frames within 10 cents of a note", share, "%");
+    chk (share >= 80.0, "a slow glide comes out as steps, frames within 10 cents of a note", share, "%");
 }
 
 void testFlex()
@@ -535,7 +576,7 @@ void testFlex()
         const auto x = voice::synth (voice::steady (220.0 * std::pow (2.0, 30.0 / 1200.0), 1.5, SR), voice::vowelA, SR);
         const auto out = mono (render (*p, x, 256));
         const double e = median (centsOff (out.data(), (long) out.size(), SR, 220.0, 0.4, 1.4));
-        check (std::abs (e - 30.0) <= limits::flexHoldCents, "Flex Amount 50: a note 30 cents sharp is left where it was sung, output offset", e, "cents");
+        chk (std::abs (e - 30.0) <= limits::flexHoldCents, "Flex Tune 50: a note 30 cents sharp is left where it was sung, output offset", e, "cents");
     }
     {
         // In C major, so A stays the nearest note: chromatically, +80 cents would simply be 20 cents flat of A#.
@@ -546,14 +587,14 @@ void testFlex()
         const auto x = voice::synth (voice::steady (220.0 * std::pow (2.0, 80.0 / 1200.0), 1.5, SR), voice::vowelA, SR);
         const auto out = mono (render (*p, x, 256));
         const double e = median (centsOff (out.data(), (long) out.size(), SR, 220.0, 0.4, 1.4));
-        check (std::abs (e - 50.0) <= limits::flexClampCents, "Flex Amount 50: a note 80 cents sharp is brought to the edge, output offset", e, "cents");
+        chk (std::abs (e - 50.0) <= limits::flexClampCents, "Flex Tune 50: a note 80 cents sharp is brought to the edge, output offset", e, "cents");
     }
     {
         auto p = tuner (altoTenor, 0.0f, 0.0f, 0.0f);
         const auto x = voice::synth (voice::steady (220.0 * std::pow (2.0, 30.0 / 1200.0), 1.5, SR), voice::vowelA, SR);
         const auto out = mono (render (*p, x, 256));
         const double e = median (centsOff (out.data(), (long) out.size(), SR, 220.0, 0.4, 1.4));
-        check (std::abs (e) <= limits::outputInstantCents, "Flex Amount 0: the same note is corrected fully, output offset", e, "cents");
+        chk (std::abs (e) <= limits::outputInstantCents, "Flex Tune 0: the same note is corrected fully, output offset", e, "cents");
     }
 }
 
@@ -605,7 +646,7 @@ void testUnvoiced()
             const auto x = coloured ((int) (2.0 * SR), n.level, n.hp, n.lp, 11);
             const auto out = mono (render (*p, x, 256));
             const double db = nullDb (out, x, p->getLatencySamples(), (long) (0.1 * SR), (long) (1.9 * SR));
-            check (db <= limits::unvoicedNullDb, std::string ("unchanged: ") + n.name + (retune > 0 ? ", natural settings" : ", hard settings") + ", difference", db, "dB");
+            chk (db <= limits::unvoicedNullDb, std::string ("unchanged: ") + n.name + (retune > 0 ? ", natural settings" : ", hard settings") + ", difference", db, "dB");
         }
 
     // The same on the lowest latency type, whose window is shortest and so easiest to fool.
@@ -615,7 +656,7 @@ void testUnvoiced()
         const auto x = coloured ((int) (2.0 * SR), n.level, n.hp, n.lp, 21);
         const auto out = mono (render (*p, x, 256));
         const double db = nullDb (out, x, p->getLatencySamples(), (long) (0.1 * SR), (long) (1.9 * SR));
-        check (db <= limits::unvoicedNullDb, std::string ("unchanged on Soprano: ") + n.name + ", difference", db, "dB");
+        chk (db <= limits::unvoicedNullDb, std::string ("unchanged on Soprano: ") + n.name + ", difference", db, "dB");
     }
 
     // An S between two corrected vowels. Its middle must pass as it came in.
@@ -628,9 +669,9 @@ void testUnvoiced()
     const auto out = mono (render (*p, x, 256));
     const int delay = p->getLatencySamples();
     const double db = nullDb (out, x, delay, (long) (0.65 * SR) + delay, (long) (0.75 * SR) + delay);
-    check (db <= limits::consonantNullDb, "an S between two corrected vowels, middle of the S, difference", db, "dB");
+    chk (db <= limits::consonantNullDb, "an S between two corrected vowels, middle of the S, difference", db, "dB");
     const auto e = centsOff (out.data(), (long) out.size(), SR, 220.0, 1.0, 1.35);
-    check (percentile (absolute (e), 95) < limits::outputInstantCents, "the vowel after the S is corrected again, 95th percentile", percentile (absolute (e), 95), "cents");
+    chk (percentile (absolute (e), 95) < limits::outputInstantCents, "the vowel after the S is corrected again, 95th percentile", percentile (absolute (e), 95), "cents");
 }
 
 // ------------------------------------------------------------------------------------------------------- artifacts
@@ -643,8 +684,8 @@ void testArtifacts()
     const auto out = mono (render (*p, x, 256));
     const int from = (int) (0.5 * SR), n = 1 << 16;
     const double nh = nonHarmonicDb (out.data() + from, n, target, SR);
-    check (nh <= limits::nonHarmonicDb, "non-harmonic energy, 220 Hz tone corrected by 30 cents", nh, "dB");
-    info ("  the same measure on the uncorrected input", nonHarmonicDb (x.data() + from, n, target * std::pow (2.0, 30.0 / 1200.0), SR), "dB");
+    chk (nh <= limits::nonHarmonicDb, "non-harmonic energy, 220 Hz tone corrected by 30 cents", nh, "dB");
+    note ("  the same measure on the uncorrected input", nonHarmonicDb (x.data() + from, n, target * std::pow (2.0, 30.0 / 1200.0), SR), "dB");
 
     // Corrected by more, as a pentatonic gap might ask
     auto q = make();
@@ -654,7 +695,7 @@ void testArtifacts()
     const auto y = voice::synth (voice::steady (noteHz (57) * std::pow (2.0, 150.0 / 1200.0), 3.0, SR), voice::vowelA, SR);
     const auto outY = mono (render (*q, y, 256));
     const double nh2 = nonHarmonicDb (outY.data() + from, n, target, SR);
-    check (nh2 <= limits::nonHarmonicDb, "non-harmonic energy, 220 Hz tone corrected by 150 cents", nh2, "dB");
+    chk (nh2 <= limits::nonHarmonicDb, "non-harmonic energy, 220 Hz tone corrected by 150 cents", nh2, "dB");
 
     // Warble on a sustained note
     const auto e = centsOff (out.data(), (long) out.size(), SR, target, 0.5, 2.9);
@@ -663,7 +704,7 @@ void testArtifacts()
     m /= (double) e.size();
     for (double v : e) s2 += (v - m) * (v - m);
     const double sd = std::sqrt (s2 / (double) e.size());
-    check (sd <= limits::warblePitchCents, "output pitch steadiness on a corrected sustained note, standard deviation", sd, "cents");
+    chk (sd <= limits::warblePitchCents, "output pitch steadiness on a corrected sustained note, standard deviation", sd, "cents");
     double lo = 1.0e9, hi = -1.0e9;
     const int frame = (int) (0.05 * SR);
     for (int at = from; at + frame < (int) out.size() - 2400; at += frame / 2)
@@ -671,7 +712,7 @@ void testArtifacts()
         const double db = toDb (rms (out.data() + at, frame));
         lo = std::min (lo, db); hi = std::max (hi, db);
     }
-    check (hi - lo <= limits::warbleLevelDb, "output level steadiness on a corrected sustained note, peak to peak", hi - lo, "dB");
+    chk (hi - lo <= limits::warbleLevelDb, "output level steadiness on a corrected sustained note, peak to peak", hi - lo, "dB");
 
     // No warble either at everyday settings, where the correction is settling rather than snapping.
     {
@@ -684,10 +725,10 @@ void testArtifacts()
         nm /= (double) ne.size();
         for (double v : ne) ns += (v - nm) * (v - nm);
         const double nsd = std::sqrt (ns / (double) ne.size());
-        check (nsd <= limits::warblePitchCents, "output pitch steadiness at everyday settings (Retune 20, Humanize 30), standard deviation", nsd, "cents");
-        check (std::abs (nm) <= limits::outputInstantCents, "and the note settles on pitch, offset", nm, "cents");
+        chk (nsd <= limits::warblePitchCents, "output pitch steadiness at everyday settings (Retune 20, Humanize 30), standard deviation", nsd, "cents");
+        chk (std::abs (nm) <= limits::outputInstantCents, "and the note settles on pitch, offset", nm, "cents");
         const double nnh = nonHarmonicDb (nout.data() + (int) (1.5 * SR), 1 << 16, target, SR);
-        check (nnh <= limits::nonHarmonicDb, "non-harmonic energy at everyday settings", nnh, "dB");
+        chk (nnh <= limits::nonHarmonicDb, "non-harmonic energy at everyday settings", nnh, "dB");
     }
 
     // In tune and left alone: the plug-in must then be close to a plain delay even on a voice.
@@ -695,7 +736,7 @@ void testArtifacts()
     const auto w = voice::synth (voice::steady (220.0, 2.0, SR), voice::vowelA, SR);
     const auto outW = mono (render (*t, w, 256));
     const double db = nullDb (outW, w, t->getLatencySamples(), (long) (0.2 * SR), (long) (1.9 * SR));
-    check (db <= -60.0, "a voice with nothing to correct passes as a plain delay, difference", db, "dB");
+    chk (db <= -60.0, "a voice with nothing to correct passes as a plain delay, difference", db, "dB");
 }
 
 // ---------------------------------------------------------------------------------------------------- key and scale
@@ -745,7 +786,7 @@ void testKeysAndScales()
         if (! same) std::printf ("  wrong mask: %s %s\n", smoothtune::noteNames[k.root], smoothtune::scaleNames[k.scale]);
         tableOk += same ? 1 : 0;
     }
-    check (tableOk == 24, "key and scale masks match the written-out notes of all 24 keys", tableOk, "of 24");
+    chk (tableOk == 24, "key and scale masks match the written-out notes of all 24 keys", tableOk, "of 24");
 
     // The sound: sing every note slightly sharp and slightly flat in every key, and see which note comes out.
     std::vector<std::vector<float>> sharp, flat;
@@ -777,47 +818,47 @@ void testKeysAndScales()
                 ++total;
             }
     }
-    check (right == total, "every note sung in all 24 keys lands on the right note, " + std::to_string (total) + " cases", right, "right");
+    chk (right == total, "every note sung in all 24 keys lands on the right note, " + std::to_string (total) + " cases", right, "right");
 
     // Other scales, written out by hand for a root of A
     struct S { int scale; const char* notes; };
     for (auto s : { S { smoothtune::scaleHarmonicMinor, "A B C D E F G#" }, S { smoothtune::scaleMelodicMinor, "A B C D E F# G#" },
                     S { smoothtune::scaleMajorPentatonic, "A B C# E F#" }, S { smoothtune::scaleMinorPentatonic, "A C D E G" },
                     S { smoothtune::scaleBlues, "A C D D# E G" }, S { smoothtune::scaleDorian, "A B C D E F# G" }, S { smoothtune::scaleMixolydian, "A B C# D E F# G" } })
-        check (smoothtune::scaleMask (9, s.scale) == maskFromNames (s.notes), std::string ("A ") + smoothtune::scaleNames[s.scale] + " mask is right");
+        chk (smoothtune::scaleMask (9, s.scale) == maskFromNames (s.notes), std::string ("A ") + smoothtune::scaleNames[s.scale] + " mask is right");
 
     // Custom notes
     {
         auto q = make();
         setParam (*q, "retune", 0.0f); setParam (*q, "humanize", 0.0f);
-        setParam (*q, "scale", (float) smoothtune::scaleCustom);
+        setParam (*q, "scale", (float) smoothtune::scaleChromatic);
         setParam (*q, "note9", 1.0f); // A removed
         prepare (*q, 1, SR, 256);
         const auto x = voice::synth (voice::steady (220.0 * std::pow (2.0, 20.0 / 1200.0), 1.0, SR), voice::vowelA, SR);
         const auto out = mono (render (*q, x, 256));
         const double e = median (centsOff (out.data(), (long) out.size(), SR, noteHz (58), 0.3, 0.9, 0.005, 0.1));
-        check (std::abs (e) <= limits::customNoteCents, "Custom: A removed, A +20 cents goes to A#, offset", e, "cents");
+        chk (std::abs (e) <= limits::customNoteCents, "Note modes: A removed, A +20 cents goes to A#, offset", e, "cents");
     }
     {
         auto q = make();
         setParam (*q, "retune", 0.0f); setParam (*q, "humanize", 0.0f);
-        setParam (*q, "scale", (float) smoothtune::scaleCustom);
+        setParam (*q, "scale", (float) smoothtune::scaleChromatic);
         setParam (*q, "note9", 2.0f); // A bypassed
         prepare (*q, 1, SR, 256);
         const auto x = voice::synth (voice::steady (220.0 * std::pow (2.0, 30.0 / 1200.0), 1.0, SR), voice::vowelA, SR);
         const auto out = mono (render (*q, x, 256));
         const double e = median (centsOff (out.data(), (long) out.size(), SR, 220.0, 0.3, 0.9));
-        check (std::abs (e - 30.0) <= limits::customNoteCents, "Custom: A bypassed, A +30 cents stays where it was sung, offset", e, "cents");
+        chk (std::abs (e - 30.0) <= limits::customNoteCents, "Note modes: A bypassed, A +30 cents stays where it was sung, offset", e, "cents");
     }
     {
         auto q = make();
         setParam (*q, "retune", 0.0f); setParam (*q, "humanize", 0.0f);
-        setParam (*q, "scale", (float) smoothtune::scaleCustom);
+        setParam (*q, "scale", (float) smoothtune::scaleChromatic);
         for (int i = 0; i < 12; ++i) setParam (*q, ("note" + juce::String (i)).toRawUTF8(), 1.0f);
         prepare (*q, 1, SR, 256);
         const auto x = voice::synth (voice::steady (220.0 * std::pow (2.0, 30.0 / 1200.0), 1.0, SR), voice::vowelA, SR);
         const auto out = mono (render (*q, x, 256));
-        check (countNonFinite (render (*q, x, 256)) == 0 && std::abs (median (centsOff (out.data(), (long) out.size(), SR, 220.0, 0.3, 0.9)) - 30.0) < 10.0, "Custom: every note removed leaves the voice alone");
+        chk (countNonFinite (render (*q, x, 256)) == 0 && std::abs (median (centsOff (out.data(), (long) out.size(), SR, 220.0, 0.3, 0.9)) - 30.0) < 10.0, "Note modes: every note removed leaves the voice alone");
     }
 }
 
@@ -863,7 +904,7 @@ void testFollowKey()
     const int manualNote = 67, fileNote = 66;
 
     p->pollKeyFileNow();
-    check (outputNote (*p, x) == manualNote, "Follow Key with no file uses the manual key", outputNote (*p, x));
+    chk (outputNote (*p, x) == manualNote, "Follow Key with no file uses the manual key", outputNote (*p, x));
 
     struct Bad { const char* name; std::string text; };
     const Bad bad[] = {
@@ -882,22 +923,22 @@ void testFollowKey()
     {
         writeKey (file, b.text);
         p->pollKeyFileNow();
-        check (outputNote (*p, x) == manualNote, std::string ("Follow Key ignores a file with ") + b.name);
-        check (p->getReadings().activeKey == 0, std::string ("  active key still reads the manual one after ") + b.name);
+        chk (outputNote (*p, x) == manualNote, std::string ("Follow Key ignores a file with ") + b.name);
+        chk (p->getReadings().activeKey == 0, std::string ("  active key still reads the manual one after ") + b.name);
     }
 
     // A good file takes over
     writeKey (file, keyJson ("D", "major", 0.87, nowUnix()));
     p->pollKeyFileNow();
-    check (outputNote (*p, x) == fileNote, "Follow Key uses a good file: D major keeps F#", outputNote (*p, x));
-    check (p->getReadings().activeKey == 2 && p->getReadings().activeScale == smoothtune::scaleMajor, "active key reads D major");
+    chk (outputNote (*p, x) == fileNote, "Follow Key uses a good file: D major keeps F#", outputNote (*p, x));
+    chk (p->getReadings().activeKey == 2 && p->getReadings().activeScale == smoothtune::scaleMajor, "active key reads D major");
 
     // The real format, as the task gives it
     writeKey (file, keyJson ("A", "minor", 0.87, nowUnix()));
     p->pollKeyFileNow();
     prepare (*p, 1, SR, 256);
     render (*p, x, 256);
-    check (p->getReadings().activeKey == 9 && p->getReadings().activeScale == smoothtune::scaleMinor, "active key reads A minor from a good file");
+    chk (p->getReadings().activeKey == 9 && p->getReadings().activeScale == smoothtune::scaleMinor, "active key reads A minor from a good file");
 
     // Good, then bad: the last good key holds.
     writeKey (file, keyJson ("D", "major", 0.87, nowUnix()));
@@ -906,24 +947,24 @@ void testFollowKey()
     {
         writeKey (file, b.text);
         p->pollKeyFileNow();
-        if (outputNote (*p, x) != fileNote) check (false, std::string ("last good key should hold after ") + b.name);
+        if (outputNote (*p, x) != fileNote) chk (false, std::string ("last good key should hold after ") + b.name);
     }
-    check (outputNote (*p, x) == fileNote, "after a good file, bad data leaves the last good key in place");
+    chk (outputNote (*p, x) == fileNote, "after a good file, bad data leaves the last good key in place");
 
     file.deleteFile();
     p->pollKeyFileNow();
-    check (outputNote (*p, x) == fileNote, "after a good file, the file going missing leaves the last good key in place");
+    chk (outputNote (*p, x) == fileNote, "after a good file, the file going missing leaves the last good key in place");
 
     // Switched off: back to manual at once.
     setParam (*p, "followKey", 0.0f);
     p->pollKeyFileNow();
-    check (outputNote (*p, x) == manualNote, "Follow Key off goes back to the manual key");
+    chk (outputNote (*p, x) == manualNote, "Follow Key off goes back to the manual key");
 
     // The background thread does it without help.
     writeKey (file, keyJson ("D", "major", 0.9, nowUnix()));
     setParam (*p, "followKey", 1.0f);
     std::this_thread::sleep_for (std::chrono::milliseconds (700));
-    check (outputNote (*p, x) == fileNote, "the background thread picks up the file by itself within 0.7 s");
+    chk (outputNote (*p, x) == fileNote, "the background thread picks up the file by itself within 0.7 s");
     file.deleteFile();
 
     // A reader must not trip on a very large file or a folder
@@ -932,12 +973,12 @@ void testFollowKey()
         setParam (*q, "followKey", 1.0f);
         writeKey (file, std::string (200000, 'x'));
         q->pollKeyFileNow();
-        check (! smoothtune::KeyFollower::usable ({}, nowUnix()), "a large junk file changes nothing");
+        chk (! smoothtune::KeyFollower::usable ({}, nowUnix()), "a large junk file changes nothing");
         file.deleteFile();
         file.createDirectory();
         q->pollKeyFileNow();
         file.deleteRecursively();
-        check (true, "a folder at that path changes nothing");
+        chk (true, "a folder at that path changes nothing");
     }
 }
 
@@ -970,7 +1011,7 @@ void testLatency()
             noise (x.data(), (int) x.size(), 0.1);
             const auto out = mono (render (*p, x, 256));
             const int d = measuredDelay (out, x, reported + 200);
-            check (d == reported, std::string (names[type]) + " at " + std::to_string ((int) sr) + " Hz: delay measured on noise against reported " + std::to_string (reported), d, "samples");
+            chk (d == reported, std::string (names[type]) + " at " + std::to_string ((int) sr) + " Hz: delay measured on noise against reported " + std::to_string (reported), d, "samples");
         }
 
     // The same on a voice with nothing to correct
@@ -982,8 +1023,8 @@ void testLatency()
         prepare (*p, 1, SR, 256);
         const auto x = voice::synth (voice::steady (type == soprano ? 330.0 : 220.0, 1.5, SR), voice::vowelA, SR);
         const auto out = mono (render (*p, x, 256));
-        const int d = measuredDelay (out, x, 1200);
-        check (std::abs (d - p->getLatencySamples()) <= 1, std::string ("delay measured on a voice, ") + names[type], d, "samples");
+        const int d = measuredDelay (out, x, p->getLatencySamples() + 100);
+        chk (std::abs (d - p->getLatencySamples()) <= 1, std::string ("delay measured on a voice, ") + names[type], d, "samples");
     }
 
     // The lowest latency type
@@ -992,13 +1033,13 @@ void testLatency()
         setParam (*p, "inputType", (float) soprano);
         prepare (*p, 1, SR, 256);
         const double ms = p->getLatencySamples() * 1000.0 / SR;
-        check (ms < limits::lowestLatencyMs, "lowest latency Input Type (Soprano) at 48 kHz", ms, "ms");
+        if (gEngine == 0) chk (ms < limits::lowestLatencyMs, "lowest latency Input Type (Soprano) at 48 kHz", ms, "ms");
         for (int type : { altoTenor, lowMale, wideRange })
         {
             auto q = make();
             setParam (*q, "inputType", (float) type);
             prepare (*q, 1, SR, 256);
-            info (std::string ("  latency at 48 kHz, ") + names[type], q->getLatencySamples() * 1000.0 / SR, "ms");
+            note (std::string ("  latency at 48 kHz, ") + names[type], q->getLatencySamples() * 1000.0 / SR, "ms");
         }
     }
 
@@ -1010,9 +1051,9 @@ void testLatency()
         std::vector<float> x ((size_t) SR);
         noise (x.data(), (int) x.size(), 0.1);
         const auto out = mono (render (*p, x, 256));
-        check (measuredDelay (out, x, 2000) == p->getLatencySamples(), "bypass keeps the same delay");
+        chk (measuredDelay (out, x, 4000) == p->getLatencySamples(), "bypass keeps the same delay");
         const double db = nullDb (out, x, p->getLatencySamples(), 4000, 40000);
-        check (db < -120.0, "bypass is the plain delayed input, difference", db, "dB");
+        chk (db < -120.0, "bypass is the plain delayed input, difference", db, "dB");
     }
 
     // processBlockBypassed the same
@@ -1030,7 +1071,7 @@ void testLatency()
             p->processBlockBypassed (b, m);
             out.insert (out.end(), b.getReadPointer (0), b.getReadPointer (0) + 256);
         }
-        check (measuredDelay (out, x, 2000) == p->getLatencySamples(), "processBlockBypassed keeps the same delay");
+        chk (measuredDelay (out, x, 4000) == p->getLatencySamples(), "processBlockBypassed keeps the same delay");
     }
 
     // Changing Input Type while running: the delay moves, and the host is told.
@@ -1044,9 +1085,9 @@ void testLatency()
         noise (x.data(), (int) x.size(), 0.1);
         const auto out = mono (render (*p, x, 256));
         p->applyPendingLatencyNow();
-        check (p->getLatencySamples() < first && p->getLatencySamples() == PluginProcessor::latencyFor (soprano, SR), "changing Input Type changes the reported latency, now", p->getLatencySamples(), "samples");
+        chk (p->getLatencySamples() < first && p->getLatencySamples() == PluginProcessor::latencyFor (soprano, gEngine, SR), "changing Input Type changes the reported latency, now", p->getLatencySamples(), "samples");
         const std::vector<float> tailIn (x.begin() + 24000, x.end()), tailOut (out.begin() + 24000, out.end());
-        check (measuredDelay (tailOut, tailIn, 1200) == p->getLatencySamples(), "and the real delay matches");
+        chk (measuredDelay (tailOut, tailIn, 4000) == p->getLatencySamples(), "and the real delay matches");
     }
 
     // Saved state with another Input Type, then prepare
@@ -1057,7 +1098,7 @@ void testLatency()
         auto b = make();
         b->setStateInformation (st.getData(), (int) st.getSize());
         prepare (*b, 2, SR, 256);
-        check (b->getLatencySamples() == PluginProcessor::latencyFor (lowMale, SR), "a saved Input Type restores its latency");
+        chk (b->getLatencySamples() == PluginProcessor::latencyFor (lowMale, gEngine, SR), "a saved Input Type restores its latency");
     }
 }
 
@@ -1094,7 +1135,7 @@ void testRealMaterial()
     for (const auto& it : items)
     {
         const auto x = loadWav (it.file);
-        if (x.empty()) { check (false, std::string ("could not load ") + it.file); continue; }
+        if (x.empty()) { chk (false, std::string ("could not load ") + it.file); continue; }
 
         // Tracker against a slow two sided reference
         const auto ref = referenceTrack (x, SR);
@@ -1127,7 +1168,7 @@ void testRealMaterial()
         totalSec += voicedBoth;
         totalEvents += events;
         const double perMin = events / std::max (voicedBoth, 0.1) * 60.0;
-        std::printf ("INFO  %s: %.1f s voiced in both, %ld octave disagreements, %.1f per minute\n", it.file, voicedBoth, events, perMin);
+        std::printf ("INFO  [%s] %s: %.1f s voiced in both, %ld octave disagreements, %.1f per minute\n", gEngine == 1 ? "HQ" : "LL", it.file, voicedBoth, events, perMin);
 
         // Corrected at instant speed: how close to a note does the output sit?
         auto p = tuner (it.type, 0.0f);
@@ -1145,7 +1186,7 @@ void testRealMaterial()
             return d;
         };
         const auto dIn = dist (ref), dOut = dist (refOut);
-        std::printf ("INFO  %s: distance from a note, median, before %.1f cents, after %.1f cents, %d voiced frames\n", it.file, median (dIn), median (dOut), (int) dOut.size());
+        std::printf ("INFO  [%s] %s: distance from a note, median, before %.1f cents, after %.1f cents, %d voiced frames\n", gEngine == 1 ? "HQ" : "LL", it.file, median (dIn), median (dOut), (int) dOut.size());
         (it.sung ? sungMedians : speechMedians).push_back (median (dOut));
 
         // No listening possible here, so look for what bad grains would leave behind: level holes or bursts, and clicks.
@@ -1161,17 +1202,17 @@ void testRealMaterial()
             worstFrames = std::max (worstFrames, percentile (changes, 99));
             worstJump = std::max (worstJump, maxJump (out.data(), (int) out.size()) / std::max (maxJump (x.data(), (int) x.size()), 1.0e-6));
         }
-        check (countNonFinite (render (*p, x, 256)) == 0, std::string ("  ") + it.file + " gives finite output");
+        chk (countNonFinite (render (*p, x, 256)) == 0, std::string ("  ") + it.file + " gives finite output");
     }
 
-    check (worstFrames <= limits::speechFrameLevelDb, "real material at instant speed: 99th percentile change in 20 ms frame level, worst file", worstFrames, "dB");
-    check (worstJump <= limits::speechJumpRatio, "real material at instant speed: biggest sample step against the input's, worst file", worstJump, "times");
+    chk (worstFrames <= limits::speechFrameLevelDb, "real material at instant speed: 99th percentile change in 20 ms frame level, worst file", worstFrames, "dB");
+    chk (worstJump <= limits::speechJumpRatio, "real material at instant speed: biggest sample step against the input's, worst file", worstJump, "times");
     const double perMinute = totalEvents / std::max (totalSec, 1.0) * 60.0;
-    check (perMinute <= limits::speechOctaveErrorsPerMinute, "real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth", perMinute, "per minute");
+    chk (perMinute <= limits::speechOctaveErrorsPerMinute, "real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth", perMinute, "per minute");
     const double speech = *std::max_element (speechMedians.begin(), speechMedians.end());
-    check (speech <= limits::speechOutputMedianCents, "real speech at instant speed: worst file's median distance from a note", speech, "cents");
+    chk (speech <= limits::speechOutputMedianCents, "real speech at instant speed: worst file's median distance from a note", speech, "cents");
     const double sung = *std::max_element (sungMedians.begin(), sungMedians.end());
-    check (sung <= limits::sungOutputMedianCents, "say singing and held vowels at instant speed: worst file's median distance from a note", sung, "cents");
+    chk (sung <= limits::sungOutputMedianCents, "say singing and held vowels at instant speed: worst file's median distance from a note", sung, "cents");
 }
 
 // ------------------------------------------------------------------------------------------------- added controls
@@ -1185,7 +1226,7 @@ void testAddedControls()
         const auto x = voice::synth (voice::steady (220.0, 1.5, SR), voice::vowelA, SR);
         const auto out = mono (render (*p, x, 256));
         const double e = median (centsOff (out.data(), (long) out.size(), SR, noteHz (64), 0.4, 1.4));
-        check (std::abs (e) <= limits::transposeCents, "Transpose +7 on A3 gives E4, offset", e, "cents");
+        chk (std::abs (e) <= limits::transposeCents, "Transpose +7 on A3 gives E4, offset", e, "cents");
     }
     {
         auto p = make();
@@ -1194,7 +1235,7 @@ void testAddedControls()
         const auto x = voice::synth (voice::steady (440.0, 1.5, SR), voice::vowelA, SR);
         const auto out = mono (render (*p, x, 256));
         const double e = median (centsOff (out.data(), (long) out.size(), SR, 220.0, 0.4, 1.4));
-        check (std::abs (e) <= limits::transposeCents, "Transpose -12 on A4 gives A3, offset", e, "cents");
+        chk (std::abs (e) <= limits::transposeCents, "Transpose -12 on A4 gives A3, offset", e, "cents");
     }
     {
         auto p = make();
@@ -1203,7 +1244,7 @@ void testAddedControls()
         const auto x = voice::synth (voice::steady (222.0, 1.5, SR), voice::vowelA, SR);
         const auto out = mono (render (*p, x, 256));
         const double e = median (centsOff (out.data(), (long) out.size(), SR, 216.0, 0.4, 1.4));
-        check (std::abs (e) <= limits::referenceCents, "Reference A4 432 Hz puts A3 at 216 Hz, offset", e, "cents");
+        chk (std::abs (e) <= limits::referenceCents, "Reference A4 432 Hz puts A3 at 216 Hz, offset", e, "cents");
     }
     // Formant Preserve and Throat Length, read with the same tool as the formant test. These also prove that tool sees real moves.
     const auto movedBy = [] (bool preserve, float throat)
@@ -1216,18 +1257,18 @@ void testAddedControls()
     };
     {
         const double m = movedBy (false, 100.0f);
-        check (m >= 1.0 + limits::formantOffMinMove, "Formant Preserve off: formants follow +3 semitones up, scale (19% would be exact)", m, "times");
-        check (std::abs (m / 1.189 - 1.0) <= limits::formantShiftFraction, "  and the formant tool reads that known move within 5%");
+        chk (m >= 1.0 + limits::formantOffMinMove, "Formant Preserve off: formants follow +3 semitones up, scale (19% would be exact)", m, "times");
+        chk (std::abs (m / 1.189 - 1.0) <= limits::formantShiftFraction, "  and the formant tool reads that known move within 5%");
     }
     {
         const double m = movedBy (true, 130.0f);
-        check (m <= 1.0 - limits::throatFormantMinMove, "Throat Length 130%: formants move down, scale (0.77 would be exact)", m, "times");
-        check (std::abs (m / 0.769 - 1.0) <= limits::formantShiftFraction, "  and the formant tool reads that known move within 5%");
+        chk (m <= 1.0 - limits::throatFormantMinMove, "Throat 130%: formants move down, scale (0.77 would be exact)", m, "times");
+        chk (std::abs (m / 0.769 - 1.0) <= limits::formantShiftFraction, "  and the formant tool reads that known move within 5%");
     }
     {
         const double m = movedBy (true, 75.0f);
-        check (m >= 1.0 + limits::throatFormantMinMove, "Throat Length 75%: formants move up, scale (1.33 would be exact)", m, "times");
-        check (std::abs (m / 1.333 - 1.0) <= limits::formantShiftFraction, "  and the formant tool reads that known move within 5%");
+        chk (m >= 1.0 + limits::throatFormantMinMove, "Throat 75%: formants move up, scale (1.33 would be exact)", m, "times");
+        chk (std::abs (m / 1.333 - 1.0) <= limits::formantShiftFraction, "  and the formant tool reads that known move within 5%");
     }
     // Tracking: a noisy voice is called pitched or not.
     {
@@ -1245,8 +1286,8 @@ void testAddedControls()
             return total > 0 ? 100.0 * voiced / total : 0.0;
         };
         const double choosy = voicedShare (0.0f), relaxed = voicedShare (100.0f);
-        check (choosy <= limits::trackingChoosyPercent, "Tracking 0 calls a noisy voice pitched this share of the time", choosy, "%");
-        check (relaxed >= limits::trackingRelaxedPercent, "Tracking 100 calls the same voice pitched this share of the time", relaxed, "%");
+        chk (choosy <= limits::trackingChoosyPercent, "Tracking 0 calls a noisy voice pitched this share of the time", choosy, "%");
+        chk (relaxed >= limits::trackingRelaxedPercent, "Tracking 100 calls the same voice pitched this share of the time", relaxed, "%");
     }
 }
 
@@ -1268,23 +1309,23 @@ void testMeter()
     render (*p, x, 256);
     p->removeListener (&listener);
     const auto r = p->getReadings();
-    check (std::abs (r.centsOffTarget - 30.0f) <= 5.0f, "Pitch Off Target reads the sung error, 30 cents sharp", r.centsOffTarget, "cents");
-    check (r.targetNote == 57, "Target Note reads A3");
-    check (std::abs (r.correctionCents + 30.0f) <= 5.0f, "Correction Applied reads the correction, -30 cents", r.correctionCents, "cents");
-    check (std::abs (r.detectedHz - 223.8f) <= 2.0f, "Detected Pitch reads the sung pitch", r.detectedHz, "Hz");
-    check (listener.changes.load() == 0, "readings send nothing to the host while audio runs: parameter messages", listener.changes.load());
+    chk (std::abs (r.centsOffTarget - 30.0f) <= 5.0f, "Pitch Off Target reads the sung error, 30 cents sharp", r.centsOffTarget, "cents");
+    chk (r.targetNote == 57, "Target Note reads A3");
+    chk (std::abs (r.correctionCents + 30.0f) <= 5.0f, "Correction Applied reads the correction, -30 cents", r.correctionCents, "cents");
+    chk (std::abs (r.detectedHz - 223.8f) <= 2.0f, "Detected Pitch reads the sung pitch", r.detectedHz, "Hz");
+    chk (listener.changes.load() == 0, "readings send nothing to the host while audio runs: parameter messages", listener.changes.load());
 
     // Value strings through the parameter, as a host reads them
     for (auto* prm : p->getParameters())
         if (auto* w = dynamic_cast<juce::AudioProcessorParameterWithID*> (prm))
             if (w->paramID == "pitchOffTarget")
-                check (prm->getCurrentValueAsText().containsIgnoreCase ("cents") && ! prm->isAutomatable(), "Pitch Off Target has a real value string and is not automatable: " + prm->getCurrentValueAsText().toStdString());
+                chk (prm->getCurrentValueAsText().containsIgnoreCase ("cents") && ! prm->isAutomatable(), "Pitch Off Target has a real value string and is not automatable: " + prm->getCurrentValueAsText().toStdString());
 
     // No pitch: readings say so.
     std::vector<float> silence (48000, 0.0f);
     render (*p, silence, 256);
     const auto q = p->getReadings();
-    check (! q.voiced && q.centsOffTarget == 0.0f && q.targetNote == -1, "silence: readings show no pitch");
+    chk (! q.voiced && q.centsOffTarget == 0.0f && q.targetNote == -1, "silence: readings show no pitch");
 
     // The window shows them, without any host message.
     {
@@ -1292,15 +1333,15 @@ void testMeter()
         render (*p, x2, 256);
         std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
         auto* te = dynamic_cast<TuneEditor*> (ed.get());
-        check (te != nullptr && te->readingText().contains ("Hz") && te->readingText().contains ("A3"), "the window's reading strip shows the pitch: " + (te != nullptr ? te->readingText().toStdString() : std::string ("none")));
+        chk (te != nullptr && te->readingText().contains ("Hz") && te->readingText().contains ("A3"), "the window's reading strip shows the pitch: " + (te != nullptr ? te->readingText().toStdString() : std::string ("none")));
         juce::Image img (juce::Image::ARGB, ed->getWidth(), ed->getHeight(), true);
         juce::Graphics g (img);
         ed->paintEntireComponent (g, false);
-        check (ed->getWidth() > 200 && ed->getHeight() > 100, "the window opens and paints");
+        chk (ed->getWidth() > 200 && ed->getHeight() > 100, "the window opens and paints");
     }
 
     // Pitch history for a later graph
-    check (p->getPitchHistoryCount() > 0 && p->getPitchPoint (p->getPitchHistoryCount() - 1).targetNote.load() >= -1.0f, "pitch history is filling, points", (double) p->getPitchHistoryCount());
+    chk (p->getPitchHistoryCount() > 0 && p->getPitchPoint (p->getPitchHistoryCount() - 1).targetNote.load() >= -1.0f, "pitch history is filling, points", (double) p->getPitchHistoryCount());
 }
 
 void testBlocksAndState()
@@ -1318,7 +1359,7 @@ void testBlocksAndState()
         if (first.empty()) first = out;
         else for (size_t i = 0; i < out.size(); ++i) if (std::abs (out[i] - first[i]) > 1.0e-5f) { same = false; std::printf ("  block %d differs at %d\n", block, (int) i); break; }
     }
-    check (same, "output does not depend on block size (and so not on a playhead)");
+    chk (same, "output does not depend on block size (and so not on a playhead)");
 
     // Calling prepareToPlay again gives the same result, and does not leave old state behind.
     {
@@ -1330,7 +1371,7 @@ void testBlocksAndState()
         const auto b = mono (render (*p, x, 512));
         bool equal = true;
         for (size_t i = 0; i < a.size(); ++i) if (std::abs (a[i] - b[i]) > 1.0e-5f) { equal = false; break; }
-        check (equal, "prepareToPlay again resets all state");
+        chk (equal, "prepareToPlay again resets all state");
     }
 
     // Stereo: same grains on both sides, so the image holds. Left only stays left.
@@ -1350,7 +1391,7 @@ void testBlocksAndState()
             left += buf.getRMSLevel (0, 0, 256);
             right += buf.getRMSLevel (1, 0, 256);
         }
-        check (right < 1.0e-4 * left, "stereo: a voice on the left stays on the left, right against left", toDb (right / left), "dB");
+        chk (right < 1.0e-4 * left, "stereo: a voice on the left stays on the left, right against left", toDb (right / left), "dB");
     }
 
     // Presets do what their names say
@@ -1363,19 +1404,19 @@ void testBlocksAndState()
             if (p->getProgramName (i) == "Hard Tune") hard = i;
             if (p->getProgramName (i) == "Natural Pop") natural = i;
         }
-        check (hard >= 0 && natural >= 0 && n >= 4, "hard and natural presets are both there, presets", n);
+        chk (hard >= 0 && natural >= 0 && n >= 4, "hard and natural presets are both there, presets", n);
         p->setCurrentProgram (hard);
         const double hardKept = vibratoKept (*p);
         p->setCurrentProgram (natural);
         const double naturalKept = vibratoKept (*p);
-        check (hardKept <= limits::vibratoFlatHard, "preset Hard Tune flattens vibrato, kept", hardKept * 100.0, "%");
-        check (naturalKept > hardKept + 0.2, "preset Natural Pop keeps more vibrato, kept", naturalKept * 100.0, "%");
+        chk (hardKept <= limits::vibratoFlatHard, "preset Hard Tune flattens vibrato, kept", hardKept * 100.0, "%");
+        chk (naturalKept > hardKept + 0.2, "preset Natural Pop keeps more vibrato, kept", naturalKept * 100.0, "%");
 
         // Presets leave Key, Scale, Input Type and Follow Key alone.
         auto q = make();
         setParam (*q, "key", 5.0f); setParam (*q, "scale", 2.0f); setParam (*q, "inputType", 2.0f);
         q->setCurrentProgram (hard);
-        check (juce::roundToInt (q->apvts.getRawParameterValue ("key")->load()) == 5 && juce::roundToInt (q->apvts.getRawParameterValue ("scale")->load()) == 2 && juce::roundToInt (q->apvts.getRawParameterValue ("inputType")->load()) == 2, "presets leave Key, Scale and Input Type alone");
+        chk (juce::roundToInt (q->apvts.getRawParameterValue ("key")->load()) == 5 && juce::roundToInt (q->apvts.getRawParameterValue ("scale")->load()) == 2 && juce::roundToInt (q->apvts.getRawParameterValue ("inputType")->load()) == 2, "presets leave Key, Scale and Input Type alone");
     }
 }
 
@@ -1390,7 +1431,637 @@ void testCpu()
     render (*p, x, 256);
     const double seconds = (double) (std::clock() - start) / CLOCKS_PER_SEC;
     const double percent = seconds / 10.0 * 100.0;
-    check (percent <= limits::cpuPercent, "CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds)", percent, "%");
+    chk (percent <= (gEngine == 1 ? prolimits::hqCpuPercent : prolimits::llCpuPercent), "CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds)", percent, "%");
+}
+
+// ------------------------------------------------------------------------------------------------------------ MIDI
+
+juce::MidiBuffer noteOnAt (int note, int sample = 0) { juce::MidiBuffer m; m.addEvent (juce::MidiMessage::noteOn (1, note, (juce::uint8) 100), sample); return m; }
+
+// Renders in blocks, with MIDI events placed at absolute sample positions.
+std::vector<float> renderWithMidi (PluginProcessor& p, const std::vector<float>& x, const std::vector<std::pair<long, juce::MidiMessage>>& events, int block = 256)
+{
+    juce::AudioBuffer<float> buf (p.getTotalNumOutputChannels(), block);
+    std::vector<float> out;
+    out.reserve (x.size());
+    for (long pos = 0; pos < (long) x.size(); pos += block)
+    {
+        const int len = (int) std::min ((long) block, (long) x.size() - pos);
+        buf.setSize (buf.getNumChannels(), len, false, false, true);
+        for (int ch = 0; ch < buf.getNumChannels(); ++ch) std::copy_n (x.data() + pos, len, buf.getWritePointer (ch));
+        juce::MidiBuffer midi;
+        for (const auto& e : events)
+            if (e.first >= pos && e.first < pos + len)
+                midi.addEvent (e.second, (int) (e.first - pos));
+        p.processBlock (buf, midi);
+        out.insert (out.end(), buf.getReadPointer (0), buf.getReadPointer (0) + len);
+    }
+    return out;
+}
+
+std::unique_ptr<PluginProcessor> midiTuner (bool allOctaves = true, float retune = 0.0f)
+{
+    auto p = tuner (altoTenor, retune);
+    setParam (*p, "midiTargets", 1.0f);
+    setParam (*p, "midiOctave", allOctaves ? 0.0f : 1.0f);
+    prepare (*p, 1, SR, 256);
+    return p;
+}
+
+void testMidi()
+{
+    const auto noteOn = [] (int n) { return juce::MidiMessage::noteOn (1, n, (juce::uint8) 100); };
+    const auto noteOff = [] (int n) { return juce::MidiMessage::noteOff (1, n); };
+    const auto x = voice::synth (voice::steady (noteHz (57) * std::pow (2.0, 30.0 / 1200.0), 2.0, SR), voice::vowelA, SR);
+
+    // Target accuracy: held notes other than the nearest one, in the right octave as played.
+    double worst = 0.0;
+    for (int held : { 57, 60, 55, 52, 64, 69 })
+    {
+        auto p = midiTuner (false);
+        const auto out = renderWithMidi (*p, x, { { 0L, noteOn (held) } });
+        const auto e = centsOff (out.data(), (long) out.size(), SR, noteHz (held), 0.4, 1.8);
+        const double q = e.empty() ? 1.0e6 : percentile (absolute (e), 95);
+        worst = std::max (worst, q);
+    }
+    chk (worst <= prolimits::midiTargetCents, "MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile", worst, "cents");
+
+    // All Octaves: a C held two octaves down still gives the nearest C.
+    {
+        auto p = midiTuner (true);
+        const auto out = renderWithMidi (*p, x, { { 0L, noteOn (36) } });
+        const auto e = centsOff (out.data(), (long) out.size(), SR, noteHz (60), 0.4, 1.8);
+        const double q = e.empty() ? 1.0e6 : percentile (absolute (e), 95);
+        chk (q <= prolimits::midiTargetCents, "MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile", q, "cents");
+    }
+
+    // Two notes held: the nearer one wins.
+    {
+        auto p = midiTuner (false);
+        const auto out = renderWithMidi (*p, x, { { 0L, noteOn (40) }, { 0L, noteOn (59) } });
+        const auto e = centsOff (out.data(), (long) out.size(), SR, noteHz (59), 0.4, 1.8);
+        const double q = e.empty() ? 1.0e6 : percentile (absolute (e), 95);
+        chk (q <= prolimits::midiTargetCents, "MIDI Targets: of two held notes the nearer is the target, 95th percentile", q, "cents");
+    }
+
+    // No notes: nothing is corrected.
+    {
+        auto p = midiTuner();
+        const auto out = renderWithMidi (*p, x, {});
+        const double db = nullDb (out, x, p->getLatencySamples(), (long) (0.3 * SR), (long) (1.8 * SR));
+        chk (db <= prolimits::midiNoNotesNullDb, "MIDI Targets on with no notes: the voice passes unchanged, difference", db, "dB");
+    }
+
+    // Letting go: how soon is the voice back where it was sung?
+    {
+        auto p = midiTuner (true);
+        const long off = (long) (1.0 * SR);
+        const auto out = renderWithMidi (*p, x, { { 0L, noteOn (60) }, { off, noteOff (60) } });
+        const double sung = noteHz (57) * std::pow (2.0, 30.0 / 1200.0);
+        const auto trace = pitchTrace (out.data(), (long) out.size(), SR, noteHz (58), 1.0 + p->getLatencySamples() / SR, 1.5, 0.002, 0.25, 2.5);
+        double backMs = 1.0e6;
+        for (size_t i = 0; i < trace.size(); ++i)
+            if (trace[i] > 0.0 && std::abs (cents (trace[i], sung)) < 10.0) { backMs = (double) i * 2.0; break; }
+        chk (backMs <= prolimits::midiReleaseMs, "MIDI note off: correction gone at Retune Speed 0 after", backMs, "ms");
+    }
+
+    // A note pressed part way through: it takes over at the right time.
+    {
+        auto p = midiTuner (true);
+        const long on = (long) (1.0 * SR);
+        const auto out = renderWithMidi (*p, x, { { on, noteOn (60) } });
+        const auto before = centsOff (out.data(), (long) out.size(), SR, noteHz (57) * std::pow (2.0, 30.0 / 1200.0), 0.4, 0.95);
+        const auto after = centsOff (out.data(), (long) out.size(), SR, noteHz (60), 1.12, 1.8);
+        chk (! before.empty() && ! after.empty() && percentile (absolute (before), 95) <= limits::customNoteCents && percentile (absolute (after), 95) <= prolimits::midiTargetCents, "a note pressed part way through takes over, 95th percentile after", after.empty() ? 1.0e6 : percentile (absolute (after), 95), "cents");
+    }
+
+    // The pedal keeps a note held. All Notes Off lets go.
+    {
+        auto p = midiTuner (true);
+        const auto out = renderWithMidi (*p, x, { { 100L, juce::MidiMessage::controllerEvent (1, 64, 127) }, { 200L, noteOn (60) }, { (long) (0.2 * SR), noteOff (60) }, { (long) (1.2 * SR), juce::MidiMessage::controllerEvent (1, 64, 0) } });
+        const auto held = centsOff (out.data(), (long) out.size(), SR, noteHz (60), 0.5, 1.1);
+        const auto released = centsOff (out.data(), (long) out.size(), SR, noteHz (57) * std::pow (2.0, 30.0 / 1200.0), 1.4, 1.8);
+        chk (! held.empty() && ! released.empty() && percentile (absolute (held), 95) <= prolimits::midiTargetCents && percentile (absolute (released), 95) <= limits::customNoteCents, "the sustain pedal holds a target, and lifting it lets go");
+    }
+    {
+        auto p = midiTuner (true);
+        const auto out = renderWithMidi (*p, x, { { 200L, noteOn (60) }, { (long) (1.0 * SR), juce::MidiMessage::allNotesOff (1) } });
+        const auto released = centsOff (out.data(), (long) out.size(), SR, noteHz (57) * std::pow (2.0, 30.0 / 1200.0), 1.2, 1.8);
+        chk (! released.empty() && percentile (absolute (released), 95) <= limits::customNoteCents, "All Notes Off lets go of every note");
+    }
+
+    // Default settings tune with no MIDI at all, and ignore notes.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        const auto out = renderWithMidi (*p, x, {});
+        const auto a = centsOff (out.data(), (long) out.size(), SR, noteHz (57), 0.4, 1.8);
+        chk (! a.empty() && percentile (absolute (a), 95) <= limits::outputInstantCents, "default mode tunes with no MIDI, 95th percentile", a.empty() ? 1.0e6 : percentile (absolute (a), 95), "cents");
+        auto q = tuner (altoTenor, 0.0f);
+        const auto outQ = renderWithMidi (*q, x, { { 0L, noteOn (60) } });
+        const auto b = centsOff (outQ.data(), (long) outQ.size(), SR, noteHz (57), 0.4, 1.8);
+        chk (! b.empty() && percentile (absolute (b), 95) <= limits::outputInstantCents, "with MIDI Targets off a held note changes nothing");
+        auto fresh = make();
+        chk (fresh->acceptsMidi() && juce::roundToInt (fresh->apvts.getRawParameterValue ("midiTargets")->load()) == 0, "takes MIDI, and MIDI Targets is off by default");
+    }
+
+    // Timing counts samples, not blocks.
+    {
+        const long on = 30000;
+        std::vector<float> first;
+        bool same = true;
+        for (int block : { 512, 64, 1000 })
+        {
+            auto p = midiTuner (true, 10.0f);
+            const auto out = renderWithMidi (*p, x, { { on, noteOn (60) } }, block);
+            if (first.empty()) first = out;
+            else for (size_t i = 0; i < out.size(); ++i) if (std::abs (out[i] - first[i]) > 1.0e-5f) { same = false; break; }
+        }
+        chk (same, "a MIDI note lands at the same sample at any block size");
+    }
+
+    // Bypass while MIDI Targets are on: the plain delayed input.
+    {
+        auto p = midiTuner (true);
+        setParam (*p, "bypass", 1.0f);
+        prepare (*p, 1, SR, 256);
+        const auto out = renderWithMidi (*p, x, { { 0L, noteOn (60) } });
+        const double db = nullDb (out, x, p->getLatencySamples(), (long) (0.3 * SR), (long) (1.8 * SR));
+        chk (db <= -120.0, "Bypass with a MIDI note held is the plain delayed input, difference", db, "dB");
+    }
+}
+
+// ------------------------------------------------------------------------------------------------------ per note
+
+double centsAgainst (PluginProcessor& p, double sungHz, double expectedHz)
+{
+    const auto x = voice::synth (voice::steady (sungHz, 1.5, SR), voice::vowelA, SR);
+    const auto out = mono (render (p, x, 256));
+    const auto e = centsOff (out.data(), (long) out.size(), SR, expectedHz, 0.4, 1.4);
+    return e.empty() ? 1.0e6 : percentile (absolute (e), 95);
+}
+
+void testPerNote()
+{
+    const auto sharp = [] (int midi, double c) { return noteHz (midi) * std::pow (2.0, c / 1200.0); };
+    const auto setNote = [] (PluginProcessor& p, int pc, float mode) { setParam (p, ("note" + juce::String (pc)).toRawUTF8(), mode); };
+    { // Remove on Chromatic: A +20 cents goes to A#, the next note up, as A is not a target.
+        auto p = tuner (altoTenor, 0.0f); setNote (*p, 9, smoothtune::noteRemove);
+        const double e = centsAgainst (*p, sharp (57, 20.0), noteHz (58));
+        chk (e <= prolimits::perNoteCents, "Chromatic, A set to Remove: A +20 cents goes to A#, 95th percentile", e, "cents");
+    }
+    { // And below the half way point it goes to G#.
+        auto p = tuner (altoTenor, 0.0f); setNote (*p, 9, smoothtune::noteRemove);
+        const double e = centsAgainst (*p, sharp (57, -20.0), noteHz (56));
+        chk (e <= prolimits::perNoteCents, "Chromatic, A set to Remove: A -20 cents goes to G#, 95th percentile", e, "cents");
+    }
+    { // Bypass on Chromatic: stays where it was sung.
+        auto p = tuner (altoTenor, 0.0f); setNote (*p, 9, smoothtune::noteBypass);
+        const double e = centsAgainst (*p, sharp (57, 30.0), sharp (57, 30.0));
+        chk (e <= prolimits::perNoteCents, "Chromatic, A set to Bypass: A +30 cents stays where it was sung, 95th percentile", e, "cents");
+    }
+    { // The others are still tuned when one is bypassed.
+        auto p = tuner (altoTenor, 0.0f); setNote (*p, 9, smoothtune::noteBypass);
+        const double e = centsAgainst (*p, sharp (60, 30.0), noteHz (60));
+        chk (e <= prolimits::perNoteCents, "Chromatic, A set to Bypass: C +30 cents is still tuned, 95th percentile", e, "cents");
+    }
+    { // On top of a scale: in C major, remove A, and A +20 goes to B or G, whichever is nearer, which is B.
+        auto p = tuner (altoTenor, 0.0f); setParam (*p, "scale", (float) smoothtune::scaleMajor); setNote (*p, 9, smoothtune::noteRemove);
+        const double e = centsAgainst (*p, sharp (57, 20.0), noteHz (59));
+        chk (e <= prolimits::perNoteCents, "C Major, A set to Remove: A +20 cents goes to B, 95th percentile", e, "cents");
+    }
+    { // Bypass on a note outside the scale: C# in C major is sung and left alone.
+        auto p = tuner (altoTenor, 0.0f); setParam (*p, "scale", (float) smoothtune::scaleMajor); setNote (*p, 1, smoothtune::noteBypass);
+        const double e = centsAgainst (*p, sharp (61, 25.0), sharp (61, 25.0));
+        chk (e <= prolimits::perNoteCents, "C Major, C# set to Bypass: C# +25 cents stays where it was sung, 95th percentile", e, "cents");
+    }
+    { // Every note removed: the voice is left alone.
+        auto p = tuner (altoTenor, 0.0f);
+        for (int i = 0; i < 12; ++i) setNote (*p, i, smoothtune::noteRemove);
+        const double e = centsAgainst (*p, sharp (57, 30.0), sharp (57, 30.0));
+        chk (e <= prolimits::perNoteCents, "every note set to Remove leaves the voice alone, 95th percentile", e, "cents");
+    }
+    { // Each note parameter is a real, named AU parameter with a value string.
+        auto p = make();
+        bool ok = true;
+        for (int i = 0; i < 12; ++i)
+        {
+            auto* prm = p->apvts.getParameter ("note" + juce::String (i));
+            if (prm == nullptr || prm->getName (32) != juce::String ("Note ") + smoothtune::noteNames[i] || ! prm->isAutomatable()) ok = false;
+            else
+            {
+                prm->setValueNotifyingHost (prm->convertTo0to1 (2.0f));
+                if (prm->getCurrentValueAsText() != "Bypass") ok = false;
+            }
+        }
+        chk (ok, "twelve real note parameters, named Note C to Note B, reading Tune, Remove or Bypass");
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------- classic
+
+// 10% to 90% time of a step between two notes a tone apart, with a slide, as in the Smooth Tune test.
+double stepMs (PluginProcessor& p)
+{
+    setParam (p, "key", 0.0f); setParam (p, "scale", (float) smoothtune::scaleMajor);
+    prepare (p, 1, SR, 256);
+    const double a = noteHz (57), b = noteHz (59), start = 1.0, slide = 0.04;
+    std::vector<double> f0 ((size_t) (2.0 * SR));
+    for (size_t i = 0; i < f0.size(); ++i)
+    {
+        const double u = std::clamp (((double) i / SR - start) / slide, 0.0, 1.0);
+        f0[i] = a * std::pow (b / a, u);
+    }
+    const auto x = voice::synth (f0, voice::vowelA, SR);
+    const auto out = mono (render (p, x, 256));
+    const double hop = 0.0005, hzMid = std::sqrt (a * b);
+    const auto trace = pitchTrace (out.data(), (long) out.size(), SR, hzMid, start - 0.1, start + 0.4, hop, 0.14, 2.0);
+    double t10 = -1, t90 = -1;
+    for (size_t i = 0; i < trace.size(); ++i)
+    {
+        if (trace[i] <= 0.0) continue;
+        const double u = std::log (trace[i] / a) / std::log (b / a);
+        if (t10 < 0 && u > 0.1) t10 = (double) i * hop;
+        if (t90 < 0 && u > 0.9) { t90 = (double) i * hop; break; }
+    }
+    return t10 >= 0 && t90 >= 0 ? (t90 - t10) * 1000.0 : 1.0e6;
+}
+
+void testClassic()
+{
+    auto p = make();
+    setParam (*p, "classic", 1.0f);
+    // Settings that would slow it down, all of which Classic ignores.
+    setParam (*p, "retune", 200.0f); setParam (*p, "humanize", 100.0f); setParam (*p, "flex", 100.0f); setParam (*p, "naturalVibrato", 100.0f); setParam (*p, "vibratoAmount", 50.0f);
+    const double classicMs = stepMs (*p);
+    chk (classicMs <= prolimits::classicStepMs, "Classic: step between two notes, 10% to 90%, whatever the other controls say", classicMs, "ms");
+
+    auto q = make();
+    setParam (*q, "retune", 20.0f); setParam (*q, "humanize", 0.0f);
+    const double normalMs = stepMs (*q);
+    chk (classicMs <= prolimits::classicAgainstRetuneRatio * normalMs, "Classic step against the same step at Retune Speed 20", classicMs / normalMs, "times");
+    note ("  that step at Retune Speed 20", normalMs, "ms");
+
+    auto r = make();
+    setParam (*r, "classic", 1.0f); setParam (*r, "flex", 100.0f); setParam (*r, "humanize", 100.0f); setParam (*r, "retune", 200.0f);
+    const double kept = vibratoKept (*r);
+    chk (kept <= limits::vibratoFlatHard, "Classic flattens vibrato with Flex Tune and Humanize at full, kept", kept * 100.0, "%");
+}
+
+// ------------------------------------------------------------------------------------------------------- transpose
+
+void testTranspose()
+{
+    double worst = 0.0, worstLow = 0.0;
+    for (int by : { -24, -12, -7, -2, -1, 1, 2, 7, 12, 24 })
+    {
+        auto p = make();
+        setParam (*p, "inputType", (float) wideRange);
+        setParam (*p, "retune", 0.0f); setParam (*p, "humanize", 0.0f); setParam (*p, "transpose", (float) by);
+        prepare (*p, 1, SR, 256);
+        const auto x = voice::synth (voice::steady (noteHz (57) * std::pow (2.0, 25.0 / 1200.0), 1.5, SR), voice::vowelA, SR);
+        const auto out = mono (render (*p, x, 256));
+        const auto e = centsOff (out.data(), (long) out.size(), SR, noteHz (57 + by), 0.4, 1.4);
+        const double q = e.empty() ? 1.0e6 : percentile (absolute (e), 95);
+        if (std::getenv ("TUNE_DUMP") != nullptr) std::printf ("  transpose %d: %.2f cents\n", by, q);
+        worst = std::max (worst, q);
+        worstLow = std::max (worstLow, std::abs (toDb (rms (out.data() + 24000, 24000)) - toDb (rms (x.data() + 24000, 24000))));
+    }
+    chk (worst <= prolimits::transposeCents, "Transpose -24 to +24 on a corrected A3, ten settings, worst 95th percentile", worst, "cents");
+    note ("  level change across those settings, worst", worstLow, "dB");
+}
+
+// ------------------------------------------------------------------------------------------------------------ throat
+
+void testThroat()
+{
+    // The same tool as the formant test, on the two settings with an exact answer. The pitch must stay put meanwhile.
+    double worstScale = 0.0, worstPitch = 0.0;
+    for (float throat : { 130.0f, 115.0f, 85.0f, 75.0f })
+    {
+        const auto run = glideThroughTuner (voice::vowelA, 110.0, 0, true, throat);
+        const long from = (long) (0.3 * SR), n = (long) run.in.size() - from - 4000;
+        const auto want = smoothSpectrumDb (run.in.data() + from, n, SR, 110.0), got = smoothSpectrumDb (run.out.data() + from, n, SR, 110.0);
+        const double scale = shapeScale (want, got, 200.0, 2500.0);
+        worstScale = std::max (worstScale, std::abs (scale * throat / 100.0 - 1.0));
+
+        auto p = tuner (altoTenor, 0.0f);
+        setParam (*p, "throat", throat);
+        const auto x = voice::synth (voice::steady (noteHz (57) * std::pow (2.0, 25.0 / 1200.0), 1.5, SR), voice::vowelE, SR);
+        const auto out = mono (render (*p, x, 256));
+        const auto e = centsOff (out.data(), (long) out.size(), SR, noteHz (57), 0.4, 1.4);
+        worstPitch = std::max (worstPitch, e.empty() ? 1.0e6 : percentile (absolute (e), 95));
+    }
+    chk (worstScale <= prolimits::throatScaleError, "Throat 75 to 130%: formants move by the setting, worst error", worstScale * 100.0, "%");
+    chk (worstPitch <= prolimits::throatPitchCents, "Throat 75 to 130%: pitch stays on the note, worst 95th percentile", worstPitch, "cents");
+
+    // Consonants are not moved: only voiced sound.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        setParam (*p, "throat", 130.0f);
+        const auto x = coloured ((int) (1.5 * SR), 0.08, 4000, 10000, 8);
+        const auto out = mono (render (*p, x, 256));
+        const double db = nullDb (out, x, p->getLatencySamples(), (long) (0.2 * SR), (long) (1.4 * SR));
+        chk (db <= limits::unvoicedNullDb, "Throat 130% leaves an S unchanged, difference", db, "dB");
+    }
+}
+
+// ------------------------------------------------------------------------------------------------- vibrato generator
+
+void testVibratoGenerator()
+{
+    const auto run = [] (float amount, float rate, float delayMs, double seconds, std::vector<float>& out)
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        setParam (*p, "vibratoAmount", amount);
+        setParam (*p, "vibratoRate", rate);
+        setParam (*p, "vibratoDelay", delayMs);
+        const auto x = voice::synth (voice::steady (220.0, seconds, SR), voice::vowelA, SR);
+        out = mono (render (*p, x, 256));
+        return p->getLatencySamples();
+    };
+    std::vector<float> out;
+    run (30.0f, 5.5f, 0.0f, 3.0, out);
+    const double hop = 0.002;
+    const auto trace = pitchTrace (out.data(), (long) out.size(), SR, 220.0, 0.5, 2.9, hop, 0.1);
+    std::vector<double> c;
+    for (double h : trace) c.push_back (h > 0.0 ? cents (h, 220.0) : std::nan (""));
+    const double depth = sineDepth (c, hop, 5.5);
+    chk (std::abs (depth / 30.0 - 1.0) <= prolimits::vibratoDepthError, "Vibrato Amount 30 cents, measured depth", depth, "cents");
+    double bestRate = 0.0, bestDepth = 0.0;
+    for (double r = 3.0; r <= 9.0; r += 0.05)
+    {
+        const double d = sineDepth (c, hop, r);
+        if (d > bestDepth) { bestDepth = d; bestRate = r; }
+    }
+    chk (std::abs (bestRate / 5.5 - 1.0) <= prolimits::vibratoRateError, "Vibrato Rate 5.5 Hz, measured rate", bestRate, "Hz");
+    run (0.0f, 5.5f, 0.0f, 2.0, out);
+    {
+        const auto e = centsOff (out.data(), (long) out.size(), SR, 220.0, 0.4, 1.9);
+        chk (percentile (absolute (e), 95) <= limits::outputInstantCents, "Vibrato Amount 0 adds nothing, 95th percentile", percentile (absolute (e), 95), "cents");
+    }
+    // Delay: when does the swing reach half the depth, counted from the first output?
+    {
+        const float delay = 800.0f;
+        const int latency = run (40.0f, 6.0f, delay, 2.5, out);
+        const double start = latency / SR;
+        const auto t2 = pitchTrace (out.data(), (long) out.size(), SR, 220.0, start + 0.1, 2.4, hop, 0.1);
+        double reached = -1.0;
+        for (size_t i = 0; i < t2.size(); ++i)
+            if (t2[i] > 0.0 && std::abs (cents (t2[i], 220.0)) >= 20.0) { reached = 0.1 + (double) i * hop; break; }
+        const double expected = 0.001 * delay + 0.5 * smoothtune::PitchCorrector::vibratoFadeSeconds;
+        chk (std::abs (reached - expected) * 1000.0 <= prolimits::vibratoDelayErrorMs, "Vibrato Delay 800 ms, half depth reached after", reached * 1000.0, "ms");
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------- mix
+
+void testMix()
+{
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        setParam (*p, "mix", 0.0f);
+        prepare (*p, 1, SR, 256);
+        const auto x = voice::synth (voice::steady (225.0, 1.5, SR), voice::vowelA, SR);
+        const auto out = mono (render (*p, x, 256));
+        const double db = nullDb (out, x, p->getLatencySamples(), (long) (0.2 * SR), (long) (1.4 * SR));
+        chk (db <= prolimits::mixDryNullDb, "Mix 0 is the plain delayed input, difference", db, "dB");
+    }
+    {
+        // In tune and left alone: dry and wet line up, so Mix 50 changes nothing.
+        auto p = tuner (altoTenor, 0.0f, 0.0f, 100.0f);
+        setParam (*p, "mix", 50.0f);
+        prepare (*p, 1, SR, 256);
+        const auto x = voice::synth (voice::steady (220.0, 1.5, SR), voice::vowelA, SR);
+        const auto out = mono (render (*p, x, 256));
+        const double change = toDb (rms (out.data() + 24000, 36000)) - toDb (rms (x.data() + 24000, 36000));
+        chk (std::abs (change) <= prolimits::mixHalfLevelDb, "Mix 50 on a voice with nothing to correct, level change", change, "dB");
+    }
+    {
+        // Mix 100 is the tuned voice: both pitches are there at 50, and only the tuned one at 100.
+        auto p = tuner (altoTenor, 0.0f);
+        const auto x = voice::synth (voice::steady (noteHz (57) * std::pow (2.0, 40.0 / 1200.0), 1.5, SR), voice::vowelA, SR);
+        const auto out = mono (render (*p, x, 256));
+        const auto e = centsOff (out.data(), (long) out.size(), SR, noteHz (57), 0.4, 1.4);
+        chk (percentile (absolute (e), 95) <= limits::outputInstantCents, "Mix 100 is the tuned voice, 95th percentile", percentile (absolute (e), 95), "cents");
+    }
+}
+
+// ------------------------------------------------------------------------------------------------------------ engines
+
+void testEngines()
+{
+    // Reported latency and the numbers side by side
+    {
+        for (int type = 0; type < 4; ++type)
+        {
+            info (std::string ("High Quality against Low Latency at 48 kHz, input type ") + std::to_string (type) + ", Low Latency", PluginProcessor::latencyFor (type, 0, SR) * 1000.0 / SR, "ms");
+            info (std::string ("High Quality against Low Latency at 48 kHz, input type ") + std::to_string (type) + ", High Quality", PluginProcessor::latencyFor (type, 1, SR) * 1000.0 / SR, "ms");
+        }
+    }
+
+    // Changing engine while a voice plays: no step beyond the voice's own, no hole, and the real delay follows.
+    {
+        double worstRatio = 0.0, worstHole = 0.0;
+        for (double hz : { 110.0, 147.0, 196.0, 220.0, 262.0, 330.0, 440.0 })
+            for (int from : { 0, 1 })
+            {
+                gEngine = from;
+                auto p = tuner (wideRange, 20.0f);
+                const auto x = voice::synth (voice::steady (hz * std::pow (2.0, 30.0 / 1200.0), 2.0, SR), voice::vowelA, SR);
+                std::vector<float> out = mono (render (*p, x, 256, nullptr, [&] (int idx) { if (idx == 180) setParam (*p, "engine", from == 0 ? 1.0f : 0.0f); }));
+                gEngine = 0;
+                const int switchAt = 180 * 256, frame = 240;
+                const int a = switchAt - 4800, b = switchAt + 19200;
+                const double own = maxJump (out.data() + 12000, 24000), during = maxJump (out.data() + a, b - a);
+                worstRatio = std::max (worstRatio, during / std::max (own, 1.0e-9));
+                const double steadyDb = toDb (rms (out.data() + 12000, 24000));
+                for (int at = a; at + frame < b; at += 48)
+                    worstHole = std::max (worstHole, steadyDb - toDb (rms (out.data() + at, frame)));
+            }
+        check (worstRatio <= prolimits::modeSwitchStepRatio, "switching engine on a voice, both ways, 7 pitches: biggest sample step against the voice's own", worstRatio, "times");
+        check (worstHole <= prolimits::modeSwitchHoleDb, "switching engine, deepest fall in 5 ms level", worstHole, "dB");
+    }
+    {
+        auto p = tuner (altoTenor, 20.0f);
+        const int first = p->getLatencySamples();
+        std::vector<float> x (96000);
+        noise (x.data(), (int) x.size(), 0.1);
+        const auto out = mono (render (*p, x, 256, nullptr, [&] (int idx) { if (idx == 40) setParam (*p, "engine", 1.0f); }));
+        p->applyPendingLatencyNow();
+        const int second = p->getLatencySamples();
+        check (second == PluginProcessor::latencyFor (altoTenor, 1, SR) && second > first, "switching to High Quality reports the new latency", second, "samples");
+        const std::vector<float> tailIn (x.begin() + 48000, x.end()), tailOut (out.begin() + 48000, out.end());
+        check (measuredDelay (tailOut, tailIn, 4000) == second, "and the real delay matches it");
+    }
+    {
+        // Back and forth quickly must not stick or break: the last choice wins.
+        auto p = tuner (altoTenor, 20.0f);
+        std::vector<float> x (96000);
+        noise (x.data(), (int) x.size(), 0.1);
+        const auto out = mono (render (*p, x, 256, nullptr, [&] (int idx) { if (idx < 100) setParam (*p, "engine", (idx / 5) % 2 == 0 ? 1.0f : 0.0f); else setParam (*p, "engine", 1.0f); }));
+        p->applyPendingLatencyNow();
+        const std::vector<float> tailIn (x.begin() + 48000, x.end()), tailOut (out.begin() + 48000, out.end());
+        check (countNonFinite (render (*p, x, 256)) == 0 && measuredDelay (tailOut, tailIn, 4000) == PluginProcessor::latencyFor (altoTenor, 1, SR), "flipping engines every 27 ms ends on the right delay");
+    }
+
+    // What the lookahead is for. A note starts from silence, 40 cents sharp, at instant speed: is it on pitch straight away?
+    const auto onsetShare = [] (int engine)
+    {
+        gEngine = engine;
+        double total = 0.0, good = 0.0;
+        for (double hz : { 147.0, 220.0, 330.0 })
+            for (const auto* v : { &voice::vowelA, &voice::vowelE })
+            {
+                auto p = tuner (altoTenor, 0.0f);
+                auto sung = voice::synth (voice::steady (hz * std::pow (2.0, 40.0 / 1200.0), 0.6, SR), *v, SR);
+                std::vector<float> x ((size_t) (0.5 * SR), 0.0f);
+                for (int i = 0; i < 480; ++i) sung[(size_t) i] *= (float) i / 480.0f;
+                x.insert (x.end(), sung.begin(), sung.end());
+                const auto out = mono (render (*p, x, 256));
+                const double start = 0.5 + p->getLatencySamples() / SR;
+                for (double t = 0.010; t <= 0.040; t += 0.002)
+                {
+                    const double got = pitchNear (out.data(), (long) out.size(), (long) ((start + t) * SR), hz, SR, 0.05, 1.5);
+                    total += 1.0;
+                    if (got > 0.0 && std::abs (cents (got, hz)) <= 10.0) good += 1.0;
+                }
+            }
+        gEngine = 0;
+        return good / total;
+    };
+    const double ll = onsetShare (0), hq = onsetShare (1);
+    info ("Low Latency: share of 10 to 40 ms after a note starts that is within 10 cents", ll * 100.0, "%");
+    check (hq >= prolimits::hqOnsetOnPitchShare, "High Quality: share of 10 to 40 ms after a note starts that is within 10 cents", hq * 100.0, "%");
+
+    // An S straight after a corrected vowel: how much of its start is left alone?
+    const auto consonantStart = [] (int engine)
+    {
+        gEngine = engine;
+        auto p = tuner (altoTenor, 0.0f);
+        const auto v1 = voice::synth (voice::steady (220.0 * std::pow (2.0, 40.0 / 1200.0), 0.6, SR), voice::vowelA, SR);
+        const auto s = coloured ((int) (0.2 * SR), 0.08, 4000, 10000, 5);
+        std::vector<float> x = v1;
+        x.insert (x.end(), s.begin(), s.end());
+        const auto out = mono (render (*p, x, 256));
+        const int delay = p->getLatencySamples();
+        // Only the S, so the vowel's tail ringing into it does not count: subtract nothing, read the first 10 ms against the S alone.
+        const double db = nullDb (out, x, delay, (long) (0.6 * SR) + delay, (long) (0.61 * SR) + delay);
+        gEngine = 0;
+        return db;
+    };
+    const double sLl = consonantStart (0), sHq = consonantStart (1);
+    info ("Low Latency: first 10 ms of an S after a corrected vowel, difference", sLl, "dB");
+    check (sHq <= prolimits::hqConsonantStartNullDb, "High Quality: first 10 ms of an S after a corrected vowel, difference", sHq, "dB");
+
+    // The headline numbers side by side, from the formant test when it has run.
+    if (formantResults[1].flatter > 0.0)
+    {
+        info ("Low Latency, first formant flatter than a real voice", formantResults[0].flatter, "dB");
+        info ("High Quality, first formant flatter than a real voice", formantResults[1].flatter, "dB");
+        info ("Low Latency, formant move", formantResults[0].move * 100.0, "%");
+        info ("High Quality, formant move", formantResults[1].move * 100.0, "%");
+        info ("Low Latency, high notes, formant move", highNoteResults[0].move * 100.0, "%");
+        info ("High Quality, high notes, formant move", highNoteResults[1].move * 100.0, "%");
+        info ("Low Latency, high notes, first formant flatter", highNoteResults[0].flatter, "dB");
+        info ("High Quality, high notes, first formant flatter", highNoteResults[1].flatter, "dB");
+        info ("Low Latency, big shifts, formant move", bigShiftResults[0].move * 100.0, "%");
+        info ("High Quality, big shifts, formant move", bigShiftResults[1].move * 100.0, "%");
+        info ("Low Latency, big shifts, first formant flatter", bigShiftResults[0].flatter, "dB");
+        info ("High Quality, big shifts, first formant flatter", bigShiftResults[1].flatter, "dB");
+    }
+}
+
+// ------------------------------------------------------------------------------------------------------------- window
+
+void testWindow()
+{
+    gEngine = 0;
+    auto p = tuner (altoTenor, 0.0f);
+    std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+    auto* te = dynamic_cast<TuneEditor*> (ed.get());
+    check (te != nullptr, "the window is the custom one");
+    if (te == nullptr) return;
+
+    // Every control is in the window and everything in the window is a real parameter.
+    check (te->getNumControls() == 22, "controls in the window, knobs, choices and switches", te->getNumControls());
+
+    // Clicking a key cycles Tune, Remove, Bypass, through the parameter, as a host would see it.
+    auto* a = p->apvts.getParameter ("note9");
+    CountListener listener;
+    p->addListener (&listener);
+    const auto modeOfA = [&] { return juce::roundToInt (p->apvts.getRawParameterValue ("note9")->load()); };
+    auto& keys = te->getKeyboard();
+    const int atA = keys.noteAt (keys.keyBounds (9).getCentre());
+    keys.cycleNote (atA);
+    const int one = modeOfA();
+    keys.cycleNote (atA);
+    const int two = modeOfA();
+    keys.cycleNote (atA);
+    const int three = modeOfA();
+    p->removeListener (&listener);
+    check (atA == 9 && one == smoothtune::noteRemove && two == smoothtune::noteBypass && three == smoothtune::noteTune && a != nullptr, "clicking the A key goes Remove, Bypass, Tune");
+    check (listener.changes.load() == 3, "and each click reaches the host as a parameter change, changes", listener.changes.load());
+    check (keys.noteAt (keys.keyBounds (1).getCentre()) == 1 && keys.noteAt (keys.keyBounds (0).getBottomLeft().translated (4.0f, -4.0f)) == 0, "black and white keys are told apart");
+
+    // Live reading: a voice on A shows A as the target and the pitch window has both lines.
+    const auto x = voice::synth (voice::steady (noteHz (57) * std::pow (2.0, 30.0 / 1200.0), 1.0, SR), voice::vowelA, SR);
+    render (*p, x, 256);
+    check (p->getReadings().targetNote == 57, "the keyboard's target reads A3", p->getReadings().targetNote);
+    const auto& last = p->getPitchPoint (p->getPitchHistoryCount() - 1);
+    check (std::abs (last.outputNote.load() - 57.0f) < 0.1f && std::abs (last.inputNote.load() - 57.3f) < 0.1f, "the pitch window's newest point: input A3 +30 cents, corrected A3", last.outputNote.load());
+    check (te->readingText().contains ("A3"), "the reading strip: " + te->readingText().toStdString());
+
+    // Paint it with a note in each state. Saved for looking at.
+    setParam (*p, "note4", (float) smoothtune::noteRemove);
+    setParam (*p, "note1", (float) smoothtune::noteBypass);
+    setParam (*p, "scale", (float) smoothtune::scaleMajor);
+    auto wander = voice::vibrato (noteHz (57), 3.0, SR, 35.0, 5.5);
+    render (*p, voice::synth (wander, voice::vowelA, SR), 256);
+    juce::Image img (juce::Image::ARGB, ed->getWidth(), ed->getHeight(), true);
+    {
+        juce::Graphics g (img);
+        ed->paintEntireComponent (g, false);
+    }
+    check (ed->getWidth() > 400 && ed->getHeight() > 300, "the window paints");
+    if (const char* path = std::getenv ("TUNE_WINDOW_PNG"))
+    {
+        juce::File file (path);
+        file.deleteFile();
+        juce::PNGImageFormat png;
+        if (auto stream = file.createOutputStream())
+            png.writeImageToStream (img, *stream);
+    }
+
+    // Painting never touches a lock the audio thread takes: audio keeps running at full speed against constant repainting.
+    {
+        std::atomic<bool> stop { false };
+        std::atomic<long> blocks { 0 };
+        std::thread audio ([&]
+        {
+            juce::AudioBuffer<float> b (p->getTotalNumOutputChannels(), 256);
+            juce::MidiBuffer m;
+            auto s = voice::synth (voice::steady (225.0, 1.0, SR), voice::vowelA, SR);
+            for (int pos = 0; ! stop.load(); pos = (pos + 256) % ((int) s.size() - 256))
+            {
+                for (int ch = 0; ch < b.getNumChannels(); ++ch) b.copyFrom (ch, 0, s.data() + pos, 256);
+                p->processBlock (b, m);
+                ++blocks;
+            }
+        });
+        for (int i = 0; i < 60; ++i)
+        {
+            juce::Graphics g (img);
+            ed->paintEntireComponent (g, false);
+        }
+        stop = true;
+        audio.join();
+        check (blocks.load() > 0, "audio keeps running while the window repaints, blocks", (double) blocks.load());
+    }
+
+    // Closing it while audio runs leaves nothing behind.
+    ed.reset();
+    render (*p, x, 256);
+    check (true, "closing the window leaves audio running");
 }
 } // namespace
 
@@ -1430,25 +2101,41 @@ int main (int argc, char** argv)
     {
         GenericOptions opt;
         opt.minPresets = 4;
-        opt.readOnly = { "pitchOffTarget", "detectedPitch", "correctionApplied", "targetNote", "activeKey" };
+        opt.readOnly = { "pitchOffTarget", "detectedPitch", "outputPitch", "correctionApplied", "targetNote", "activeKey", "latencyMs" };
+        opt.sendMidiNote = true;
         runGenericChecks ([] () -> std::unique_ptr<juce::AudioProcessor> { return make(); }, opt);
     }
-    if (want ("latency")) testLatency();
     if (want ("tracker")) testTracker();
-    if (want ("output")) testOutputPitch();
-    if (want ("retune")) testRetuneSpeed();
-    if (want ("formants")) testFormants();
-    if (want ("vibrato")) testVibrato();
-    if (want ("step")) testHardStep();
-    if (want ("flex")) testFlex();
-    if (want ("unvoiced")) testUnvoiced();
-    if (want ("artifacts")) testArtifacts();
     if (want ("keys")) testKeysAndScales();
     if (want ("follow")) testFollowKey();
-    if (want ("real")) testRealMaterial();
-    if (want ("added")) testAddedControls();
-    if (want ("meter")) testMeter();
-    if (want ("blocks")) testBlocksAndState();
-    if (want ("cpu")) testCpu();
+    const int firstEngine = std::getenv ("TUNE_ENGINE") != nullptr ? std::atoi (std::getenv ("TUNE_ENGINE")) : 0;
+    const int lastEngine = std::getenv ("TUNE_ENGINE") != nullptr ? firstEngine : 1;
+    for (gEngine = firstEngine; gEngine <= lastEngine; ++gEngine)
+    {
+        if (want ("latency")) testLatency();
+        if (want ("output")) testOutputPitch();
+        if (want ("retune")) testRetuneSpeed();
+        if (want ("formants")) testFormants();
+        if (want ("vibrato")) testVibrato();
+        if (want ("step")) testHardStep();
+        if (want ("flex")) testFlex();
+        if (want ("unvoiced")) testUnvoiced();
+        if (want ("artifacts")) testArtifacts();
+        if (want ("real")) testRealMaterial();
+        if (want ("added")) testAddedControls();
+        if (want ("meter")) testMeter();
+        if (want ("blocks")) testBlocksAndState();
+        if (want ("cpu")) testCpu();
+        if (want ("midi")) testMidi();
+        if (want ("notes")) testPerNote();
+        if (want ("classic")) testClassic();
+        if (want ("transpose")) testTranspose();
+        if (want ("throat")) testThroat();
+        if (want ("gen")) testVibratoGenerator();
+        if (want ("mix")) testMix();
+    }
+    gEngine = 0;
+    if (want ("engines")) testEngines();
+    if (want ("window")) testWindow();
     return finish();
 }

@@ -3,10 +3,8 @@
 #include <array>
 #include <atomic>
 #include "KeyFollower.h"
-#include "PitchCorrector.h"
-#include "PitchTracker.h"
-#include "PsolaShifter.h"
 #include "Scales.h"
+#include "TuneEngine.h"
 
 // A reading shown to the host, by name and value string.
 // It is not automatable, ignores writes, and is never pushed to the host, so it cannot write automation.
@@ -38,8 +36,8 @@ private:
     std::atomic<float> value { 0.0f };
 };
 
-// Real time vocal pitch correction. Pitch tracker, shifter and corrector live in their own files.
-// This class holds the parameters, runs them sample by sample, and looks after latency, bypass and the key file.
+// Advanced automatic vocal tuning. Tracker, shifter and corrector live in their own files and TuneEngine ties them together.
+// This class holds the parameters and MIDI notes, runs two engines when one must hand over to the other, and looks after latency, bypass and the key file.
 class PluginProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater
 {
 public:
@@ -62,8 +60,8 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "Smooth Tune"; }
-    bool acceptsMidi() const override { return false; }
+    const juce::String getName() const override { return "Smooth Tune Pro"; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
@@ -82,7 +80,8 @@ public:
     struct Readings
     {
         float centsOffTarget = 0.0f, detectedHz = 0.0f, correctionCents = 0.0f;
-        int targetNote = -1, activeKey = 0, activeScale = 0;
+        float outputHz = 0.0f;
+        int targetNote = -1, activeKey = 0, activeScale = 0, activeEngine = 0;
         bool voiced = false;
     };
     Readings getReadings() const noexcept;
@@ -93,8 +92,11 @@ public:
     const PitchPoint& getPitchPoint (long long index) const noexcept { return pitchHistory[(size_t) (index & (pitchHistorySize - 1))]; }
     long long getPitchHistoryCount() const noexcept { return pitchHistoryCount.load (std::memory_order_relaxed); }
 
-    // Latency in samples for an Input Type at a sample rate.
-    static int latencyFor (int inputType, double sampleRate) noexcept;
+    // Latency in samples for an Input Type and Engine at a sample rate.
+    static int latencyFor (int inputType, int engine, double sampleRate) noexcept;
+
+    // The note modes in force right now, for the window: bit per pitch class from C.
+    std::uint16_t getInScaleMask() const noexcept { return (std::uint16_t) inScaleNow.load (std::memory_order_relaxed); }
 
     // Tests only: what the worker thread and message thread do.
     void applyPendingLatencyNow() { handleAsyncUpdate(); }
@@ -106,40 +108,45 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
     class Worker;
 
-    void process (juce::AudioBuffer<float>&, bool forceBypass) noexcept;
-    void applyInputType (int type) noexcept;
+    void process (juce::AudioBuffer<float>&, juce::MidiBuffer&, bool forceBypass) noexcept;
+    void handleMidi (const juce::MidiMessage&) noexcept;
     void readSettings() noexcept;
+    void manageEngines() noexcept;
     void handleAsyncUpdate() override;
 
     std::atomic<float>* keyParam = nullptr, *scaleParam = nullptr, *retune = nullptr, *humanize = nullptr, *flex = nullptr,
                        *inputType = nullptr, *followKey = nullptr, *naturalVibrato = nullptr, *transpose = nullptr,
-                       *reference = nullptr, *tracking = nullptr, *formantPreserve = nullptr, *throat = nullptr;
-    std::array<std::atomic<float>*, 12> customNote {};
+                       *reference = nullptr, *tracking = nullptr, *formantPreserve = nullptr, *throat = nullptr,
+                       *engineParam = nullptr, *classic = nullptr, *midiTargets = nullptr, *midiOctave = nullptr, *mix = nullptr,
+                       *vibratoAmount = nullptr, *vibratoRate = nullptr, *vibratoDelay = nullptr;
+    std::array<std::atomic<float>*, 12> noteParam {};
     juce::AudioParameterBool* bypass = nullptr;
-    ReadingParameter* offReading = nullptr, *hzReading = nullptr, *correctionReading = nullptr, *noteReading = nullptr, *keyReading = nullptr;
+    ReadingParameter* offReading = nullptr, *hzReading = nullptr, *correctionReading = nullptr, *noteReading = nullptr, *keyReading = nullptr,
+                     *outputReading = nullptr, *latencyReading = nullptr;
 
-    smoothtune::PitchTracker tracker;
-    smoothtune::PsolaShifter shifter;
-    smoothtune::PitchCorrector corrector;
-    smoothtune::PitchCorrector::Settings settings;
-    smoothtune::PsolaShifter::Control control;
+    std::array<smoothtune::TuneEngine, 2> engines;
+    smoothtune::TuneEngine::Shared shared;
     smoothtune::KeyFollower follower;
 
+    // Handing over from one engine to the other
+    enum class Handover { none, warming, crossfading };
+    Handover handover = Handover::none;
+    int activeEngine = 0, warmLeft = 0, crossfadeAt = 0, crossfadeLength = 512;
+    std::atomic<int> reportedLatencyWanted { 0 };
+
+    // MIDI
+    smoothtune::HeldNotes keysDown, pedalHeld;
+    bool pedalDown = false;
+
     double sr = 48000.0;
-    int tickSamples = 48, tickPhase = 0, historyPhase = 0;
-    double tickSeconds = 0.001;
-    int typeNow = 1;
-    bool fading = false;
-    float fadeGain = 1.0f, fadeStep = 1.0f / 64.0f, bypassMix = 1.0f, bypassStep = 0.001f;
-    bool formantOn = true;
-    double throatRate = 1.0;
-    float lastVoicingLimit = -1.0f;
+    int historyTicks = 240, historyPhase = 0;
+    float mixNow = 1.0f, mixStep = 0.001f, bypassMix = 1.0f, bypassStep = 0.001f;
     int activeKeyNow = 0, activeScaleNow = 0;
 
     std::array<PitchPoint, pitchHistorySize> pitchHistory;
     std::atomic<long long> pitchHistoryCount { 0 };
 
-    std::atomic<int> voicedNow { 0 };
+    std::atomic<int> voicedNow { 0 }, activeEngineNow { 0 }, inScaleNow { 0x0FFF };
     std::atomic<double> preparedRate { 0.0 };
     bool hostLatencyUpdates = true;
     int currentProgram = 0;

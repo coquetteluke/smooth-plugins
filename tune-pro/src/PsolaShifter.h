@@ -283,7 +283,7 @@ private:
         else
         {
             const double period = c.inputPeriod;
-            const double wanted = std::clamp (c.outputPeriod > 0.0 ? c.outputPeriod : period, 0.25 * period, 4.0 * period);
+            const double wanted = std::clamp (c.outputPeriod > 0.0 ? c.outputPeriod : period, 0.2 * period, 5.0 * period);
             spacing = wanted;
             planned = Plan::mapped;
 

@@ -17,26 +17,34 @@ namespace
     };
     constexpr int numInputTypes = (int) std::size (inputRanges);
 
-    // Presets set how the tuning behaves. They leave Key, Scale, Input Type and Follow Key alone, so a preset never fights the song.
+    // Presets set how the tuning behaves. They leave Key, Scale, Input Type, Follow Key and the note modes alone, so a preset never fights the song.
     struct Preset
     {
         const char* name;
         float retune, humanize, flex, vibrato;
+        bool classicOn;
+        int engine;             // -1 leaves it where it is
+        float addedVibrato;
     };
     constexpr Preset presets[] = {
-        { "Natural Pop",        30.0f,  35.0f, 10.0f,    0.0f },
-        { "Transparent Ballad", 70.0f,  60.0f, 25.0f,    0.0f },
-        { "Light Touch",       120.0f,  70.0f, 45.0f,    0.0f },
-        { "Keep The Vibrato",   40.0f, 100.0f, 30.0f,    0.0f },
-        { "Tight Modern",       10.0f,  15.0f,  0.0f,    0.0f },
-        { "Hard Tune",           0.0f,   0.0f,  0.0f,    0.0f },
-        { "Hard Tune Glide",     6.0f,   0.0f,  0.0f,    0.0f },
-        { "Robot Flat",          0.0f,   0.0f,  0.0f, -100.0f },
+        { "Natural Pop",          30.0f,  35.0f, 10.0f,    0.0f, false, -1,  0.0f },
+        { "Transparent Ballad",   70.0f,  60.0f, 25.0f,    0.0f, false, -1,  0.0f },
+        { "Light Touch",         120.0f,  70.0f, 45.0f,    0.0f, false, -1,  0.0f },
+        { "Keep The Vibrato",     40.0f, 100.0f, 30.0f,    0.0f, false, -1,  0.0f },
+        { "Tight Modern",         10.0f,  15.0f,  0.0f,    0.0f, false, -1,  0.0f },
+        { "Hard Tune",             0.0f,   0.0f,  0.0f,    0.0f, false, -1,  0.0f },
+        { "Hard Tune Glide",       6.0f,   0.0f,  0.0f,    0.0f, false, -1,  0.0f },
+        { "Robot Flat",            0.0f,   0.0f,  0.0f, -100.0f, false, -1,  0.0f },
+        { "Classic Snap",          0.0f,   0.0f,  0.0f,    0.0f, true,  -1,  0.0f },
+        { "Flat Then Sung Vibrato", 5.0f,  0.0f,  0.0f, -100.0f, false, -1, 25.0f },
+        { "Final Mix High Quality", 30.0f, 40.0f, 10.0f,   0.0f, false,  1,  0.0f },
+        { "Tracking Low Latency",  20.0f, 30.0f,  0.0f,    0.0f, false,  0,  0.0f },
     };
 
     juce::String offText (float v) { return (v > 0.0f ? "+" : "") + juce::String (juce::roundToInt (v)) + " cents"; }
     juce::String hzText (float v) { return v <= 0.0f ? juce::String ("no pitch") : juce::String (v, 1) + " Hz"; }
     juce::String centsText (float v) { return (v > 0.0f ? "+" : "") + juce::String (juce::roundToInt (v)) + " cents"; }
+    juce::String msText (float v) { return juce::String (v, 1) + " ms"; }
     juce::String noteText (float v)
     {
         const int n = juce::roundToInt (v);
@@ -48,13 +56,15 @@ namespace
         const int packed = juce::jlimit (0, 12 * numScales - 1, juce::roundToInt (v));
         return juce::String (noteNames[packed % 12]) + " " + scaleNames[packed / 12];
     }
+
+    constexpr int warmExtraMs = 60, crossfadeMs = 12;
 }
 
-// One background thread: reads the key file and tells the host when Input Type has changed the latency. Never touches audio.
+// One background thread: reads the key file and tells the host when the latency has changed. Never touches audio.
 class PluginProcessor::Worker final : public juce::Thread
 {
 public:
-    explicit Worker (PluginProcessor& p) : juce::Thread ("Smooth Tune worker"), owner (p) {}
+    explicit Worker (PluginProcessor& p) : juce::Thread ("Smooth Tune Pro worker"), owner (p) {}
 
     void run() override
     {
@@ -63,12 +73,9 @@ public:
         {
             if (wait (100))
                 continue;
-            if (owner.hostLatencyUpdates)
-            {
-                const double rate = owner.preparedRate.load (std::memory_order_relaxed);
-                if (rate > 0.0 && latencyFor ((int) owner.inputType->load (std::memory_order_relaxed), rate) != owner.getLatencySamples())
-                    owner.triggerAsyncUpdate();
-            }
+            if (owner.hostLatencyUpdates && owner.preparedRate.load (std::memory_order_relaxed) > 0.0
+                && owner.reportedLatencyWanted.load (std::memory_order_relaxed) != owner.getLatencySamples())
+                owner.triggerAsyncUpdate();
             if (++tick >= 3)
             {
                 tick = 0;
@@ -93,7 +100,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
 
     const auto fixedText = [] (int places, const char* unit)
     {
-        return AudioParameterFloatAttributes().withLabel (unit).withStringFromValueFunction ([places] (float v, int) { return String (v, places); });
+        return AudioParameterFloatAttributes().withLabel (unit).withStringFromValueFunction ([places] (float v, int) { return places == 0 ? String (roundToInt (v)) : String (v, places); });
     };
 
     // IDs are saved in sessions and automation: never rename them once installed.
@@ -103,10 +110,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     auto retuneRange = NormalisableRange<float> (0.0f, 400.0f, 0.1f);
     retuneRange.setSkewForCentre (50.0f);
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "retune", 1 }, "Retune Speed", retuneRange, 20.0f,
-        AudioParameterFloatAttributes().withLabel ("ms").withStringFromValueFunction ([] (float v, int) { return v < 0.05f ? String ("Instant") : String (v, 0); })
+        AudioParameterFloatAttributes().withLabel ("ms").withStringFromValueFunction ([] (float v, int) { return v < 0.05f ? String ("Instant") : String (roundToInt (v)); })
                                        .withValueFromStringFunction ([] (const String& s) { return s.trim().equalsIgnoreCase ("Instant") ? 0.0f : s.getFloatValue(); })));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "humanize", 1 }, "Humanize", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 30.0f, fixedText (0, "%")));
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "flex", 1 }, "Flex Amount", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, fixedText (0, "cents")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "flex", 1 }, "Flex Tune", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, fixedText (0, "cents")));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "inputType", 1 }, "Input Type", types, 1));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "followKey", 1 }, "Follow Key", false));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "naturalVibrato", 1 }, "Natural Vibrato", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f, fixedText (0, "%")));
@@ -114,9 +121,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "reference", 1 }, "Reference A4", NormalisableRange<float> (415.0f, 466.0f, 0.1f), 440.0f, fixedText (1, "Hz")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "tracking", 1 }, "Tracking", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f, fixedText (0, "%")));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "formantPreserve", 1 }, "Formant Preserve", true));
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "throat", 1 }, "Throat Length", NormalisableRange<float> (60.0f, 150.0f, 0.1f), 100.0f, fixedText (0, "%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "throat", 1 }, "Throat", NormalisableRange<float> (60.0f, 150.0f, 0.1f), 100.0f, fixedText (0, "%")));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "engine", 1 }, "Engine", StringArray { "Low Latency", "High Quality" }, 0));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "classic", 1 }, "Classic Mode", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "midiTargets", 1 }, "MIDI Targets", false));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "midiOctave", 1 }, "MIDI Octave", StringArray { "All Octaves", "As Played" }, 0));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "mix", 1 }, "Mix", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, fixedText (0, "%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "vibratoAmount", 1 }, "Vibrato Amount", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, fixedText (0, "cents")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "vibratoRate", 1 }, "Vibrato Rate", NormalisableRange<float> (2.0f, 9.0f, 0.01f), 5.5f, fixedText (2, "Hz")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "vibratoDelay", 1 }, "Vibrato Delay", NormalisableRange<float> (0.0f, 1500.0f, 1.0f), 300.0f, fixedText (0, "ms")));
     for (int i = 0; i < 12; ++i)
-        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "note" + String (i), 1 }, String ("Custom ") + noteNames[i], noteModes, 0));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "note" + String (i), 1 }, String ("Note ") + noteNames[i], noteModes, 0));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "bypass", 1 }, "Bypass", false));
     return layout;
 }
@@ -140,15 +155,25 @@ PluginProcessor::PluginProcessor (const Options& options)
     tracking = apvts.getRawParameterValue ("tracking");
     formantPreserve = apvts.getRawParameterValue ("formantPreserve");
     throat = apvts.getRawParameterValue ("throat");
+    engineParam = apvts.getRawParameterValue ("engine");
+    classic = apvts.getRawParameterValue ("classic");
+    midiTargets = apvts.getRawParameterValue ("midiTargets");
+    midiOctave = apvts.getRawParameterValue ("midiOctave");
+    mix = apvts.getRawParameterValue ("mix");
+    vibratoAmount = apvts.getRawParameterValue ("vibratoAmount");
+    vibratoRate = apvts.getRawParameterValue ("vibratoRate");
+    vibratoDelay = apvts.getRawParameterValue ("vibratoDelay");
     for (int i = 0; i < 12; ++i)
-        customNote[(size_t) i] = apvts.getRawParameterValue ("note" + juce::String (i));
+        noteParam[(size_t) i] = apvts.getRawParameterValue ("note" + juce::String (i));
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
 
     addParameter (offReading = new ReadingParameter ("pitchOffTarget", "Pitch Off Target", "cents", -100.0f, 100.0f, 0.0f, offText));
     addParameter (hzReading = new ReadingParameter ("detectedPitch", "Detected Pitch", "Hz", 0.0f, 2000.0f, 0.0f, hzText));
-    addParameter (correctionReading = new ReadingParameter ("correctionApplied", "Correction Applied", "cents", -2400.0f, 2400.0f, 0.0f, centsText));
+    addParameter (outputReading = new ReadingParameter ("outputPitch", "Output Pitch", "Hz", 0.0f, 8000.0f, 0.0f, hzText));
+    addParameter (correctionReading = new ReadingParameter ("correctionApplied", "Correction Applied", "cents", -4800.0f, 4800.0f, 0.0f, centsText));
     addParameter (noteReading = new ReadingParameter ("targetNote", "Target Note", "", -1.0f, 127.0f, -1.0f, noteText));
     addParameter (keyReading = new ReadingParameter ("activeKey", "Active Key", "", 0.0f, (float) (12 * numScales - 1), 0.0f, keyText));
+    addParameter (latencyReading = new ReadingParameter ("latencyMs", "Latency", "ms", 0.0f, 200.0f, 0.0f, msText));
 
     char path[PATH_MAX] {};
     if (options.keyFilePath.isNotEmpty())
@@ -157,7 +182,10 @@ PluginProcessor::PluginProcessor (const Options& options)
         follower.setPath (path);
 
     // Prepared values before the host calls prepareToPlay, so asking for the latency early gets a true answer.
-    setLatencySamples (latencyFor ((int) inputType->load(), 48000.0));
+    const int initial = latencyFor ((int) inputType->load(), (int) engineParam->load(), 48000.0);
+    setLatencySamples (initial);
+    reportedLatencyWanted.store (initial, std::memory_order_relaxed);
+    latencyReading->set ((float) (initial * 1000.0 / 48000.0));
 
     worker = std::make_unique<Worker> (*this);
     worker->startThread (juce::Thread::Priority::low);
@@ -169,10 +197,10 @@ PluginProcessor::~PluginProcessor()
     cancelPendingUpdate();
 }
 
-int PluginProcessor::latencyFor (int type, double sampleRate) noexcept
+int PluginProcessor::latencyFor (int type, int engine, double sampleRate) noexcept
 {
     const auto& range = inputRanges[(size_t) juce::jlimit (0, numInputTypes - 1, type)];
-    return PitchTracker::requiredLatency (sampleRate, range.lowHz, PsolaShifter::interpolatorReach);
+    return TuneEngine::latencyFor (range.lowHz, juce::jlimit (0, 1, engine), sampleRate);
 }
 
 bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -184,42 +212,40 @@ bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 void PluginProcessor::prepareToPlay (double sampleRate, int)
 {
     sr = sampleRate;
-    tracker.prepare (sr);
-    shifter.prepare (sr, juce::jmax (1, getTotalNumOutputChannels()));
-    corrector.prepare (sr);
-    tickSamples = juce::jmax (1, juce::roundToInt (sr * 0.001));
-    tickSeconds = tickSamples / sr;
-    tickPhase = historyPhase = 0;
-    fadeStep = (float) (1.0 / (0.002 * sr));
+    const int channels = juce::jmax (1, getTotalNumOutputChannels());
+    for (auto& e : engines)
+        e.prepare (sr, channels);
+    activeEngine = 0;
+    handover = Handover::none;
+    crossfadeLength = juce::jmax (16, juce::roundToInt (sr * crossfadeMs * 0.001));
+    const int type = juce::jlimit (0, numInputTypes - 1, (int) inputType->load());
+    const int engine = juce::jlimit (0, 1, (int) engineParam->load());
+    engines[0].configure (type, inputRanges[(size_t) type].lowHz, inputRanges[(size_t) type].highHz, engine);
+
+    historyTicks = juce::jmax (1, juce::roundToInt (sr * 0.005));
+    historyPhase = 0;
+    mixStep = (float) (1.0 / (0.01 * sr));
     bypassStep = (float) (1.0 / (0.02 * sr));
-    fadeGain = 1.0f;
-    fading = false;
+    mixNow = mix->load() * 0.01f;
     bypassMix = bypass->get() ? 0.0f : 1.0f;
-    lastVoicingLimit = -1.0f;
-    control = {};
-    applyInputType ((int) inputType->load());
+    keysDown.clear();
+    pedalHeld.clear();
+    pedalDown = false;
+    shared = {};
     readSettings();
-    setLatencySamples (latencyFor (typeNow, sr));
+    const int latency = engines[0].getLatency();
+    setLatencySamples (latency);
+    reportedLatencyWanted.store (latency, std::memory_order_relaxed);
+    latencyReading->set ((float) (latency * 1000.0 / sr));
     preparedRate.store (sr, std::memory_order_relaxed);
 }
 
-void PluginProcessor::applyInputType (int type) noexcept
-{
-    typeNow = juce::jlimit (0, numInputTypes - 1, type);
-    const auto& range = inputRanges[(size_t) typeNow];
-    tracker.setRange (range.lowHz, range.highHz);
-    shifter.setLatency (latencyFor (typeNow, sr));
-    shifter.restart();
-    corrector.reset();
-    control = {};
-}
-
-// Follow Key takes the key and scale from the file when it has a good one. A Custom scale is the user's own and stays.
+// The key and scale, then each note's own mode on top. Follow Key takes the key and scale from the file when it has a good one.
 void PluginProcessor::readSettings() noexcept
 {
     int root = (int) keyParam->load (std::memory_order_relaxed);
     int scale = (int) scaleParam->load (std::memory_order_relaxed);
-    if (followKey->load (std::memory_order_relaxed) >= 0.5f && follower.has() && scale != scaleCustom)
+    if (followKey->load (std::memory_order_relaxed) >= 0.5f && follower.has())
     {
         root = follower.key();
         scale = follower.minor() ? scaleMinor : scaleMajor;
@@ -227,45 +253,109 @@ void PluginProcessor::readSettings() noexcept
     activeKeyNow = root;
     activeScaleNow = scale;
 
-    settings.allowed = scaleMask (root, scale);
-    settings.passed = 0;
-    if (scale == scaleCustom)
+    auto& s = shared.settings;
+    const std::uint16_t inScale = scaleMask (root, scale);
+    std::uint16_t allowed = inScale, passed = 0;
+    for (int i = 0; i < 12; ++i)
     {
-        std::uint16_t allowed = 0, passed = 0;
-        for (int i = 0; i < 12; ++i)
+        const int mode = (int) noteParam[(size_t) i]->load (std::memory_order_relaxed);
+        const auto bit = (std::uint16_t) (1u << i);
+        if (mode == noteRemove)
+            allowed = (std::uint16_t) (allowed & ~bit);
+        else if (mode == noteBypass)
         {
-            const int mode = (int) customNote[(size_t) i]->load (std::memory_order_relaxed);
-            if (mode != 1) allowed = (std::uint16_t) (allowed | (1u << i));
-            if (mode == 2) passed = (std::uint16_t) (passed | (1u << i));
+            allowed = (std::uint16_t) (allowed | bit);
+            passed = (std::uint16_t) (passed | bit);
         }
-        settings.allowed = allowed;
-        settings.passed = passed;
     }
+    s.allowed = allowed;
+    s.passed = passed;
+    inScaleNow.store (inScale, std::memory_order_relaxed);
 
-    settings.retuneMs = retune->load (std::memory_order_relaxed);
-    settings.humanize = humanize->load (std::memory_order_relaxed) * 0.01;
-    settings.flexCents = flex->load (std::memory_order_relaxed);
-    settings.naturalVibrato = naturalVibrato->load (std::memory_order_relaxed) * 0.01;
-    settings.transpose = (double) juce::roundToInt (transpose->load (std::memory_order_relaxed));
-    settings.referenceHz = reference->load (std::memory_order_relaxed);
+    s.retuneMs = retune->load (std::memory_order_relaxed);
+    s.humanize = humanize->load (std::memory_order_relaxed) * 0.01;
+    s.flexCents = flex->load (std::memory_order_relaxed);
+    s.naturalVibrato = naturalVibrato->load (std::memory_order_relaxed) * 0.01;
+    s.transpose = (double) juce::roundToInt (transpose->load (std::memory_order_relaxed));
+    s.referenceHz = reference->load (std::memory_order_relaxed);
+    s.classic = classic->load (std::memory_order_relaxed) >= 0.5f;
+    s.midiTargets = midiTargets->load (std::memory_order_relaxed) >= 0.5f;
+    s.midiAllOctaves = (int) midiOctave->load (std::memory_order_relaxed) == 0;
+    s.vibratoCents = vibratoAmount->load (std::memory_order_relaxed);
+    s.vibratoHz = vibratoRate->load (std::memory_order_relaxed);
+    s.vibratoDelayMs = vibratoDelay->load (std::memory_order_relaxed);
 
-    formantOn = formantPreserve->load (std::memory_order_relaxed) >= 0.5f;
+    shared.formantPreserve = formantPreserve->load (std::memory_order_relaxed) >= 0.5f;
     const double throatPercent = throat->load (std::memory_order_relaxed);
-    throatRate = throatPercent == 100.0 ? 1.0 : 100.0 / throatPercent;
+    shared.throatRate = throatPercent == 100.0 ? 1.0 : 100.0 / throatPercent;
 
     // Tracking 0 is choosy, 100 lets rough, breathy sound through as pitched.
-    const float limit = 0.10f + 0.004f * tracking->load (std::memory_order_relaxed);
-    if (limit != lastVoicingLimit)
+    shared.voicingLimit = 0.10f + 0.004f * tracking->load (std::memory_order_relaxed);
+}
+
+void PluginProcessor::handleMidi (const juce::MidiMessage& m) noexcept
+{
+    if (m.isNoteOn())
     {
-        tracker.setVoicingLimit (limit);
-        lastVoicingLimit = limit;
+        keysDown.set (m.getNoteNumber(), true);
+        if (pedalDown) pedalHeld.set (m.getNoteNumber(), true);
+    }
+    else if (m.isNoteOff())
+    {
+        keysDown.set (m.getNoteNumber(), false);
+    }
+    else if (m.isSustainPedalOn())
+    {
+        pedalDown = true;
+        pedalHeld = keysDown;
+    }
+    else if (m.isSustainPedalOff())
+    {
+        pedalDown = false;
+        pedalHeld.clear();
+    }
+    else if (m.isAllNotesOff() || m.isAllSoundOff() || m.isResetAllControllers())
+    {
+        keysDown.clear();
+        pedalHeld.clear();
+        pedalDown = false;
+    }
+    shared.held.bits[0] = keysDown.bits[0] | pedalHeld.bits[0];
+    shared.held.bits[1] = keysDown.bits[1] | pedalHeld.bits[1];
+}
+
+// Engine or Input Type changed: warm the other engine while this one plays, then crossfade.
+void PluginProcessor::manageEngines() noexcept
+{
+    const int wantedType = juce::jlimit (0, numInputTypes - 1, (int) inputType->load (std::memory_order_relaxed));
+    const int wantedMode = juce::jlimit (0, 1, (int) engineParam->load (std::memory_order_relaxed));
+    auto& current = engines[(size_t) activeEngine];
+    auto& next = engines[(size_t) (1 - activeEngine)];
+    const auto startWarming = [&]
+    {
+        next.configure (wantedType, inputRanges[(size_t) wantedType].lowHz, inputRanges[(size_t) wantedType].highHz, wantedMode);
+        warmLeft = next.getLatency() + juce::roundToInt (sr * warmExtraMs * 0.001);
+        handover = Handover::warming;
+    };
+
+    if (handover == Handover::none)
+    {
+        if (current.getInputType() != wantedType || current.getMode() != wantedMode)
+            startWarming();
+    }
+    else if (handover == Handover::warming)
+    {
+        if (current.getInputType() == wantedType && current.getMode() == wantedMode)
+            handover = Handover::none;
+        else if (next.getInputType() != wantedType || next.getMode() != wantedMode)
+            startWarming();
     }
 }
 
-void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) { process (buffer, false); }
-void PluginProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) { process (buffer, true); }
+void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) { process (buffer, midi, false); }
+void PluginProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) { process (buffer, midi, true); }
 
-void PluginProcessor::process (juce::AudioBuffer<float>& buffer, bool forceBypass) noexcept
+void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi, bool forceBypass) noexcept
 {
     juce::ScopedNoDenormals noDenormals;
     sanitiseInput (buffer);
@@ -276,98 +366,106 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, bool forceBypas
         return;
 
     readSettings();
-    const int wantedType = juce::jlimit (0, numInputTypes - 1, (int) inputType->load (std::memory_order_relaxed));
-    if (wantedType != typeNow)
-        fading = true;
+    manageEngines();
     const float bypassTarget = (forceBypass || bypass->get()) ? 0.0f : 1.0f;
+    const float mixTarget = juce::jlimit (0.0f, 1.0f, mix->load (std::memory_order_relaxed) * 0.01f);
 
     float* left = buffer.getWritePointer (0);
     float* right = numCh > 1 ? buffer.getWritePointer (1) : nullptr;
 
+    auto midiAt = midi.cbegin();
+    const auto midiEnd = midi.cend();
+
     for (int i = 0; i < numSamples; ++i)
     {
+        while (midiAt != midiEnd && (*midiAt).samplePosition <= i)
+        {
+            handleMidi ((*midiAt).getMessage());
+            ++midiAt;
+        }
+
         const float l = left[i];
         const float r = right != nullptr ? right[i] : l;
-        shifter.write (0, l);
-        if (right != nullptr) shifter.write (1, r);
-        shifter.advance();
-        tracker.push (0.5f * (l + r));
 
-        if (++tickPhase >= tickSamples)
+        if (mixNow < mixTarget) mixNow = juce::jmin (mixTarget, mixNow + mixStep);
+        else if (mixNow > mixTarget) mixNow = juce::jmax (mixTarget, mixNow - mixStep);
+        if (bypassMix < bypassTarget) bypassMix = juce::jmin (bypassTarget, bypassMix + bypassStep);
+        else if (bypassMix > bypassTarget) bypassMix = juce::jmax (bypassTarget, bypassMix - bypassStep);
+        const float amount = bypassMix * mixNow;
+
+        const auto runOne = [&] (TuneEngine& e, float* out)
         {
-            tickPhase = 0;
-            const double period = tracker.period();
-            corrector.update (period, settings, tickSeconds);
-            control.voiced = period > 0.0;
-            if (control.voiced)
+            float wet[2], dry[2];
+            e.process (l, r, shared, wet, dry);
+            out[0] = dry[0] + amount * (wet[0] - dry[0]);
+            out[1] = dry[1] + amount * (wet[1] - dry[1]);
+        };
+
+        float out[2];
+        runOne (engines[(size_t) activeEngine], out);
+
+        if (handover != Handover::none)
+        {
+            float other[2];
+            runOne (engines[(size_t) (1 - activeEngine)], other);
+            if (handover == Handover::warming)
             {
-                control.inputPeriod = period;
-                control.outputPeriod = corrector.outputPeriod (settings);
-                control.noCorrection = corrector.isIdentity();
-                double rate = throatRate;
-                if (! formantOn && control.outputPeriod > 0.0)
-                    rate *= period / control.outputPeriod;
-                control.grainRate = juce::jlimit (0.5, 2.0, rate);
+                if (--warmLeft <= 0)
+                {
+                    handover = Handover::crossfading;
+                    crossfadeAt = 0;
+                    reportedLatencyWanted.store (engines[(size_t) (1 - activeEngine)].getLatency(), std::memory_order_relaxed);
+                }
             }
             else
             {
-                control.grainRate = 1.0;
-                control.noCorrection = true;
-            }
-
-            if (++historyPhase >= 5)
-            {
-                historyPhase = 0;
-                const auto at = pitchHistoryCount.load (std::memory_order_relaxed);
-                auto& point = pitchHistory[(size_t) (at & (pitchHistorySize - 1))];
-                point.inputNote.store (control.voiced ? (float) corrector.inputPitch() : 0.0f, std::memory_order_relaxed);
-                point.outputNote.store (control.voiced ? (float) corrector.outputPitch() : 0.0f, std::memory_order_relaxed);
-                point.targetNote.store ((float) corrector.targetNote(), std::memory_order_relaxed);
-                pitchHistoryCount.store (at + 1, std::memory_order_relaxed);
+                // Equal power: the two run at different delays, so they are not in step.
+                const float t = (float) crossfadeAt / (float) crossfadeLength;
+                const float a = std::cos (t * juce::MathConstants<float>::halfPi), b = std::sin (t * juce::MathConstants<float>::halfPi);
+                out[0] = a * out[0] + b * other[0];
+                out[1] = a * out[1] + b * other[1];
+                if (++crossfadeAt >= crossfadeLength)
+                {
+                    activeEngine = 1 - activeEngine;
+                    handover = Handover::none;
+                }
             }
         }
 
-        float wet[2] = { 0.0f, 0.0f };
-        shifter.step (tracker, control, wet);
-
-        const float dryL = shifter.dry (0);
-        const float dryR = right != nullptr ? shifter.dry (1) : 0.0f;
-
-        // Input Type changes the delay, so fade out, jump, fade in, over 2 ms each way.
-        if (fading)
-        {
-            fadeGain -= fadeStep;
-            if (fadeGain <= 0.0f)
-            {
-                fadeGain = 0.0f;
-                fading = false;
-                applyInputType (wantedType);
-            }
-        }
-        else if (fadeGain < 1.0f)
-        {
-            fadeGain = juce::jmin (1.0f, fadeGain + fadeStep);
-        }
-
-        if (bypassMix < bypassTarget) bypassMix = juce::jmin (bypassTarget, bypassMix + bypassStep);
-        else if (bypassMix > bypassTarget) bypassMix = juce::jmax (bypassTarget, bypassMix - bypassStep);
-
-        left[i] = fadeGain * (dryL + bypassMix * (wet[0] - dryL));
+        left[i] = out[0];
         if (right != nullptr)
-            right[i] = fadeGain * (dryR + bypassMix * (wet[1] - dryR));
+            right[i] = out[1];
+
+        if (++historyPhase >= historyTicks)
+        {
+            historyPhase = 0;
+            const auto& e = engines[(size_t) activeEngine];
+            const bool voiced = e.getControl().voiced;
+            const auto at = pitchHistoryCount.load (std::memory_order_relaxed);
+            auto& point = pitchHistory[(size_t) (at & (pitchHistorySize - 1))];
+            point.inputNote.store (voiced ? (float) e.getCorrector().inputPitch() : 0.0f, std::memory_order_relaxed);
+            point.outputNote.store (voiced ? (float) e.getCorrector().outputPitch() : 0.0f, std::memory_order_relaxed);
+            point.targetNote.store ((float) e.getCorrector().targetNote(), std::memory_order_relaxed);
+            pitchHistoryCount.store (at + 1, std::memory_order_relaxed);
+        }
     }
 
     if (getTotalNumOutputChannels() == 2 && numCh == 1 && buffer.getNumChannels() > 1)
         buffer.copyFrom (1, 0, buffer, 0, 0, numSamples);
 
     // Readings: stored, never sent to the host. Nothing here can write automation.
-    const bool voiced = control.voiced;
+    const auto& e = engines[(size_t) activeEngine];
+    const bool voiced = e.getControl().voiced;
+    const auto& corrector = e.getCorrector();
     offReading->set ((float) juce::jlimit (-100.0, 100.0, corrector.centsOffTarget()));
-    hzReading->set (voiced ? (float) (sr / control.inputPeriod) : 0.0f);
-    correctionReading->set ((float) juce::jlimit (-2400.0, 2400.0, corrector.correctionCents()));
+    hzReading->set (voiced ? (float) (sr / e.getControl().inputPeriod) : 0.0f);
+    outputReading->set (voiced && e.getControl().outputPeriod > 0.0 ? (float) (sr / e.getControl().outputPeriod) : 0.0f);
+    correctionReading->set (voiced ? (float) juce::jlimit (-4800.0, 4800.0, corrector.correctionCents()) : 0.0f);
     noteReading->set ((float) corrector.targetNote());
     keyReading->set ((float) (activeKeyNow + 12 * activeScaleNow));
+    latencyReading->set ((float) (e.getLatency() * 1000.0 / sr));
     voicedNow.store (voiced ? 1 : 0, std::memory_order_relaxed);
+    activeEngineNow.store (e.getMode(), std::memory_order_relaxed);
 }
 
 PluginProcessor::Readings PluginProcessor::getReadings() const noexcept
@@ -375,11 +473,13 @@ PluginProcessor::Readings PluginProcessor::getReadings() const noexcept
     Readings r;
     r.centsOffTarget = offReading->get();
     r.detectedHz = hzReading->get();
+    r.outputHz = outputReading->get();
     r.correctionCents = correctionReading->get();
     r.targetNote = juce::roundToInt (noteReading->get());
     const int packed = juce::roundToInt (keyReading->get());
     r.activeKey = packed % 12;
     r.activeScale = packed / 12;
+    r.activeEngine = activeEngineNow.load (std::memory_order_relaxed);
     r.voiced = voicedNow.load (std::memory_order_relaxed) != 0;
     return r;
 }
@@ -397,9 +497,8 @@ void PluginProcessor::pollKeyFileNow()
 
 void PluginProcessor::handleAsyncUpdate()
 {
-    const double rate = preparedRate.load (std::memory_order_relaxed);
-    if (rate > 0.0)
-        setLatencySamples (latencyFor ((int) inputType->load (std::memory_order_relaxed), rate));
+    if (preparedRate.load (std::memory_order_relaxed) > 0.0)
+        setLatencySamples (reportedLatencyWanted.load (std::memory_order_relaxed));
 }
 
 juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new TuneEditor (*this); }
@@ -425,6 +524,10 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("humanize", presets[i].humanize);
     set ("flex", presets[i].flex);
     set ("naturalVibrato", presets[i].vibrato);
+    set ("classic", presets[i].classicOn ? 1.0f : 0.0f);
+    set ("vibratoAmount", presets[i].addedVibrato);
+    if (presets[i].engine >= 0)
+        set ("engine", (float) presets[i].engine);
 }
 
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)

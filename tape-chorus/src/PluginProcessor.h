@@ -2,7 +2,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "TapeChorusEngine.h"
-#include "MeterEditor.h"
+#include "Reading.h"
 
 class PluginProcessor final : public juce::AudioProcessor
 {
@@ -15,7 +15,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    juce::AudioProcessorEditor* createEditor() override { return new MeterEditor (*this, { inputLevel, outputLevel, pitchSwing }); }
+    juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Smooth Tape Chorus"; }
@@ -37,13 +37,20 @@ public:
 
     double getWetLatencySamples() const { return engine.getWetLatencySamples(); }
     double getMinDelayMs() const { return engine.getMinDelayMs(); }
-    // For a later window: where each voice's read head is now, in ms. 0 when that voice is silent.
+    // Where each voice's read head is now, in ms. 0 when that voice is silent.
     float getVoiceDelayMs (int side, int voice) const noexcept { return engine.getVoiceDelayMs (side, voice); }
     Reading* getInputLevel() const noexcept { return inputLevel; }
     Reading* getOutputLevel() const noexcept { return outputLevel; }
     Reading* getPitchSwing() const noexcept { return pitchSwing; }
 
+    const TapeChorusEngine& getEngine() const noexcept { return engine; }
+
     juce::AudioProcessorValueTreeState apvts;
+
+    // The window's own two saved values. Nothing else is added to a session, and these stay out of the parameter tree.
+    static constexpr int defaultWindowWidth = 1080, minWindowWidth = 820, maxWindowWidth = 1760;
+    std::atomic<int> windowWidth { defaultWindowWidth };
+    std::atomic<bool> advancedOpen { false };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();

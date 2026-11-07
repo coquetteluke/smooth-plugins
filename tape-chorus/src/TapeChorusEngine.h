@@ -37,6 +37,17 @@ public:
     static constexpr float defaultFlutterHz = 7.1f;
     static constexpr float maxNoiseGain = 0.01f; // Noise 100 percent is -40 dBFS rms
 
+    // A picture of the tape for the window, one row about 250 times a second. The audio thread only writes it, nothing in the sound
+    // ever reads it, and the window reads it with no lock. Relaxed atomics, so a row read during a write is at worst a mix of two neighbours.
+    struct TraceRow
+    {
+        std::array<std::array<std::atomic<float>, maxVoices>, 2> delayMs {};   // where each read head is. 0 when that voice is silent
+        std::array<std::atomic<float>, maxVoices> voiceGain {};                // the voice's fade and Degrade dip
+        std::atomic<float> tapePeak { 0.0f };                                  // loudest sample written to the tape since the row before
+        std::atomic<float> centreMs { 15.0f };                                 // the centre delay at this moment
+    };
+    static constexpr uint32_t traceRows = 2048;
+
     struct Params
     {
         int voices = 2;
@@ -143,6 +154,9 @@ public:
         delayCur = delayNext;
         for (auto& side : delayStep) side.fill (0.0);
         tickLeft = 0;
+        traceTicks = std::max (1, juce::roundToInt (sr / (double) tickLen / 250.0));
+        traceTicksLeft = traceTicks;
+        traceHz.store ((float) (sr / (double) (tickLen * traceTicks)), std::memory_order_relaxed);
     }
 
     double getWetLatencySamples() const { return wetLatency; }
@@ -155,6 +169,15 @@ public:
     float getPitchSwingCents() const noexcept { return readPitchSwing.load (std::memory_order_relaxed); }
     // Where a voice's read head is now, in ms. 0 when that voice is silent.
     float getVoiceDelayMs (int side, int voice) const noexcept { return readDelayMs[(size_t) side][(size_t) voice].load (std::memory_order_relaxed); }
+
+    // How many rows have been written, ever. The newest is at (count - 1) % traceRows. Rows go back traceRows less a safety margin.
+    uint32_t getTraceCount() const noexcept { return traceCount.load (std::memory_order_acquire); }
+    float getTraceHz() const noexcept { return traceHz.load (std::memory_order_relaxed); }
+    const TraceRow& getTraceRow (uint32_t index) const noexcept { return (*trace)[(size_t) (index & (traceRows - 1))]; }
+
+    // The layout of the voices, for a window drawing what a setting will do while no audio runs.
+    static float voiceOffsetMs (int numVoices, int voice) { return offsetFor (numVoices, voice); }
+    static float voicePhaseTurns (int numVoices, int voice) { return phaseFor (numVoices, voice); }
 
     // Input is read from the first numIn channels and output written to the first numOut channels, in place.
     void process (float* const* io, int numIn, int numOut, int numSamples, const Params& p, bool forceBypass)
@@ -500,6 +523,28 @@ private:
 
         clearIfBad();
         tickPos = 0;
+
+        if (--traceTicksLeft <= 0)
+        {
+            traceTicksLeft = traceTicks;
+            writeTraceRow();
+        }
+    }
+
+    // Only reads the state above, and writes nothing the sound depends on.
+    void writeTraceRow() noexcept
+    {
+        const uint32_t count = traceCount.load (std::memory_order_relaxed);
+        auto& row = (*trace)[(size_t) (count & (traceRows - 1))];
+        for (size_t s = 0; s < 2; ++s)
+            for (size_t v = 0; v < maxVoices; ++v)
+                row.delayMs[s][v].store (voiceGainNext[v] > 0.0f ? (float) ((delayNext[s][v] + wetLatency) * 1000.0 / sr) : 0.0f, std::memory_order_relaxed);
+        for (size_t v = 0; v < maxVoices; ++v)
+            row.voiceGain[v].store (voiceGainNext[v] * dip[v], std::memory_order_relaxed);
+        row.tapePeak.store (tapeMost, std::memory_order_relaxed);
+        row.centreMs.store (centre, std::memory_order_relaxed);
+        tapeMost = 0.0f;
+        traceCount.store (count + 1, std::memory_order_release);
     }
 
     // Equal power blend: the level holds as Mix moves, because a moving chorus voice is not in step with the dry signal.
@@ -612,7 +657,9 @@ private:
                 st.deIn = x; st.deOut = deY;
                 const double dc = deY - st.dcX + dcR * st.dcY;
                 st.dcX = deY; st.dcY = dc;
-                line[(size_t) ch][(size_t) writeIndex] = (float) (inputScale * (dc + (double) hissTo[ch]) + (double) (fbNow * backTo[ch]));
+                const float onTape = (float) (inputScale * (dc + (double) hissTo[ch]) + (double) (fbNow * backTo[ch]));
+                line[(size_t) ch][(size_t) writeIndex] = onTape;
+                tapeMost = std::max (tapeMost, std::abs (onTape));
             }
 
             std::array<float, 2> wet { 0.0f, 0.0f };
@@ -786,6 +833,11 @@ private:
     float tapShare = 1.0f, tapShareNext = 1.0f;
     std::atomic<float> readInPeak { 0.0f }, readOutPeak { 0.0f }, readPitchSwing { 0.0f };
     std::array<std::array<std::atomic<float>, maxVoices>, 2> readDelayMs {};
+    std::unique_ptr<std::array<TraceRow, traceRows>> trace = std::make_unique<std::array<TraceRow, traceRows>>();
+    std::atomic<uint32_t> traceCount { 0 };
+    std::atomic<float> traceHz { 250.0f };
+    int traceTicks = 6, traceTicksLeft = 6;
+    float tapeMost = 0.0f;
 
     Params target;
     float lfoSideTurn = 0.25f, rate = 1, depth = 0, centre = 15, wow = 0, flutter = 0, spread = 0, drive = 0, driveNext = 0, toneG = 1, toneGNext = 1, mix = 0, on = 1, dryGain = 1, dryGainNext = 1, wetGain = 0, wetGainNext = 0;

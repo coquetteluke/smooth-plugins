@@ -1,0 +1,27 @@
+13:59  up 12:09, 1 user, load averages: 6.07 9.34 8.39
+default preset, speech
+run  cpu%   fastcore-equiv%  Pcore%  fps   main%  audio%  Minstr/s  Minstr/frame  load  builds
+audio alone: 100 million instructions a second
+  1    4.1           3.1        80   30.0    2.4    0.8       246          8.2   6.1      6
+  2    2.9           3.1        97   30.1    1.7    0.6       248          8.2   5.9      3
+  3    2.5           3.1        99   30.2    1.4    0.6       249          8.3   5.7      3
+  4    2.6           3.1        98   30.0    1.5    0.6       249          8.3   5.6      3
+  5    2.5           3.1        97   30.0    1.4    0.6       247          8.2   5.0      3
+cpu time: lowest 2.5%, median 2.6%, highest 4.1% of one core
+work, in fast core terms: lowest 3.1%, median 3.1%, highest 3.1%
+Eight Voice Stack, speech
+audio alone: 149 million instructions a second
+  1    4.3           4.0        90   30.0    2.4    1.0       318         10.6   4.8      2
+  2    4.3           4.0        91   30.0    2.4    1.0       317         10.6   4.6      6
+  3    4.8           4.0        85   30.0    2.7    1.1       319         10.6   4.6      3
+  4    4.3           4.0        92   30.0    2.4    0.9       317         10.6   4.7      2
+  5    3.8           4.0        92   30.0    2.1    0.9       322         10.7   4.2      2
+cpu time: lowest 3.8%, median 4.3%, highest 4.8% of one core
+work, in fast core terms: lowest 4.0%, median 4.0%, highest 4.0%
+silent, default
+run  cpu%   fastcore-equiv%  Pcore%  fps   main%  audio%  Minstr/s  Minstr/frame  load  builds
+  1    0.7           0.3        73    0.2    0.3    0.1        26        130.9   4.1      2
+  2    0.7           0.3        74    0.2    0.3    0.1        26        130.2   4.0      2
+  3    0.7           0.3        74    0.2    0.3    0.1        26        131.8   3.6      2
+cpu time: lowest 0.7%, median 0.7%, highest 0.7% of one core
+work, in fast core terms: lowest 0.3%, median 0.3%, highest 0.3%

@@ -16,6 +16,9 @@
 #else
  #define HAS_WINDOW 0
 #endif
+#include <libproc.h>
+#include <sys/resource.h>
+#include <unistd.h>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -117,12 +120,232 @@ static juce::String hashOf (const std::vector<float>& v)
     return juce::String::toHexString ((juce::int64) h);
 }
 
+#if HAS_WINDOW
+// The window's own promises. Every control is a real parameter that moves both ways, with gestures, and the window saves only its two values.
+static void runWindowPromises (int& failures)
+{
+    const auto expect = [&failures] (bool ok, const juce::String& what)
+    {
+        failures += ok ? 0 : 1;
+        std::printf ("%s  window: %s\n", ok ? "PASS" : "FAIL", what.toRawUTF8());
+    };
+
+    struct Counter final : public juce::AudioProcessorListener
+    {
+        int changes = 0, begins = 0, ends = 0;
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override  { ++changes; }
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+        void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override { ++begins; }
+        void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int) override   { ++ends; }
+    };
+
+    PluginProcessor p;
+    prepare (p);
+    Counter counter;
+    p.addListener (&counter);
+    std::unique_ptr<TapeChorusEditor> window (dynamic_cast<TapeChorusEditor*> (p.createEditor()));
+    window->setVisible (true);
+    for (int i = 0; i < 20; ++i) window->tick (1.0 / 30.0);
+    expect (counter.changes == 0 && counter.begins == 0, "opening and running it writes no parameter");
+
+    auto& panel = window->getPanel();
+    int missing = 0;
+    for (auto* prm : p.getParameters())
+        if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (prm))
+            if (panel.findChildWithID (withId->paramID) == nullptr)
+            {
+                std::printf ("      no control for %s\n", withId->paramID.toRawUTF8());
+                ++missing;
+            }
+    expect (missing == 0, "every parameter has a place on screen, " + juce::String (p.getParameters().size()) + " parameters");
+
+    // Automation moves the window.
+    auto* depthParam = p.apvts.getParameter ("depth");
+    depthParam->setValueNotifyingHost (depthParam->convertTo0to1 (3.0f));
+    auto* depthStrip = dynamic_cast<ui::ParamStrip*> (panel.findChildWithID ("depth"));
+    expect (depthStrip != nullptr && std::abs (depthStrip->getValue() - 3.0) < 0.002, "automation moves the Depth control");
+
+    // A real drag on a column moves the real parameter, inside one begin and end gesture.
+    {
+        const auto event = [depthStrip] (juce::Point<float> at)
+        {
+            const auto now = juce::Time::getCurrentTime();
+            return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, depthStrip, depthStrip, now, at, now, 1, false);
+        };
+        counter.begins = counter.ends = 0;
+        const auto before = p.apvts.getRawParameterValue ("depth")->load();
+        depthStrip->mouseDown (event ({ 40.0f, 40.0f }));
+        depthStrip->mouseDrag (event ({ 80.0f, 40.0f }));
+        depthStrip->mouseUp (event ({ 80.0f, 40.0f }));
+        const auto after = p.apvts.getRawParameterValue ("depth")->load();
+        expect (after > before + 0.5f && after < before + 2.0f, "dragging Depth moves it from " + juce::String (before, 2) + " to " + juce::String (after, 2) + " ms");
+        expect (counter.begins == 1 && counter.ends == 1, "the drag has one begin and one end");
+    }
+
+    // Drags on the picture itself: the tape for Rate and Depth, a reel for its gain. One gesture for each parameter touched.
+    {
+        auto& view = window->getView();
+        const auto event = [&view] (juce::Point<float> at, juce::Point<float> downAt, int clicks = 1)
+        {
+            const auto now = juce::Time::getCurrentTime();
+            return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &view, &view, now, downAt, now, clicks, at != downAt);
+        };
+
+        const juce::Point<float> mid ((float) view.getWidth() * 0.5f, (float) view.getHeight() * 0.5f);
+        const auto rateBefore = p.apvts.getRawParameterValue ("rate")->load(), depthBefore = p.apvts.getRawParameterValue ("depth")->load();
+        counter.begins = counter.ends = 0;
+        view.mouseDown (event (mid, mid));
+        view.mouseDrag (event (mid + juce::Point<float> (60.0f, -30.0f), mid));
+        view.mouseUp (event (mid + juce::Point<float> (60.0f, -30.0f), mid));
+        expect (p.apvts.getRawParameterValue ("rate")->load() > rateBefore && p.apvts.getRawParameterValue ("depth")->load() > depthBefore,
+                "dragging the tape up and right raises Rate and Depth");
+        expect (counter.begins == 2 && counter.ends == 2, "that drag has one begin and one end for each");
+
+        const auto reel = view.leftReelCentre();
+        counter.begins = counter.ends = 0;
+        view.mouseDown (event (reel, reel));
+        view.mouseDrag (event (reel + juce::Point<float> (0.0f, -30.0f), reel));
+        view.mouseUp (event (reel + juce::Point<float> (0.0f, -30.0f), reel));
+        expect (p.apvts.getRawParameterValue ("inputGain")->load() > 3.0f && counter.begins == 1 && counter.ends == 1,
+                "dragging the left reel up raises Input, in one gesture");
+
+        view.mouseDoubleClick (event (reel, reel, 2));
+        expect (std::abs (p.apvts.getRawParameterValue ("inputGain")->load()) < 0.01f, "double-clicking the reel resets Input");
+        view.mouseDoubleClick (event (mid, mid, 2));
+        expect (std::abs (p.apvts.getRawParameterValue ("rate")->load() - 0.8f) < 0.01f && std::abs (p.apvts.getRawParameterValue ("depth")->load() - 1.5f) < 0.01f,
+                "double-clicking the tape resets Rate and Depth");
+        depthParam->setValueNotifyingHost (depthParam->convertTo0to1 (3.0f));
+    }
+
+    // Double-click resets, through the slider's own return value.
+    expect (std::abs (depthStrip->getDoubleClickReturnValue() - 1.5) < 0.001, "double-click goes back to the default, 1.50 ms");
+
+    // Typing goes through the same parameter.
+    {
+        depthStrip->applyTyped ("2.5");
+        expect (std::abs (p.apvts.getRawParameterValue ("depth")->load() - 2.5f) < 0.01f, "typing 2.5 sets Depth");
+        depthStrip->applyTyped ("nonsense");
+        expect (std::abs (p.apvts.getRawParameterValue ("depth")->load() - 2.5f) < 0.01f, "typing nonsense changes nothing");
+
+        auto* lowCutStrip = dynamic_cast<ui::ParamStrip*> (panel.findChildWithID ("lowCut"));
+        auto* highCutStrip = dynamic_cast<ui::ParamStrip*> (panel.findChildWithID ("highCut"));
+        highCutStrip->applyTyped ("7");
+        expect (std::abs (p.apvts.getRawParameterValue ("highCut")->load() - 7000.0f) < 1.0f, "typing 7 into High Cut, which reads in kHz, sets 7 kHz");
+        lowCutStrip->applyTyped ("150");
+        lowCutStrip->applyTyped ("off");
+        expect (std::abs (p.apvts.getRawParameterValue ("lowCut")->load() - TapeChorusEngine::lowCutOffHz) < 0.01f, "typing off turns Low Cut off");
+        expect (lowCutStrip->numberText() == "Off", "Low Cut then reads Off");
+    }
+
+    // A switch moves its parameter, and the other way round.
+    {
+        auto* unsync = dynamic_cast<juce::Button*> (panel.findChildWithID ("unsync"));
+        counter.begins = counter.ends = 0;
+        unsync->setToggleState (true, juce::sendNotificationSync);
+        expect (p.apvts.getRawParameterValue ("unsync")->load() > 0.5f && counter.begins == 1, "clicking Unsync sets the parameter inside a gesture");
+    }
+
+    // The hero reads what the engine is really doing.
+    {
+        juce::AudioBuffer<float> b (2, kBlock);
+        juce::MidiBuffer midi;
+        b.clear();
+        const auto before = p.getEngine().getTraceCount();
+        for (int i = 0; i < 40; ++i) p.processBlock (b, midi);
+        const auto count = p.getEngine().getTraceCount();
+        const float rows = (float) (count - before), want = 40.0f * (float) kBlock * p.getEngine().getTraceHz() / (float) kRate;
+        expect (std::abs (rows - want) <= 2.0f, "the tape picture gets a new row " + juce::String (p.getEngine().getTraceHz(), 0) + " times a second, " + juce::String (rows, 0) + " rows in 40 blocks");
+        expect (std::abs (p.getEngine().getTraceRow (count - 1).delayMs[0][0].load() - p.getVoiceDelayMs (0, 0)) < 0.5f, "its newest row agrees with the read head reading");
+        expect (p.getEngine().getTraceRow (count - 1).delayMs[0][7].load() == 0.0f, "a silent voice has no line");
+    }
+
+    // The tape stops when there is nothing to draw, so the window costs almost nothing.
+    {
+        int moved = 0;
+        for (int i = 0; i < 60; ++i) moved += window->getView().tick (1.0 / 30.0) ? 1 : 0;
+        for (int i = 0; i < 30; ++i) moved = window->getView().tick (1.0 / 30.0) ? 1 : 0;
+        expect (moved == 0, "with no audio running and nothing changing, no frames are drawn");
+        depthParam->setValueNotifyingHost (depthParam->convertTo0to1 (1.0f));
+        expect (window->getView().tick (1.0 / 30.0), "a changed setting wakes it");
+    }
+
+    // The window's two values survive a session, and stay in range. A session from before the window opens at the default size.
+    {
+        window->setAdvancedOpen (true, false);
+        p.windowWidth.store (1400);
+        juce::MemoryBlock state;
+        p.getStateInformation (state);
+        window.reset();
+        p.removeListener (&counter);
+
+        PluginProcessor q;
+        q.setStateInformation (state.getData(), (int) state.getSize());
+        expect (q.windowWidth.load() == 1400 && q.advancedOpen.load(), "window size and Advanced come back with the session");
+        expect (! q.apvts.state.hasProperty ("windowWidth") && ! q.apvts.state.hasProperty ("advancedOpen"), "they stay out of the parameter tree");
+
+        auto xml = q.getXmlFromBinary (state.getData(), (int) state.getSize());
+        xml->setAttribute ("windowWidth", 999999);
+        juce::MemoryBlock damaged;
+        q.copyXmlToBinary (*xml, damaged);
+        q.setStateInformation (damaged.getData(), (int) damaged.getSize());
+        expect (q.windowWidth.load() == PluginProcessor::maxWindowWidth, "a damaged window size is clamped");
+
+        juce::MemoryBlock old;
+        PluginProcessor fromBefore;
+        const bool loaded = stateFile().loadFileAsData (old);
+        fromBefore.setStateInformation (old.getData(), (int) old.getSize());
+        expect (loaded && fromBefore.windowWidth.load() == PluginProcessor::defaultWindowWidth && ! fromBefore.advancedOpen.load()
+                    && std::abs (fromBefore.apvts.getRawParameterValue ("depth")->load() - 2.5f) < 0.002f,
+                "a 0.2.1 session loads its settings and opens the window at the default size");
+    }
+}
+#endif
+
+// What the audio thread costs, in instructions, which do not depend on what else the Mac is doing. Build this on two versions to compare them.
+static void measureAudioCost (const std::vector<float>& left, const std::vector<float>& right)
+{
+    const auto instructions = []
+    {
+        rusage_info_v6 info {};
+        proc_pid_rusage (getpid(), RUSAGE_INFO_V6, (rusage_info_t*) &info);
+        return (double) info.ri_instructions;
+    };
+
+    for (const int preset : { 0, 3, 7, 9 })
+    {
+        PluginProcessor p;
+        p.setCurrentProgram (preset);
+        p.setPlayConfigDetails (2, 2, kRate, 128);
+        p.prepareToPlay (kRate, 128);
+        juce::AudioBuffer<float> b (2, 128);
+        juce::MidiBuffer midi;
+        constexpr int blocks = (int) (kRate * 20.0) / 128;
+        const auto before = instructions();
+        for (int n = 0; n < blocks; ++n)
+        {
+            const int at = (n * 128) % (kSamples - 128);
+            std::copy (left.begin() + at, left.begin() + at + 128, b.getWritePointer (0));
+            std::copy (right.begin() + at, right.begin() + at + 128, b.getWritePointer (1));
+            p.processBlock (b, midi);
+        }
+        std::printf ("%-22s %8.2f million instructions per second of audio\n", p.getProgramName (preset).toRawUTF8(), (instructions() - before) / 20.0 * 1.0e-6);
+    }
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
     const bool saving = argc > 1 && juce::String (argv[1]) == "--save";
     const auto left = readWav ("samantha.wav", 20000), right = readWav ("daniel.wav", 30000);
     int failures = 0;
+
+    if (argc > 1 && juce::String (argv[1]) == "--cost")
+    {
+        measureAudioCost (left, right);
+        return 0;
+    }
 
     if (saving)
     {

@@ -38,9 +38,19 @@ Audio Units > Luke Garito > Smooth Tape Chorus. AU code: `aufx STch Luke`. Works
 | Output Gain | -24 to +24 dB | After everything. |
 | Bypass | on or off | Fades to the exact dry signal in 20 ms, ignoring both gains. Latency stays 0. |
 
-Readings, which cannot be set and write no automation: **Input Level** (after Input Gain), **Output Level**, **Pitch Swing** (largest pitch movement from Rate and Depth, in cents). The window keeps JUCE's generic layout, with a live row for each reading at the bottom.
+Readings, which cannot be set and write no automation: **Input Level** (after Input Gain), **Output Level**, **Pitch Swing** (largest pitch movement from Rate and Depth, in cents).
 
 If Delay Time is too short to hold the modulation you asked for, Depth, Wow, Flutter, Random and the voice offsets all shrink together, so the delay never falls below about 1.3 ms.
+
+## The window
+
+Two reels with one line per voice running between them. Each line is that voice's read head, read from the engine about 250 times a second: it sweeps with Rate and Depth, shakes with Wow, Flutter and Random, breaks where Degrade pulls a voice down, and the pale left lines and aqua right lines part as Spread opens. The bars behind are the loudest samples really written to the tape, so Feedback shows as repeats after a phrase. The lines gather toward each reel as they reach it, and the middle is true to the scale shown. The left reel winds out with the input level, the right with the output, and a coral ring means over 0 dB.
+
+The row under it follows the signal from left to right: Input, Voices, Rate, Depth, Delay, Feedback, Spread, Mix, Output. Advanced opens the rest on the same nine columns. Drag any column, double-click to reset, click a number to type. Drag the tape up or down for Depth and sideways for Rate, and drag a reel for its gain. A line at the bottom says what the thing under the mouse does.
+
+With no audio running at all, the window draws what the settings will do. When the tape has been silent for 3 seconds and nothing is changing, it stops drawing. Everything in it is a real parameter with its old ID, name and range, so automation moves the same controls. A session gains only the window size and whether Advanced is open. The type is Work Sans, under the SIL Open Font License, in `assets/fonts/`.
+
+Pictures are in `docs/window/`. To make them again: `build/RenderWindow_artefacts/Release/RenderWindow docs/window`. To measure the window: `RenderWindow --live [runs] [seconds] [normal, silent or background] [preset]`.
 
 ## Presets
 
@@ -78,6 +88,10 @@ Latency is 0 samples at every rate. The oversampling filters take 59.5 samples a
 CPU through the real AU at 48 kHz with 128 frame blocks, percent of one core: default 0.8, worst preset 1.1 (Eight Voice Stack), worst single block 3.
 
 Same sound after the CPU work: `tests/null_results.txt` holds the null of 0.2.1 against 0.2.0 for the default, every preset and random automation. Worst peak -114.4 dBFS, on a signal at 16 times full scale.
+
+Window CPU, on the real window at Retina size with speech running, 30 frames a second, percent of one core, with other builds running on the Mac: default 2.5 to 4.1 over 5 runs, Eight Voice Stack 3.8 to 4.8 over 5 runs. That is 3.1 and 4.0 percent of a fast core in work. Stopped with nothing moving: 0.7. On the slow cores, when the Mac was busy with several builds, the same work read 6.9 to 11 percent. `docs/window/cpu-runs.txt` has the runs. Through `NullTest --cost` the audio thread takes 0.5 percent more instructions than 0.2.1 (96.1 to 96.6 million a second at default), to fill the window's picture.
+
+Same sound after the window: `tests/au_null.sh` renders speech through the real installed AU at 19 settings, and `tests/au_baseline.sha256` holds the checksums from installed 0.2.1. All 19 are bit for bit identical. `tests/NullTest.cpp` also checks 6 settings against 0.2.1 with no window, with the window drawing while audio runs on another thread, and with the window opening and closing over and over during audio. All exact. `tests/au_null_results.txt` and `tests/window_results.txt` have those results, and the window's own checks: every parameter has a place on screen, automation moves the controls, drags have one begin and one end, and the saved state holds only the two new values.
 
 Offline, in `tests/PluginTest.cpp`. Full numbers are in `tests/results.txt`.
 

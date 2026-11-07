@@ -1,0 +1,57 @@
+PASS  default           no window         exact, bit for bit against 0.2.1
+PASS  default           window drawing    exact, bit for bit against 0.2.1
+PASS  default           window drawing    709 frames drawn, saved state unchanged
+PASS  default           window reopening  exact, bit for bit against 0.2.1
+INFO  default           opened and closed the window 2174 times during audio
+PASS  worn-cassette     no window         exact, bit for bit against 0.2.1
+PASS  worn-cassette     window drawing    exact, bit for bit against 0.2.1
+PASS  worn-cassette     window drawing    707 frames drawn, saved state unchanged
+PASS  worn-cassette     window reopening  exact, bit for bit against 0.2.1
+INFO  worn-cassette     opened and closed the window 2054 times during audio
+PASS  eight-voices      no window         exact, bit for bit against 0.2.1
+PASS  eight-voices      window drawing    exact, bit for bit against 0.2.1
+PASS  eight-voices      window drawing    708 frames drawn, saved state unchanged
+PASS  eight-voices      window reopening  exact, bit for bit against 0.2.1
+INFO  eight-voices      opened and closed the window 2016 times during audio
+PASS  cassette-backing  no window         exact, bit for bit against 0.2.1
+PASS  cassette-backing  window drawing    exact, bit for bit against 0.2.1
+PASS  cassette-backing  window drawing    704 frames drawn, saved state unchanged
+PASS  cassette-backing  window reopening  exact, bit for bit against 0.2.1
+INFO  cassette-backing  opened and closed the window 2007 times during audio
+PASS  resonant-swirl    no window         exact, bit for bit against 0.2.1
+PASS  resonant-swirl    window drawing    exact, bit for bit against 0.2.1
+PASS  resonant-swirl    window drawing    695 frames drawn, saved state unchanged
+PASS  resonant-swirl    window reopening  exact, bit for bit against 0.2.1
+INFO  resonant-swirl    opened and closed the window 1898 times during audio
+PASS  session           no window         exact, bit for bit against 0.2.1
+PASS  session           window drawing    exact, bit for bit against 0.2.1
+PASS  session           window drawing    500 frames drawn, saved state unchanged
+PASS  session           window reopening  exact, bit for bit against 0.2.1
+INFO  session           opened and closed the window 1959 times during audio
+PASS  window: opening and running it writes no parameter
+PASS  window: every parameter has a place on screen, 28 parameters
+PASS  window: automation moves the Depth control
+PASS  window: dragging Depth moves it from 3.00 to 4.23 ms
+PASS  window: the drag has one begin and one end
+PASS  window: dragging the tape up and right raises Rate and Depth
+PASS  window: that drag has one begin and one end for each
+PASS  window: dragging the left reel up raises Input, in one gesture
+PASS  window: double-clicking the reel resets Input
+PASS  window: double-clicking the tape resets Rate and Depth
+PASS  window: double-click goes back to the default, 1.50 ms
+PASS  window: typing 2.5 sets Depth
+PASS  window: typing nonsense changes nothing
+PASS  window: typing 7 into High Cut, which reads in kHz, sets 7 kHz
+PASS  window: typing off turns Low Cut off
+PASS  window: Low Cut then reads Off
+PASS  window: clicking Unsync sets the parameter inside a gesture
+PASS  window: the tape picture gets a new row 250 times a second, 53 rows in 40 blocks
+PASS  window: its newest row agrees with the read head reading
+PASS  window: a silent voice has no line
+PASS  window: with no audio running and nothing changing, no frames are drawn
+PASS  window: a changed setting wakes it
+PASS  window: window size and Advanced come back with the session
+PASS  window: they stay out of the parameter tree
+PASS  window: a damaged window size is clamped
+PASS  window: a 0.2.1 session loads its settings and opens the window at the default size
+null test passed

@@ -3,6 +3,7 @@
 #define SMOOTH_COUNT_ALLOCS
 #include "TestKit.h"
 #include "PluginProcessor.h"
+#include "editor/TapeChorusEditor.h"
 #include "EngineV010.h"
 #include <algorithm>
 #include <numeric>
@@ -1500,8 +1501,10 @@ static void testReadings()
     {
         PluginProcessor p;
         std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
-        auto* me = dynamic_cast<MeterEditor*> (ed.get());
-        check (me != nullptr && me->getNumRows() == 3, "the window has 3 live reading rows");
+        auto* window = dynamic_cast<TapeChorusEditor*> (ed.get());
+        check (window != nullptr && window->getPanel().findChildWithID ("inputLevel") != nullptr
+                   && window->getPanel().findChildWithID ("outputLevel") != nullptr
+                   && window->getPanel().findChildWithID ("pitchSwing") != nullptr, "the window has a live place for all 3 readings");
     }
 }
 

@@ -1,10 +1,10 @@
-# Smooth Key
+# Key
 
 Listens to audio and shows the key, scale, tempo and reference pitch, live. Audio passes through bit identical, with no latency. It also writes the key to a shared file so other Smooth plug-ins can read it.
 
 ## Load it
 
-Audio Units > Luke Garito > Smooth Key. Works on mono and stereo. Best on a mix bus or a beat for chords, or on a vocal with Source set to Single Voice.
+Audio Units > Luke Garito > Key. Works on mono and stereo. Best on a mix bus or a beat for chords, or on a vocal with Source set to Single Voice.
 
 ## Controls
 

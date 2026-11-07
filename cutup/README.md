@@ -1,8 +1,8 @@
-# Smooth Slice
+# Cutup
 
 Load a vocal sample, cut it at its transients or on a grid, and play the slices from MIDI. Each slice has its own Pitch, Reverse, Attack, Release, Level and Pan.
 
-How to load it: Audio Units > Luke Garito > Smooth Slice. It is an instrument (`aumu SSlc Luke`), MIDI in, stereo or mono out, no audio in.
+How to load it: Audio Units > Luke Garito > Cutup. It is an instrument (`aumu SSlc Luke`), MIDI in, stereo or mono out, no audio in.
 
 With no sample loaded it is silent. That is on purpose, and the one exception to the rule that defaults must make sound.
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1, 2026-11-07
+
+Renamed to Cutup, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
 ## 1.1.0
 
 The custom window, called Cutup. The waveform runs edge to edge, cut into warm coloured slices, and each slice flows down a ribbon to its key in the same colour. What a voice has played so far lights up as it plays. Amp and Pitch glide graphs with dots to drag, a Start tab on the waveform, a Root tab on the keyboard, Zoom slice, and a slot stepper that takes every per slice control to any of the 32 slots. The sound is bit identical to 1.0.0 on all 14 presets. The window adds only its size and whether Advanced is open to the saved state.

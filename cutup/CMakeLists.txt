@@ -4,11 +4,11 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "" FORCE)
 
 # ---- edit these for each plug-in ----
 set(SP_TARGET  SmoothSlice)
-set(SP_NAME    "Smooth Slice")
+set(SP_NAME    "Cutup")
 set(SP_CODE    SSlc)
 set(SP_BUNDLE  "com.lukegarito.smoothslice")
 set(SP_DESC    "Vocal sample slicer played from MIDI")
-set(SP_VERSION 1.1.0)
+set(SP_VERSION 1.1.1)
 set(SP_AU_TYPE kAudioUnitType_MusicDevice)
 set(SP_SYNTH   TRUE)
 set(SP_MIDI_IN TRUE)

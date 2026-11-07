@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <new>
 #include <random>
 #include <string>
@@ -404,8 +405,11 @@ static void testFlatNoise()
         }
 
         // The most trigger-happy settings. Reported so you know how they behave.
-        for (auto [sharp, sel] : { std::pair<float, float> { 1.0f, 0.0f }, { 0.0f, 0.0f }, { 1.0f, 0.5f }, { 0.0f, 0.5f } })
+        const std::pair<float, float> extremes[] = { { 1.0f, 0.0f }, { 0.0f, 0.0f }, { 1.0f, 0.5f }, { 0.0f, 0.5f } };
+
+        for (const auto& extreme : extremes)
         {
+            const float sharp = extreme.first, sel = extreme.second;
             Params p; p.depthDb = 24.0f; p.sharpness = sharp; p.selectivity = sel;
             const auto out = render (mono (s.x), p)[0];
             const auto after = spectrumOf (out);
@@ -588,7 +592,11 @@ static void testDeltaSum()
 
     Params off; off.depthDb = 0.0f; off.delta = true;
     const auto silent = render (input, off);
-    const double level = 20.0 * std::log10 (std::max (1.0e-15, (double) juce::findMaximum (silent[0].data(), (int) silent[0].size())));
+    double silentPeak = 0.0;
+    for (const auto& ch : silent)
+        for (auto v : ch)
+            silentPeak = std::max (silentPeak, (double) std::abs (v));
+    const double level = 20.0 * std::log10 (std::max (1.0e-15, silentPeak));
     check (level < -100.0, "Depth 0 with Delta on: output peak %.1f dBFS (should be silent)", level);
 }
 

@@ -1,0 +1,171 @@
+PASS  parameter names are clear, unique, no em dash
+INFO  parameter count = 5.000 
+PASS  factory presets = 7.000 
+PASS  preset names are not empty, no em dash
+PASS  presets change the state
+PASS  state save and restore
+PASS  damaged state value 'nan' gives finite output
+PASS  damaged state value 'nan' leaves controls in range
+PASS  damaged state value 'inf' gives finite output
+PASS  damaged state value 'inf' leaves controls in range
+PASS  damaged state value '-inf' gives finite output
+PASS  damaged state value '-inf' leaves controls in range
+PASS  damaged state value '-1e30' gives finite output
+PASS  damaged state value '-1e30' leaves controls in range
+PASS  damaged state value '1e30' gives finite output
+PASS  damaged state value '1e30' leaves controls in range
+PASS  damaged state value '-1' gives finite output
+PASS  damaged state value '-1' leaves controls in range
+PASS  damaged state value 'garbage' gives finite output
+PASS  damaged state value 'garbage' leaves controls in range
+PASS  sweeps finished, mono
+PASS  sweeps finished, stereo
+PASS  no NaN after silence
+PASS  no denormals decaying into silence = 0.000 samples
+INFO  click test baseline step = 0.004 
+PASS  no click when Punch jumps, biggest step = 0.005 
+PASS  no click when Attack jumps, biggest step = 0.004 
+PASS  no click when Sustain jumps, biggest step = 0.004 
+PASS  no click when Mix jumps, biggest step = 0.004 
+PASS  no click when Bypass jumps, biggest step = 0.004 
+PASS  Attack 9 dB, 1 kHz decaying burst: first 3 ms change = 8.973 dB
+PASS  Attack 9 dB, 1 kHz decaying burst: tail change = 0.000 dB
+PASS  Attack -9 dB, 1 kHz decaying burst: first 3 ms change = -8.973 dB
+PASS  Attack -9 dB, 1 kHz decaying burst: tail change = 0.000 dB
+PASS  Attack 3 dB, 1 kHz decaying burst: first 3 ms change = 2.991 dB
+PASS  Attack 3 dB, 1 kHz decaying burst: tail change = 0.000 dB
+PASS  Attack -3 dB, 1 kHz decaying burst: first 3 ms change = -2.991 dB
+PASS  Attack -3 dB, 1 kHz decaying burst: tail change = 0.000 dB
+PASS  Attack 15 dB, 1 kHz decaying burst: first 3 ms change = 14.955 dB
+PASS  Attack 15 dB, 1 kHz decaying burst: tail change = 0.000 dB
+PASS  Attack -15 dB, 1 kHz decaying burst: first 3 ms change = -14.954 dB
+PASS  Attack -15 dB, 1 kHz decaying burst: tail change = 0.000 dB
+PASS  Sustain 9 dB, 1 kHz decaying burst: tail change = 8.962 dB
+PASS  Sustain 9 dB, 1 kHz decaying burst: first 3 ms change = 0.000 dB
+PASS  Sustain -9 dB, 1 kHz decaying burst: tail change = -8.956 dB
+PASS  Sustain -9 dB, 1 kHz decaying burst: first 3 ms change = 0.000 dB
+PASS  Sustain 15 dB, 1 kHz decaying burst: tail change = 14.939 dB
+PASS  Sustain 15 dB, 1 kHz decaying burst: first 3 ms change = 0.000 dB
+PASS  Sustain -15 dB, 1 kHz decaying burst: tail change = -14.922 dB
+PASS  Sustain -15 dB, 1 kHz decaying burst: first 3 ms change = 0.000 dB
+INFO  Sustain 3 dB: tail change = 2.987 dB
+INFO  Attack +9 at -6 dBFS: first 3 ms = 8.973 dB
+INFO  Attack +9 at -6 dBFS: tail = 0.000 dB
+INFO  Attack +9 at -18 dBFS: first 3 ms = 8.973 dB
+INFO  Attack +9 at -18 dBFS: tail = 0.000 dB
+INFO  Attack +9 at -30 dBFS: first 3 ms = 8.973 dB
+INFO  Attack +9 at -30 dBFS: tail = 0.000 dB
+INFO  Attack +9 at -42 dBFS: first 3 ms = 8.973 dB
+INFO  Attack +9 at -42 dBFS: tail = 0.000 dB
+PASS  Attack +9: first 3 ms, spread across 36 dB of input level = 0.000 dB
+PASS  Attack +9: tail, spread across 36 dB of input level = 0.000 dB
+INFO  Attack -9 at -6 dBFS: first 3 ms = -8.973 dB
+INFO  Attack -9 at -6 dBFS: tail = 0.000 dB
+INFO  Attack -9 at -18 dBFS: first 3 ms = -8.973 dB
+INFO  Attack -9 at -18 dBFS: tail = 0.000 dB
+INFO  Attack -9 at -30 dBFS: first 3 ms = -8.973 dB
+INFO  Attack -9 at -30 dBFS: tail = 0.000 dB
+INFO  Attack -9 at -42 dBFS: first 3 ms = -8.973 dB
+INFO  Attack -9 at -42 dBFS: tail = 0.000 dB
+PASS  Attack -9: first 3 ms, spread across 36 dB of input level = 0.000 dB
+PASS  Attack -9: tail, spread across 36 dB of input level = 0.000 dB
+INFO  Sustain +9 at -6 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain +9 at -6 dBFS: tail = 8.962 dB
+INFO  Sustain +9 at -18 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain +9 at -18 dBFS: tail = 8.962 dB
+INFO  Sustain +9 at -30 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain +9 at -30 dBFS: tail = 8.962 dB
+INFO  Sustain +9 at -42 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain +9 at -42 dBFS: tail = 8.962 dB
+PASS  Sustain +9: first 3 ms, spread across 36 dB of input level = 0.000 dB
+PASS  Sustain +9: tail, spread across 36 dB of input level = 0.000 dB
+INFO  Sustain -9 at -6 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain -9 at -6 dBFS: tail = -8.956 dB
+INFO  Sustain -9 at -18 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain -9 at -18 dBFS: tail = -8.956 dB
+INFO  Sustain -9 at -30 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain -9 at -30 dBFS: tail = -8.956 dB
+INFO  Sustain -9 at -42 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain -9 at -42 dBFS: tail = -8.956 dB
+PASS  Sustain -9: first 3 ms, spread across 36 dB of input level = 0.000 dB
+PASS  Sustain -9: tail, spread across 36 dB of input level = 0.000 dB
+PASS  Attack +9 on 200 Hz: first 3 ms = 8.981 dB
+PASS  Attack +9 on 200 Hz: tail = 0.000 dB
+PASS  Sustain +9 on 200 Hz: tail = 8.961 dB
+PASS  Sustain +9 on 200 Hz: first 3 ms = 0.000 dB
+PASS  Attack +9 on 4 kHz: first 3 ms = 8.972 dB
+PASS  Attack +9 on 4 kHz: tail = 0.000 dB
+PASS  Sustain +9 on 4 kHz: tail = 8.962 dB
+PASS  Sustain +9 on 4 kHz: first 3 ms = 0.000 dB
+PASS  Attack +9 on noise: first 3 ms = 8.970 dB
+PASS  Attack +9 on noise: tail = 0.000 dB
+PASS  Sustain +9 on noise: tail = 8.940 dB
+PASS  Sustain +9 on noise: first 3 ms = 0.000 dB
+INFO  Sustain +9, decay time 30 ms: tail = 9.000 dB
+INFO  Sustain +9, decay time 100 ms: tail = 8.962 dB
+INFO  Sustain +9, decay time 300 ms: tail = 7.519 dB
+INFO  Sustain +9, decay time 1000 ms: tail = 2.554 dB
+PASS  Attack +9, first 3 ms, spread across sample rates = 0.000 dB
+PASS  Sustain +9, tail, spread across sample rates = 0.002 dB
+PASS  steady 60 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
+PASS  steady 100 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
+PASS  steady 1000 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
+PASS  steady 9000 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
+INFO  300 Hz burst train: input crest factor = 12.099 dB
+PASS  Punch 25, 300 Hz burst train: crest factor reduction = 1.488 dB
+PASS  Punch 25, 300 Hz burst train: RMS level change = -0.007 dB
+PASS  Punch 50, 300 Hz burst train: crest factor reduction = 3.342 dB
+PASS  Punch 50, 300 Hz burst train: RMS level change = -0.013 dB
+PASS  Punch 50, 300 Hz burst train: at least 3 dB = 3.342 dB
+PASS  Punch 75, 300 Hz burst train: crest factor reduction = 4.682 dB
+PASS  Punch 75, 300 Hz burst train: RMS level change = -0.025 dB
+PASS  Punch 100, 300 Hz burst train: crest factor reduction = 5.346 dB
+PASS  Punch 100, 300 Hz burst train: RMS level change = -0.028 dB
+PASS  Punch 100, 300 Hz burst train: at least 5 dB = 5.346 dB
+INFO  noise burst train: input crest factor = 13.959 dB
+PASS  Punch 25, noise burst train: crest factor reduction = 1.431 dB
+PASS  Punch 25, noise burst train: RMS level change = 0.016 dB
+PASS  Punch 50, noise burst train: crest factor reduction = 3.206 dB
+PASS  Punch 50, noise burst train: RMS level change = -0.004 dB
+PASS  Punch 50, noise burst train: at least 3 dB = 3.206 dB
+PASS  Punch 75, noise burst train: crest factor reduction = 4.450 dB
+PASS  Punch 75, noise burst train: RMS level change = -0.031 dB
+PASS  Punch 100, noise burst train: crest factor reduction = 5.023 dB
+PASS  Punch 100, noise burst train: RMS level change = -0.027 dB
+PASS  Punch 100, noise burst train: at least 5 dB = 5.023 dB
+PASS  Punch 100, steady 100 Hz: level change = -0.018 dB
+PASS  Punch 100, steady 100 Hz: everything other than level, relative to the tone = -113.234 dB
+PASS  Punch 100, steady 65 Hz: everything other than level, relative to the tone = -127.269 dB
+PASS  Punch 50: crest reduction spread across 36 dB of input level = 0.001 dB
+INFO  Punch 50: first hit after silence, level against the input = -2.738 dB
+INFO  Punch 50: second hit = -0.593 dB
+INFO  Punch 50: fifth hit = -0.004 dB
+PASS  Punch 50, noise at -80 dBFS: level lift = 4.190 dB
+PASS  Mix 0 with everything else on: difference from delayed input = -222.183 dB
+PASS  Mix 50 against the average of Mix 0 and Mix 100: difference = -144.048 dB
+PASS  Mix 50 with noise bursts: response spread, 200 Hz to 16 kHz = 1.227 dB
+INFO  Mix 100 with noise bursts: response spread, 200 Hz to 16 kHz = 1.843 dB
+PASS  control: a 20 sample misaligned dry reads as a comb, spread = 8.265 dB
+PASS  Attack +12 at Mix 50 lands between Mix 0 and Mix 100 = 7.897 dB
+PASS  neutral at Mix 100: difference from delayed input = -225.333 dB
+PASS  neutral at Mix 50: difference from delayed input = -225.333 dB
+PASS  impulse delay equals reported latency at 44100 Hz = 88.000 samples
+PASS  impulse delay equals reported latency at 48000 Hz = 96.000 samples
+PASS  impulse delay equals reported latency at 88200 Hz = 176.000 samples
+PASS  impulse delay equals reported latency at 96000 Hz = 192.000 samples
+PASS  Bypass parameter: the input, delayed by the same latency
+PASS  processBlockBypassed after its fade: difference from delayed input = -216.626 dB
+PASS  block size 1 against 512: difference = -220.005 dB
+PASS  block size 32 against 512: difference = -220.005 dB
+PASS  block size 777 against 512: difference = -220.005 dB
+PASS  block size 4096 against 512: difference = -220.005 dB
+PASS  after preparing again at other rates: same output, difference = -220.005 dB
+PASS  Attack -15 with Sustain +15 on 100 Hz bursts: largest gain move in one sample = 0.497 dB
+PASS  stereo: left to right balance stays put, biggest move = 0.000 dB
+PASS  stereo: silence on one side stays silent = 0.000 
+INFO  latency at 48 kHz = 96.000 samples
+PASS  state with NaN in Attack: Attack back at default, the rest kept = 0.000 dB
+PASS  state with a huge Attack: clamped to the top of its range = 15.000 dB
+PASS  cut off or foreign state: controls unchanged = 7.000 dB
+PASS  NaN and infinity in the input: output after them stays finite = 0.000 samples
+RESULT PASS  0 failures

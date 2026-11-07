@@ -18,12 +18,13 @@ public:
     static constexpr double attackFall = 0.012;
     static constexpr double sustainFastFall = 0.015;
     static constexpr double sustainSlowFall = 0.300;
-    static constexpr double compRise = 0.0005;
-    static constexpr double compFall = 0.040;
+    static constexpr double compHoldTime = 0.008;  // Punch has its own shorter hold: half a cycle down to 62 Hz. Its release has to be quick to change the shape of a sound.
+    static constexpr double compRise = 0.0002;
+    static constexpr double compFall = 0.008;
     static constexpr double peakRefFall = 1.5;     // How long the compressor remembers the loudest recent level.
     static constexpr double powerTime = 0.300;     // Averaging for the level match.
     static constexpr double makeupTime = 0.200;
-    static constexpr double gainTime = 0.0007;     // Final gain smoothing.
+    static constexpr double gainTime = 0.0005;     // Final gain smoothing.
 
     void prepare (double sampleRate)
     {
@@ -40,18 +41,14 @@ public:
         cMakeup = coef (makeupTime);
         cGain = coef (gainTime);
 
-        window = std::max (1, (int) std::lround (holdTime * sampleRate));
-        queueSize = window + 1;
-        queueValue.assign ((size_t) queueSize, 0.0f);
-        queueIndex.assign ((size_t) queueSize, 0L);
+        shaperHold.prepare (std::max (1, (int) std::lround (holdTime * sampleRate)));
+        compHold.prepare (std::max (1, (int) std::lround (compHoldTime * sampleRate)));
     }
 
     void reset (float punch)
     {
-        std::fill (queueValue.begin(), queueValue.end(), 0.0f);
-        std::fill (queueIndex.begin(), queueIndex.end(), 0L);
-        head = tail = count = 0;
-        now = 0;
+        shaperHold.reset();
+        compHold.reset();
         attackFast = attackSlow = sustainFast = sustainSlow = 0.0f;
         compEnv = peakRef = 0.0f;
         inPower = outPower = 0.0f;
@@ -63,14 +60,15 @@ public:
     float process (float rectified, float attackDb, float sustainDb, float punch)
     {
         const float x = rectified < 1.0e6f ? rectified : 0.0f; // Also catches NaN, so bad input can't poison the envelopes.
-        const float hold = slidingMax (x);
+        const float hold = shaperHold.push (x);
+        const float compPeak = compHold.push (x);
 
         follow (attackFast, hold, cFastRise, cAttackFall);
         follow (attackSlow, hold, cAttackSlowRise, cAttackFall);
         follow (sustainFast, hold, cFastRise, cSustainFastFall);
         follow (sustainSlow, hold, cFastRise, cSustainSlowFall);
-        follow (compEnv, hold, cCompRise, cCompFall);
-        follow (peakRef, hold, 1.0f, cPeakRefFall);
+        follow (compEnv, compPeak, cCompRise, cCompFall);
+        follow (peakRef, compPeak, 1.0f, cPeakRefFall);
 
         // Start of a sound: the fast envelope is ahead of the slow one. Tail: the slow one is above the fast one.
         const float startDb = toDb (attackFast) - toDb (attackSlow);
@@ -99,8 +97,8 @@ public:
     static float dbToGain (float db) { return std::exp (db * dbToLn); }
 
     // What a level at the recent peak gets reduced by. Depth is how far below the recent peak the threshold sits.
-    static float depthDb (float punch) { return 24.0f * punch; }
-    static float ratio (float punch) { return 1.0f + 5.0f * punch; }
+    static float depthDb (float punch) { return 36.0f * curve (punch); }
+    static float ratio (float punch) { return 1.0f + 9.0f * curve (punch); }
 
 private:
     static constexpr float dbToLn = 0.11512925464970229f;
@@ -111,10 +109,12 @@ private:
     static constexpr float kneeDb = 6.0f;
     static constexpr float peakRefFloorDb = -60.0f;   // Below this Punch stops chasing the level, so noise is left alone.
     static constexpr float gateFloorPower = 1.0e-7f;  // -70 dBFS.
-    static constexpr float maxMakeupDb = 30.0f;
+    static constexpr float maxMakeupDb = 36.0f;
     static constexpr float maxGainDb = 40.0f;
     static constexpr float minGainDb = -60.0f;
 
+    // Punch to the power 1.25. Spreads the audible change more evenly across the control.
+    static float curve (float punch) { return punch * std::sqrt (std::sqrt (punch)); }
     static float toDb (float x) { return 8.685889638f * std::log (x + epsilon); }
     static float clamp01 (float x) { return x <= 0.0f ? 0.0f : (x >= 1.0f ? 1.0f : x); }
     static void follow (float& env, float target, float rise, float fall) { env += (target > env ? rise : fall) * (target - env); }
@@ -122,7 +122,7 @@ private:
     static float restingMakeupDb (float punch)
     {
         const float r = ratio (punch);
-        return 0.5f * depthDb (punch) * (1.0f - 1.0f / r);
+        return 0.35f * depthDb (punch) * (1.0f - 1.0f / r); // Deliberately low, so quiet noise after a long silence isn't lifted much.
     }
 
     float compReductionDb (float punch) const
@@ -140,28 +140,53 @@ private:
     }
 
     // Largest value in the last `window` samples, O(1) on average, with no allocation.
-    float slidingMax (float x)
+    struct SlidingMax
     {
-        while (count > 0)
+        void prepare (int windowSamples)
         {
-            const int back = (tail + queueSize - 1) % queueSize;
-            if (queueValue[(size_t) back] > x)
-                break;
-            tail = back;
-            --count;
+            window = windowSamples;
+            size = window + 1;
+            value.assign ((size_t) size, 0.0f);
+            index.assign ((size_t) size, 0L);
+            reset();
         }
-        queueValue[(size_t) tail] = x;
-        queueIndex[(size_t) tail] = now;
-        tail = (tail + 1) % queueSize;
-        ++count;
-        while (queueIndex[(size_t) head] <= now - window)
+
+        void reset()
         {
-            head = (head + 1) % queueSize;
-            --count;
+            std::fill (value.begin(), value.end(), 0.0f);
+            std::fill (index.begin(), index.end(), 0L);
+            head = tail = count = 0;
+            now = 0;
         }
-        ++now;
-        return queueValue[(size_t) head];
-    }
+
+        float push (float x)
+        {
+            while (count > 0)
+            {
+                const int back = (tail + size - 1) % size;
+                if (value[(size_t) back] > x)
+                    break;
+                tail = back;
+                --count;
+            }
+            value[(size_t) tail] = x;
+            index[(size_t) tail] = now;
+            tail = (tail + 1) % size;
+            ++count;
+            while (index[(size_t) head] <= now - window)
+            {
+                head = (head + 1) % size;
+                --count;
+            }
+            ++now;
+            return value[(size_t) head];
+        }
+
+        std::vector<float> value;
+        std::vector<long> index;
+        int window = 1, size = 2, head = 0, tail = 0, count = 0;
+        long now = 0;
+    };
 
     float cFastRise = 1, cAttackSlowRise = 1, cAttackFall = 1, cSustainFastFall = 1, cSustainSlowFall = 1;
     float cCompRise = 1, cCompFall = 1, cPeakRefFall = 1, cPower = 1, cMakeup = 1, cGain = 1;
@@ -169,8 +194,5 @@ private:
     float attackFast = 0, attackSlow = 0, sustainFast = 0, sustainSlow = 0, compEnv = 0, peakRef = 0;
     float inPower = 0, outPower = 0, makeupDb = 0, gainDb = 0;
 
-    std::vector<float> queueValue;
-    std::vector<long> queueIndex;
-    int window = 1, queueSize = 2, head = 0, tail = 0, count = 0;
-    long now = 0;
+    SlidingMax shaperHold, compHold;
 };

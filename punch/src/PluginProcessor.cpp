@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "StateGuard.h"
 
 namespace
 {
@@ -167,7 +168,7 @@ void PluginProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
         if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+            applySafeState (apvts, *xml);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PluginProcessor(); }

@@ -184,8 +184,8 @@ static void testRates()
         const auto in = burst (sr, 0.5);
         Settings a; a.attack = 9.0f;
         Settings su; su.sustain = 9.0f;
-        const auto ma = measure (in, a);
-        const auto ms = measure (in, su);
+        const auto ma = measure (in, a, sr);
+        const auto ms = measure (in, su, sr);
         const double v[4] = { ma.start, ma.tail, ms.start, ms.tail };
         for (int i = 0; i < 4; ++i) { lo[i] = std::min (lo[i], v[i]); hi[i] = std::max (hi[i], v[i]); }
     }
@@ -253,6 +253,21 @@ static void testPunch()
         const double residual = nullDb (out, scaled, lat, from, len, rms (in.data() + from, len));
         check (residual <= -50.0, "Punch 100, steady 100 Hz: everything other than level, relative to the tone", residual, "dB");
     }
+    // Lowest tone the short hold fully covers: everything other than level stays under -40 dB at the heaviest setting.
+    {
+        std::vector<float> in ((size_t) (sr * 3));
+        sine (in.data(), (int) in.size(), 65.0, sr, 0.25);
+        Settings s; s.punch = 100.0f;
+        int lat = 0;
+        const auto out = process (in, s, sr, 512, &lat);
+        const int from = (int) (sr * 2), len = (int) (sr * 0.5);
+        const double change = windowRmsDb (out, from + lat, len) - windowRmsDb (in, from, len);
+        std::vector<float> scaled (in);
+        const float g = (float) juce::Decibels::decibelsToGain (change);
+        for (auto& v : scaled) v *= g;
+        const double residual = nullDb (out, scaled, lat, from, len, rms (in.data() + from, len));
+        check (residual <= -40.0, "Punch 100, steady 65 Hz: everything other than level, relative to the tone", residual, "dB");
+    }
     // Level: the same crest reduction within 1.5 dB at -6, -24 and -42 dBFS. Task asks this of Attack and Sustain only, but Punch is built the same way.
     {
         double lo = 1e9, hi = -1e9;
@@ -267,6 +282,17 @@ static void testPunch()
             lo = std::min (lo, r); hi = std::max (hi, r);
         }
         check (hi - lo <= 1.5, "Punch 50: crest reduction spread across 36 dB of input level", hi - lo, "dB");
+    }
+    // Not a pass limit: the first hit after silence, before the level match has anything to go on.
+    {
+        const auto in = burstTrain (sr, 0.5, 3.0, Tone::sine);
+        Settings s; s.punch = 50.0f;
+        int lat = 0;
+        const auto out = process (in, s, sr, 512, &lat);
+        const int step = (int) (sr * 0.25);
+        info ("Punch 50: first hit after silence, level against the input", windowRmsDb (out, lat, step) - windowRmsDb (in, 0, step), "dB");
+        info ("Punch 50: second hit", windowRmsDb (out, step + lat, step) - windowRmsDb (in, step, step), "dB");
+        info ("Punch 50: fifth hit", windowRmsDb (out, 4 * step + lat, step) - windowRmsDb (in, 4 * step, step), "dB");
     }
     // Quiet noise after silence: below the floor Punch must not lift it by more than the resting level match (under 6 dB at 50).
     {
@@ -490,6 +516,60 @@ static void testGainMotionAndStereo()
     info ("latency at 48 kHz", lat2, "samples");
 }
 
+// Damaged saved state, beyond the generic checks: a dropped value returns to that control's default, an out of range value clamps,
+// a cut off or foreign blob changes nothing. Bad input samples must not poison the detector either.
+static void testDamagedStateAndInput()
+{
+    const auto valueOf = [] (PluginProcessor& p, const char* id) { return p.apvts.getParameterRange (id).convertFrom0to1 (p.apvts.getParameter (id)->getValue()); };
+    const auto load = [] (PluginProcessor& p, const juce::String& attackValue)
+    {
+        juce::XmlElement xml ("STATE");
+        for (const auto& [id, v] : std::initializer_list<std::pair<const char*, juce::String>> { { "attack", attackValue }, { "punch", "40" }, { "sustain", "-3" }, { "mix", "70" } })
+        {
+            auto* e = xml.createNewChildElement ("PARAM");
+            e->setAttribute ("id", id);
+            e->setAttribute ("value", v);
+        }
+        juce::MemoryBlock b;
+        juce::AudioProcessor::copyXmlToBinary (xml, b);
+        p.setStateInformation (b.getData(), (int) b.getSize());
+    };
+    {
+        PluginProcessor p;
+        setParam (p, "attack", 9.0f);
+        load (p, "nan");
+        check (std::abs (valueOf (p, "attack")) < 1.0e-3f && std::abs (valueOf (p, "punch") - 40.0f) < 0.01f, "state with NaN in Attack: Attack back at default, the rest kept", valueOf (p, "attack"), "dB");
+    }
+    {
+        PluginProcessor p;
+        load (p, "1e30");
+        check (std::abs (valueOf (p, "attack") - 15.0f) < 1.0e-3f, "state with a huge Attack: clamped to the top of its range", valueOf (p, "attack"), "dB");
+    }
+    {
+        PluginProcessor p;
+        setParam (p, "sustain", 4.0f);
+        juce::MemoryBlock good;
+        p.getStateInformation (good);
+        setParam (p, "sustain", 7.0f);
+        p.setStateInformation (good.getData(), (int) good.getSize() / 2);
+        const char junk[] = "not a saved state at all";
+        p.setStateInformation (junk, (int) sizeof (junk));
+        check (std::abs (valueOf (p, "sustain") - 7.0f) < 1.0e-3f, "cut off or foreign state: controls unchanged", valueOf (p, "sustain"), "dB");
+    }
+    {
+        // NaN and infinity samples in the input: the delay line passes them on, but the gain must recover right after.
+        auto in = burst (48000.0, 0.5);
+        in[6000] = std::numeric_limits<float>::quiet_NaN();
+        in[6001] = std::numeric_limits<float>::infinity();
+        Settings s { 50, 6, 6, 100 };
+        int lat = 0;
+        const auto out = process (in, s, 48000.0, 512, &lat);
+        long bad = 0;
+        for (int i = 6002 + lat; i < (int) out.size(); ++i) if (! std::isfinite (out[(size_t) i])) ++bad;
+        check (bad == 0, "NaN and infinity in the input: output after them stays finite", (double) bad, "samples");
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -508,5 +588,6 @@ int main()
     testLatencyAndBypass();
     testBlocksAndRestart();
     testGainMotionAndStereo();
+    testDamagedStateAndInput();
     return finish();
 }

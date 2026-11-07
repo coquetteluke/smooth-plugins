@@ -1720,6 +1720,8 @@ void testWindow()
             gained += ((double) punchview::toDb (view.shownAfter()[i]) - (double) punchview::toDb (view.shownBefore()[i])) / 8.0;
         check (gained > 3.0, "and its start rises", gained, "dB");
         setParam (p, "attack", 0.0f);
+        w->tick (1.0 / 30.0);
+        check (view.getShowing() == punchview::HitView::Showing::real && view.shownAfter() == view.getTracker().latest().after.data(), "putting it back shows what really happened again");
     }
 
     // A host playing silence: nothing on the timeline, so nothing moves, and nothing asks to be drawn.

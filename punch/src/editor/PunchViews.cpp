@@ -99,7 +99,7 @@ namespace punchview
         if (want == Showing::real)
         {
             auto& hit = tracker.latest();
-            if (hit.length != drawLength || drawBefore != hit.before.data() || newHit)
+            if (hit.length != drawLength || drawBefore != hit.before.data() || drawAfter != hit.after.data() || newHit)
             {
                 hit.smooth();
                 drawBefore = hit.before.data();
@@ -109,6 +109,9 @@ namespace punchview
             }
             return;
         }
+
+        if (want == Showing::preview)
+            tracker.latest().smooth();
 
         const float* source = want == Showing::example ? exampleBefore.data() : tracker.latest().before.data();
         const int length = want == Showing::example ? hitBins : tracker.latest().length;

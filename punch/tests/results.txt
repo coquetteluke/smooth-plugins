@@ -357,6 +357,7 @@ PASS  and no longer asks to be drawn again = 1.000
 PASS  moving Attack while stopped redraws the hit in view
 PASS  and keeps the window lively for a moment while the control moves
 PASS  and its start rises = 11.317 dB
+PASS  putting it back shows what really happened again
 PASS  10 seconds of silence from the host moves nothing, frames = 0.000 
 PASS  with nothing played, it says it is an example
 PASS  and at neutral nothing is changed = 0.000 dB

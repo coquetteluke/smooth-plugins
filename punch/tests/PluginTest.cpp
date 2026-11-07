@@ -3,7 +3,10 @@
 #define SMOOTH_COUNT_ALLOCS
 #include "TestKit.h"
 #include "PluginProcessor.h"
+#include "editor/PunchEditor.h"
+#include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_dsp/juce_dsp.h>
+#include <thread>
 #include "GoldenV010.h"
 
 using namespace testkit;
@@ -1149,6 +1152,701 @@ static void testNewPresets()
     }
 }
 
+// ---- the window ----------------------------------------------------------------------------------------------------
+// All limits below were written before the first run of these tests.
+
+namespace
+{
+    struct ParamWatch final : juce::AudioProcessorParameter::Listener
+    {
+        explicit ParamWatch (juce::AudioProcessor& proc) : p (proc)
+        {
+            for (auto* prm : p.getParameters())
+                prm->addListener (this);
+        }
+        ~ParamWatch() override
+        {
+            for (auto* prm : p.getParameters())
+                prm->removeListener (this);
+        }
+        void parameterValueChanged (int, float) override { ++changes; }
+        void parameterGestureChanged (int, bool starting) override { if (starting) ++begins; else ++ends; }
+        void reset() { changes = begins = ends = 0; }
+
+        juce::AudioProcessor& p;
+        std::atomic<int> changes { 0 }, begins { 0 }, ends { 0 };
+    };
+
+    juce::MouseEvent mouseAt (juce::Component& c, juce::Point<float> at, int clicks = 1, juce::ModifierKeys mods = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier), juce::Point<float> downAt = { -1.0f, -1.0f })
+    {
+        const auto now = juce::Time::getCurrentTime();
+        return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c, now,
+                                 downAt.x < 0.0f ? at : downAt, now, clicks, downAt.x >= 0.0f);
+    }
+
+    float realValue (PluginProcessor& p, const char* id) { return p.apvts.getRawParameterValue (id)->load(); }
+
+    void paintAt (juce::Component& c, float scale)
+    {
+        auto snapshot = c.createComponentSnapshot (c.getLocalBounds(), true, scale);
+        juce::ignoreUnused (snapshot);
+    }
+
+    std::vector<float> loadSpeech (const char* name)
+    {
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (juce::File (SMOOTH_PUNCH_CORPUS).getChildFile (name)));
+        std::vector<float> x;
+        if (reader == nullptr)
+            return x;
+        juce::AudioBuffer<float> b (1, (int) reader->lengthInSamples);
+        reader->read (&b, 0, b.getNumSamples(), 0, true, false);
+        x.assign (b.getReadPointer (0), b.getReadPointer (0) + b.getNumSamples());
+        return x;
+    }
+
+    // Runs audio through a plug-in and everything the tap collected through a tracker. The last hit it caught comes back in the tracker.
+    void captureHits (PluginProcessor& p, const std::vector<float>& x, punchview::HitTracker& tracker, int& hits)
+    {
+        std::uint32_t last = p.envelopeTap.getWritten();
+        juce::AudioBuffer<float> buffer (2, 512);
+        juce::MidiBuffer midi;
+        hits = 0;
+        for (int pos = 0; pos < (int) x.size(); pos += 512)
+        {
+            const int n = juce::jmin (512, (int) x.size() - pos);
+            buffer.setSize (2, n, false, false, true);
+            for (int ch = 0; ch < 2; ++ch)
+                buffer.copyFrom (ch, 0, x.data() + pos, n);
+            p.processBlock (buffer, midi);
+            for (const auto w = p.envelopeTap.getWritten(); last != w; ++last)
+                if (tracker.feed (p.envelopeTap.before (last), p.envelopeTap.after (last)))
+                    ++hits;
+        }
+        tracker.latest().smooth();
+    }
+
+    std::vector<float> burstTrain (double sr, double amp, int count, double spacing = 1.0)
+    {
+        std::vector<float> x;
+        for (int i = 0; i < count; ++i)
+        {
+            auto one = burst (sr, amp, 300.0, 0.1, Tone::sine, spacing);
+            x.insert (x.end(), one.begin(), one.end());
+        }
+        return x;
+    }
+
+    double shapeDifferenceDb (const punchview::HitShape& hit, double fromSeconds, double toSeconds)
+    {
+        const int from = (int) (fromSeconds / punchview::binSeconds), to = juce::jmin (hit.length, (int) (toSeconds / punchview::binSeconds));
+        double sum = 0.0;
+        for (int i = from; i < to; ++i)
+            sum += (double) punchview::toDb (hit.after[(size_t) i]) - (double) punchview::toDb (hit.before[(size_t) i]);
+        return sum / juce::jmax (1, to - from);
+    }
+}
+
+void testEnvelopeTap()
+{
+    constexpr double sr = 48000.0;
+    const auto x = burstTrain (sr, 0.5, 2);
+
+    // Neutral: before and after are the same sample, so they must match in every bin.
+    {
+        PluginProcessor p;
+        prepare (p, 2, sr, 512);
+        render (p, x, 512);
+        double worst = 0.0;
+        const auto w = p.envelopeTap.getWritten();
+        for (std::uint32_t i = w - 2000u; i != w; ++i)
+            worst = juce::jmax (worst, (double) std::abs (p.envelopeTap.before (i) - p.envelopeTap.after (i)));
+        check (worst == 0.0, "the display's before and after match exactly at neutral, so they line up in time", worst);
+    }
+
+    // Gain moves after, not before.
+    {
+        PluginProcessor p;
+        setParam (p, "gain", 6.0f);
+        prepare (p, 2, sr, 512);
+        render (p, x, 512);
+        const auto w = p.envelopeTap.getWritten();
+        double worst = 0.0;
+        for (std::uint32_t i = w - 1000u; i != w; ++i)
+            if (p.envelopeTap.before (i) > 1.0e-4f)
+                worst = juce::jmax (worst, std::abs ((double) punchview::toDb (p.envelopeTap.after (i)) - (double) punchview::toDb (p.envelopeTap.before (i)) - 6.0));
+        check (worst < 0.01, "Gain +6: after sits 6 dB over before in every bin, worst error", worst, "dB");
+    }
+
+    for (double rate : { 44100.0, 48000.0, 96000.0 })
+    {
+        PluginProcessor p;
+        prepare (p, 2, rate, 512);
+        const auto start = p.envelopeTap.getWritten();
+        render (p, std::vector<float> ((size_t) rate, 0.1f), 512);
+        const double bins = (double) (p.envelopeTap.getWritten() - start);
+        check (std::abs (bins - 2000.0) < 8.0, "about 2000 bins a second at " + std::to_string ((int) rate) + " Hz", bins);
+    }
+
+    // Mono has no second channel to read.
+    {
+        PluginProcessor p;
+        prepare (p, 1, sr, 512);
+        render (p, x, 512);
+        const auto w = p.envelopeTap.getWritten();
+        double high = 0.0;
+        for (std::uint32_t i = w - 3000u; i != w; ++i)
+            high = juce::jmax (high, (double) p.envelopeTap.after (i));
+        check (p.envelopeTap.getWritten() > 3000u && high > 0.1 && high < 0.6, "the tap works in mono", high);
+    }
+
+    // A long run goes round the ring with no trouble.
+    {
+        PluginProcessor p;
+        prepare (p, 2, sr, 512);
+        std::vector<float> longer ((size_t) (sr * 12.0), 0.25f);
+        render (p, longer, 512);
+        const auto w = p.envelopeTap.getWritten();
+        check (w > (std::uint32_t) EnvelopeTap::numBins && std::abs (p.envelopeTap.after (w - 1u) - 0.25f) < 1.0e-5f, "the tap goes round its ring and the newest bin is right", (double) w);
+    }
+}
+
+void testHitDisplayNumbers()
+{
+    using namespace punchview;
+    constexpr double sr = 48000.0;
+
+    const auto shapeWith = [&] (float attack, float sustain, HitTracker& tracker)
+    {
+        PluginProcessor p;
+        setParam (p, "attack", attack);
+        setParam (p, "sustain", sustain);
+        prepare (p, 2, sr, 512);
+        int hits = 0;
+        captureHits (p, burstTrain (sr, 0.5, 3), tracker, hits);
+        return hits;
+    };
+
+    // What is drawn really moves when the controls move.
+    {
+        auto tracker = std::make_unique<HitTracker>();
+        check (shapeWith (9.0f, 0.0f, *tracker) == 3, "3 bursts make 3 hits");
+        const double start = shapeDifferenceDb (tracker->latest(), 0.002, 0.004), tail = shapeDifferenceDb (tracker->latest(), 0.1, 0.3);
+        check (start > 6.0 && start < 10.0, "Attack +9: the drawn start rises", start, "dB");
+        check (std::abs (tail) < 1.0, "Attack +9: the drawn tail stays where it was", tail, "dB");
+    }
+    {
+        auto tracker = std::make_unique<HitTracker>();
+        shapeWith (-9.0f, 0.0f, *tracker);
+        const double start = shapeDifferenceDb (tracker->latest(), 0.002, 0.004);
+        check (start < -6.0 && start > -10.0, "Attack -9: the drawn start falls", start, "dB");
+    }
+    {
+        auto tracker = std::make_unique<HitTracker>();
+        shapeWith (0.0f, -9.0f, *tracker);
+        const double start = shapeDifferenceDb (tracker->latest(), 0.002, 0.004), tail = shapeDifferenceDb (tracker->latest(), 0.1, 0.3);
+        check (tail < -6.0 && tail > -11.0, "Sustain -9: the drawn tail falls", tail, "dB");
+        check (std::abs (start) < 1.5, "Sustain -9: the drawn start stays where it was", start, "dB");
+    }
+    {
+        auto tracker = std::make_unique<HitTracker>();
+        shapeWith (0.0f, 9.0f, *tracker);
+        const double tail = shapeDifferenceDb (tracker->latest(), 0.1, 0.3);
+        check (tail > 6.0 && tail < 11.0, "Sustain +9: the drawn tail rises", tail, "dB");
+    }
+
+    // What counts as a hit.
+    const auto countHits = [&] (const std::vector<float>& x)
+    {
+        PluginProcessor p;
+        prepare (p, 2, sr, 512);
+        auto tracker = std::make_unique<HitTracker>();
+        int hits = 0;
+        captureHits (p, x, *tracker, hits);
+        return hits;
+    };
+    check (countHits (burstTrain (sr, 0.03, 5)) == 5, "5 bursts at -30 dBFS make 5 hits, so level does not matter");
+    check (countHits (tone (sr, 3.0, 1000.0, -12.0)) == 1, "a steady tone is one hit, when it starts");
+    check (countHits (std::vector<float> ((size_t) sr, 0.0f)) == 0, "silence makes no hits");
+    check (countHits (tone (sr, 2.0, 1000.0, -60.0)) == 0, "a tone at -60 dBFS makes no hits");
+    {
+        const auto speech = loadSpeech ("speech_samantha.wav");
+        const int hits = countHits (speech);
+        const double perSecond = hits / (speech.size() / sr);
+        check (perSecond > 0.5 && perSecond <= 2.86, "real speech makes a readable number of hits a second, no more than one per 350 ms", perSecond);
+    }
+
+    // The preview on a stopped session is a close drawing of what really happens.
+    const auto previewError = [&] (const punchview::Settings& s)
+    {
+        PluginProcessor p;
+        apply (p, { s.punch, s.attack, s.sustain, s.mix, s.gain, s.impact, s.ceiling, s.ceilingOn ? 1.0f : 0.0f });
+        prepare (p, 2, sr, 512);
+        auto tracker = std::make_unique<HitTracker>();
+        int hits = 0;
+        captureHits (p, burstTrain (sr, 0.5, 4), *tracker, hits);
+        auto& hit = tracker->latest();
+        Preview preview;
+        std::vector<float> drawn ((size_t) hit.length);
+        preview.run (hit.before.data(), hit.length, s, drawn.data());
+        double sum = 0.0;
+        for (int i = 2; i < hit.length; ++i)
+            sum += std::abs ((double) toDb (drawn[(size_t) i]) - (double) toDb (hit.after[(size_t) i]));
+        return sum / (hit.length - 2);
+    };
+    const auto settings = [] (float punch, float attack, float sustain, float mix, float gain, float impact, float ceiling, bool on)
+    {
+        punchview::Settings s;
+        s.punch = punch; s.attack = attack; s.sustain = sustain; s.mix = mix; s.gain = gain; s.impact = impact; s.ceiling = ceiling; s.ceilingOn = on;
+        return s;
+    };
+    {
+        const double a = previewError (settings (0, 9, 0, 100, 0, 0, -1, false));
+        check (a < 2.0, "the preview against the real result, Attack +9, average error", a, "dB");
+        const double b = previewError (settings (0, 0, -9, 100, 0, 0, -1, false));
+        check (b < 2.0, "the preview against the real result, Sustain -9, average error", b, "dB");
+        const double c = previewError (settings (30, 4, -3, 80, 3, 50, -6, true));
+        check (c < 3.0, "the preview against the real result, everything on, average error", c, "dB");
+    }
+    {
+        Preview preview;
+        std::array<float, hitBins> example {}, after {};
+        fillExampleHit (example.data(), hitBins);
+        punchview::Settings s;
+        preview.run (example.data(), hitBins, s, after.data());
+        double worst = 0.0;
+        for (int i = 0; i < hitBins; ++i)
+            worst = juce::jmax (worst, std::abs ((double) toDb (after[(size_t) i]) - (double) toDb (example[(size_t) i])));
+        check (worst < 0.01, "at neutral the example hit is left alone, worst", worst, "dB");
+        s.bypass = true;
+        s.attack = 12.0f;
+        preview.run (example.data(), hitBins, s, after.data());
+        worst = 0.0;
+        for (int i = 0; i < hitBins; ++i)
+            worst = juce::jmax (worst, std::abs ((double) toDb (after[(size_t) i]) - (double) toDb (example[(size_t) i])));
+        check (worst < 0.01, "with Bypass on the preview changes nothing, worst", worst, "dB");
+    }
+
+    check (std::abs (xForSeconds (0.0)) < 1.0e-6f && std::abs (xForSeconds (0.4) - 1.0f) < 1.0e-5f, "the time axis runs from 0 to 400 ms");
+    check (std::abs (secondsForX (xForSeconds (0.03)) - 0.03) < 1.0e-5, "and it can be read both ways");
+    check (xForSeconds (0.03) > 0.4f && xForSeconds (0.03) < 0.5f, "the first 30 ms take close to half the width", (double) xForSeconds (0.03));
+}
+
+void testWindow()
+{
+    using ui::BarSlider;
+    constexpr double SR = 48000.0;
+    auto holder = std::make_unique<PluginProcessor>();
+    auto& p = *holder;
+    prepare (p, 2, SR, 256);
+    std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+    auto* w = dynamic_cast<PunchEditor*> (ed.get());
+    check (w != nullptr, "the window is the custom one");
+    if (w == nullptr)
+        return;
+    w->setAdvancedOpen (true);
+
+    // Nothing lost: every parameter a person can change has a control in the window, under its own ID, and keeps its name and range.
+    {
+        struct Expected { const char* id; const char* name; float low, high, rest; };
+        const Expected expected[] = {
+            { "punch", "Punch", 0, 100, 0 }, { "attack", "Attack", -15, 15, 0 }, { "sustain", "Sustain", -15, 15, 0 }, { "mix", "Mix", 0, 100, 100 },
+            { "bypass", "Bypass", 0, 1, 0 }, { "gain", "Gain", -12, 24, 0 }, { "impact", "Impact", 0, 100, 0 }, { "ceiling", "Ceiling", -24, 0, -1 },
+            { "ceilingOn", "Ceiling On", 0, 1, 0 },
+        };
+        int missing = 0, wrong = 0;
+        for (const auto& e : expected)
+        {
+            auto* prm = p.apvts.getParameter (e.id);
+            if (prm == nullptr || prm->getName (64) != e.name || prm->getNormalisableRange().start != e.low || prm->getNormalisableRange().end != e.high
+                || std::abs (prm->convertFrom0to1 (prm->getDefaultValue()) - e.rest) > 0.001f)
+            {
+                ++wrong;
+                std::printf ("  changed: %s\n", e.id);
+            }
+            if (ed->findChildWithID (e.id) == nullptr)
+            {
+                ++missing;
+                std::printf ("  no control for %s\n", e.id);
+            }
+        }
+        check (wrong == 0, "all 9 controls keep their ID, name, range and default");
+        check (missing == 0, "all 9 controls have a place in the window");
+
+        int settable = 0;
+        for (auto* prm : p.getParameters())
+            if (dynamic_cast<ReadingParameter*> (prm) == nullptr)
+                ++settable;
+        check (settable == 9, "and there are no others that can be set", (double) settable);
+    }
+
+    // The hint line is one line, at the smallest window.
+    {
+        const auto hintFont = ui::font (ui::Weight::regular, 13.0f);
+        const float room = (float) (PluginProcessor::minWindowWidth - 44) * 0.6f;
+        float widest = 0.0f;
+        const std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+        {
+            if (auto* h = dynamic_cast<ui::Hinted*> (&c))
+                widest = juce::jmax (widest, juce::GlyphArrangement::getStringWidth (hintFont, h->hint));
+            for (auto* child : c.getChildren())
+                walk (*child);
+        };
+        walk (*ed);
+        check (widest > 100.0f && widest <= room, "every hint fits on the hint line at the smallest window, widest in points", (double) widest);
+    }
+
+    auto* attack = dynamic_cast<BarSlider*> (ed->findChildWithID ("attack"));
+    auto* ceiling = dynamic_cast<BarSlider*> (ed->findChildWithID ("ceiling"));
+    auto* punch = dynamic_cast<BarSlider*> (ed->findChildWithID ("punch"));
+    check (attack != nullptr && ceiling != nullptr && punch != nullptr, "the bars are found");
+    if (attack == nullptr || ceiling == nullptr || punch == nullptr)
+        return;
+
+    // A bar moves its parameter, with a gesture, and the parameter moves the bar.
+    {
+        ParamWatch watch (p);
+        watch.reset();
+        const float y = (float) attack->getHeight() - 20.0f;
+        const juce::Point<float> from (50.0f, y), to (50.0f + (float) attack->getWidth() * 0.25f, y);
+        attack->mouseDown (mouseAt (*attack, from));
+        attack->mouseDrag (mouseAt (*attack, to, 1, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier), from));
+        attack->mouseUp (mouseAt (*attack, to, 1, juce::ModifierKeys(), from));
+        check (realValue (p, "attack") > 4.0f && realValue (p, "attack") < 11.0f, "dragging Attack a quarter of its width moves it from where it was", (double) realValue (p, "attack"));
+        check (watch.begins == 1 && watch.ends == 1 && watch.changes > 0, "a drag is one gesture for automation, begins", (double) watch.begins.load());
+
+        setParam (p, "attack", 7.5f);
+        check (std::abs (attack->getValue() - 7.5) < 0.05, "automation moves the bar", attack->getValue());
+        check (attack->valueText() == "+7.5 dB", "the bar shows the value: " + attack->valueText().toStdString());
+        setParam (p, "attack", -3.0f);
+        check (attack->valueText() == juce::String::fromUTF8 ("\xe2\x88\x92") + "3.0 dB", "and a real minus sign below zero");
+
+        watch.reset();
+        attack->mouseDoubleClick (mouseAt (*attack, from, 2));
+        check (std::abs (realValue (p, "attack")) < 0.05f && watch.begins == 1 && watch.ends == 1, "double-click resets to the default, as one gesture", (double) realValue (p, "attack"));
+        check (attack->valueText() == "0.0 dB", "and it reads 0.0 dB, with no sign");
+    }
+
+    // Typing a value.
+    {
+        ParamWatch watch (p);
+        punch->applyTyped ("42 %");
+        check (std::abs (realValue (p, "punch") - 42.0f) < 0.06f && watch.begins == 1 && watch.ends == 1, "typing 42 % sets 42, as one gesture", (double) realValue (p, "punch"));
+        punch->applyTyped ("nonsense");
+        check (std::abs (realValue (p, "punch") - 42.0f) < 0.06f, "typing a word that means nothing leaves it alone", (double) realValue (p, "punch"));
+        punch->applyTyped ("9999");
+        check (std::abs (realValue (p, "punch") - 100.0f) < 0.06f, "typing too much stops at the top of the range", (double) realValue (p, "punch"));
+        attack->applyTyped (juce::String::fromUTF8 ("\xe2\x88\x92") + "5 dB");
+        check (std::abs (realValue (p, "attack") + 5.0f) < 0.06f, "the minus sign the window shows can be typed back", (double) realValue (p, "attack"));
+        attack->applyTyped ("+6");
+        check (std::abs (realValue (p, "attack") - 6.0f) < 0.06f, "so can a plus sign", (double) realValue (p, "attack"));
+        setParam (p, "attack", 0.0f);
+        setParam (p, "punch", 0.0f);
+    }
+
+    // Buttons.
+    {
+        auto* on = dynamic_cast<ui::Pill*> (ed->findChildWithID ("ceilingOn"));
+        auto* byp = dynamic_cast<ui::Pill*> (ed->findChildWithID ("bypass"));
+        check (on != nullptr && byp != nullptr, "the buttons are found");
+        if (on == nullptr || byp == nullptr)
+            return;
+        ParamWatch watch (p);
+        on->mouseDown (mouseAt (*on, { 5.0f, 5.0f }));
+        check (realValue (p, "ceilingOn") >= 0.5f && on->isOn() && watch.begins == 1 && watch.ends == 1, "the button turns Ceiling On on, as one gesture");
+        on->mouseDoubleClick (mouseAt (*on, { 5.0f, 5.0f }, 2));
+        check (realValue (p, "ceilingOn") < 0.5f, "double-click puts it back to its default, off");
+        byp->mouseDown (mouseAt (*byp, { 5.0f, 5.0f }));
+        check (realValue (p, "bypass") >= 0.5f && byp->isOn(), "the button turns Bypass on");
+        setParam (p, "bypass", 0.0f);
+        check (! byp->isOn(), "automation moves the button");
+    }
+
+    // The ceiling line on the display.
+    {
+        auto& view = w->getHitView();
+        setParam (p, "ceilingOn", 0.0f);
+        w->tick (1.0 / 30.0);
+        const auto plot = view.getPlot().toFloat();
+        check (! view.isNearCeilingLine (view.ceilingLineY()), "with the Ceiling off, its line can't be grabbed");
+
+        setParam (p, "ceiling", -6.0f);
+        setParam (p, "ceilingOn", 1.0f);
+        w->tick (1.0 / 30.0);
+        const juce::Point<float> from (plot.getCentreX(), view.ceilingLineY());
+        check (std::abs (punchview::topDb - (from.y - plot.getY()) / plot.getHeight() * (punchview::topDb - punchview::bottomDb) + 6.0f) < 0.01f, "the line is drawn at the Ceiling's level on the plot's scale");
+        ParamWatch watch (p);
+        const auto to = from.translated (0.0f, plot.getHeight() * 6.0f / (punchview::topDb - punchview::bottomDb));
+        view.mouseDown (mouseAt (view, from));
+        view.mouseDrag (mouseAt (view, to, 1, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier), from));
+        view.mouseUp (mouseAt (view, to, 1, juce::ModifierKeys(), from));
+        check (std::abs (realValue (p, "ceiling") + 12.0f) < 0.2f, "dragging the line 6 dB down moves the Ceiling to -12", (double) realValue (p, "ceiling"));
+        check (watch.begins == 1 && watch.ends == 1, "as one gesture", (double) watch.begins.load());
+        w->tick (1.0 / 30.0);
+        const auto near = juce::Point<float> (plot.getCentreX(), view.ceilingLineY());
+        view.mouseDoubleClick (mouseAt (view, near, 2));
+        check (std::abs (realValue (p, "ceiling") + 1.0f) < 0.05f, "double-click on the line puts it back to -1", (double) realValue (p, "ceiling"));
+        setParam (p, "ceilingOn", 0.0f);
+    }
+
+    // Presets.
+    {
+        auto* box = dynamic_cast<ui::PresetBox*> (ed->findChildWithID ("presets"));
+        check (box != nullptr, "the preset box is found");
+        if (box != nullptr)
+        {
+            box->choose (8);
+            check (std::abs (realValue (p, "impact") - 55.0f) < 0.06f && box->getShownName() == "Rap Upfront", "choosing a preset sets it and shows its name: " + box->getShownName().toStdString());
+            setParam (p, "attack", 9.0f);
+            box->refresh();
+            check (box->getShownName() == "Rap Upfront, edited", "moving a control says so: " + box->getShownName().toStdString());
+            box->choose (0);
+            check (box->getShownName() == "Neutral" && ! p.isCurrentProgramEdited(), "and Neutral is the defaults");
+        }
+    }
+
+    // What the numbers say.
+    {
+        const auto x = tone (SR, 1.0, 1000.0, -12.0);
+        setParam (p, "gain", 6.0f);
+        juce::AudioBuffer<float> buffer (2, 256);
+        juce::MidiBuffer midi;
+        for (int pos = 0; pos + 256 <= (int) x.size(); pos += 256)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                buffer.copyFrom (ch, 0, x.data() + pos, 256);
+            p.processBlock (buffer, midi);
+            w->tick (1.0 / 30.0);
+        }
+        auto& r = w->getReadouts();
+        const auto minus = juce::String::fromUTF8 ("\xe2\x88\x92");
+        check (r.textOf (0) == minus + "12.0" && r.textOf (1) == minus + "6.0", "a tone at -12 with Gain +6 reads In -12.0 and Out -6.0: " + r.textOf (0).toStdString() + " " + r.textOf (1).toStdString());
+        check (r.textOf (2) == "0.0" && r.textOf (3) == "Off", "Impact reads 0.0 and the Ceiling reads Off");
+        setParam (p, "impact", 50.0f);
+        setParam (p, "ceiling", -12.0f);
+        setParam (p, "ceilingOn", 1.0f);
+        for (int pos = 0; pos + 256 <= (int) x.size(); pos += 256)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                buffer.copyFrom (ch, 0, x.data() + pos, 256);
+            p.processBlock (buffer, midi);
+            w->tick (1.0 / 30.0);
+        }
+        check (std::abs (r.textOf (2).replace (minus, "-").getFloatValue() - p.impactReduction->getDb()) < 0.3f && p.impactReduction->getDb() < -1.0f, "Impact's number is the Impact Reduction reading: " + r.textOf (2).toStdString());
+        check (std::abs (r.textOf (3).replace (minus, "-").getFloatValue() - p.ceilingReduction->getDb()) < 0.3f && p.ceilingReduction->getDb() < -1.0f, "the Ceiling's number is the Ceiling Reduction reading: " + r.textOf (3).toStdString());
+        p.setCurrentProgram (0);
+        for (int i = 0; i < 40; ++i)
+            w->tick (1.0 / 30.0);
+        check (r.textOf (2) == "0.0", "with the host stopped, the numbers fall back on their own");
+    }
+
+    // Saved state: only the size and Advanced are added, they stay in range, and they stay out of the parameters.
+    {
+        w->setSize (1100, 800);
+        w->setAdvancedOpen (true);
+        juce::MemoryBlock st;
+        p.getStateInformation (st);
+        auto other = std::make_unique<PluginProcessor>();
+        other->setStateInformation (st.getData(), (int) st.getSize());
+        check (other->windowWidth.load() == 1100 && other->windowHeight.load() == 800 && other->advancedOpen.load(), "the size and Advanced come back with the session", (double) other->windowWidth.load());
+        check (! other->apvts.state.hasProperty ("windowWidth") && ! other->apvts.state.hasProperty ("windowHeight") && ! other->apvts.state.hasProperty ("advancedOpen"), "they stay out of the parameter tree");
+
+        auto xml = juce::AudioProcessor::getXmlFromBinary (st.getData(), (int) st.getSize());
+        xml->setAttribute ("windowWidth", 99999);
+        xml->setAttribute ("windowHeight", "nonsense");
+        juce::MemoryBlock bad;
+        juce::AudioProcessor::copyXmlToBinary (*xml, bad);
+        other->setStateInformation (bad.getData(), (int) bad.getSize());
+        check (other->windowWidth.load() == PluginProcessor::maxWindowWidth && other->windowHeight.load() == PluginProcessor::minWindowHeight, "a damaged size goes back in range", (double) other->windowWidth.load());
+
+        xml->removeAttribute ("windowWidth");
+        xml->removeAttribute ("windowHeight");
+        xml->removeAttribute ("advancedOpen");
+        juce::MemoryBlock old;
+        juce::AudioProcessor::copyXmlToBinary (*xml, old);
+        auto fresh = std::make_unique<PluginProcessor>();
+        fresh->setStateInformation (old.getData(), (int) old.getSize());
+        check (fresh->windowWidth.load() == PluginProcessor::defaultWindowWidth && ! fresh->advancedOpen.load(), "a session from before the window opens at the default size");
+
+        std::unique_ptr<juce::AudioProcessorEditor> reopened (other->createEditor());
+        check (reopened->getWidth() == PluginProcessor::maxWindowWidth && reopened->getHeight() >= PluginProcessor::minWindowHeight, "a window opens within limits from a damaged size", (double) reopened->getHeight());
+        w->setAdvancedOpen (false);
+    }
+
+    // The window only reads: frames and paints, with speech going through, move no parameter and start no gesture.
+    {
+        const auto x = loadSpeech ("speech_daniel.wav");
+        check (! x.empty(), "the speech is there");
+        ParamWatch watch (p);
+        juce::AudioBuffer<float> buffer (2, 256);
+        juce::MidiBuffer midi;
+        bool moved = false;
+        for (int pos = 0; pos + 256 <= (int) x.size() / 4; pos += 256)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                buffer.copyFrom (ch, 0, x.data() + pos, 256);
+            p.processBlock (buffer, midi);
+            if (pos % 1600 < 256)
+            {
+                moved = w->tick (1.0 / 30.0) || moved;
+                paintAt (*ed, pos % 3200 < 1600 ? 1.0f : 2.0f);
+            }
+        }
+        check (moved, "with speech going through, the display reports it is moving");
+        check (w->getHitView().getShowing() == punchview::HitView::Showing::real, "and it shows the real hit, not the example");
+        check (watch.changes == 0 && watch.begins == 0 && watch.ends == 0, "the window reading and painting writes no parameter and no automation", (double) watch.changes.load());
+
+        // With no more audio, it settles and says so, so the timer can slow down and nothing repaints.
+        bool still = true;
+        for (int i = 0; i < 200; ++i)
+            still = w->tick (1.0 / 30.0);
+        check (! still, "with the host stopped, the display stops moving");
+
+        const int paints = w->getHitView().getPaintCount();
+        for (int i = 0; i < 30; ++i)
+            w->tick (1.0 / 30.0);
+        paintAt (*ed, 1.0f);
+        check (w->getHitView().getPaintCount() == paints + 1, "and no longer asks to be drawn again", (double) (w->getHitView().getPaintCount() - paints));
+
+        // Moved while stopped: the hit in view is redrawn with the new settings, with no audio.
+        setParam (p, "attack", 12.0f);
+        w->tick (1.0 / 30.0);
+        check (w->getHitView().getShowing() == punchview::HitView::Showing::preview, "moving Attack while stopped redraws the hit in view");
+        check (w->tick (1.0 / 30.0), "and keeps the window lively for a moment while the control moves");
+        const auto& view = w->getHitView();
+        double gained = 0.0;
+        for (int i = 4; i < 12; ++i)
+            gained += ((double) punchview::toDb (view.shownAfter()[i]) - (double) punchview::toDb (view.shownBefore()[i])) / 8.0;
+        check (gained > 3.0, "and its start rises", gained, "dB");
+        setParam (p, "attack", 0.0f);
+    }
+
+    // A host playing silence: nothing on the timeline, so nothing moves, and nothing asks to be drawn.
+    {
+        auto q = std::make_unique<PluginProcessor>();
+        prepare (*q, 2, SR, 256);
+        std::unique_ptr<juce::AudioProcessorEditor> e (q->createEditor());
+        auto* te = dynamic_cast<PunchEditor*> (e.get());
+        juce::AudioBuffer<float> buffer (2, 256);
+        juce::MidiBuffer midi;
+        for (int i = 0; i < 30; ++i)
+            te->tick (1.0 / 30.0);
+        int movedFrames = 0;
+        for (int frame = 0; frame < 300; ++frame)
+        {
+            for (int b = 0; b < 6; ++b)
+            {
+                buffer.clear();
+                q->processBlock (buffer, midi);
+            }
+            movedFrames += te->tick (1.0 / 30.0) ? 1 : 0;
+        }
+        check (movedFrames == 0, "10 seconds of silence from the host moves nothing, frames", (double) movedFrames);
+    }
+
+    // Before any sound: the example hit, and the controls move it.
+    {
+        auto q = std::make_unique<PluginProcessor>();
+        prepare (*q, 2, SR, 256);
+        std::unique_ptr<juce::AudioProcessorEditor> e (q->createEditor());
+        auto* te = dynamic_cast<PunchEditor*> (e.get());
+        auto& view = te->getHitView();
+        check (view.getShowing() == punchview::HitView::Showing::example && view.captionText().contains ("Example"), "with nothing played, it says it is an example");
+        const auto at = [&view] (int bin) { return (double) punchview::toDb (view.shownAfter()[bin]) - (double) punchview::toDb (view.shownBefore()[bin]); };
+        check (std::abs (at (6)) < 0.01, "and at neutral nothing is changed", at (6), "dB");
+        setParam (*q, "attack", 12.0f);
+        te->tick (1.0 / 30.0);
+        check (at (6) > 6.0, "Attack moves its start", at (6), "dB");
+        setParam (*q, "attack", 0.0f);
+        setParam (*q, "sustain", -12.0f);
+        te->tick (1.0 / 30.0);
+        check (at (400) < -6.0, "Sustain moves its tail", at (400), "dB");
+        paintAt (*e, 2.0f);
+    }
+
+    // Opening and closing, over and over, with audio running on another thread and with none.
+    {
+        auto q = std::make_unique<PluginProcessor>();
+        prepare (*q, 2, SR, 256);
+        std::atomic<bool> running { true };
+        const auto x = loadSpeech ("speech_samantha.wav");
+        std::thread audio ([&]
+        {
+            juce::AudioBuffer<float> buffer (2, 256);
+            juce::MidiBuffer midi;
+            int pos = 0;
+            while (running.load())
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    buffer.copyFrom (ch, 0, x.data() + pos, 256);
+                pos = (pos + 256) % ((int) x.size() - 256);
+                q->processBlock (buffer, midi);
+            }
+        });
+        int opened = 0;
+        for (int i = 0; i < 30; ++i)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> e (q->createEditor());
+            auto* te = dynamic_cast<PunchEditor*> (e.get());
+            te->tick (1.0 / 30.0);
+            paintAt (*e, i % 2 == 0 ? 2.0f : 1.0f);
+            te->setAdvancedOpen (i % 3 == 0);
+            te->tick (1.0 / 30.0);
+            paintAt (*e, 1.0f);
+            ++opened;
+        }
+        running = false;
+        audio.join();
+        for (int i = 0; i < 30; ++i)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> e (q->createEditor());
+            paintAt (*e, 2.0f);
+            ++opened;
+        }
+        check (opened == 60, "60 windows opened, painted and closed, 30 of them with audio running", (double) opened);
+
+        auto unprepared = std::make_unique<PluginProcessor>();
+        std::unique_ptr<juce::AudioProcessorEditor> before (unprepared->createEditor());
+        paintAt (*before, 2.0f);
+        check (before->getWidth() > 0, "a window opens and paints before the host has prepared the plug-in");
+    }
+
+    // The null test: real speech with the window open, ticking and painting is identical to the sample with it closed.
+    {
+        const auto x = loadSpeech ("speech_samantha.wav");
+        const auto renderWith = [&] (bool withWindow)
+        {
+            auto q = std::make_unique<PluginProcessor>();
+            apply (*q, { 25.0f, 6.0f, -4.0f, 90.0f, 3.0f, 45.0f, -3.0f, 1.0f });
+            prepare (*q, 2, SR, 256);
+            std::unique_ptr<juce::AudioProcessorEditor> e (withWindow ? q->createEditor() : nullptr);
+            auto* te = dynamic_cast<PunchEditor*> (e.get());
+            int block = 0;
+            return render (*q, x, 256, nullptr, [&] (int)
+            {
+                if (te != nullptr)
+                {
+                    te->tick (1.0 / 30.0);
+                    if (++block % 16 == 0)
+                        paintAt (*e, 2.0f);
+                }
+            });
+        };
+        const auto closed = renderWith (false);
+        const auto open = renderWith (true);
+        double worst = 0.0, loudest = 0.0;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < closed.getNumSamples(); ++i)
+            {
+                worst = juce::jmax (worst, (double) std::abs (closed.getSample (ch, i) - open.getSample (ch, i)));
+                loudest = juce::jmax (loudest, (double) std::abs (closed.getSample (ch, i)));
+            }
+        check (loudest > 0.1, "the null test has real audio in it, peak", loudest);
+        check (worst == 0.0, "audio with the window open and painting nulls to exact zero against the window closed", worst);
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -1176,5 +1874,8 @@ int main()
     testMeters();
     testSameAsFirstVersion();
     testNewPresets();
+    testEnvelopeTap();
+    testHitDisplayNumbers();
+    testWindow();
     return finish();
 }

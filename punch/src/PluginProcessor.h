@@ -4,6 +4,7 @@
 #include <array>
 #include <vector>
 #include "CeilingLimiter.h"
+#include "EnvelopeTap.h"
 #include "PunchEngine.h"
 
 // A read-only level reading in dB, reachable as a real AU parameter. It lives outside the value tree, so it is never saved or recalled.
@@ -44,7 +45,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor (*this); }
+    juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Smooth Punch"; }
@@ -72,6 +73,18 @@ public:
     ReadingParameter* outputLevel = nullptr;     // After everything.
     ReadingParameter* impactReduction = nullptr; // Negative dB.
     ReadingParameter* ceilingReduction = nullptr; // Negative dB.
+
+    // The level of the sound before and after, for the window's display. Written by the audio thread, read by the window, and it never touches the audio.
+    EnvelopeTap envelopeTap;
+
+    /** Whether the settings have moved off the current preset. For the window. */
+    bool isCurrentProgramEdited() const;
+
+    // The window's size and whether Advanced is open are all the window adds to the saved state. They are not parameters.
+    static constexpr int defaultWindowWidth = 1000, defaultWindowHeight = 690;
+    static constexpr int minWindowWidth = 840, minWindowHeight = 610, maxWindowWidth = 1800, maxWindowHeight = 1300;
+    std::atomic<int> windowWidth { defaultWindowWidth }, windowHeight { defaultWindowHeight };
+    std::atomic<bool> advancedOpen { false };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();

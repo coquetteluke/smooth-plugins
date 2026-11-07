@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "StateGuard.h"
+#include "editor/PunchEditor.h"
 
 namespace
 {
@@ -27,6 +28,8 @@ namespace
     constexpr float outputSafety = 16.0f; // +24 dBFS. Only an absurd pile of boosts gets here, and nothing past it is ever useful.
 
     float linearToDb (float x) { return 8.685889638f * std::log (juce::jmax (x, 1.0e-6f)); }
+
+    const juce::Identifier windowWidthAttribute { "windowWidth" }, windowHeightAttribute { "windowHeight" }, advancedOpenAttribute { "advancedOpen" };
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout()
@@ -94,6 +97,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     engine.prepare (sampleRate);
     limiter.prepare (delaySamples, sampleRate);
     meterFall = (float) std::exp (-1.0 / (meterFallSeconds * sampleRate));
+    envelopeTap.prepare (sampleRate);
 
     punchSmoothed.reset (sampleRate, smoothSeconds);
     attackSmoothed.reset (sampleRate, smoothSeconds);
@@ -170,6 +174,9 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
         // Gain is a level control in front of everything, so it moves dry and wet alike. Bypass takes it out too.
         const float total = blended * (1.0f + on * (inGain - 1.0f));
 
+        // The sample coming out of the delay as it was before any gain, so the window's before and after line up in time. Only read here.
+        const float before = ch1 != nullptr ? juce::jmax (std::abs (d0[writePos]), std::abs (d1[writePos])) : std::abs (d0[writePos]);
+
         float out0 = d0[writePos] * total;
         d0[writePos] = ch0[i];
         float out1 = 0.0f;
@@ -198,6 +205,7 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
         outputPeak = juce::jmax (std::abs (out0), std::abs (out1), outputPeak * meterFall);
         impactPeakDb = juce::jmax (engine.impactReductionNowDb() * m, impactPeakDb * meterFall);
         ceilingPeakDb = juce::jmax (-linearToDb (applied), ceilingPeakDb * meterFall);
+        envelopeTap.push (before, juce::jmax (std::abs (out0), std::abs (out1)));
 
         if (++writePos >= delaySamples)
             writePos = 0;
@@ -220,6 +228,17 @@ void PluginProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, ju
 }
 
 int PluginProcessor::getNumPrograms() { return (int) std::size (presets); }
+
+juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new PunchEditor (*this); }
+
+bool PluginProcessor::isCurrentProgramEdited() const
+{
+    const auto& preset = presets[juce::jlimit (0, (int) std::size (presets) - 1, currentProgram)];
+    const auto moved = [] (const std::atomic<float>* now, float wanted) { return std::abs (now->load (std::memory_order_relaxed) - wanted) > 0.01f; };
+    return moved (punch, preset.punch) || moved (attack, preset.attack) || moved (sustain, preset.sustain) || moved (mix, preset.mix)
+        || moved (gain, preset.gain) || moved (impact, preset.impact) || moved (ceiling, preset.ceiling)
+        || (ceilingOn->load (std::memory_order_relaxed) > 0.5f) != preset.ceilingOn;
+}
 
 const juce::String PluginProcessor::getProgramName (int i)
 {
@@ -249,14 +268,30 @@ void PluginProcessor::setCurrentProgram (int i)
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     if (auto xml = apvts.copyState().createXml())
+    {
+        xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
+        xml->setAttribute (windowHeightAttribute, windowHeight.load (std::memory_order_relaxed));
+        xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, dest);
+    }
 }
 
 void PluginProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
         if (xml->hasTagName (apvts.state.getType()))
+        {
+            // Older sessions have no window state. A damaged size goes back in range. Neither is a parameter, so they stay out of the value tree.
+            if (xml->hasAttribute (windowWidthAttribute))
+                windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
+            if (xml->hasAttribute (windowHeightAttribute))
+                windowHeight.store (juce::jlimit (minWindowHeight, maxWindowHeight, xml->getIntAttribute (windowHeightAttribute, defaultWindowHeight)), std::memory_order_relaxed);
+            advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            xml->removeAttribute (windowWidthAttribute);
+            xml->removeAttribute (windowHeightAttribute);
+            xml->removeAttribute (advancedOpenAttribute);
             applySafeState (apvts, *xml);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PluginProcessor(); }

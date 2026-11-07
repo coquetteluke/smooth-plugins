@@ -279,4 +279,91 @@ PASS  preset Parallel Impact: level change on a -30 dBFS tone = 14.034 dB
 PASS  preset Ceiling Only: Ceiling On
 PASS  preset Ceiling Only: peak over its ceiling on hot material = -7.063 dB
 PASS  preset Ceiling Only: level change on a -30 dBFS tone = 0.000 dB
+PASS  the display's before and after match exactly at neutral, so they line up in time = 0.000 
+PASS  Gain +6: after sits 6 dB over before in every bin, worst error = 0.000 dB
+PASS  about 2000 bins a second at 44100 Hz = 2004.000 
+PASS  about 2000 bins a second at 48000 Hz = 2000.000 
+PASS  about 2000 bins a second at 96000 Hz = 2000.000 
+PASS  the tap works in mono = 0.496 
+PASS  the tap goes round its ring and the newest bin is right = 24000.000 
+PASS  3 bursts make 3 hits
+PASS  Attack +9: the drawn start rises = 8.973 dB
+PASS  Attack +9: the drawn tail stays where it was = 0.000 dB
+PASS  Attack -9: the drawn start falls = -6.370 dB
+PASS  Sustain -9: the drawn tail falls = -9.000 dB
+PASS  Sustain -9: the drawn start stays where it was = -0.039 dB
+PASS  Sustain +9: the drawn tail rises = 9.000 dB
+PASS  5 bursts at -30 dBFS make 5 hits, so level does not matter
+PASS  a steady tone is one hit, when it starts
+PASS  silence makes no hits
+PASS  a tone at -60 dBFS makes no hits
+PASS  real speech makes a readable number of hits a second, no more than one per 350 ms = 2.055 
+PASS  the preview against the real result, Attack +9, average error = 0.111 dB
+PASS  the preview against the real result, Sustain -9, average error = 0.040 dB
+PASS  the preview against the real result, everything on, average error = 1.708 dB
+PASS  at neutral the example hit is left alone, worst = 0.000 dB
+PASS  with Bypass on the preview changes nothing, worst = 0.000 dB
+PASS  the time axis runs from 0 to 400 ms
+PASS  and it can be read both ways
+PASS  the first 30 ms take close to half the width = 0.443 
+PASS  the window is the custom one
+PASS  all 9 controls keep their ID, name, range and default
+PASS  all 9 controls have a place in the window
+PASS  and there are no others that can be set = 9.000 
+PASS  every hint fits on the hint line at the smallest window, widest in points = 450.354 
+PASS  the bars are found
+PASS  dragging Attack a quarter of its width moves it from where it was = 8.900 
+PASS  a drag is one gesture for automation, begins = 1.000 
+PASS  automation moves the bar = 7.500 
+PASS  the bar shows the value: +7.5 dB
+PASS  and a real minus sign below zero
+PASS  double-click resets to the default, as one gesture = 0.000 
+PASS  and it reads 0.0 dB, with no sign
+PASS  typing 42 % sets 42, as one gesture = 42.000 
+PASS  typing a word that means nothing leaves it alone = 42.000 
+PASS  typing too much stops at the top of the range = 100.000 
+PASS  the minus sign the window shows can be typed back = -5.000 
+PASS  so can a plus sign = 6.000 
+PASS  the buttons are found
+PASS  the button turns Ceiling On on, as one gesture
+PASS  double-click puts it back to its default, off
+PASS  the button turns Bypass on
+PASS  automation moves the button
+PASS  with the Ceiling off, its line can't be grabbed
+PASS  the line is drawn at the Ceiling's level on the plot's scale
+PASS  dragging the line 6 dB down moves the Ceiling to -12 = -12.000 
+PASS  as one gesture = 1.000 
+PASS  double-click on the line puts it back to -1 = -1.000 
+PASS  the preset box is found
+PASS  choosing a preset sets it and shows its name: Rap Upfront
+PASS  moving a control says so: Rap Upfront, edited
+PASS  and Neutral is the defaults
+PASS  a tone at -12 with Gain +6 reads In -12.0 and Out -6.0: −12.0 −6.0
+PASS  Impact reads 0.0 and the Ceiling reads Off
+PASS  Impact's number is the Impact Reduction reading: −10.7
+PASS  the Ceiling's number is the Ceiling Reduction reading: −7.3
+PASS  with the host stopped, the numbers fall back on their own
+PASS  the size and Advanced come back with the session = 1100.000 
+PASS  they stay out of the parameter tree
+PASS  a damaged size goes back in range = 1800.000 
+PASS  a session from before the window opens at the default size
+PASS  a window opens within limits from a damaged size = 670.000 
+PASS  the speech is there
+PASS  with speech going through, the display reports it is moving
+PASS  and it shows the real hit, not the example
+PASS  the window reading and painting writes no parameter and no automation = 0.000 
+PASS  with the host stopped, the display stops moving
+PASS  and no longer asks to be drawn again = 1.000 
+PASS  moving Attack while stopped redraws the hit in view
+PASS  and keeps the window lively for a moment while the control moves
+PASS  and its start rises = 11.317 dB
+PASS  10 seconds of silence from the host moves nothing, frames = 0.000 
+PASS  with nothing played, it says it is an example
+PASS  and at neutral nothing is changed = 0.000 dB
+PASS  Attack moves its start = 11.970 dB
+PASS  Sustain moves its tail = -12.000 dB
+PASS  60 windows opened, painted and closed, 30 of them with audio running = 60.000 
+PASS  a window opens and paints before the host has prepared the plug-in
+PASS  the null test has real audio in it, peak = 0.708 
+PASS  audio with the window open and painting nulls to exact zero against the window closed = 0.000 
 RESULT PASS  0 failures

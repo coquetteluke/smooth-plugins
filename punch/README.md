@@ -27,6 +27,22 @@ Read only, for a host to read by name. They never write automation and are never
 
 Not on the panel, fixed by design: 15 ms peak hold for the shaper and 8 ms for Punch, which is what keeps steady low tones clean. Punch releases in about 8 ms after its hold. Both channels share one gain, so the stereo image stays put.
 
+## The window
+
+The window is called Punch, and is the name this plug-in will carry after the rename. The build still installs as Smooth Punch.
+
+- **The big picture is the last hit**, 400 ms of it. White is the sound as it came in. Orange is how it goes out. Dark orange under the white line is what the settings took off. Orange above the white line is what they added.
+- The time scale is stretched at the start, because that is where a hit happens: the first 30 ms take close to half the width.
+- **Attack sits under the start of the hit and Sustain under its tail.** Hovering over either one lights the part of the hit it works on.
+- **Across the top, the last few seconds** as a row of bars. The bright bars are the hit shown below.
+- **On the right, In and Out** on the same level scale as the picture, then **how far Impact and the Ceiling are pulling down**, hanging from the top, with large numbers under them.
+- **The Ceiling is also a line on the picture** while it is on. Drag it, or double-click it to put it back.
+- Before anything has played, the picture is an example hit, and says so. The controls still move it. When playback stops, moving a control redraws the last hit with the new settings, and says so. Both run the sound level through the real detector at the display's rate, so they are a close drawing, not the exact result. Against the real result on bursts, the average error is 0.1 dB for Attack or Sustain alone and 1.7 dB with everything on.
+- Gain and Mix are under Advanced. When it is closed, the row says if either has moved.
+- Double-click anything to reset it. Click a value to type one. The window can be resized, and its size is saved.
+
+Every control is still a real AU parameter with the same ID, name and range, so automation reaches them all, and the window moves with them. A hit is the level at least doubling against 20 to 32 ms earlier, above about -45 dBFS, and no sooner than 350 ms after the last one, so one can be read before the next arrives. The drawn levels are smoothed by a few milliseconds to take out the ripple of a voice's own cycles. A cut at the very start of a hit reads about 2.6 dB short because of that: Attack -9 draws as -6.4.
+
 ## Presets
 
 Punch, Attack, Sustain, Mix:
@@ -112,6 +128,17 @@ Added in 0.2.0, with limits written before the first run:
 - Latency with Gain, Impact and Ceiling on: 88, 96 and 192 samples at 44.1, 48 and 96 kHz, the same as before.
 - Readings, read through their value strings: Input Level -12.0 and Output Level -6.0 with Gain +6 on -12 dBFS, Impact Reduction -10.7 at Impact 50 on -6 dBFS, Ceiling Reduction -6.0 at Ceiling -12 on -6 dBFS. Zero automation writes during audio.
 - All seven new presets: stay under their ceiling on hot material, and raise a -30 dBFS tone or leave it as it was (0.0 to +20.3 dB).
+
+Added in 0.3.0, with limits written before the first run:
+
+- Audio unchanged: real speech from macOS `say`, two voices under four settings, through the installed AU with `tests/AuRender.cpp` and `tests/null/render.sh`. All eight results are byte for byte the same as 0.2.0, with hashes in `tests/null/`.
+- Window open, ticking and painting against window closed, on real speech with everything on: difference exactly 0.
+- Before and after on the display, at neutral: the same in every bin, so they line up in time.
+- The drawn shape on a burst: Attack +9 draws +9.0 at the start and 0.0 in the tail. Sustain -9 draws -9.0 in the tail and 0.0 at the start.
+- Hits: 5 bursts make 5 hits at -30 dBFS, a steady tone makes 1, silence and a -60 dBFS tone make none, real speech makes about 2 a second.
+- 60 windows opened, painted and closed, 30 of them with audio running on another thread. One opens and paints before the host has prepared the plug-in. Frames and paints write no parameter and no automation. Ten seconds of silence from the host moves nothing.
+- Audio CPU through `_shared/bin/AuBench`: 0.6 to 0.7% default before and after. Window CPU: see `docs/window-cpu.md`, measured with `build/RenderWindow_artefacts/Release/RenderWindow --live`.
+- The pictures in `docs/window/` come from `RenderWindow`, with real speech going through the real processor. None of this has been opened in a real host window yet.
 
 Limits to know about:
 

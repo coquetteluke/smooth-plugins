@@ -243,15 +243,27 @@ private:
         return total;
     }
 
-    // Where the glottal pulse sits against a mark, as a fraction of a period. Marks stay on one point of the waveform, but that
-    // point can be anywhere in the cycle, and when grains spread out, a pulse near the edge of the window would be lost.
-    double pulseNear (double markPosition, double period) noexcept
+    // A mark's position with its own jitter averaged out, using the marks either side that are already known.
+    double steadyMark (const PitchTracker& tracker, long long q) const noexcept
     {
-        const double centre = markPosition + (pulseKnown ? pulseShift * period : 0.0);
-        const double reach = pulseKnown ? 0.25 * period : 0.5 * period;
+        const int reach = (int) std::min ({ 2LL, tracker.lastMark() - q, q - tracker.firstMark() });
+        double sum = 0.0;
+        for (int k = -reach; k <= reach; ++k)
+            sum += tracker.mark (q + k).position;
+        return sum / (2 * reach + 1);
+    }
+
+    // Where the glottal pulse sits against a mark, in samples. Marks stay on one point of the waveform, but that
+    // point can be anywhere in the cycle, and when grains spread out, a pulse near the edge of the window would be lost.
+    // It is read once on entering a voiced sound and then only creeps: a cycle can have two near equal peaks, and following the
+    // bigger one from grain to grain was heard, and measured, as tens of cents of wobble.
+    void updatePulse (double markPosition, double period) noexcept
+    {
+        const double centre = markPosition + (pulseKnown ? pulseShift : 0.0);
+        const double reach = pulseKnown ? 0.1 * period : 0.5 * period;
         const long long from = (long long) std::floor (centre - reach), to = (long long) std::ceil (centre + reach);
         if (to >= written || from < 0 || written - from >= size)
-            return markPosition + pulseShift * period;
+            return;
         const int mask = size - 1;
         double best = -1.0;
         long long at = from;
@@ -265,15 +277,14 @@ private:
             }
             if (e > best) { best = e; at = i; }
         }
-        const double found = ((double) at - markPosition) / period;
-        if (! pulseKnown)
+        const double found = (double) at - markPosition;
+        if (pulseKnown)
+            pulseShift += 0.003 * (found - pulseShift);
+        else
         {
             pulseShift = found;
             pulseKnown = true;
         }
-        else
-            pulseShift += 0.2 * (found - pulseShift);
-        return markPosition + pulseShift * period;
     }
 
     void addGrain (const Grain& g) noexcept
@@ -365,6 +376,7 @@ private:
             g.offset = 0.0;
             g.gain = 1.0;
             lastMarkUsed = -1;
+            pulseKnown = false;
         };
 
         if (planned == Plan::pass || ! c.voiced || ! tracker.hasMarks() || lastMarkUsed < 0)
@@ -379,7 +391,8 @@ private:
         else
         {
             const double period = c.inputPeriod;
-            const double shift = pulseShift * period;
+            updatePulse (tracker.mark (std::clamp (lastMarkUsed + 1, tracker.firstMark(), tracker.lastMark())).position, period);
+            const double shift = pulseShift;
             // In order, one mark per grain, unless the output has moved over 0.6 periods from where the input is.
             long long q = std::clamp (lastMarkUsed + 1, tracker.firstMark(), tracker.lastMark());
             while (q < tracker.lastMark() && g.mark - (tracker.mark (q).position + shift) > 0.6 * period)
@@ -390,10 +403,9 @@ private:
             const double furthest = (double) (latency - interpolatorReach);
             while (q > tracker.firstMark() && tracker.mark (q).position + shift - g.mark > furthest)
                 --q;
-            const double centre = pulseNear (tracker.mark (q).position, period);
-            double offset = centre - g.mark;
+            double offset = steadyMark (tracker, q) + shift - g.mark;
             if (offset > furthest)
-                offset = tracker.mark (q).position + pulseShift * period - period - g.mark;
+                offset -= period;
             if (std::abs (offset) > 2.1 * period || offset > furthest)
             {
                 // No usable mark near here. Fall back to a plain read for one grain rather than jump far.

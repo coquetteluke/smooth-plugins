@@ -13,6 +13,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdlib>
 #include <vector>
 
 namespace smoothmorph
@@ -47,6 +48,12 @@ public:
         imag.assign (n / 2, 0.0);
         power.assign (n / 2 + 1, 0.0);
         warped.assign (n / 2 + 1, 0.0);
+        held.assign (n / 2 + 1, 0.0);
+        if (const char* e = std::getenv ("KEEP")) longMemory = std::atof (e);
+        if (const char* e = std::getenv ("DLOW")) steadyDb = std::atof (e);
+        if (const char* e = std::getenv ("DHIGH")) changingDb = std::atof (e);
+        if (const char* e = std::getenv ("WIDE")) wideAmount = std::atof (e);
+        if (const char* e = std::getenv ("BASE")) baseWide = std::atof (e);
         lagWindow.resize ((size_t) order + 1);
         for (int l = 0; l <= order; ++l)
         {
@@ -61,9 +68,13 @@ public:
     void reset() noexcept
     {
         std::fill (input.begin(), input.end(), 0.0);
-        for (auto& f : frames) { f.analysis.fill (0.0); f.synthesis.fill (0.0); f.gain = 1.0; }
+        for (auto& f : frames) { f.analysis.fill (0.0); f.synthesis.fill (0.0); f.wantedLags.fill (0.0); f.gain = 1.0; f.level = 0.0; f.leftover = 1.0; f.plain = true; }
+        std::fill (held.begin(), held.end(), 0.0);
         count = 0;
     }
+
+    // How many samples behind the whitening filter the putting-back filter runs. Sets how far its frames can be averaged.
+    void setSynthesisDelay (int samples) noexcept { lead = std::clamp (samples / hop, 0, numFrames / 4); }
 
     int getOrder() const noexcept { return order; }
     int getHop() const noexcept { return hop; }
@@ -72,13 +83,14 @@ public:
     // How far ahead of the point being filtered the newest sample has to be: half a window and a hop, for interpolating.
     int lookahead() const noexcept { return N / 2 + hop; }
 
-    // One mono sample. ratio scales formants on frequency. sharpen above 1 makes peaks stand further above valleys.
-    void push (float x, double ratio, double sharpen) noexcept
+    // One mono sample, already pre-emphasised. ratio scales formants on frequency. sharpen above 1 makes peaks stand further
+    // above valleys. pitchHz is the pitch if the sound is voiced, otherwise 0: it is what keeps harmonics out of the envelope.
+    void push (float x, double ratio, double sharpen, double pitchHz, bool shifted) noexcept
     {
         input[(size_t) (count & (long long) (N - 1))] = (double) x;
         ++count;
         if (count >= N && ((count - N) & (long long) (hop - 1)) == 0)
-            analyse ((count - N) / hop, ratio, sharpen);
+            analyse ((count - N) / hop, ratio, sharpen, pitchHz, shifted);
     }
 
     // Filter coefficients for one input index. Both use the same index grid, so a matched pair really does cancel.
@@ -93,7 +105,9 @@ private:
     struct Frame
     {
         Stage analysis {}, synthesis {};
-        double gain = 1.0;
+        std::array<double, maxOrder + 1> wantedLags {};
+        double gain = 1.0, level = 0.0, leftover = 1.0;
+        bool plain = true;
     };
     static constexpr int numFrames = 64;
 
@@ -140,7 +154,7 @@ private:
             return 0.0;
         for (int l = 1; l <= order; ++l)
             lags[l] *= lagWindow[(size_t) l];
-        lags[0] *= 1.0 + 1.0e-5; // a floor, 50 dB under the total, so a pure tone cannot make an endless resonance
+        lags[0] *= 1.0 + floorAmount; // a floor, 50 dB under the total, so a pure tone cannot make an endless resonance
         double error = lags[0];
         a[0] = 1.0;
         for (int i = 1; i <= order; ++i)
@@ -162,7 +176,7 @@ private:
         return error;
     }
 
-    void analyse (long long frameIndex, double ratio, double sharpen) noexcept
+    void analyse (long long frameIndex, double ratio, double sharpen, double pitchHz, bool shifted) noexcept
     {
         Frame& f = frames[(size_t) (frameIndex & (numFrames - 1))];
         const long long start = count - N;
@@ -173,47 +187,51 @@ private:
             frame[(size_t) i] = v;
             energy += v * v;
         }
+        const int half = N / 2;
         if (energy < 1.0e-11 * N)
         {
             // Silence: no filter at all, so nothing can ring and nothing decays into denormals.
             f.analysis.fill (0.0);
-            f.synthesis.fill (0.0);
-            f.gain = 1.0;
-            return;
-        }
-
-        const int half = N / 2;
-        for (int i = 0; i < half; ++i)
-        {
-            real[(size_t) i] = frame[(size_t) (2 * i)];
-            imag[(size_t) i] = frame[(size_t) (2 * i + 1)];
-        }
-        DSPDoubleSplitComplex z { real.data(), imag.data() };
-        vDSP_fft_zripD (setup, &z, 1, (vDSP_Length) logN, kFFTDirection_Forward);
-        power[0] = real[0] * real[0];
-        power[(size_t) half] = imag[0] * imag[0];
-        for (int i = 1; i < half; ++i)
-            power[(size_t) i] = real[(size_t) i] * real[(size_t) i] + imag[(size_t) i] * imag[(size_t) i];
-
-        std::array<double, maxOrder + 1> lags {};
-        toLags (power, lags.data());
-        const double errorIn = levinson (lags.data(), f.analysis.data());
-
-        const bool same = std::abs (ratio - 1.0) < 1.0e-6 && std::abs (sharpen - 1.0) < 1.0e-6;
-        if (same)
-        {
-            f.synthesis = f.analysis;
-            f.gain = 1.0;
+            f.wantedLags.fill (0.0);
+            f.leftover = 1.0;
+            f.level = 0.0;
+            f.plain = true;
+            std::fill (held.begin(), held.end(), 0.0);
         }
         else
         {
+            for (int i = 0; i < half; ++i)
+            {
+                real[(size_t) i] = frame[(size_t) (2 * i)];
+                imag[(size_t) i] = frame[(size_t) (2 * i + 1)];
+            }
+            DSPDoubleSplitComplex z { real.data(), imag.data() };
+            vDSP_fft_zripD (setup, &z, 1, (vDSP_Length) logN, kFFTDirection_Forward);
+            power[0] = real[0] * real[0];
+            power[(size_t) half] = imag[0] * imag[0];
+            for (int i = 1; i < half; ++i)
+                power[(size_t) i] = real[(size_t) i] * real[(size_t) i] + imag[(size_t) i] * imag[(size_t) i];
+
+            // Held vowels get a long memory, because the fit is touchy near a sharp resonance and its small moves turn into pitch
+            // wobble. Anything that really changes gets none, so consonants and vowel changes are followed at once.
+            const double keep = memoryFor (spectrumChange());
+            for (int i = 0; i <= half; ++i)
+                held[(size_t) i] = keep * held[(size_t) i] + (1.0 - keep) * power[(size_t) i];
+            std::array<double, maxOrder + 1> lags {};
+            toLags (held, lags.data());
+            const double heldLevel = lags[0];
+            const double errorHeld = levinson (lags.data(), f.analysis.data());
+            f.leftover = heldLevel > 0.0 ? errorHeld / (heldLevel * (1.0 + floorAmount)) : 1.0;
+            f.level = heldLevel;
+
+            // The filter that goes back on: this frame's spectrum with its frequency axis scaled.
             const double scale = 1.0 / ratio;
             for (int i = 0; i <= half; ++i)
             {
                 const double at = std::min (i * scale, (double) half);
                 const int low = std::min ((int) at, half - 1);
                 const double t = at - low;
-                warped[(size_t) i] = power[(size_t) low] + t * (power[(size_t) low + 1] - power[(size_t) low]);
+                warped[(size_t) i] = held[(size_t) low] + t * (held[(size_t) low + 1] - held[(size_t) low]);
             }
             if (std::abs (sharpen - 1.0) >= 1.0e-6)
             {
@@ -223,13 +241,85 @@ private:
                 for (int i = 0; i <= half; ++i)
                     warped[(size_t) i] = top * std::pow (std::max (warped[(size_t) i] * inverse, 1.0e-12), sharpen);
             }
-            toLags (warped, lags.data());
-            const double errorOut = levinson (lags.data(), f.synthesis.data());
-            f.gain = errorIn > 0.0 && errorOut > 0.0 ? std::clamp (std::sqrt (errorOut / errorIn), 0.1, 10.0) : 1.0;
-        }
+            toLags (warped, f.wantedLags.data());
+            const double wide = wideAmount * std::max (1.0 / ratio - 1.0, 0.0) + baseWide;
+            for (int l = 0; l <= order; ++l)
+            {
+                const double a = 2.0 * M_PI * wide * l / sr;
+                f.wantedLags[(size_t) l] *= std::exp (-0.5 * a * a);
+            }
+            // Consonants with formants left alone must come out as they went in. So must everything when nothing is asked for.
+            const bool unmoved = std::abs (ratio - 1.0) < 1.0e-6 && std::abs (sharpen - 1.0) < 1.0e-6;
+            f.plain = unmoved && (! shifted || pitchHz <= 0.0);
 
-        if ((frameIndex & 7) == 0)
-            publish (f);
+            if ((frameIndex & 7) == 0)
+                publish (f);
+        }
+        finishFrame (frameIndex - lead);
+    }
+
+    // How far this frame's spectrum is from the remembered one: RMS difference in dB over bands, with overall level taken out.
+    double spectrumChange() const noexcept
+    {
+        const int half = N / 2;
+        const int bandBins = std::max (1, (int) std::lround (250.0 / (sr / N)));
+        constexpr int numChangeBands = 24;
+        std::array<double, numChangeBands> difference {};
+        double mean = 0.0;
+        for (int b = 0; b < numChangeBands; ++b)
+        {
+            double now = 1.0e-20, before = 1.0e-20;
+            const int from = b * bandBins + 1;
+            for (int i = from; i < from + bandBins && i <= half; ++i)
+            {
+                now += power[(size_t) i];
+                before += held[(size_t) i];
+            }
+            difference[(size_t) b] = 10.0 * std::log10 (now / before);
+            mean += difference[(size_t) b];
+        }
+        mean /= numChangeBands;
+        double e = 0.0;
+        for (double d : difference)
+            e += (d - mean) * (d - mean);
+        return std::sqrt (e / numChangeBands);
+    }
+
+    double memoryFor (double changeDb) const noexcept
+    {
+        const double t = std::clamp ((changeDb - steadyDb) / (changingDb - steadyDb), 0.0, 1.0);
+        return longMemory * (1.0 - t);
+    }
+
+    // The filter that goes back on is applied later than the whitening one, by the shifter's delay, so its frames can be averaged
+    // both ways with no lag. It sets its shape from several frames and its level from this one, so attacks stay sharp while the
+    // small frame to frame moves, which a sharp resonance turns into pitch wobble, go.
+    void finishFrame (long long m) noexcept
+    {
+        if (m < 0)
+            return;
+        Frame& f = frames[(size_t) (m & (numFrames - 1))];
+        if (f.plain)
+        {
+            f.synthesis = f.analysis;
+            f.gain = 1.0;
+            return;
+        }
+        std::array<double, maxOrder + 1> sum {};
+        for (long long k = -lead; k <= lead; ++k)
+        {
+            const long long at = m + k;
+            if (at < 0) continue;
+            const Frame& other = frames[(size_t) (at & (numFrames - 1))];
+            const double weight = (double) (lead + 1 - std::abs (k));
+            for (int l = 0; l <= order; ++l)
+                sum[(size_t) l] += weight * other.wantedLags[(size_t) l];
+        }
+        const double total = sum[0];
+        const double error = levinson (sum.data(), f.synthesis.data());
+        const double leftoverOut = total > 0.0 ? error / (total * (1.0 + floorAmount)) : 1.0;
+        const double wanted = std::max (f.wantedLags[0], 0.0);
+        f.gain = f.level > 0.0 && f.leftover > 0.0 ? std::clamp (std::sqrt (leftoverOut * wanted / (f.leftover * f.level)), 0.1, 10.0) : 1.0;
     }
 
     void publish (const Frame&) noexcept
@@ -250,7 +340,10 @@ private:
     int logN = 10, N = 1024, hop = 128, order = 48;
     long long count = 0;
     FFTSetupD setup = nullptr;
-    std::vector<double> input, frame, window, real, imag, power, warped, lagWindow;
+    std::vector<double> input, frame, window, real, imag, power, warped, held, lagWindow;
+    int lead = 0;
+    double floorAmount = 1.0e-5, wideAmount = 60.0, baseWide = 0.0;
+    double longMemory = 0.95, steadyDb = 2.0, changingDb = 6.0;
     std::array<Frame, numFrames> frames {};
     std::array<std::atomic<float>, numBands> bandsBefore {}, bandsAfter {};
 };

@@ -62,6 +62,7 @@ public:
         shifter.prepare (sr, channels);
         shifterDelay = shifterDelayFor (sr);
         shifter.setLatency (shifterDelay);
+        envelope.setSynthesisDelay (shifterDelay);
         whitenDelay = envelope.lookahead();
         total = whitenDelay + shifterDelay;
 
@@ -78,9 +79,12 @@ public:
         fadeSmooth = smooth (0.015);
         rangeSmooth = smooth (0.150);
         learnRate = smooth (1.5);
+        spacingSmooth = smooth (0.008);
         breathRate = 1.0 - std::exp (-1.0 / (0.006 * sr));
         levelRate = 1.0 - std::exp (-1.0 / (0.025 * sr));
         levelGainRate = 1.0 - std::exp (-1.0 / (0.015 * sr));
+        levelRelease = 1.0 - std::exp (-1.0 / (0.003 * sr));
+        tilt = std::exp (-2.0 * M_PI * 200.0 / sr);
         historySize = 1;
         while (historySize < total / tickEvery + 4) historySize *= 2;
         history.assign ((size_t) historySize, 0);
@@ -99,6 +103,8 @@ public:
         tickPhase = 0;
         lfoPhase = 0.0;
         lastPeriod = 0.0;
+        pitchSmoothed = 0.0;
+        wasVoiced = false;
         std::fill (history.begin(), history.end(), 0);
         historyAt = 0;
         learned = 0.0;
@@ -142,7 +148,11 @@ public:
             }
 
             tracker.push (mono);
-            envelope.push (mono, formantRatio, control.voiced ? sharpen : 1.0);
+            // Pre-emphasis takes the source's tilt out before the fit, so formants high up are fitted as well as low ones,
+            // and they alone move when formants do. The de-emphasis after the filter puts the tilt back.
+            const float tilted = mono - (float) tilt * lastMono;
+            lastMono = mono;
+            envelope.push (tilted, formantRatio, control.voiced ? sharpen : 1.0, control.voiced && control.inputPeriod > 0.0 ? sr / control.inputPeriod : 0.0, ! control.noCorrection);
 
             // Input and dry paths
             const int writeAt = (int) (input & (long long) (delaySize - 1));
@@ -158,7 +168,9 @@ public:
                 const int readAt = (int) (whitenIndex & (long long) (delaySize - 1));
                 for (int ch = 0; ch < channels; ++ch)
                 {
-                    const double e = latticeAnalyse ((double) dryLine[(size_t) ch][(size_t) readAt], analysisK.data(), analysisState[(size_t) ch].data(), order);
+                    const double raw = (double) dryLine[(size_t) ch][(size_t) readAt];
+                    const double e = latticeAnalyse (raw - tilt * tiltIn[(size_t) ch], analysisK.data(), analysisState[(size_t) ch].data(), order);
+                    tiltIn[(size_t) ch] = raw;
                     shifter.write (ch, (float) e);
                 }
                 shifter.advance();
@@ -188,7 +200,8 @@ public:
                 breathPower[(size_t) ch] += breathRate * (e * e - breathPower[(size_t) ch]);
                 if (current.whisper > 0.0)
                     e = keep * e + breath * noise * std::sqrt (std::max (breathPower[(size_t) ch], 0.0));
-                double y = latticeSynth (synthesisGain * e, synthesisK.data(), synthesisState[(size_t) ch].data(), order);
+                double y = latticeSynth (synthesisGain * e, synthesisK.data(), synthesisState[(size_t) ch].data(), order) + tilt * tiltOut[(size_t) ch];
+                tiltOut[(size_t) ch] = y;
                 if (! std::isfinite (y) || std::abs (y) > 64.0)
                 {
                     clearFilters();
@@ -202,8 +215,17 @@ public:
             // Level match, shared by both sides so the stereo image stays
             levelIn += levelRate * (powerIn - levelIn);
             levelOut += levelRate * (powerOut - levelOut);
-            const double target = std::clamp (std::sqrt ((levelIn + 1.0e-10) / (levelOut + 1.0e-10)), 0.25, 4.0);
-            levelGain += levelGainRate * (target - levelGain);
+            if (control.voiced)
+            {
+                const double target = std::clamp (std::sqrt ((levelIn + 1.0e-10) / (levelOut + 1.0e-10)), 0.125, 8.0);
+                levelGain += levelGainRate * (target - levelGain);
+            }
+            else
+            {
+                // Consonants pass unchanged, so nothing to match, and a gain left over from the vowel must not colour them.
+                levelOut = levelIn;
+                levelGain += levelRelease * (1.0 - levelGain);
+            }
 
             const double wetAmount = current.mix * current.engaged;
             for (int ch = 0; ch < channels; ++ch)
@@ -239,6 +261,9 @@ private:
         analysisK.fill (0.0);
         synthesisK.fill (0.0);
         synthesisGain = 1.0;
+        tiltIn.fill (0.0);
+        tiltOut.fill (0.0);
+        lastMono = 0.0f;
     }
 
     double nextUniform() noexcept
@@ -337,7 +362,15 @@ private:
 
         control.voiced = voicedOut && lastPeriod > 0.0;
         control.inputPeriod = lastPeriod;
-        const double fromInput = (lastPeriod > 0.0 ? std::log2 (sr / lastPeriod) : 0.0) + (current.pitch + rangeNow) / 12.0;
+        // Each period is measured on its own and carries a little jitter. Grain spacing should not inherit it, while a voice's
+        // vibrato, far slower, should come through whole. The tracker holds marks at this smoothing's delay anyway.
+        if (voicedNow && period > 0.0)
+        {
+            const double l = std::log2 (sr / period);
+            pitchSmoothed = wasVoiced ? pitchSmoothed + spacingSmooth * (l - pitchSmoothed) : l;
+        }
+        wasVoiced = voicedNow && period > 0.0;
+        const double fromInput = (lastPeriod > 0.0 ? pitchSmoothed : 0.0) + (current.pitch + rangeNow) / 12.0;
         const double fromRobot = std::log2 (std::max (s.robotHz, 20.0)) + current.userPitch / 12.0;
         const double logOut = fromInput + current.robot * (fromRobot - fromInput) + vibrato / 1200.0;
         control.outputPeriod = sr / std::pow (2.0, logOut);
@@ -368,11 +401,16 @@ private:
     Settings wanted;
     Smoothed current;
     double pitchSmooth = 0.1, formantSmooth = 0.1, blendSmooth = 0.1, fadeSmooth = 0.1, rangeSmooth = 0.01, learnRate = 0.001;
+    double spacingSmooth = 0.1, pitchSmoothed = 0.0;
+    bool wasVoiced = false;
     double lfoPhase = 0.0, lastPeriod = 0.0, learned = 0.0, rangeHeld = 0.0, rangeNow = 0.0, jitterHeld = 0.0;
     int learnedFrames = 0;
     uint64_t randomState = 0x9E3779B97F4A7C15ull;
     std::array<double, 2> breathPower {};
-    double breathRate = 0.01, levelRate = 0.001, levelGainRate = 0.001, levelIn = 0.0, levelOut = 0.0, levelGain = 1.0;
+    double tilt = 0.97;
+    std::array<double, 2> tiltIn {}, tiltOut {};
+    float lastMono = 0.0f;
+    double breathRate = 0.01, levelRate = 0.001, levelGainRate = 0.001, levelRelease = 0.01, levelIn = 0.0, levelOut = 0.0, levelGain = 1.0;
     std::atomic<float> readDetected { 0.0f }, readOutput { 0.0f }, readRange { 0.0f };
 };
 } // namespace smoothmorph

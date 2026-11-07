@@ -12,7 +12,7 @@ namespace
     // gives stronger upper harmonics.
     constexpr float voiceTilt[4] = { -3.0f, 0.0f, 2.5f, 5.0f };
     constexpr float pulseTiltAtFull = -4.5f; // A wider pulse is a darker voice.
-    constexpr float precisionDetail[3] = { 1.0f, 0.8f, 0.55f };
+    constexpr float precisionWideningHz[3] = { 10.0f, 20.0f, 60.0f };
 
     struct Preset
     {
@@ -155,7 +155,7 @@ formant::FormantEngine::Controls PluginProcessor::readControls() const noexcept
         case 3:  c.range = { 60.0, 350.0 }; break;
         default: c.range = { 60.0, 1000.0 }; break;
     }
-    c.detail = precisionDetail[juce::jlimit (0, 2, (int) precision->load())];
+    c.peakWideningHz = precisionWideningHz[juce::jlimit (0, 2, (int) precision->load())];
     c.levelMatch = levelMatch->load() > 0.5f;
     return c;
 }

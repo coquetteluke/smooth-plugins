@@ -15,40 +15,46 @@ constexpr double twoPi = 6.283185307179586;
 
 struct Vowel { std::vector<double> formants; std::vector<double> bandwidths; };
 
-inline Vowel schwa()   { return { { 500, 1500, 2500, 3500, 4500 }, { 60, 90, 120, 150, 200 } }; }
-inline Vowel vowelA()  { return { { 730, 1090, 2440, 3400, 4500 }, { 80, 90, 120, 150, 200 } }; }
-inline Vowel vowelI()  { return { { 280, 2250, 3010, 3700, 4500 }, { 50, 100, 120, 150, 200 } }; }
-inline Vowel femaleA() { return { { 850, 1220, 2810, 3800, 4950 }, { 90, 100, 130, 170, 220 } }; }
+// A real tract keeps resonating above the formants that get names, so these go on up to about 8 kHz.
+inline Vowel schwa()   { return { { 500, 1500, 2500, 3500, 4500, 5500, 6500, 7500 }, { 60, 90, 120, 150, 200, 250, 300, 350 } }; }
+inline Vowel vowelA()  { return { { 730, 1090, 2440, 3400, 4500, 5500, 6500, 7500 }, { 80, 90, 120, 150, 200, 250, 300, 350 } }; }
+inline Vowel vowelI()  { return { { 280, 2250, 3010, 3700, 4500, 5500, 6500, 7500 }, { 50, 100, 120, 150, 200, 250, 300, 350 } }; }
+inline Vowel femaleA() { return { { 850, 1220, 2810, 3800, 4950, 6000, 7000, 8000 }, { 90, 100, 130, 170, 220, 260, 300, 350 } }; }
 
-// One cycle of a Rosenberg glottal flow derivative, band limited to the harmonics that fit below Nyquist at the highest pitch used.
-inline std::vector<float> glottalTable (double sr, double highestHz, double openQuotient = 0.6)
+// One cycle of a glottal pulse as radiated from the lips (the Liljencrants and Fant model of the flow's slope), band limited to the
+// harmonics that fit below Nyquist at the highest pitch used. Its harmonics fall smoothly at about 6 dB per octave.
+// The first version used a Rosenberg pulse, whose hard corners make harmonic levels jump about from one harmonic number to the next. That
+// pattern belongs to the formula and not to voices, and it swamped the readings for the first formant.
+inline std::vector<float> glottalTable (double sr, double highestHz)
 {
     const int size = 8192;
-    std::vector<double> flow ((size_t) size);
-    const double rise = 0.65 * openQuotient, fall = 0.35 * openQuotient;
+    const double te = 0.6, tp = te * 2.0 / 3.0, ta = 0.05, growth = 3.0 / te;
+    const double wg = juce::MathConstants<double>::pi / tp, fallAtEnd = -std::exp (growth * te) * std::sin (wg * te);
+    std::vector<double> raw ((size_t) size);
+    double mean = 0.0;
     for (int i = 0; i < size; ++i)
     {
-        const double p = (double) i / size;
-        flow[(size_t) i] = p < rise ? 0.5 * (1.0 - std::cos (juce::MathConstants<double>::pi * p / rise))
-                         : p < rise + fall ? std::cos (0.5 * juce::MathConstants<double>::pi * (p - rise) / fall) : 0.0;
+        const double t = (double) i / size;
+        raw[(size_t) i] = t < te ? std::exp (growth * t) * std::sin (wg * t)
+                                 : fallAtEnd * (std::exp (-(t - te) / ta) - std::exp (-(1.0 - te) / ta));
+        mean += raw[(size_t) i] / size;
     }
     const int harmonics = std::min ((int) (0.48 * sr / highestHz), size / 2 - 1);
-    std::vector<float> table ((size_t) size, 0.0f);
     std::vector<double> built ((size_t) size, 0.0);
     for (int h = 1; h <= harmonics; ++h)
     {
         double re = 0, im = 0;
         for (int i = 0; i < size; ++i)
         {
-            re += flow[(size_t) i] * std::cos (twoPi * h * i / size);
-            im += flow[(size_t) i] * std::sin (twoPi * h * i / size);
+            re += (raw[(size_t) i] - mean) * std::cos (twoPi * h * i / size);
+            im += (raw[(size_t) i] - mean) * std::sin (twoPi * h * i / size);
         }
-        // Differentiating multiplies by h and turns the phase a quarter.
         for (int i = 0; i < size; ++i)
-            built[(size_t) i] += h * (re * -std::sin (twoPi * h * i / size) + im * std::cos (twoPi * h * i / size));
+            built[(size_t) i] += re * std::cos (twoPi * h * i / size) + im * std::sin (twoPi * h * i / size);
     }
     double biggest = 1.0e-9;
     for (auto v : built) biggest = std::max (biggest, std::abs (v));
+    std::vector<float> table ((size_t) size);
     for (int i = 0; i < size; ++i) table[(size_t) i] = (float) (built[(size_t) i] / biggest);
     return table;
 }
@@ -148,6 +154,111 @@ inline Spectrum averageSpectrum (const float* x, int n, double sr, double smooth
     return s;
 }
 
+// The loudest each frequency ever gets over a stretch. A voice whose pitch glides sweeps its harmonics across every frequency, so this
+// traces the resonances themselves. Unlike an average it does not care how long a harmonic lingered anywhere.
+inline Spectrum holdSpectrum (const float* x, int n, double sr, double smoothHz = 30.0, int order = 12)
+{
+    const int size = 1 << order;
+    juce::dsp::FFT fft (order);
+    std::vector<float> work ((size_t) size * 2);
+    std::vector<double> held ((size_t) size / 2 + 1, 1.0e-20);
+    for (int start = 0; start + size <= n; start += size / 4)
+    {
+        std::fill (work.begin(), work.end(), 0.0f);
+        for (int i = 0; i < size; ++i)
+            work[(size_t) i] = x[start + i] * (float) (0.5 - 0.5 * std::cos (twoPi * i / size));
+        fft.performRealOnlyForwardTransform (work.data());
+        for (int k = 0; k <= size / 2; ++k)
+            held[(size_t) k] = std::max (held[(size_t) k], (double) work[(size_t) (2 * k)] * work[(size_t) (2 * k)] + (double) work[(size_t) (2 * k + 1)] * work[(size_t) (2 * k + 1)]);
+    }
+    Spectrum s;
+    s.binHz = sr / size;
+    s.db.resize (held.size());
+    const int reach = std::max (1, (int) (smoothHz / s.binHz));
+    for (int k = 0; k <= size / 2; ++k)
+    {
+        double total = 0, weightSum = 0;
+        for (int j = std::max (0, k - reach); j <= std::min (size / 2, k + reach); ++j)
+        {
+            const double w = 1.0 - std::abs (j - k) / (reach + 1.0);
+            total += w * 10.0 * std::log10 (held[(size_t) j]);
+            weightSum += w;
+        }
+        s.db[(size_t) k] = total / weightSum;
+    }
+    return s;
+}
+
+// Level in dB of each harmonic of the glottal pulse the test voices use.
+inline std::vector<double> sourceHarmonicsDb (double sr, double highestHz)
+{
+    const auto table = glottalTable (sr, highestHz);
+    const int size = (int) table.size(), count = (int) (0.48 * sr / highestHz);
+    std::vector<double> out ((size_t) count + 1, -200.0);
+    for (int h = 1; h <= count; ++h)
+    {
+        double re = 0, im = 0;
+        for (int i = 0; i < size; ++i)
+        {
+            re += table[(size_t) i] * std::cos (twoPi * h * i / size);
+            im += table[(size_t) i] * std::sin (twoPi * h * i / size);
+        }
+        out[(size_t) h] = 10.0 * std::log10 (re * re + im * im + 1.0e-20);
+    }
+    return out;
+}
+
+// Reads the tract's response from a voice whose glide is known: at each moment the level of every harmonic, with the glottal pulse's own
+// level for that harmonic taken back off. What is left, gathered over the glide, is the resonances alone, with no pulse shape to mistake
+// for a formant and no dependence on how long a harmonic lingered anywhere.
+inline Spectrum tractResponse (const float* x, int n, double sr, double startHz, double endHz, double seconds, double smoothHz = 20.0)
+{
+    const auto source = sourceHarmonicsDb (sr, std::max (startHz, endHz));
+    const int order = sr > 60000.0 ? 13 : 12, size = 1 << order;
+    juce::dsp::FFT fft (order);
+    std::vector<float> work ((size_t) size * 2);
+    const double slotHz = 5.0;
+    const int slots = (int) (0.5 * sr / slotHz) + 2;
+    std::vector<double> sum ((size_t) slots, 0.0), count ((size_t) slots, 0.0);
+    const double binHz = sr / size;
+    for (int start = (int) (0.2 * sr); start + size <= n; start += size / 4)
+    {
+        std::fill (work.begin(), work.end(), 0.0f);
+        for (int i = 0; i < size; ++i) work[(size_t) i] = x[start + i] * (float) (0.5 - 0.5 * std::cos (twoPi * i / size));
+        fft.performRealOnlyForwardTransform (work.data());
+        const double t = (start + 0.5 * size) / sr;
+        const double f0 = startHz + (endHz - startHz) * t / seconds;
+        for (int h = 1; h < (int) source.size() && h * f0 < 0.48 * sr; ++h)
+        {
+            const double hz = h * f0;
+            const int centre = (int) std::round (hz / binHz);
+            double best = 1.0e-20;
+            for (int k = std::max (0, centre - 2); k <= std::min (size / 2, centre + 2); ++k)
+                best = std::max (best, (double) work[(size_t) (2 * k)] * work[(size_t) (2 * k)] + (double) work[(size_t) (2 * k + 1)] * work[(size_t) (2 * k + 1)]);
+            const int slot = (int) (hz / slotHz);
+            sum[(size_t) slot] += 10.0 * std::log10 (best) - source[(size_t) h];
+            count[(size_t) slot] += 1.0;
+        }
+    }
+    Spectrum s;
+    s.binHz = slotHz;
+    s.db.resize ((size_t) slots);
+    const int reach = std::max (1, (int) (smoothHz / slotHz));
+    for (int k = 0; k < slots; ++k)
+    {
+        double total = 0, weightSum = 0;
+        for (int j = std::max (0, k - reach); j <= std::min (slots - 1, k + reach); ++j)
+            if (count[(size_t) j] > 0.0)
+            {
+                const double w = (1.0 - std::abs (j - k) / (reach + 1.0)) * count[(size_t) j];
+                total += w * sum[(size_t) j] / count[(size_t) j];
+                weightSum += w;
+            }
+        s.db[(size_t) k] = weightSum > 0.0 ? total / weightSum : -200.0;
+    }
+    return s;
+}
+
 // Highest peak between two frequencies, refined with a parabola.
 inline double peakBetween (const Spectrum& s, double lowHz, double highHz)
 {
@@ -161,9 +272,12 @@ inline double peakBetween (const Spectrum& s, double lowHz, double highHz)
             bestDb = s.db[(size_t) k];
         }
     if (best < 0) return 0.0;
-    const double y0 = s.db[(size_t) best - 1], y1 = s.db[(size_t) best], y2 = s.db[(size_t) best + 1];
-    const double bend = y0 - 2.0 * y1 + y2;
-    return (best + (std::abs (bend) > 1.0e-9 ? 0.5 * (y0 - y2) / bend : 0.0)) * s.binHz;
+    // The middle of the top 2 dB. Each slot here comes from whichever harmonics passed it, so the very top is rough, and on a broad peak the
+    // highest point can sit anywhere along it.
+    int lo = best, hi = best;
+    while (lo > a && s.db[(size_t) lo - 1] >= bestDb - 2.0) --lo;
+    while (hi < b && s.db[(size_t) hi + 1] >= bestDb - 2.0) ++hi;
+    return 0.5 * (lo + hi) * s.binHz;
 }
 
 // Frequency of the strongest partial, from how its phase advances between frames. Far finer than a bin.
@@ -324,6 +438,41 @@ inline void bandPass (std::vector<float>& x, double sr, double lowHz, double hig
     };
     section (lowHz, true); section (lowHz, true);
     section (highHz, false); section (highHz, false);
+}
+
+// How far one partial's frequency differs between two versions of a signal, frame by frame, from its phase advance. The partial is the
+// strongest near the given pitch. Works on gliding pitch because both versions are read at the same moment in the same bin.
+inline double partialMoveCents (const float* a, const float* b, int start, double sr, double nearHz)
+{
+    const int order = 11, size = 1 << order, hop = size / 8;
+    static thread_local std::unique_ptr<juce::dsp::FFT> fft;
+    static thread_local std::vector<float> w0, w1, w2, w3;
+    if (fft == nullptr) { fft = std::make_unique<juce::dsp::FFT> (order); w0.resize ((size_t) size * 2); w1 = w0; w2 = w0; w3 = w0; }
+    const auto take = [&] (const float* x, int from, std::vector<float>& w)
+    {
+        std::fill (w.begin(), w.end(), 0.0f);
+        for (int i = 0; i < size; ++i) w[(size_t) i] = x[from + i] * (float) (0.5 - 0.5 * std::cos (twoPi * i / size));
+        fft->performRealOnlyForwardTransform (w.data());
+    };
+    take (a, start, w0); take (a, start + hop, w1); take (b, start, w2); take (b, start + hop, w3);
+    const double binHz = sr / size;
+    int best = std::max (1, (int) ((nearHz * 0.75) / binHz));
+    double bestPower = -1.0;
+    for (int k = best; k <= (int) (nearHz * 1.25 / binHz); ++k)
+    {
+        const double p = (double) w0[(size_t) (2 * k)] * w0[(size_t) (2 * k)] + (double) w0[(size_t) (2 * k + 1)] * w0[(size_t) (2 * k + 1)];
+        if (p > bestPower) { bestPower = p; best = k; }
+    }
+    const auto advance = [&] (const std::vector<float>& u, const std::vector<float>& v)
+    {
+        const double pu = std::atan2 ((double) u[(size_t) (2 * best + 1)], (double) u[(size_t) (2 * best)]);
+        const double pv = std::atan2 ((double) v[(size_t) (2 * best + 1)], (double) v[(size_t) (2 * best)]);
+        const double expected = twoPi * best * hop / size;
+        double d = pv - pu - expected;
+        d -= twoPi * std::round (d / twoPi);
+        return (best + d * size / (twoPi * hop)) * binHz;
+    };
+    return 1200.0 * std::log2 (advance (w2, w3) / advance (w0, w1));
 }
 
 // Short-time pitch by autocorrelation with parabolic refinement: 0 when the frame is not clearly voiced.

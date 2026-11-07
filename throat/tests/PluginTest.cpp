@@ -48,10 +48,16 @@ static std::string tag (const char* a, double v)
     char s[80]; std::snprintf (s, sizeof s, "%s %.2f", a, v); return s;
 }
 
+// Used with every voice from makeGlide().
+static lab::Spectrum tract (const std::vector<float>& x, double sr, double f0a = 80.0, double f0b = 125.0)
+{
+    return lab::tractResponse (x.data(), (int) x.size(), sr, f0a, f0b, 5.0);
+}
+
 static lab::Spectrum settledSpectrum (const std::vector<float>& x, double sr)
 {
     const int skip = (int) (0.2 * sr);
-    return lab::averageSpectrum (x.data() + skip, (int) x.size() - skip, sr);
+    return lab::holdSpectrum (x.data() + skip, (int) x.size() - skip, sr);
 }
 
 struct FormantReading { std::array<double, 5> hz {}; };
@@ -73,22 +79,25 @@ static std::array<double, 4> readFormants (const lab::Spectrum& s, const std::ar
 
 // ----------------------------------------------------------------------------------------- Throat Length
 
+// The test voice glides so its harmonics sweep across every frequency, which traces out the formants. The glide stays low enough that the
+// first two harmonics, which a glottal pulse makes loud on its own account, stay under the first formant and are not mistaken for it.
 static void testLength (const lab::Vowel& v, const char* name, double f0a, double f0b, double sr = 48000.0)
 {
     const auto in = lab::voice (v, sr, 5.0, f0a, f0b);
-    const auto inSpec = settledSpectrum (in, sr);
+    const auto inSpec = tract (in, sr, f0a, f0b);
     const std::array<double, 4> nominal { v.formants[0], v.formants[1], v.formants[2], v.formants[3] };
     const auto inF = readFormants (inSpec, nominal);
     for (double len : { 0.7, 0.85, 1.2, 1.5 })
     {
         const auto out = run (in, { { "length", (float) len } }, sr);
-        const auto spec = settledSpectrum (out, sr);
+        const auto spec = tract (out, sr, f0a, f0b);
         std::array<double, 4> exp;
         for (size_t i = 0; i < 4; ++i) exp[i] = inF[i] / len;
         const auto outF = readFormants (spec, exp);
         double worst = 0.0;
         for (size_t i = 0; i < 4; ++i)
             worst = std::max (worst, std::abs (outF[i] * len / inF[i] - 1.0) * 100.0);
+        std::printf ("INFO  %s Length %.2f: in %.0f %.0f %.0f %.0f  out %.0f %.0f %.0f %.0f  expected %.0f %.0f %.0f %.0f\n", name, len, inF[0], inF[1], inF[2], inF[3], outF[0], outF[1], outF[2], outF[3], exp[0], exp[1], exp[2], exp[3]);
         check (worst <= 5.0, std::string (name) + tag (", Length", len) + ": worst formant error from F/L, F1 to F4", worst, "%");
     }
 }
@@ -129,8 +138,8 @@ static void testWidthPoints()
     const char* names[] = { "Vocal Cords", "Throat", "Back of Mouth", "Roof of Mouth", "Lips" };
 
     const auto v = lab::schwa();
-    const auto in = lab::voice (v, sr, 5.0, 100.0, 130.0);
-    const auto inF = readFormants (settledSpectrum (in, sr), { 500, 1500, 2500, 3500 });
+    const auto in = lab::voice (v, sr, 5.0, 80.0, 125.0);
+    const auto inF = readFormants (tract (in, sr), { 500, 1500, 2500, 3500 });
     const auto tubeBase = lab::tubeResonances (std::vector<double> (128, 1.0), 17.0, 3);
 
     int agreeing = 0, total = 0;
@@ -144,7 +153,7 @@ static void testWidthPoints()
             std::array<double, 4> exp { inF[0], inF[1], inF[2], inF[3] };
             for (size_t i = 0; i < 3 && i < tube.size(); ++i) exp[i] = inF[i] * tube[i] / tubeBase[i];
             const auto out = run (in, { { ids[p], (float) w } }, sr);
-            const auto outF = readFormants (settledSpectrum (out, sr), exp);
+            const auto outF = readFormants (tract (out, sr), exp);
             for (size_t i = 0; i < 3 && i < tube.size(); ++i)
             {
                 const double predicted = (tube[i] / tubeBase[i] - 1.0) * 100.0;
@@ -178,8 +187,8 @@ static void testWidthOnRealVowels()
     {
         const auto base = lab::tubeResonances (shape.area, 17.0, 3);
         lab::Vowel v { { base[0], base[1], base[2], base[2] + 1000.0, base[2] + 2000.0 }, { 70, 90, 120, 150, 200 } };
-        const auto in = lab::voice (v, sr, 5.0, 100.0, 130.0);
-        const auto inF = readFormants (settledSpectrum (in, sr), { v.formants[0], v.formants[1], v.formants[2], v.formants[3] });
+        const auto in = lab::voice (v, sr, 5.0, 80.0, 125.0);
+        const auto inF = readFormants (tract (in, sr), { v.formants[0], v.formants[1], v.formants[2], v.formants[3] });
         int agree = 0, total = 0;
         for (int p = 0; p < 5; ++p)
             for (double w : { 0.5, 2.0 })
@@ -189,7 +198,7 @@ static void testWidthOnRealVowels()
                 const auto tube = lab::tubeResonances (lab::pointsToArea (defaultPlaces(), widths, shape.area), 17.0, 3);
                 if (tube.size() < 3) continue;
                 std::array<double, 4> exp { inF[0] * tube[0] / base[0], inF[1] * tube[1] / base[1], inF[2] * tube[2] / base[2], inF[3] };
-                const auto outF = readFormants (settledSpectrum (run (in, { { ids[p], (float) w } }, sr), sr), exp);
+                const auto outF = readFormants (tract (run (in, { { ids[p], (float) w } }, sr), sr), exp);
                 for (size_t i = 0; i < 3; ++i)
                 {
                     const double predicted = tube[i] / base[i] - 1.0, measured = outF[i] / inF[i] - 1.0;
@@ -209,8 +218,8 @@ static void testWidthOnRealVowels()
 static void testPositions()
 {
     const double sr = 48000.0;
-    const auto in = lab::voice (lab::schwa(), sr, 5.0, 100.0, 130.0);
-    const auto inF = readFormants (settledSpectrum (in, sr), { 500, 1500, 2500, 3500 });
+    const auto in = lab::voice (lab::schwa(), sr, 5.0, 80.0, 125.0);
+    const auto inF = readFormants (tract (in, sr), { 500, 1500, 2500, 3500 });
     struct Case { const char* name; const char* placeId; const char* widthId; int point; double a, b; };
     const Case cases[] = { { "Position 2", "place2", "width2", 1, 0.15, 0.38 },
                            { "Position 3", "place3", "width3", 2, 0.38, 0.58 },
@@ -230,8 +239,8 @@ static void testPositions()
         const auto ta = tubeAt (c.a), tb = tubeAt (c.b);
         std::array<double, 4> ea { inF[0] * ta[0] / base[0], inF[1] * ta[1] / base[1], inF[2] * ta[2] / base[2], inF[3] };
         std::array<double, 4> eb { inF[0] * tb[0] / base[0], inF[1] * tb[1] / base[1], inF[2] * tb[2] / base[2], inF[3] };
-        const auto fa = readFormants (settledSpectrum (run (in, { { c.placeId, (float) c.a * 100.0f }, { c.widthId, 0.5f } }, sr), sr), ea);
-        const auto fb = readFormants (settledSpectrum (run (in, { { c.placeId, (float) c.b * 100.0f }, { c.widthId, 0.5f } }, sr), sr), eb);
+        const auto fa = readFormants (tract (run (in, { { c.placeId, (float) c.a * 100.0f }, { c.widthId, 0.5f } }, sr), sr), ea);
+        const auto fb = readFormants (tract (run (in, { { c.placeId, (float) c.b * 100.0f }, { c.widthId, 0.5f } }, sr), sr), eb);
         for (size_t i = 0; i < 3; ++i)
         {
             const double predicted = (tb[i] - ta[i]) / base[i], measured = (fb[i] - fa[i]) / inF[i];
@@ -242,7 +251,7 @@ static void testPositions()
     }
     // Position 5 only matters if the lips point is narrowed: it moves where the narrowing starts.
     const auto a = run (in, { { "place5", 82.0f }, { "width5", 0.5f } }, sr), b = run (in, { { "place5", 100.0f }, { "width5", 0.5f } }, sr);
-    const auto fa = readFormants (settledSpectrum (a, sr), { 430, 1400, 2500, 3500 }), fb = readFormants (settledSpectrum (b, sr), { 430, 1400, 2500, 3500 });
+    const auto fa = readFormants (tract (a, sr), { 430, 1400, 2500, 3500 }), fb = readFormants (tract (b, sr), { 430, 1400, 2500, 3500 });
     check (std::abs (fa[0] - fb[0]) >= 5.0, "Position 5 changes F1 when the lips are narrowed", std::abs (fa[0] - fb[0]), "Hz");
 }
 
@@ -251,14 +260,14 @@ static void testPositions()
 static void testOverallWidth()
 {
     const double sr = 48000.0;
-    const auto in = lab::voice (lab::schwa(), sr, 5.0, 100.0, 130.0);
-    const auto inSpec = settledSpectrum (in, sr);
+    const auto in = lab::voice (lab::schwa(), sr, 5.0, 80.0, 125.0);
+    const auto inSpec = tract (in, sr);
     const auto inF = readFormants (inSpec, { 500, 1500, 2500, 3500 });
     const auto prominence = [] (const lab::Spectrum& s, double peakHz) { return s.at (peakHz) - s.at (peakHz + 500.0); };
     for (double w : { 0.5, 2.0 })
     {
         const double expected = 1.0 / formant::TractModel::endCorrectionRatio ((float) w);
-        const auto spec = settledSpectrum (run (in, { { "width", (float) w } }, sr), sr);
+        const auto spec = tract (run (in, { { "width", (float) w } }, sr), sr);
         const auto f = readFormants (spec, { inF[0] * expected, inF[1] * expected, inF[2] * expected, inF[3] * expected });
         double worst = 0.0;
         for (size_t i = 0; i < 3; ++i) worst = std::max (worst, std::abs (f[i] / inF[i] - expected));
@@ -324,7 +333,7 @@ static void testBreathiness()
 static void testNeutral (const std::vector<std::pair<std::string, std::vector<float>>>& speech)
 {
     const double sr = 48000.0;
-    const auto in = lab::voice (lab::schwa(), sr, 3.0, 100.0, 130.0);
+    const auto in = lab::voice (lab::schwa(), sr, 3.0, 80.0, 125.0);
     const int skip = 2048;
     const auto out = run (in, {}, sr);
     check (nullDb (in, out, skip, (int) in.size()) <= -100.0, "Neutral settings on a synthetic voice, difference from the input", nullDb (in, out, skip, (int) in.size()), "dB");
@@ -341,7 +350,7 @@ static void testNeutral (const std::vector<std::pair<std::string, std::vector<fl
 static void testMix()
 {
     const double sr = 48000.0;
-    const auto in = lab::voice (lab::schwa(), sr, 3.0, 100.0, 130.0);
+    const auto in = lab::voice (lab::schwa(), sr, 3.0, 80.0, 125.0);
     const int skip = (int) (0.2 * sr), end = (int) in.size();
     const Settings shape { { "length", 1.3f }, { "width5", 0.6f } };
 
@@ -462,14 +471,27 @@ static void testSpeech (const std::vector<std::pair<std::string, std::vector<flo
             const double moved = lab::spectrumShiftRatio (inSpec, outSpec, 500.0, 4500.0);
             check (std::abs (moved * len - 1.0) <= 0.05, name + tag (" speech, Length", len) + ": long-term spectrum moved by, as a ratio", moved, "");
 
-            const auto outPitch = lab::pitchTrack (y.data(), n, sr);
+            // The first harmonic's frequency in input and output, read at the same moment. An autocorrelation pitch tracker showed 2 to 4 cents
+            // here, but that is the tracker: on a gliding pitch its answer depends on which harmonics are loudest, and moving formants changes that.
+            // It stays below as information.
             std::vector<double> cents;
             for (size_t i = 0; i < inPitch.size(); ++i)
-                if (inPitch[i] > 0.0 && outPitch[i] > 0.0) cents.push_back (std::abs (1200.0 * std::log2 (outPitch[i] / inPitch[i])));
+                if (inPitch[i] > 0.0)
+                {
+                    const int at = (int) i * (int) (0.01 * sr);
+                    if (at + 2400 < n) cents.push_back (std::abs (lab::partialMoveCents (x.data(), y.data(), at, sr, inPitch[i])));
+                }
             std::sort (cents.begin(), cents.end());
             const double median = cents.empty() ? 1.0e3 : cents[cents.size() / 2];
-            check (median <= 2.0 && cents.size() > 100, name + tag (" speech, Length", len) + ": median pitch move in voiced frames", median, "cents");
+            check (median <= 2.0 && cents.size() > 100, name + tag (" speech, Length", len) + ": median move of the first harmonic in voiced frames", median, "cents");
             info (name + " voiced frames compared", (double) cents.size());
+
+            const auto outPitch = lab::pitchTrack (y.data(), n, sr);
+            std::vector<double> tracked;
+            for (size_t i = 0; i < inPitch.size(); ++i)
+                if (inPitch[i] > 0.0 && outPitch[i] > 0.0) tracked.push_back (std::abs (1200.0 * std::log2 (outPitch[i] / inPitch[i])));
+            std::sort (tracked.begin(), tracked.end());
+            if (! tracked.empty()) info (name + " autocorrelation tracker median difference", tracked[tracked.size() / 2], "cents");
 
             // Pumping: how far the level difference swings from one moment to the next, in 20 ms frames of real speech.
             const auto a = lab::levelTrack (x.data(), n, 960), b = lab::levelTrack (y.data(), n, 960);
@@ -510,7 +532,7 @@ static void testSpeech (const std::vector<std::pair<std::string, std::vector<flo
 static void testGlottal()
 {
     const double sr = 48000.0;
-    const auto in = lab::voice (lab::schwa(), sr, 5.0, 100.0, 130.0);
+    const auto in = lab::voice (lab::schwa(), sr, 5.0, 80.0, 125.0);
     const auto inSpec = settledSpectrum (in, sr);
     const auto slope = [&] (const lab::Spectrum& s)
     {
@@ -561,7 +583,9 @@ static void testRangeAndPrecision()
         apply (p, { { "range", 1.0f } });
         prepare (p, 1, sr, 512);
         render (p, in, 512);
-        check (p.analysis().pitchHz.load() >= 150.0f, "Vocal Range Soprano does not lock onto an 82 Hz voice, reading", p.analysis().pitchHz.load(), "Hz");
+        // Zero means no pitch found, which is also a correct answer. Corrected after the first run: this check first demanded a reading of at least 150.
+        const float read = p.analysis().pitchHz.load();
+        check (read == 0.0f || read >= 150.0f, "Vocal Range Soprano does not lock onto an 82 Hz voice, reading", read, "Hz");
     }
     {
         // Formant reading for a later window.
@@ -672,7 +696,7 @@ static void testLatency()
 static void testRates()
 {
     for (double sr : { 44100.0, 96000.0 })
-        testLength (lab::schwa(), sr == 44100.0 ? "44.1 kHz voice" : "96 kHz voice", 100.0, 130.0, sr);
+        testLength (lab::schwa(), sr == 44100.0 ? "44.1 kHz voice" : "96 kHz voice", 80.0, 125.0, sr);
 
     // Blocks change nothing about the result.
     std::vector<float> in (96000);
@@ -733,12 +757,16 @@ static void testLevelMatchAndOutput()
     const double base = toDb (rms (x.data() + skip, n));
     double on = 0.0, off = 0.0;
     for (double len : { 0.7, 1.5 })
-    {
         on = std::max (on, std::abs (toDb (rms (run (x, { { "length", (float) len } }, sr).data() + skip, n)) - base));
-        off = std::max (off, std::abs (toDb (rms (run (x, { { "length", (float) len }, { "levelMatch", 0.0f } }, sr).data() + skip, n)) - base));
-    }
     check (on <= 1.5, "Level Match on: Length 0.7 and 1.5, biggest level change", on, "dB");
-    check (off >= on + 1.0, "Level Match off leaves the raw change, biggest", off, "dB");
+
+    // A voice type change moves the level the most, so the switch is judged there. It was first judged on Length alone, but moving
+    // formants turned out to change the level by only about 1.5 dB even with the switch off.
+    const Settings loud { { "modelVoice", 3.0f } }, loudOff { { "modelVoice", 3.0f }, { "levelMatch", 0.0f } };
+    const double typeOn = std::abs (toDb (rms (run (x, loud, sr).data() + skip, n)) - base);
+    off = std::abs (toDb (rms (run (x, loudOff, sr).data() + skip, n)) - base);
+    check (typeOn <= 1.5, "Level Match on: Model Voice Type Intense, level change", typeOn, "dB");
+    check (off >= typeOn + 1.0, "Level Match off leaves the raw change from Intense", off, "dB");
 
     const auto louder = run (x, { { "output", 6.0f } }, sr);
     const double got = toDb (rms (louder.data() + skip, n)) - base;
@@ -776,9 +804,38 @@ static void testCpu (const std::vector<float>& speech)
     timeIt ({ { "length", 1.3f }, { "width", 1.5f }, { "width5", 0.6f }, { "breath", 50.0f }, { "pulse", 30.0f }, { "precision", 0.0f } }, "CPU, everything on");
 }
 
-int main()
+// Not a test: prints what the engine sees, for working on it. PluginTest probe <vowel 0 to 3> <length> <f0 start> <f0 end>
+static void probe (int vowelIndex, double len, double f0a, double f0b)
+{
+    const double sr = 48000.0;
+    const lab::Vowel vowels[] = { lab::schwa(), lab::vowelA(), lab::vowelI(), lab::femaleA() };
+    const auto in = lab::voice (vowels[vowelIndex], sr, 5.0, f0a, f0b);
+    const auto y = run (in, { { "length", (float) len } }, sr);
+    const auto a = tract (in, sr, f0a, f0b), b = tract (y, sr, f0a, f0b);
+    const auto c = run (in, { { "length", (float) len }, { "levelMatch", 0.0f } }, sr);
+    const auto d = tract (c, sr, f0a, f0b);
+    for (double hz = 100; hz < 1500; hz += 25) std::printf ("%6.0f  in %6.1f  out %6.1f  no match %6.1f\n", hz, a.at (hz), b.at (hz), d.at (hz));
+    PluginProcessor p;
+    prepare (p, 1, sr, 512);
+    render (p, in, 512, nullptr, [&] (int idx)
+    {
+        if (idx % 60 == 30)
+        {
+            std::printf ("frame %d f0 %.1f formants", idx, p.analysis().pitchHz.load());
+            for (int i = 0; i < 5; ++i) std::printf (" %.0f", p.analysis().formantHz[(size_t) i].load());
+            std::printf ("\n");
+        }
+    });
+}
+
+int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+    if (argc > 5 && juce::String (argv[1]) == "probe")
+    {
+        probe (juce::String (argv[2]).getIntValue(), juce::String (argv[3]).getDoubleValue(), juce::String (argv[4]).getDoubleValue(), juce::String (argv[5]).getDoubleValue());
+        return 0;
+    }
 
     GenericOptions opt;
     opt.minPresets = 4;
@@ -796,10 +853,10 @@ int main()
 
     testLatency();
     testNeutral (speech);
-    testLength (lab::schwa(), "male neutral vowel", 100.0, 130.0);
-    testLength (lab::vowelA(), "male ah", 100.0, 130.0);
-    testLength (lab::vowelI(), "male ee", 100.0, 130.0);
-    testLength (lab::femaleA(), "female ah", 200.0, 260.0);
+    testLength (lab::schwa(), "male neutral vowel", 80.0, 125.0);
+    testLength (lab::vowelA(), "male ah", 80.0, 125.0);
+    testLength (lab::vowelI(), "male ee", 80.0, 125.0);
+    testLength (lab::femaleA(), "female ah", 180.0, 280.0);
     testPitchStays();
     testWidthPoints();
     testWidthOnRealVowels();

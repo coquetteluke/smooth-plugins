@@ -13,9 +13,10 @@
 // Formant analysis and resynthesis: one or two channels in, the same number out, later by latencySamples().
 //
 // Every frame:
-//   1. A long window of both channels gives one power spectrum, and from it the envelope E(f), the pitch and the voicing.
-//   2. The wanted envelope is worked out: E read through the tract's frequency map, then with the voice source's tilt changed.
-//   3. The audio passes through a shorter window and gets wanted(f) - E(f) as a gain per bin.
+//   1. A long window of both channels gives one power spectrum, and from it the formant model M(f), the envelope, the pitch and the voicing.
+//   2. M is read through the tract's frequency map, then the voice source's tilt is changed.
+//   3. The audio passes through a shorter window and gets (M read through the map) - M(f) as a gain per bin. That flattens the old
+//      resonances and makes the new ones.
 //
 // That gain is real and smooth across frequency, so harmonics stay exactly where they were (the pitch does not move), and phases
 // are untouched (a dry copy at the same delay blends without combing). When nothing is asked of it the gain is exactly 1 and the
@@ -35,7 +36,7 @@ public:
         float breath = 0.0f;            // 0 to 1
         float breathHighPassHz = 1500.0f;
         PitchRange range;
-        float detail = 0.85f;           // Envelope detail. 1 is finest, lower is steadier.
+        float peakWideningHz = 20.0f;   // Formant model detail. Lower follows narrower formants, higher is steadier.
         bool levelMatch = true;         // Hold each frame's envelope energy, so moving formants does not change the level.
     };
 
@@ -87,9 +88,9 @@ public:
         wanted.assign ((size_t) analysisHalf + 1, 0.0f);
         finerEnvelope.assign ((size_t) analysisHalf + 1, 0.0f);
         readHz.assign ((size_t) synthHalf + 1, 0.0f);
-        forwardScratch.assign ((size_t) synthHalf + 1, 0.0f);
         breathShape.assign ((size_t) synthHalf + 1, 0.0f);
         wantedOnSynthGrid.assign ((size_t) synthHalf + 1, 0.0f);
+        modelGain.assign ((size_t) synthHalf + 1, 0.0f);
 
         for (int i = 0; i < phaseTableSize; ++i)
         {
@@ -99,6 +100,7 @@ public:
 
         // Control changes settle in about 40 ms.
         settle = (float) (1.0 - std::exp (-(double) hop / (0.04 * sr)));
+        levelTimeCoef = 1.0 - std::exp (-(double) hop / (0.5 * sr));
         reset();
     }
 
@@ -117,8 +119,9 @@ public:
         smoothedTilt = target.tiltDbPerOctave;
         smoothedBreath = target.breath;
         smoothedHighPass = target.breathHighPassHz;
-        smoothedDetail = target.detail;
-        levelFix = 0.0f;
+        smoothedWidening = target.peakWideningHz;
+        levelFix = fastLevelFix = slowLevelFix = 0.0f;
+        slowEnergyIn = slowEnergyOut = 0.0;
         levelAmount = target.levelMatch ? 1.0f : 0.0f;
         tiltVoicing = 0.0f;
         noiseState = 0x9E3779B9u;
@@ -157,13 +160,14 @@ public:
 
 private:
     static constexpr int maxChannels = 2, phaseTableSize = 1024;
-    static constexpr float maxLogGain = 2.4f;     // 21 dB either way
+    static constexpr float maxLogGain = 3.0f;     // 26 dB either way
     static constexpr float nepersPerDb = 0.115129f;
+    static constexpr float resynthesisFull = 0.05f; // A move of this much, as a log ratio, takes the harmonics' levels fully from the model
 
     static float tiltCurve (float hz, float cornerHz) noexcept
     {
         const float f = std::min (hz, 12000.0f) / cornerHz;
-        return 0.5f * std::log2 (1.0f + f * f); // Octaves above the corner
+        return 0.5f * std::log2 (1.0f + f * f); // Octaves above the corner, levelling off at 12 kHz
     }
 
     void smoothControls() noexcept
@@ -188,7 +192,7 @@ private:
         }
         towards (smoothedTilt, target.tiltDbPerOctave, 1.0e-3f);
         towards (smoothedBreath, target.breath, 1.0e-4f);
-        towards (smoothedDetail, target.detail, 1.0e-3f);
+        towards (smoothedWidening, target.peakWideningHz, 1.0e-2f);
         towardsLog (smoothedHighPass, target.breathHighPassHz);
 
         bool moved = before.tract.length != current.tract.length || before.tract.width != current.tract.width;
@@ -206,7 +210,7 @@ private:
         if (identityMap)
             for (int k = 0; k <= synthHalf; ++k) readHz[(size_t) k] = (float) (k * binHz);
         else
-            tract.buildMap (current.tract, binHz, synthHalf + 1, readHz.data(), forwardScratch.data());
+            tract.buildMap (current.tract, binHz, synthHalf + 1, readHz.data());
         mapIsCurrent = true;
     }
 
@@ -241,14 +245,16 @@ private:
             channelShare[1] = (float) std::sqrt (energy[1] / mean);
         }
 
-        envelope.analyse (power.data(), target.range, smoothedDetail);
+        envelope.analyse (power.data(), target.range, smoothedWidening);
     }
 
     // Leaves the gain for this frame in logGain, and the output envelope in wantedOnSynthGrid (nepers, synth grid).
     // Returns true when the gain is exactly 1 at every bin.
     bool shapeFrame() noexcept
     {
-        const float* e = envelope.envelope();
+        const float* m = envelope.formantModel();
+        const float* heard = envelope.envelope();
+        const float* flat = envelope.flatEnvelope();
         const float voicing = envelope.voicing();
         const float f0 = envelope.fundamentalHz();
         const double binHz = sr / (double) synthSize;
@@ -258,19 +264,19 @@ private:
         const float width = current.tract.width;
         const float sharpen = std::pow (width, 0.35f) - 1.0f;   // Wider tube, less wall loss, narrower formants
         const bool sharpening = std::abs (sharpen) > 1.0e-3f;
-        const float* readFrom = e;
+        const float* readFrom = m;
         if (sharpening)
         {
-            // Only the detail is scaled, around a smooth version of the envelope.
-            envelope.lifter (e, 0.0007f * (float) sr, finerEnvelope.data());
+            // Only the detail is scaled, around a smooth version of the model.
+            envelope.lifter (m, 0.0007f * (float) sr, finerEnvelope.data());
             for (int k = 0; k <= analysisHalf; ++k)
-                wanted[(size_t) k] = e[k] + sharpen * (e[k] - finerEnvelope[(size_t) k]);
+                wanted[(size_t) k] = m[k] + sharpen * (m[k] - finerEnvelope[(size_t) k]);
             readFrom = wanted.data();
         }
 
         const bool tilting = std::abs (smoothedTilt) > 1.0e-3f && f0 > 0.0f;
         const float tiltNepers = smoothedTilt * nepersPerDb * tiltVoicing;
-        const float corner = 1.5f * std::max (f0, 60.0f);
+        const float corner = std::max (1.5f * f0, 500.0f); // The lowest few harmonics stay, and the upper ones turn
 
         const float breath = smoothedBreath;
         const bool breathing = breath > 1.0e-4f && ! frameIsSilent;
@@ -281,38 +287,95 @@ private:
         if (breathing)
             for (int k = 0; k <= synthHalf; ++k)
             {
-                const float f = (float) (k * binHz) / breathCorner, f4 = f * f * f * f;
-                breathShape[(size_t) k] = f4 / (1.0f + f4); // Power, twelve dB per octave in level
+                const float f = (float) (k * binHz) / breathCorner, f6 = f * f * f * f * f * f;
+                breathShape[(size_t) k] = f6 / (1.0f + f6); // Power, a slope of 18 dB per octave
             }
 
-        const int lowBin = (int) (60.0 / binHz), highBin = std::min (synthHalf, (int) (16000.0 / binHz));
-        double energyIn = 1.0e-30, energyOut = 1.0e-30;
+        // The fundamental and what lies under it belong to the voice source, not the tract, so the map lets go there.
+        const float sourceTop = voicing > 0.3f && f0 > 0.0f ? f0 : 60.0f;
+        const float keepBelow = 1.05f * sourceTop, moveAbove = 1.4f * sourceTop;
+
+
         float biggest = 0.0f;
         for (int k = 0; k <= synthHalf; ++k)
         {
-            const float at = identityMap ? (float) (2 * k) : juce::jlimit (0.0f, (float) analysisHalf, readHz[(size_t) k] * envelopeBinsPerHz);
+            float at = (float) (2 * k);
+            float resynthesis = 0.0f;
+            if (! identityMap)
+            {
+                const float hz = (float) (k * binHz);
+                float read = readHz[(size_t) k];
+                if (hz < moveAbove)
+                {
+                    const float t = hz <= keepBelow ? 0.0f : (hz - keepBelow) / (moveAbove - keepBelow);
+                    read = hz + t * t * (3.0f - 2.0f * t) * (read - hz);
+                }
+                at = juce::jlimit (0.0f, (float) analysisHalf, read * envelopeBinsPerHz);
+                // The model is too smooth to take a narrow formant off completely, and what it leaves stays behind as a ghost of the old
+                // formant. So the further things move, the more the harmonics take their level from the model alone. Nearly unmoved, a
+                // harmonic keeps its own detail, and the change from that to none at all at a setting of 1 is smooth.
+                // The first two harmonics keep more of their own: the voice source shapes them more than the tract does.
+                resynthesis = hz > 0.0f ? std::min (1.0f, std::abs (std::log (std::max (read, 1.0f) / hz)) / resynthesisFull) : 0.0f;
+                if (hz < 2.2f * sourceTop)
+                    resynthesis *= juce::jlimit (0.0f, 1.0f, (hz - moveAbove) / (2.2f * sourceTop - moveAbove));
+            }
             const int a = std::min ((int) at, analysisHalf - 1);
             float w = readFrom[a] + (at - (float) a) * (readFrom[a + 1] - readFrom[a]);
             if (tilting)
                 w += tiltNepers * tiltCurve ((float) (k * binHz), corner);
-            wantedOnSynthGrid[(size_t) k] = w;
-            const float here = e[2 * k];
-            logGain[(size_t) k] = w - here;
-            if (k >= lowBin && k <= highBin)
-            {
-                const float clamped = juce::jlimit (-maxLogGain, maxLogGain, w - here);
-                const float powerIn = std::exp (2.0f * here), powerOut = std::exp (2.0f * (here + clamped));
-                energyIn += powerIn;
-                energyOut += powerOut * (1.0f + noiseToVoice * gate * gate * (breathing ? breathShape[(size_t) k] : 0.0f));
-            }
-            biggest = std::max (biggest, std::abs (w - here));
+            const float reference = m[2 * k] + resynthesis * (flat[2 * k] - m[2 * k]);
+            const float g = juce::jlimit (-maxLogGain, maxLogGain, w - reference);
+            modelGain[(size_t) k] = juce::jlimit (-maxLogGain, maxLogGain, w - m[2 * k]);
+            logGain[(size_t) k] = std::isfinite (g) ? g : 0.0f;
+            wantedOnSynthGrid[(size_t) k] = heard[2 * k] + logGain[(size_t) k];
+            biggest = std::max (biggest, std::abs (logGain[(size_t) k]));
         }
 
+        // Moving formants must not change the level. This takes two steps.
+        // A fast one compares the model's energy before and after, with the source's fall on it, so each sound keeps its own level from
+        // one moment to the next. It knows nothing of where the harmonics are, so it does not iron out what a harmonic does as it crosses
+        // a formant.
+        // A slow one, over about half a second, then compares the frame's real spectrum before and after, plus the breath to be added.
+        // How much energy really passes depends on where the harmonics fall, which the model cannot say. It is too slow to pump.
         levelAmount += 0.3f * ((target.levelMatch ? 1.0f : 0.0f) - levelAmount);
-        const float fixWanted = biggest < 1.0e-6f && ! breathing ? 0.0f
-                              : levelAmount * juce::jlimit (-1.4f, 1.4f, (float) (0.5 * std::log (energyIn / energyOut)));
-        levelFix += 0.4f * (fixWanted - levelFix);
-        if (std::abs (levelFix) < 1.0e-6f && fixWanted == 0.0f) levelFix = 0.0f;
+        float fastWanted = 0.0f, slowWanted = 0.0f;
+        if ((biggest >= 1.0e-6f || breathing) && levelAmount > 1.0e-3f)
+        {
+            const int low = (int) (60.0 / binHz), high = std::min (synthHalf, (int) (16000.0 / binHz));
+            double modelIn = 1.0e-30, modelOut = 1.0e-30;
+            for (int k = low; k <= high; ++k)
+            {
+                const float source = heard[2 * k] - flat[2 * k];
+                const float before = 2.0f * (m[2 * k] + source);
+                modelIn += std::exp (before);
+                modelOut += std::exp (before + 2.0f * modelGain[(size_t) k]);
+            }
+            fastWanted = juce::jlimit (-1.4f, 1.4f, (float) (0.5 * std::log (modelIn / modelOut)));
+
+            const int lowBin = (int) (60.0 / (binHz * 0.5)), highBin = std::min (analysisHalf - 1, (int) (16000.0 / (binHz * 0.5)));
+            const float noiseWeight = noiseToVoice * gate * gate;
+            const float afterFast = std::exp (2.0f * levelAmount * fastLevelFix);
+            double energyIn = 0.0, energyOut = 0.0;
+            for (int j = lowBin; j <= highBin; ++j)
+            {
+                const int k = j / 2;
+                const float g = (j & 1) == 0 ? logGain[(size_t) k] : 0.5f * (logGain[(size_t) k] + logGain[(size_t) k + 1]);
+                energyIn += power[(size_t) j];
+                energyOut += power[(size_t) j] * std::exp (2.0f * g) * afterFast * (1.0f + (breathing ? noiseWeight * breathShape[(size_t) k] : 0.0f));
+            }
+            slowEnergyIn += levelTimeCoef * (energyIn - slowEnergyIn);
+            slowEnergyOut += levelTimeCoef * (energyOut - slowEnergyOut);
+            slowWanted = slowEnergyIn > 1.0e-9 ? juce::jlimit (-1.0f, 1.0f, (float) (0.5 * std::log ((slowEnergyIn + 1.0e-20) / (slowEnergyOut + 1.0e-20)))) : slowLevelFix;
+        }
+        else
+        {
+            slowEnergyIn = slowEnergyOut = 0.0;
+        }
+        fastLevelFix += 0.1f * (fastWanted - fastLevelFix);
+        slowLevelFix += 0.5f * (slowWanted - slowLevelFix);
+        if (std::abs (fastLevelFix) < 1.0e-6f && fastWanted == 0.0f) fastLevelFix = 0.0f;
+        if (std::abs (slowLevelFix) < 1.0e-6f && slowWanted == 0.0f) slowLevelFix = 0.0f;
+        levelFix = levelAmount * (fastLevelFix + slowLevelFix);
 
         if (biggest < 1.0e-6f && levelFix == 0.0f)
         {
@@ -320,10 +383,7 @@ private:
             return ! breathing;
         }
         for (int k = 0; k <= synthHalf; ++k)
-        {
-            const float g = juce::jlimit (-maxLogGain, maxLogGain, logGain[(size_t) k]) + levelFix;
-            logGain[(size_t) k] = std::isfinite (g) ? g : 0.0f;
-        }
+            logGain[(size_t) k] += levelFix;
         return false;
     }
 
@@ -340,7 +400,8 @@ private:
         // makes the harmonics to noise ratio the same on a low voice and a high one.
         const float spacingBins = (voicing > 0.2f && f0 > 0.0f ? f0 : 150.0f) / (float) binHz;
         const float gate = 0.25f + 0.75f * voicing;
-        const float level = std::sqrt (6.0f * noiseToVoice / spacingBins) * gate;
+        // The 3 is measured: the envelope between harmonics lies lower than their tips, which the plain sum would miss.
+        const float level = std::sqrt (3.0f * 6.0f * noiseToVoice / spacingBins) * gate;
         // Envelope values are on the analysis window's scale.
         const float toSynthScale = 0.5f;
         for (int k = 0; k <= synthHalf; ++k)
@@ -427,12 +488,13 @@ private:
     SpectralEnvelope envelope;
     TractModel tract;
     Controls target, current;
-    float smoothedTilt = 0.0f, smoothedBreath = 0.0f, smoothedHighPass = 1500.0f, smoothedDetail = 0.85f, settle = 0.1f;
-    float levelFix = 0.0f, levelAmount = 1.0f, tiltVoicing = 0.0f;
+    float smoothedTilt = 0.0f, smoothedBreath = 0.0f, smoothedHighPass = 1500.0f, smoothedWidening = 20.0f, settle = 0.1f;
+    float levelFix = 0.0f, fastLevelFix = 0.0f, slowLevelFix = 0.0f, levelAmount = 1.0f, tiltVoicing = 0.0f;
+    double slowEnergyIn = 0.0, slowEnergyOut = 0.0, levelTimeCoef = 0.03;
     bool mapIsCurrent = false, identityMap = true, frameIsSilent = true;
     std::array<std::vector<float>, maxChannels> inputRing, overlap;
     std::vector<juce::dsp::Complex<float>> analysisIn, analysisOut;
-    std::vector<float> synthWindow, analysisWindow, power, spectrum, noiseSpectrum, logGain, wanted, finerEnvelope, readHz, forwardScratch, breathShape, wantedOnSynthGrid;
+    std::vector<float> synthWindow, analysisWindow, power, spectrum, noiseSpectrum, logGain, wanted, finerEnvelope, readHz, breathShape, wantedOnSynthGrid, modelGain;
     std::array<std::array<float, 2>, phaseTableSize> phaseTable {};
     std::array<float, maxChannels> channelShare { 1.0f, 1.0f };
     std::uint32_t noiseState = 0x9E3779B9u;

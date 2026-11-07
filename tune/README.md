@@ -1,8 +1,8 @@
-# Smooth Tune
+# Tune
 
 Low latency, real time vocal pitch correction that keeps formants where they are. From hard, stepped tuning to correction you do not notice.
 
-**Load it:** Audio Units > Luke Garito > Smooth Tune. AU code `aufx STun Luke`. Mono and stereo. No MIDI.
+**Load it:** Audio Units > Luke Garito > Tune. AU code `aufx STun Luke`. Mono and stereo. No MIDI.
 
 Synthetic voices and macOS `say` are what it has been measured on. That does not prove it sounds good on a real singer. It has not been compared with Logic's stock pitch correction, which cannot run offline here.
 

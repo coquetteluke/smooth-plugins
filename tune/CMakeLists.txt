@@ -4,11 +4,11 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "" FORCE)
 
 # ---- edit these for each plug-in ----
 set(SP_TARGET  SmoothTune)
-set(SP_NAME    "Smooth Tune")
+set(SP_NAME    "Tune")
 set(SP_CODE    STun)
 set(SP_BUNDLE  "com.lukegarito.smoothtune")
 set(SP_DESC    "Low latency real time vocal pitch correction with formant preservation")
-set(SP_VERSION 1.1.0)
+set(SP_VERSION 1.1.1)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1, 2026-11-07
+
+Renamed to Tune, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
 ## 1.1.0, 2026-11-07
 
 The custom window replaces the generic one. Graphite and lime: a huge note, a correction ruler in cents, a short trace on the same scale, In and Out levels, one cell per note, the main controls in view and the rest under Advanced. Every control is the same AU parameter under the same ID. The only new saved items are the window size and whether Advanced is open, kept in range when loaded.

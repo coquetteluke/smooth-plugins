@@ -76,6 +76,69 @@ namespace flanger
         }
     };
 
+    // LFO wave at x turns, starting at 0 and rising like a sine. rise is the share of the cycle spent going from the bottom
+    // to the top, 0.5 is even. shape 0 is a triangle, 0.5 a sine, 1 nearly a square. The square keeps a finite edge.
+    inline double lfoWave (double x, double rise, double shape) noexcept
+    {
+        constexpr double twoPi = 6.283185307179586476925286766559;
+        x -= std::floor (x);
+        if (rise != 0.5)
+        {
+            double w = x + 0.25; // 0 is the bottom of the wave, 0.5 the top
+            w -= std::floor (w);
+            w = w < rise ? w * 0.5 / rise : 0.5 + (w - rise) * 0.5 / (1.0 - rise);
+            x = w - 0.25;
+        }
+        const double s = std::sin (twoPi * x);
+        if (shape == 0.5)
+            return s;
+        if (shape < 0.5)
+        {
+            double w = x + 0.25;
+            w -= std::floor (w);
+            const double tri = w < 0.5 ? 4.0 * w - 1.0 : 3.0 - 4.0 * w;
+            return tri + 2.0 * shape * (s - tri);
+        }
+        const double a = 2.0 * shape - 1.0, k = 12.0 * a * a;
+        return k < 1.0e-4 ? s : std::tanh (k * s) / std::tanh (k);
+    }
+
+    // Position inside one LFO cycle from a phase that covers two cycles. share is the part of the pair given to the first
+    // cycle, 0.5 is even. Longer first cycle means a shorter second one, so the pair still lasts two cycles.
+    inline double swingCycle (double pairPhase, double share) noexcept
+    {
+        return pairPhase < share ? pairPhase / share : (pairPhase - share) / (1.0 - share);
+    }
+
+    // Small repeatable random source for the slow drift. Same numbers after every prepare, so a bounce repeats.
+    struct Drift
+    {
+        unsigned state = 1;
+        double from = 0.0, to = 0.0, pos = 0.0;
+
+        void reset (unsigned seed) noexcept { state = seed; from = 0.0; pos = 0.0; to = next(); }
+
+        double next() noexcept
+        {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            return (double) state / 2147483647.5 - 1.0;
+        }
+
+        double advance (double step) noexcept
+        {
+            pos += step;
+            while (pos >= 1.0)
+            {
+                pos -= 1.0;
+                from = to;
+                to = next();
+            }
+            return from + (to - from) * pos * pos * (3.0 - 2.0 * pos);
+        }
+    };
+
     inline void smoothTo (float& value, float target, float coeff) noexcept
     {
         value += coeff * (target - value);

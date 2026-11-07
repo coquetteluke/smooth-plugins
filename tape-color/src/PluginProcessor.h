@@ -2,6 +2,8 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include <array>
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <vector>
 #include "TapeColorDsp.h"
@@ -21,7 +23,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor (*this); }
+    juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Smooth Tape Color"; }
@@ -45,14 +47,32 @@ public:
     int getOversamplingLatency() const noexcept { return osLatency; }
     int getTapePathLatency() const noexcept { return modCentre; }
 
-    // For a later window. Written by the audio thread, safe to read from anywhere. Not parameters, so they never write automation.
+    // For the window. Written by the audio thread, safe to read from anywhere. Not parameters, so they never write automation.
     std::atomic<float> readingInputPeak { 0.0f }, readingOutputPeak { 0.0f }, readingAutoLevelDb { 0.0f }, readingHeadMs { 0.0f }, readingCompanderDb { 0.0f };
+
+    // What the window draws from. The audio thread only copies what it already has in here while a window is open, and never reads
+    // any of it back, so none of this can touch the sound. The window reads behind the write position, so nothing ever waits.
+    static constexpr int tapSize = 1 << 14;
+    std::array<std::atomic<float>, tapSize> tapIn, tapOut;
+    std::atomic<float> tapPeak { 0.0f };   // the highest input sample since the window last looked
+    std::atomic<std::uint32_t> tapWritten { 0 };
+    std::atomic<bool> tapWanted { false };
+
+    // The window's own saved state. Only ever read and written away from the audio.
+    static constexpr int defaultWindowWidth = 1040, defaultWindowHeight = 576;
+    static constexpr int minWindowWidth = 960, minWindowHeight = 500, maxWindowWidth = 1800, maxWindowHeight = 1300;
+    std::atomic<int> windowWidth { defaultWindowWidth }, windowHeight { defaultWindowHeight };
+    std::atomic<bool> advancedOpen { false };
+
+    /** The factory preset the settings match right now, or -1. */
+    int programMatchingSettings() const;
 
     juce::AudioProcessorValueTreeState apvts;
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
     void processInternal (juce::AudioBuffer<float>&, bool forceBypass) noexcept;
+    void writeTap (std::array<std::atomic<float>, tapSize>&, const juce::AudioBuffer<float>&, int numChannels) noexcept;
     void processChunk (float* const* channels, int numChannels, int n) noexcept;
     void updateCoefs() noexcept;
     void snapControls() noexcept;

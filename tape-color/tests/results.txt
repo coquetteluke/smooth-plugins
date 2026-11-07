@@ -538,5 +538,57 @@ PASS  preset 'Starved Grit' level against dry = -0.137 dB
 PASS  preset 'Worn Cassette' level against dry = -1.507 dB
 PASS  preset 'Old Radio Voice' level against dry = -4.736 dB
 PASS  preset 'Phone Call' level against dry = -3.665 dB
-PASS  CPU of one stereo instance at 48 kHz, percent of one core = 3.957 %
+PASS  CPU of one stereo instance at 48 kHz, percent of one core = 4.776 %
+PASS  window: drawn tone against real tones, default, worst at 10000 Hz = -0.006 dB
+PASS  window: drawn tone against real tones, 3.75 ips, worst at 10000 Hz = -0.004 dB
+PASS  window: drawn tone against real tones, 30 ips, worst at 10000 Hz = -0.007 dB
+PASS  window: drawn tone against real tones, Age 50, worst at 70 Hz = 0.129 dB
+PASS  window: drawn tone against real tones, Age 100, 3.75 ips, worst at 200 Hz = 0.423 dB
+PASS  window: drawn tone against real tones, Bias 80, worst at 10000 Hz = -0.006 dB
+PASS  window: drawn tone against real tones, Head Spacing 60, worst at 10000 Hz = -0.005 dB
+PASS  window: drawn tone against real tones, Low Cut 200, High Cut 5k, worst at 10000 Hz = -0.006 dB
+PASS  window: drawn tone against real tones, Fixed compander, Decode 30, worst at 18000 Hz = 0.025 dB
+PASS  window: drawn tone against real tones, Telephone, worst at 200 Hz = 0.002 dB
+PASS  window: drawn tone against real tones, Small Radio, Age 25, worst at 200 Hz = 0.033 dB
+PASS  window: drawn tone against real tones, Mix 50, Age 40, worst at 10000 Hz = 0.476 dB
+PASS  window: Top end at Age 50 against 14.1 kHz measured = 13994.093 Hz
+PASS  window: Top end at Age 100 against 4.6 kHz measured = 4503.234 Hz
+PASS  window: Hiss at Age 50 against the real floor, difference = 0.319 dB
+PASS  window: saturation number at Drive 12, peak 0.25, said 0.7 dB, difference = 0.019 dB
+PASS  window: saturation number at Drive 12, peak 0.70, said 4.0 dB, difference = 0.031 dB
+PASS  window: saturation number at Drive 24, peak 0.25, said 6.3 dB, difference = 0.028 dB
+PASS  window: saturation number at Drive 24, peak 0.70, said 14.9 dB, difference = 0.048 dB
+PASS  window: saturation number at Drive 30, peak 0.25, said 11.9 dB, difference = 0.032 dB
+PASS  window: saturation number at Drive 30, peak 0.70, said 20.9 dB, difference = 0.072 dB
+PASS  window: the plug-in opens its own window
+PASS  window: every parameter has a control, missing = 0.000 
+PASS  window: no control exists only in the window = 0.000 
+PASS  window: parameter count is the same as 0.2.1 = 26.000 
+PASS  window: 20 blocks type, automate, carry gestures and reset, wrong = 0.000 
+PASS  window: typing 5k in High cut = 5000.000 Hz
+PASS  window: typing Off in High cut = 20000.000 Hz
+PASS  window: Age automation moves the ribbon = 50.000 %
+PASS  window: Tape speed chips set the parameter
+PASS  window: Compander chips set the parameter
+PASS  window: Device list sets the parameter
+PASS  window: Bypass sets the parameter
+PASS  window: size and open section come back = 1300.000 
+PASS  window: saved state gains only its size and open section = 3.000 
+PASS  window: nothing else new at the top of the saved state = 3.000 
+PASS  window: saved state holds the 26 parameters and no others = 26.000 
+PASS  window: damaged size goes back in range = 1800.000 
+PASS  window: opens at the saved size = 1800.000 
+PASS  window: an older session opens at the default size = 1040.000 
+PASS  window: the tap runs while a window is open
+PASS  window: the tap is off with no window
+PASS  window: open against closed, blocks that differ by even one bit = 0.000 
+PASS  window: no allocations on the audio thread with the tap on = 0.000 
+PASS  window: the reel turns while sound plays
+PASS  window: the saturation number reads the sound = 0.626 dB
+PASS  window: the reel stops when audio stops
+PASS  window: nothing is moving once audio has stopped
+PASS  window: closing it turns the tap off
+PASS  window: opened and closed 40 times with audio running = 40.000 
+PASS  window: opened and closed 10 times with no audio prepared = 10.000 
+PASS  window: a window opened straight after another still gets the tap
 RESULT PASS  0 failures

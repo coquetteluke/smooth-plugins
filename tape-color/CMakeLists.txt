@@ -8,11 +8,11 @@ set(SP_NAME    "Smooth Tape Color")
 set(SP_CODE    STcl)
 set(SP_BUNDLE  "com.lukegarito.smoothtapecolor")
 set(SP_DESC    "Oversampled tape saturation with wow, flutter, noise and age")
-set(SP_VERSION 0.2.1)
+set(SP_VERSION 0.3.0)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice
-set(SP_SOURCES src/PluginProcessor.cpp) # every .cpp except tests
+set(SP_SOURCES src/PluginProcessor.cpp src/TapeColorEditor.cpp src/window/Theme.cpp src/window/Controls.cpp src/window/TapeDisplay.cpp) # every .cpp except tests
 # -------------------------------------
 
 project(${SP_TARGET} VERSION ${SP_VERSION} LANGUAGES C CXX)
@@ -51,6 +51,13 @@ juce_add_plugin(${SP_TARGET}
 
 target_sources(${SP_TARGET} PRIVATE ${SP_SOURCES})
 
+juce_add_binary_data(TapeColorWindowAssets
+    HEADER_NAME WindowAssets.h
+    NAMESPACE WindowAssets
+    SOURCES
+        assets/fonts/Inter-Regular.otf
+        assets/fonts/Inter-Medium.otf)
+
 set(SP_DEFS
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
@@ -60,7 +67,7 @@ set(SP_DEFS
 
 target_compile_definitions(${SP_TARGET} PUBLIC ${SP_DEFS})
 target_link_libraries(${SP_TARGET}
-    PRIVATE juce::juce_audio_utils juce::juce_dsp
+    PRIVATE TapeColorWindowAssets juce::juce_audio_utils juce::juce_dsp
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
 # ---- install: cmake --build build --target InstallAU ----
@@ -78,6 +85,17 @@ enable_testing()
 juce_add_console_app(PluginTest PRODUCT_NAME "PluginTest")
 target_sources(PluginTest PRIVATE ${SP_SOURCES} tests/PluginTest.cpp)
 target_include_directories(PluginTest PRIVATE src tests)
-target_compile_definitions(PluginTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0)
-target_link_libraries(PluginTest PRIVATE juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+target_compile_definitions(PluginTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=1)
+target_link_libraries(PluginTest PRIVATE TapeColorWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME plugin COMMAND PluginTest)
+
+# Renders the real window to PNG with real speech going through the real processor, and measures its CPU. Not a ctest: it writes docs/window.
+juce_add_console_app(RenderWindow PRODUCT_NAME "RenderWindow")
+target_sources(RenderWindow PRIVATE ${SP_SOURCES} tests/RenderWindow.cpp)
+target_include_directories(RenderWindow PRIVATE src tests)
+target_compile_definitions(RenderWindow PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=1 TAPE_VOICE="${CMAKE_CURRENT_SOURCE_DIR}/tests/baseline/voice.f32")
+target_link_libraries(RenderWindow PRIVATE TapeColorWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+
+# Renders through the installed AU, for a null against an earlier build. Not a ctest: it reads what is installed.
+add_executable(NullRender EXCLUDE_FROM_ALL tests/NullRender.cpp)
+target_link_libraries(NullRender PRIVATE "-framework AudioToolbox" "-framework CoreFoundation")

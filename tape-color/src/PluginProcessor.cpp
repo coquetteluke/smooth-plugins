@@ -60,6 +60,8 @@ namespace
     };
     // speed: 0 = 3.75, 1 = 7.5, 2 = 15, 3 = 30 inches per second. comp: 0 off, 1 fixed, 2 soft, 3 strong.
     // dev: 0 off, 1 Small Radio, 2 Telephone, 3 Small Speaker, 4 Dictation Machine, 5 Old Console.
+    const juce::Identifier windowWidthAttribute { "windowWidth" }, windowHeightAttribute { "windowHeight" }, advancedOpenAttribute { "advancedOpen" };
+
     constexpr Preset presets[] = {
         //                  drive   bias sp   wow flutter noise    age  low        high         mix   out auto    hard space  tilt   rnd stereo dropD dropR comp   enc    dec   tex dev devMix
         { "Tape Start",     12.0f,   0.0f, 2,  0.0f,  0.0f,  0.0f,   0.0f, kLowCutOff, kHighCutOff, 100.0f, 0.0f, true,  50.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  0.0f, 0, 100.0f },
@@ -172,6 +174,12 @@ PluginProcessor::PluginProcessor()
     deviceMix = apvts.getRawParameterValue ("devicemix");
     autoLevel = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("autolevel"));
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
+
+    for (int i = 0; i < tapSize; ++i)
+    {
+        tapIn[(size_t) i].store (0.0f, std::memory_order_relaxed);
+        tapOut[(size_t) i].store (0.0f, std::memory_order_relaxed);
+    }
 }
 
 bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -924,7 +932,7 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
     }
     wanderDb = wanderTarget;
 
-    // Readings for a later window.
+    // Readings for the window.
     readingAutoLevelDb.store ((float) juce::Decibels::gainToDecibels (ratio), std::memory_order_relaxed);
     readingHeadMs.store ((float) (lastSwingMs), std::memory_order_relaxed);
     readingCompanderDb.store ((float) chans[0].encoder.boostDb, std::memory_order_relaxed);
@@ -941,6 +949,19 @@ void PluginProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool fo
         return;
 
     pushTargets (forceBypass);
+
+    // Only a copy for the window. The sound never reads these back.
+    const bool tapping = tapWanted.load (std::memory_order_relaxed);
+    const int tapChannels = juce::jmin (buffer.getNumChannels(), preparedChannels);
+    if (tapping && tapChannels > 0)
+    {
+        writeTap (tapIn, buffer, tapChannels);
+        float peak = tapPeak.load (std::memory_order_relaxed);
+        for (int ch = 0; ch < tapChannels; ++ch)
+            peak = juce::jmax (peak, buffer.getMagnitude (ch, 0, buffer.getNumSamples()));
+        tapPeak.store (peak, std::memory_order_relaxed);
+    }
+
     readingInputPeak.store (buffer.getNumChannels() > 0 ? buffer.getMagnitude (0, 0, buffer.getNumSamples()) : 0.0f, std::memory_order_relaxed);
 
     const int numChannels = juce::jmin (buffer.getNumChannels(), preparedChannels);
@@ -957,6 +978,21 @@ void PluginProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool fo
         processChunk (ptrs, numChannels, juce::jmin (kChunk, total - pos));
     }
     readingOutputPeak.store (buffer.getMagnitude (0, 0, total), std::memory_order_relaxed);
+
+    if (tapping)
+    {
+        writeTap (tapOut, buffer, numChannels);
+        tapWritten.fetch_add ((std::uint32_t) total, std::memory_order_release);
+    }
+}
+
+void PluginProcessor::writeTap (std::array<std::atomic<float>, tapSize>& tap, const juce::AudioBuffer<float>& buffer, int numChannels) noexcept
+{
+    const std::uint32_t at = tapWritten.load (std::memory_order_relaxed);
+    const float* left = buffer.getReadPointer (0);
+    const float* right = buffer.getReadPointer (numChannels - 1);
+    for (int i = 0; i < buffer.getNumSamples(); ++i)
+        tap[(at + (std::uint32_t) i) & (tapSize - 1)].store (0.5f * (left[i] + right[i]), std::memory_order_relaxed);
 }
 
 void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -1014,17 +1050,60 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("devicemix", v.devMix);
 }
 
+int PluginProcessor::programMatchingSettings() const
+{
+    const auto matches = [this] (const Preset& v)
+    {
+        const auto same = [this] (const char* id, float wanted)
+        {
+            const auto* p = apvts.getParameter (id);
+            return std::abs (p->getValue() - p->convertTo0to1 (wanted)) < 2.0e-4f;
+        };
+        return same ("drive", v.drive) && same ("bias", v.bias) && same ("speed", (float) v.speed) && same ("wow", v.wowAmt) && same ("flutter", v.flutterAmt)
+            && same ("noise", v.noiseAmt) && same ("age", v.ageAmt) && same ("lowcut", v.low) && same ("highcut", v.high) && same ("mix", v.mixAmt)
+            && same ("output", v.out) && same ("autolevel", v.autoOn ? 1.0f : 0.0f) && same ("hardness", v.hard) && same ("spacing", v.space)
+            && same ("azimuth", v.tilt) && same ("random", v.rnd) && same ("stereodrift", v.stereo) && same ("dropdepth", v.dropD) && same ("droprate", v.dropR)
+            && same ("compander", (float) v.comp) && same ("encode", v.enc) && same ("decode", v.dec) && same ("texture", v.tex) && same ("device", (float) v.dev)
+            && same ("devicemix", v.devMix);
+    };
+
+    if (juce::isPositiveAndBelow (currentProgram, (int) std::size (presets)) && matches (presets[currentProgram]))
+        return currentProgram;
+
+    for (int i = 0; i < (int) std::size (presets); ++i)
+        if (matches (presets[i]))
+            return i;
+
+    return -1;
+}
+
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     if (auto xml = apvts.copyState().createXml())
+    {
+        xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
+        xml->setAttribute (windowHeightAttribute, windowHeight.load (std::memory_order_relaxed));
+        xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, dest);
+    }
 }
 
 void PluginProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
         if (xml->hasTagName (apvts.state.getType()))
+        {
+            // Older sessions have no window state. A damaged size goes back in range. Neither is a parameter, so they stay out of the value tree.
+            if (xml->hasAttribute (windowWidthAttribute))
+                windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
+            if (xml->hasAttribute (windowHeightAttribute))
+                windowHeight.store (juce::jlimit (minWindowHeight, maxWindowHeight, xml->getIntAttribute (windowHeightAttribute, defaultWindowHeight)), std::memory_order_relaxed);
+            advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            xml->removeAttribute (windowWidthAttribute);
+            xml->removeAttribute (windowHeightAttribute);
+            xml->removeAttribute (advancedOpenAttribute);
             applySafeState (apvts, *xml);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PluginProcessor(); }

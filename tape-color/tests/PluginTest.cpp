@@ -3,7 +3,11 @@
 #define SMOOTH_COUNT_ALLOCS
 #include "TestKit.h"
 #include "PluginProcessor.h"
+#include "TapeColorEditor.h"
+#include <atomic>
 #include <complex>
+#include <set>
+#include <thread>
 
 using namespace testkit;
 using namespace tapecolor;
@@ -1423,6 +1427,420 @@ static void testReadings()
     check (std::abs (p->readingHeadMs.load()) <= kModLimitMs, "read head reading is in range", p->readingHeadMs.load(), "ms");
 }
 
+// ---- the window ----------------------------------------------------------------------------------------------------
+// Limits written before the first run. The picture must tell the truth, every control must be real, and the sound must not change.
+
+static void collectIds (juce::Component& c, std::set<juce::String>& ids)
+{
+    if (c.getComponentID().isNotEmpty())
+        ids.insert (c.getComponentID());
+    for (int i = 0; i < c.getNumChildComponents(); ++i)
+        collectIds (*c.getChildComponent (i), ids);
+}
+
+template <typename Type>
+static Type* findById (juce::Component& c, const juce::String& id)
+{
+    if (c.getComponentID() == id)
+        if (auto* found = dynamic_cast<Type*> (&c))
+            return found;
+    for (int i = 0; i < c.getNumChildComponents(); ++i)
+        if (auto* found = findById<Type> (*c.getChildComponent (i), id))
+            return found;
+    return nullptr;
+}
+
+static tapecolor::display::Settings modelOf (const Settings& s, double sr)
+{
+    tapecolor::display::Settings m;
+    m.driveDb = s.drive;
+    m.bias = s.bias * 0.01;
+    m.speedPos = s.speed;
+    m.age = s.age * 0.01;
+    m.hardness = s.hard * 0.01;
+    m.spacing = s.space * 0.01;
+    m.lowCut = s.low;
+    m.highCut = s.high;
+    m.mix = s.mix * 0.01;
+    m.compander = s.comp;
+    m.encode = s.enc * 0.01;
+    m.decode = s.dec * 0.01;
+    m.companderBoostDb = s.comp == 1 ? 10.0 : 0.0;
+    m.device = s.dev;
+    m.deviceMix = s.devMix * 0.01;
+    m.sampleRate = sr;
+    return m;
+}
+
+static void testWindowPictureIsTrue()
+{
+    // The line on the display against real tones through the real processor. Limit: within 1 dB anywhere on the chart.
+    struct Case { const char* name; Settings s; };
+    std::vector<Case> cases;
+    { Settings s; cases.push_back ({ "default", s }); }
+    { Settings s; s.speed = 0; cases.push_back ({ "3.75 ips", s }); }
+    { Settings s; s.speed = 3; cases.push_back ({ "30 ips", s }); }
+    { Settings s; s.age = 50.0f; cases.push_back ({ "Age 50", s }); }
+    { Settings s; s.age = 100.0f; s.speed = 0; cases.push_back ({ "Age 100, 3.75 ips", s }); }
+    { Settings s; s.bias = 80.0f; cases.push_back ({ "Bias 80", s }); }
+    { Settings s; s.space = 60.0f; s.speed = 1; cases.push_back ({ "Head Spacing 60", s }); }
+    { Settings s; s.low = 200.0f; s.high = 5000.0f; cases.push_back ({ "Low Cut 200, High Cut 5k", s }); }
+    { Settings s; s.comp = 1; s.dec = 30.0f; cases.push_back ({ "Fixed compander, Decode 30", s }); }
+    { Settings s; s.dev = 2; cases.push_back ({ "Telephone", s }); }
+    { Settings s; s.dev = 1; s.age = 25.0f; cases.push_back ({ "Small Radio, Age 25", s }); }
+    { Settings s; s.mix = 50.0f; s.speed = 0; s.age = 40.0f; cases.push_back ({ "Mix 50, Age 40", s }); }
+
+    constexpr double sr = 48000.0;
+    for (const auto& c : cases)
+    {
+        const auto model = modelOf (c.s, sr);
+        const double measuredRef = toneGainDb (c.s, 1000.0, sr), drawnRef = tapecolor::display::responseDb (model, 1000.0);
+        double worst = 0.0, worstHz = 0.0;
+        constexpr double toneDb = -36.0;
+        const double floorDb = silenceRmsDb (c.s, sr);
+        // Age brings hiss, and RMS counts it. The floor's power comes off, and a tone within 6 dB of the floor cannot be read at all.
+        // The first run failed on this: the 8 dB was the hiss at 10 kHz at Age 100, not the line. The 1 dB limit stays.
+        const auto toneOnly = [&] (double gainDb)
+        {
+            if (floorDb < -200.0)
+                return gainDb;
+            const double power = std::pow (10.0, (gainDb + toneDb) * 0.1) - std::pow (10.0, floorDb * 0.1);
+            return 10.0 * std::log10 (std::max (power, 1.0e-20)) - toneDb;
+        };
+        const double referenceOnly = toneOnly (measuredRef);
+        for (double hz : { 40.0, 70.0, 110.0, 200.0, 400.0, 2000.0, 4000.0, 7000.0, 10000.0, 14000.0, 18000.0 })
+        {
+            const double drawn = tapecolor::display::responseDb (model, hz) - drawnRef;
+            if (drawn < -26.0) // off the bottom of the chart
+                continue;
+            if (referenceOnly + drawn + toneDb < floorDb + 6.0)
+                continue;
+            const double measured = toneOnly (toneGainDb (c.s, hz, sr)) - referenceOnly;
+            if (std::abs (drawn - measured) > std::abs (worst))
+            {
+                worst = drawn - measured;
+                worstHz = hz;
+            }
+        }
+        check (std::abs (worst) <= 1.0, std::string ("window: drawn tone against real tones, ") + c.name + ", worst at " + num (worstHz) + " Hz", worst, "dB");
+    }
+
+    // The Top end number against the bandwidth measured in testAge. Limit: within 8 percent.
+    const auto topAt = [] (float age)
+    {
+        Settings s; s.age = age;
+        return tapecolor::display::topEndHz (modelOf (s, 96000.0));
+    };
+    check (std::abs (topAt (50.0f) / 14100.0 - 1.0) <= 0.08, "window: Top end at Age 50 against 14.1 kHz measured", topAt (50.0f), "Hz");
+    check (std::abs (topAt (100.0f) / 4600.0 - 1.0) <= 0.08, "window: Top end at Age 100 against 4.6 kHz measured", topAt (100.0f), "Hz");
+
+    // The Hiss number against the floor really measured. Limit: within 2 dB.
+    {
+        Settings s; s.age = 50.0f;
+        const double drawn = tapecolor::display::hissDb (modelOf (s, 48000.0));
+        const double real = silenceRmsDb (s, 48000.0);
+        check (std::abs (drawn - real) <= 2.0, "window: Hiss at Age 50 against the real floor, difference", drawn - real, "dB");
+    }
+
+    // The curve against real samples: a low tone through the tape path, its top held down by the same amount the number says. Limit: within 1 dB.
+    for (const float drive : { 12.0f, 24.0f, 30.0f })
+        for (const double level : { 0.25, 0.7 })
+        {
+            Settings s; s.drive = drive;
+            const auto model = modelOf (s, 48000.0);
+            const tapecolor::display::Curve curve (model);
+            const double said = curve.squashDb (level);
+
+            const auto peakOf = [&] (double amp)
+            {
+                auto p = makeProc (s);
+                const int n = 48000;
+                std::vector<float> in ((size_t) n);
+                sine (in.data(), n, 400.0, 48000.0, amp);
+                auto out = render (*p, in, 512);
+                double top = 0.0;
+                for (int i = n / 2; i < n; ++i)
+                    top = std::max (top, (double) std::abs (out.getSample (0, i)));
+                return top;
+            };
+            const double quiet = 0.001;
+            const double real = 20.0 * std::log10 (level / quiet) - 20.0 * std::log10 (peakOf (level) / peakOf (quiet));
+            check (std::abs (said - real) <= 1.0, "window: saturation number at Drive " + num (drive) + ", peak " + num (level, 2) + ", said " + num (said, 1) + " dB, difference", said - real, "dB");
+        }
+}
+
+static void testWindowControls()
+{
+    PluginProcessor p;
+    prepare (p, 2, 48000.0, 512);
+    p.advancedOpen.store (true);
+    auto editor = std::unique_ptr<juce::AudioProcessorEditor> (p.createEditor());
+    auto* window = dynamic_cast<TapeColorEditor*> (editor.get());
+    check (window != nullptr, "window: the plug-in opens its own window");
+    if (window == nullptr)
+        return;
+
+    // Every parameter has a control, and every control is a parameter.
+    std::set<juce::String> ids;
+    collectIds (*window, ids);
+    int missing = 0;
+    for (auto* prm : p.getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (prm))
+            if (ids.count (ranged->getParameterID()) == 0)
+            {
+                std::printf ("no control for %s\n", ranged->getParameterID().toRawUTF8());
+                ++missing;
+            }
+    check (missing == 0, "window: every parameter has a control, missing", missing);
+    int strays = 0;
+    for (const auto& id : ids)
+        if (p.apvts.getParameter (id) == nullptr && id != "presets" && id != "advanced")
+            ++strays;
+    check (strays == 0, "window: no control exists only in the window", strays);
+    check (p.getParameters().size() == 26, "window: parameter count is the same as 0.2.1", p.getParameters().size());
+
+    // Every block: the control moves the parameter with a gesture, and the parameter moves the control.
+    struct Gestures final : juce::AudioProcessorParameter::Listener
+    {
+        int begun = 0, ended = 0;
+        void parameterValueChanged (int, float) override {}
+        void parameterGestureChanged (int, bool starting) override { (starting ? begun : ended)++; }
+    };
+
+    int tilesChecked = 0, tilesWrong = 0;
+    for (const char* id : { "drive", "bias", "noise", "wow", "flutter", "mix", "output", "hardness", "texture", "dropdepth", "droprate", "encode", "decode",
+                            "lowcut", "highcut", "spacing", "azimuth", "devicemix", "random", "stereodrift" })
+    {
+        auto* tile = findById<ui::Tile> (*window, id);
+        auto* prm = p.apvts.getParameter (id);
+        if (tile == nullptr)
+        {
+            ++tilesWrong;
+            continue;
+        }
+        ++tilesChecked;
+        Gestures gestures;
+        prm->addListener (&gestures);
+        const float value = prm->convertFrom0to1 (0.3f);
+        tile->applyTyped (juce::String (value, 2));
+        const bool followed = std::abs (prm->convertTo0to1 (p.apvts.getRawParameterValue (id)->load()) - 0.3f) < 0.02f;
+        const bool gestured = gestures.begun == 1 && gestures.ended == 1;
+
+        prm->setValueNotifyingHost (0.8f);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (2);
+        const bool moved = std::abs (tile->getValue() - (double) prm->convertFrom0to1 (0.8f)) < 0.02 * (tile->getMaximum() - tile->getMinimum());
+
+        // Words that mean nothing change nothing.
+        const float before = prm->getValue();
+        tile->applyTyped ("nonsense");
+        const bool ignoresJunk = prm->getValue() == before;
+        const bool resets = std::abs (tile->getDoubleClickReturnValue() - (double) prm->convertFrom0to1 (prm->getDefaultValue())) < 1.0e-3;
+
+        prm->removeListener (&gestures);
+        prm->setValueNotifyingHost (prm->getDefaultValue());
+        if (! (followed && gestured && moved && ignoresJunk && resets))
+        {
+            std::printf ("wrong: %s followed %d gestured %d moved %d junk %d resets %d\n", id, followed, gestured, moved, ignoresJunk, resets);
+            ++tilesWrong;
+        }
+    }
+    check (tilesChecked == 20 && tilesWrong == 0, "window: 20 blocks type, automate, carry gestures and reset, wrong", tilesWrong);
+
+    // Typing a frequency.
+    auto* high = findById<ui::Tile> (*window, "highcut");
+    high->applyTyped ("5k");
+    check (std::abs (p.apvts.getRawParameterValue ("highcut")->load() - 5000.0f) < 1.0f, "window: typing 5k in High cut", p.apvts.getRawParameterValue ("highcut")->load(), "Hz");
+    high->applyTyped ("Off");
+    check (p.apvts.getRawParameterValue ("highcut")->load() >= 19999.5f, "window: typing Off in High cut", p.apvts.getRawParameterValue ("highcut")->load(), "Hz");
+
+    // Age, Speed, Compander, Device, Bypass, Auto Level.
+    auto* ribbon = findById<ui::AgeRibbon> (*window, "age");
+    p.apvts.getParameter ("age")->setValueNotifyingHost (0.5f);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (2);
+    check (ribbon != nullptr && std::abs (ribbon->getValue() - 50.0) < 0.5, "window: Age automation moves the ribbon", ribbon != nullptr ? ribbon->getValue() : -1.0, "%");
+    auto* speedChips = findById<ui::Segments> (*window, "speed");
+    speedChips->choose (0);
+    check (std::abs (p.apvts.getRawParameterValue ("speed")->load()) < 0.5f, "window: Tape speed chips set the parameter");
+    auto* comp = findById<ui::Segments> (*window, "compander");
+    comp->choose (3);
+    check (std::abs (p.apvts.getRawParameterValue ("compander")->load() - 3.0f) < 0.5f, "window: Compander chips set the parameter");
+    auto* dev = findById<ui::ChoiceTile> (*window, "device");
+    dev->choose (4);
+    check (std::abs (p.apvts.getRawParameterValue ("device")->load() - 4.0f) < 0.5f, "window: Device list sets the parameter");
+    auto* by = findById<ui::Pill> (*window, "bypass");
+    by->setOn (true);
+    check (p.apvts.getRawParameterValue ("bypass")->load() > 0.5f, "window: Bypass sets the parameter");
+    by->setOn (false);
+
+    // Open sections and window size are all it saves, and a damaged size comes back in range.
+    window->setSize (1300, 800);
+    editor.reset();
+    juce::MemoryBlock saved;
+    p.getStateInformation (saved);
+    PluginProcessor q;
+    q.setStateInformation (saved.getData(), (int) saved.getSize());
+    check (q.windowWidth.load() == 1300 && q.windowHeight.load() == 800 && q.advancedOpen.load(), "window: size and open section come back", q.windowWidth.load());
+
+    auto xml = PluginProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+    int extras = 0;
+    for (int i = 0; i < xml->getNumAttributes(); ++i)
+    {
+        const auto name = xml->getAttributeName (i);
+        if (name == "windowWidth" || name == "windowHeight" || name == "advancedOpen")
+            ++extras;
+    }
+    check (extras == 3, "window: saved state gains only its size and open section", extras);
+    check (xml->getNumAttributes() == 3, "window: nothing else new at the top of the saved state", xml->getNumAttributes());
+    int children = 0;
+    forEachXmlChildElement (*xml, child) { juce::ignoreUnused (child); ++children; }
+    check (children == 26, "window: saved state holds the 26 parameters and no others", children);
+
+    xml->setAttribute ("windowWidth", 99999);
+    xml->setAttribute ("windowHeight", -5);
+    juce::MemoryBlock damaged;
+    PluginProcessor::copyXmlToBinary (*xml, damaged);
+    PluginProcessor r;
+    r.setStateInformation (damaged.getData(), (int) damaged.getSize());
+    check (r.windowWidth.load() == PluginProcessor::maxWindowWidth && r.windowHeight.load() == PluginProcessor::minWindowHeight, "window: damaged size goes back in range", r.windowWidth.load());
+    auto reopened = std::unique_ptr<juce::AudioProcessorEditor> (r.createEditor());
+    check (reopened->getWidth() == PluginProcessor::maxWindowWidth && reopened->getHeight() >= PluginProcessor::minWindowHeight, "window: opens at the saved size", reopened->getWidth());
+    reopened.reset();
+
+    // A session from before the window.
+    auto old = q.apvts.copyState().createXml();
+    juce::MemoryBlock oldBlock;
+    PluginProcessor::copyXmlToBinary (*old, oldBlock);
+    PluginProcessor s;
+    s.setStateInformation (oldBlock.getData(), (int) oldBlock.getSize());
+    check (s.windowWidth.load() == PluginProcessor::defaultWindowWidth && ! s.advancedOpen.load(), "window: an older session opens at the default size", s.windowWidth.load());
+}
+
+static void testWindowLeavesAudioAlone()
+{
+    // The sound is the same with a window open as closed, sample for sample, with the tap running. Limit: not one bit.
+    std::vector<float> voice ((size_t) 96000);
+    {
+        juce::Random random (11);
+        for (size_t i = 0; i < voice.size(); ++i)
+            voice[i] = (float) (0.3 * std::sin (0.03 * (double) i) * (0.5 + 0.5 * std::sin (0.0005 * (double) i)) + 0.02 * (random.nextDouble() - 0.5));
+    }
+
+    Settings s;
+    s.drive = 18.0f; s.age = 40.0f; s.noiseAmt = 10.0f; s.wow = 10.0f; s.flutter = 10.0f; s.comp = 2; s.tex = 20.0f; s.dev = 1; s.autoLevel = true;
+    auto closed = makeProc (s);
+    auto open = makeProc (s);
+    auto editor = std::unique_ptr<juce::AudioProcessorEditor> (open->createEditor());
+    auto* window = dynamic_cast<TapeColorEditor*> (editor.get());
+    check (open->tapWanted.load(), "window: the tap runs while a window is open");
+    check (! closed->tapWanted.load(), "window: the tap is off with no window");
+
+    juce::AudioBuffer<float> a (2, 512), b (2, 512);
+    juce::MidiBuffer midi;
+    long bitsDifferent = 0;
+    long tapAllocs = 0;
+    for (size_t at = 0; at + 512 <= voice.size(); at += 512)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            std::copy_n (voice.data() + at, 512, a.getWritePointer (ch));
+            std::copy_n (voice.data() + at, 512, b.getWritePointer (ch));
+        }
+        closed->processBlock (a, midi);
+        const long before = allocs.load();
+        open->processBlock (b, midi);
+        tapAllocs += allocs.load() - before;
+        for (int ch = 0; ch < 2; ++ch)
+            bitsDifferent += std::memcmp (a.getReadPointer (ch), b.getReadPointer (ch), 512 * sizeof (float)) != 0 ? 1 : 0;
+        if (at % 2048 == 0)
+            window->tick (1.0 / 30.0);
+    }
+    check (bitsDifferent == 0, "window: open against closed, blocks that differ by even one bit", (double) bitsDifferent);
+    check (tapAllocs == 0, "window: no allocations on the audio thread with the tap on", (double) tapAllocs);
+
+    // It reads real sound: output is there, and the reel turns while it plays.
+    const double angleBefore = window->getReel().getAngle();
+    for (int i = 0; i < 20; ++i)
+    {
+        std::copy_n (voice.data(), 512, b.getWritePointer (0));
+        std::copy_n (voice.data(), 512, b.getWritePointer (1));
+        open->processBlock (b, midi);
+        window->tick (1.0 / 30.0);
+    }
+    check (window->getReel().getAngle() != angleBefore, "window: the reel turns while sound plays");
+    for (int i = 0; i < 6; ++i)
+        window->tick (1.0 / 30.0);
+    check (window->getCurve().getSquashDb() > 0.0f, "window: the saturation number reads the sound", window->getCurve().getSquashDb(), "dB");
+
+    // Everything settles when the audio stops, and the window goes back to polling.
+    for (int i = 0; i < 120; ++i)
+        window->tick (1.0 / 30.0);
+    const double stopped = window->getReel().getAngle();
+    bool stillMoving = false;
+    for (int i = 0; i < 30; ++i)
+        stillMoving = window->tick (1.0 / 30.0) || stillMoving;
+    check (window->getReel().getAngle() == stopped, "window: the reel stops when audio stops");
+    check (! stillMoving, "window: nothing is moving once audio has stopped");
+    editor.reset();
+    check (! open->tapWanted.load(), "window: closing it turns the tap off");
+
+    // Opening and closing, again and again, with audio running on its own thread and with none at all.
+    auto running = makeProc (s);
+    std::atomic<bool> keepGoing { true };
+    std::atomic<long> blocks { 0 };
+    std::thread audio ([&]
+    {
+        juce::AudioBuffer<float> buffer (2, 512);
+        juce::MidiBuffer m;
+        size_t at = 0;
+        while (keepGoing.load())
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                std::copy_n (voice.data() + at, 512, buffer.getWritePointer (ch));
+            at = (at + 512) % (voice.size() - 512);
+            running->processBlock (buffer, m);
+            blocks.fetch_add (1);
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
+    });
+    int opened = 0;
+    for (int i = 0; i < 40; ++i)
+    {
+        auto e = std::unique_ptr<juce::AudioProcessorEditor> (running->createEditor());
+        if (auto* w = dynamic_cast<TapeColorEditor*> (e.get()))
+        {
+            w->setAdvancedOpen (i % 2 == 0);
+            w->tick (1.0 / 30.0);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (3);
+            ++opened;
+        }
+    }
+    keepGoing = false;
+    audio.join();
+    check (opened == 40 && blocks.load() > 0, "window: opened and closed 40 times with audio running", opened);
+
+    PluginProcessor unprepared;
+    int openedCold = 0;
+    for (int i = 0; i < 10; ++i)
+    {
+        auto e = std::unique_ptr<juce::AudioProcessorEditor> (unprepared.createEditor());
+        if (auto* w = dynamic_cast<TapeColorEditor*> (e.get()))
+        {
+            w->tick (1.0 / 30.0);
+            ++openedCold;
+        }
+    }
+    check (openedCold == 10, "window: opened and closed 10 times with no audio prepared", openedCold);
+
+    // Two windows on one plug-in, as some hosts do for a moment.
+    auto two = makeProc (s);
+    {
+        auto first = std::unique_ptr<juce::AudioProcessorEditor> (two->createEditor());
+        first.reset();
+        auto second = std::unique_ptr<juce::AudioProcessorEditor> (two->createEditor());
+        check (two->tapWanted.load(), "window: a window opened straight after another still gets the tap");
+    }
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -1435,6 +1853,12 @@ int main (int argc, char** argv)
         if (only == "compander") testCompander();
         if (only == "device") testDevice();
         if (only == "behaviour") testOutputAndBehaviour();
+        if (only == "window")
+        {
+            testWindowPictureIsTrue();
+            testWindowControls();
+            testWindowLeavesAudioAlone();
+        }
         return finish();
     }
     GenericOptions opt;
@@ -1462,5 +1886,8 @@ int main (int argc, char** argv)
     testDevice();
     testReadings();
     testOutputAndBehaviour();
+    testWindowPictureIsTrue();
+    testWindowControls();
+    testWindowLeavesAudioAlone();
     return finish();
 }

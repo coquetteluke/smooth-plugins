@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+Its own window, called Tape Color, in deep brown, amber and cream. Age is the big idea: one wide ribbon that narrows from a fresh reel to a worn cassette, next to a flat reel that turns at the tape speed, shakes with the real read head and shrinks into a cassette hub. Above them is the real spectrum going in and coming out, the drawn tone of the tape, what Age has taken in rust, and the saturation curve with the part in use lit up. The main controls are in view and the rest open under Advanced in five sections. Every control is still the same AU parameter with the same ID, name and range.
+
+The sound is unchanged: all 55 renders through the real AU, default, every preset and random automation at 44.1, 48 and 96 kHz and in mono, come out bit identical to 0.2.1. The window reads copies of the input and output that the audio thread writes only while a window is open. Only window size and whether Advanced is open are added to the saved state.
+
 ## 0.2.1
 
 CPU work only. The sound is the same: renders of the default, every preset and random automation at 44.1, 48 and 96 kHz and in mono null against 0.2.0 at -114 dBFS or better, which is the last bit of the 32 bit output. Parameter IDs, defaults, presets, latency and tail are unchanged.

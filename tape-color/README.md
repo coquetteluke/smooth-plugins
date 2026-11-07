@@ -4,6 +4,19 @@ Oversampled tape saturation with the things that make tape sound like tape: head
 
 Load it in a host: Audio Units > Luke Garito > Smooth Tape Color. Mono and stereo. AU code: `aufx STcl Luke`.
 
+## The window
+
+Load it and the window says Tape Color. The build keeps the name Smooth Tape Color for now.
+
+- **Age** is the big idea, right across the window: drag the ribbon from a fresh reel to a worn cassette, or click the number to type one. Top end, Hiss and Wobble beside it show what that setting costs. The reel beside it turns at the tape speed, shakes with the real read head, stops when nothing is playing, and shrinks into a cassette hub at Age 55.
+- **The picture:** cream is the real spectrum going in, amber is the real spectrum coming out, on a scale tilted 3 dB an octave. The line is the tone of the tape from its settings, on the dB scale at the right. Rust is what Age has taken from the same settings at Age 0.
+- **Saturation:** the curve the tape really uses, the straight line it would be without saturation, and in amber the part the sound is using right now. The number is how far the loudest moment is being held down.
+- **Main controls:** Tape (Drive, Bias, Tape speed, Noise), Motion (Wow, Flutter), Finish (Mix, Output), Auto level, Bypass, presets.
+- **Advanced** opens five sections and says what is in use while closed: Surface (Hardness, Texture, Dropouts, Dropout rate), Compander (Type, Encode, Decode, with the live boost), Playback (Low cut, High cut, Head gap, Head tilt), Device (Type, Device mix), Drift (Random, Stereo).
+- Drag a block to change it, click its value to type (the cuts take "5k" and "off"), double-click anything to reset it. The line at the bottom says what the control under the mouse does. Resize from the corner: the window remembers its size and whether Advanced is open.
+
+Renders are in `docs/window/`, made by `build/RenderWindow_artefacts/Release/RenderWindow` from real speech (macOS `say`, saved in `tests/baseline/voice.f32`) through the real processor. They are not screenshots of a host, and nobody has seen this window in Logic yet.
+
 ## Controls
 
 Tape:
@@ -100,6 +113,15 @@ Three test limits changed after a first run, each because the limit itself was w
 - High Cut one octave out is now one sided: digital filters fall faster near the top of the band.
 - Heavy tape Mix now counts notches rather than capping the one dip.
 - Channels at Head Azimuth 0 must match under -120 dBFS rather than exactly. They measure -168 dB, which is float rounding in the oversampling.
+
+## The window, measured
+
+- **Same sound:** `tests/null_results.txt` holds 55 renders through the real AU against 0.2.1: the default, every preset and random automation at three rates and in mono. All 55 are bit identical. `tests/baseline/renders-0.2.1.sha256` lists their checksums. `tests/PluginTest.cpp` also checks a window open against closed, with the tap running: not one bit differs.
+- **The picture tells the truth:** the drawn tone against real tones through the real processor, in 12 settings: worst difference 0.48 dB (limit 1 dB). Top end against the measured bandwidth: 14.0 and 4.5 kHz against 14.1 and 4.6. Hiss: 0.3 dB from the real floor. The saturation number against a real signal: worst 0.07 dB. Tones within 6 dB of the hiss at high Age cannot be measured, so those points are skipped, and the Device blend is drawn by magnitude.
+- **Real controls:** all 26 parameters have a control and nothing lives only in the window. Each block types, automates, carries begin and end gestures and resets. The window opened and closed 40 times with audio running and 10 times with none.
+- **Window CPU**, real window, Retina, Warm Lead on real speech, `RenderWindow --live`, the method in `~/smooth-resonance/docs/window-cpu.md`. One other test running. Six runs, percent of one core: 2.6, 2.8, 7.4, 9.8, 7.3, 5.0. The work never changed, 1.9 to 2.2 % of a fast core. The readings follow which cores macOS picked: 2.6 and 2.8 had over 90 % of it on fast cores, 7.4, 9.8 and 7.3 had 14 to 43 %. So it is under the 5 % budget on fast cores and over it on slow ones. Forced onto slow cores: 9.8, 9.5, 8.5. Silent, nothing moving: 0.7, 0.7, 1.0.
+- **Audio CPU** through the real AU with AuBench, no window open: default 2.6, worst preset 3.7, the same as 0.2.1. Worst single block 8 against 7, which is run to run noise.
+- **What made the difference:** the reel is far from the spectrum, so its repaint stretched the area being drawn to cover every label in between. Keeping that text and the ribbon in cached images took the work from 3.9 to 2.1 % of a fast core.
 
 ## Left out on purpose
 

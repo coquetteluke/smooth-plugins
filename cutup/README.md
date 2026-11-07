@@ -120,7 +120,7 @@ All numbers are in `tests/results.txt` and `tests/au-check.txt`. Limits were wri
 - Damaged state: about 50 kinds of named damage, 17 cut lengths, 100 blocks of noise and 400 randomly damaged states, none unsafe
 - Swap: the block that takes a new sample allocates nothing, does not click, and the old sample is freed off the audio thread
 - Window: created and destroyed 20 times while playing, clicks, drags, double clicks and drops driven offline
-- Pitching a 15 kHz tone up an octave: fold back at -94 dB. Pitching down: no image above -100 dB
+- Pitching a 15 kHz tone up an octave: fold back at -94 dB. Pitching a 5 kHz tone down an octave: image at 21.5 kHz at -102 dB
 
 Tones, noise and a synthetic voice do not prove it sounds good on a real singer. Slicing a real vocal with breaths, reverb and bleed needs ears. Nothing has been loaded in Logic.
 

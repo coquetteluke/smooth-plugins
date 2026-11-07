@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <vector>
+#include "EnvelopeFilter.h"
 #include "PitchCorrector.h"
 #include "PitchTracker.h"
 #include "PsolaShifter.h"
@@ -33,7 +34,10 @@ public:
     // Extra delay in High Quality, on top of what the Input Type needs.
     static constexpr double highQualityExtraSeconds = 0.045;
     // How far ahead High Quality looks for a change between voiced and not. The tracker takes this long to say so.
-    static constexpr double highQualityLeadSeconds = 0.016;
+    static constexpr double highQualityLeadSeconds = 0.02;
+    // How much input each model of the vocal tract sees.
+    static constexpr double levelMemorySeconds = 1.0;
+    static constexpr double highQualityWindowSeconds = 0.040, lowLatencyWindowSeconds = 0.040, lowLatencyFallShare = 0.3;
 
     static int latencyFor (double lowestHz, int mode, double sampleRate) noexcept
     {
@@ -47,6 +51,7 @@ public:
         channels = std::clamp (numChannels, 1, 2);
         tracker.prepare (sr);
         shifter.prepare (sr, channels);
+        envelope.prepare (sr, channels);
         corrector.prepare (sr);
         drySize = 1;
         while (drySize < (int) (sr * 0.25)) drySize *= 2;
@@ -64,8 +69,23 @@ public:
         tracker.reset();
         tracker.setRange (lowHz, highHz);
         lastVoicingLimit = -1.0f;
+        if (mode == highQuality)
+            envelope.configure (highQualityWindowSeconds, 0.5 * highQualityWindowSeconds, 0.5);
+        else
+            envelope.configure (lowLatencyWindowSeconds, 0.0, lowLatencyFallShare);
+        // Without lookahead the direct fit can lock on to a harmonic sitting on the first formant, and its level then swings when the harmonic moves away.
+        envelope.setHarmonicModelFrom (mode == highQuality ? 300.0 : 130.0);
+        ahead = envelope.getLookahead();
+        levelGain = 1.0;
+        passMix = 1.0;
+        passStep = 1.0 / (0.003 * sr);
+        wetLevel = dryLevel = levelSeen = 0.0;
+        correctingFor = 0;
+        levelMemory = levelMemorySeconds * sr;
+        levelFollow = 1.0 - std::exp (-1.0 / (0.03 * sr));
+        levelRelease = 1.0 - std::exp (-1.0 / (0.003 * sr));
         shifter.reset();
-        shifter.setLatency (latency);
+        shifter.setLatency (latency - ahead);
         corrector.reset();
         control = {};
         for (auto& d : dry) std::fill (d.begin(), d.end(), 0.0f);
@@ -90,18 +110,17 @@ public:
         dry[1][(size_t) (dryAt & last)] = r;
         dryOut[0] = dry[0][(size_t) ((dryAt - latency) & last)];
         dryOut[1] = dry[1][(size_t) ((dryAt - latency) & last)];
-        ++dryAt;
 
-        shifter.write (0, l);
-        if (channels > 1) shifter.write (1, r);
-        shifter.advance();
+        const float mono = 0.5f * (l + r);
+        envelope.setPeriod (tracker.period());
+        envelope.push (mono);
 
         if (shared.voicingLimit != lastVoicingLimit)
         {
             tracker.setVoicingLimit (shared.voicingLimit);
             lastVoicingLimit = shared.voicingLimit;
         }
-        tracker.push (0.5f * (l + r));
+        tracker.push (mono);
 
         if (++tickPhase >= tickSamples)
         {
@@ -110,7 +129,35 @@ public:
         }
 
         wet[0] = wet[1] = 0.0f;
-        shifter.step (tracker, control, wet);
+        // What goes into the grains is the whitened voice, as far behind the newest sample as the model needs to see ahead.
+        const long long index = dryAt - ahead;
+        if (index >= 0)
+        {
+            envelope.loadAnalysisFor (index);
+            shifter.write (0, (float) envelope.whiten (0, (double) dry[0][(size_t) (index & last)]));
+            if (channels > 1) shifter.write (1, (float) envelope.whiten (1, (double) dry[1][(size_t) (index & last)]));
+            shifter.advance();
+            shifter.step (tracker, control, wet);
+
+            const long long at = dryAt - latency;
+            if (at >= 0)
+            {
+                envelope.loadSynthesisFor (at);
+                wet[0] = (float) envelope.shape (0, (double) wet[0]);
+                if (channels > 1) wet[1] = (float) envelope.shape (1, (double) wet[1]);
+                holdLevel (wet, dryOut);
+
+                // Through a consonant the filters ring on for a few ms from the vowel before it. Nothing is being changed then, so the true input takes over.
+                const bool pass = ! control.voiced && ! control.plainGrains;
+                passMix = pass ? std::min (1.0, passMix + passStep) : std::max (0.0, passMix - passStep);
+                if (passMix > 0.0)
+                {
+                    wet[0] = (float) (wet[0] + passMix * (dryOut[0] - wet[0]));
+                    wet[1] = (float) (wet[1] + passMix * (dryOut[1] - wet[1]));
+                }
+            }
+        }
+        ++dryAt;
     }
 
     // Reading the control path, which is what the window and the readings show.
@@ -119,6 +166,40 @@ public:
 
 private:
     struct ControlPoint { double period = 0.0; HeldNotes held; };
+
+    // Moving the harmonics changes how many land on a formant, which changes the level on average. This trims that average, over about a second of
+    // corrected voice, so a shift does not make a phrase louder or softer. It is too slow to touch the voice's own dynamics. With nothing being
+    // corrected the gain goes straight back to exactly 1, so consonants and uncorrected notes are untouched.
+    void holdLevel (float* wet, const float* dryNow) noexcept
+    {
+        if (control.plainGrains)
+        {
+            levelGain = 1.0;
+            return;
+        }
+        const bool correcting = control.voiced && ! control.noCorrection;
+        double wanted = 1.0;
+        correctingFor = correcting ? correctingFor + 1 : 0;
+        if (correcting)
+        {
+            // The start of a corrected stretch is still settling and says nothing about the average.
+            if (correctingFor > (int) (0.08 * sr))
+            {
+            const double w = (double) wet[0] * wet[0] + (channels > 1 ? (double) wet[1] * wet[1] : 0.0);
+            const double d = (double) dryNow[0] * dryNow[0] + (channels > 1 ? (double) dryNow[1] * dryNow[1] : 0.0);
+            levelSeen = std::min (levelSeen + 1.0, levelMemory);
+            wetLevel += (w - wetLevel) / levelSeen;
+            dryLevel += (d - dryLevel) / levelSeen;
+            }
+            if (wetLevel > 1.0e-12 && dryLevel > 1.0e-12 && levelSeen > 0.05 * sr)
+                wanted = std::clamp (std::sqrt (dryLevel / wetLevel), 0.25, 4.0);
+        }
+        levelGain += (correcting ? levelFollow : levelRelease) * (wanted - levelGain);
+        if (! correcting && std::abs (levelGain - 1.0) < 1.0e-5)
+            levelGain = 1.0;
+        wet[0] = (float) (wet[0] * levelGain);
+        wet[1] = (float) (wet[1] * levelGain);
+    }
 
     void tick (const Shared& shared) noexcept
     {
@@ -146,29 +227,41 @@ private:
             control.inputPeriod = period;
             control.outputPeriod = corrector.outputPeriod (shared.settings);
             control.noCorrection = corrector.isIdentity();
-            double rate = shared.throatRate;
+            // Formants move in the model, and in the grains as well: what the model did not catch stays in the grains, and it must move with the rest.
+            double scale = shared.throatRate;
             if (! shared.formantPreserve && control.outputPeriod > 0.0)
-                rate *= period / control.outputPeriod;
-            control.grainRate = std::clamp (rate, 0.5, 2.0);
+                scale *= period / control.outputPeriod;
+            envelope.setFormantScale (scale);
+            envelope.setShift (control.outputPeriod > 0.0 ? period / control.outputPeriod : 1.0);
+            control.grainRate = std::clamp (scale, 0.5, 2.0);
         }
         else
         {
             control.grainRate = 1.0;
             control.noCorrection = true;
         }
+        control.plainGrains = shared.settings.classic;
+        control.centreOnPulses = true;
+        // Low Latency's model lags the voice, which matters most on low voices, whose periods are long against it. It leaves those alone.
+        control.pulseLowestHz = mode == highQuality ? 0.0 : 130.0;
+        envelope.setStrength (shared.settings.classic ? 0.0 : 1.0);
     }
 
     double sr = 48000.0, tickSeconds = 0.001;
     int channels = 2, tickSamples = 48, tickPhase = 0, latency = 0, inputType = 1, mode = lowLatency;
     PitchTracker tracker;
     PsolaShifter shifter;
+    EnvelopeFilter envelope;
     PitchCorrector corrector;
     PsolaShifter::Control control;
     std::array<std::vector<float>, 2> dry;
     int drySize = 16384;
     long long dryAt = 0;
     std::array<ControlPoint, 128> ring {};
-    int ringAt = 0, controlDelayTicks = 0, leadTicks = 0;
+    int ringAt = 0, controlDelayTicks = 0, leadTicks = 0, ahead = 0;
     float lastVoicingLimit = -1.0f;
+    int correctingFor = 0;
+    double passMix = 1.0, passStep = 0.01;
+    double levelGain = 1.0, wetLevel = 0.0, dryLevel = 0.0, levelSeen = 0.0, levelMemory = 48000.0, levelFollow = 0.001, levelRelease = 0.01;
 };
 } // namespace smoothtune

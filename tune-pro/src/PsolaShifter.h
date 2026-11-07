@@ -30,6 +30,9 @@ public:
         double outputPeriod = 0.0;   // samples, wanted spacing of the grains
         bool noCorrection = false;   // the output pitch is the input pitch: lock to the marks for a clean pass
         double grainRate = 1.0;      // reading speed inside a grain: above 1 moves formants up
+        bool plainGrains = true;     // the grains carry the voice itself, not a whitened voice, so their formants need help
+        bool centreOnPulses = false; // line grains up with the pulses in a whitened voice
+        double pulseLowestHz = 0.0;  // no lining up below this pitch
     };
 
     void prepare (double sampleRate, int numChannels)
@@ -63,6 +66,8 @@ public:
         lastOffset = 0.0;
         needDecision = true;
         firstGrain = true;
+        pulseOffset = 0.0;
+        pulseGrains = 0;
     }
 
     // Store one input sample for one channel.
@@ -141,7 +146,8 @@ public:
         }
         numActive = keep;
 
-        const double divide = weight > 1.0 ? 1.0 / weight : 1.0;
+        // Plain grains are the voice itself, so overlaps are kept to its level. Whitened grains hold one pulse each and their overlaps are nearly empty.
+        const double divide = weight > 1.0 && plain ? 1.0 / weight : 1.0;
         out[0] = (float) (sum[0] * divide);
         if (channels > 1)
             out[1] = (float) (sum[1] * divide);
@@ -261,9 +267,69 @@ private:
 
     Grain* newestGrain() noexcept { return numActive > 0 ? &active[(size_t) (numActive - 1)] : nullptr; }
 
+    // A pitch mark sits on the loudest point of the voice, not on the pulse that drives it. In a whitened voice the pulse stands out, so
+    // grains centre on it. Then each grain holds one pulse, not parts of two, which would land at two different places in the new period.
+    void alignToPulse (const PitchTracker& tracker, const Control& c, double period) noexcept
+    {
+        // Above about 400 Hz there is too little between pulses to tell them apart from what the model left behind.
+        if (! tracker.hasMarks() || period < sr / 400.0 || period * c.pulseLowestHz > sr)
+        {
+            pulseOffset = 0.0;
+            pulseGrains = 0;
+            return;
+        }
+        const long long newest = written - 1;
+        const long long q = std::min (tracker.lastMark(), lastMarkUsed >= 0 ? lastMarkUsed : tracker.lastMark());
+        const double m = tracker.mark (q).position;
+        const int halfSpan = (int) (0.5 * period), width = std::max (2, (int) (0.06 * period));
+        const long long end = std::min ((long long) m + halfSpan, newest);
+        const long long start = end - 2 * halfSpan;
+        if (start < 0)
+            return;
+        const int mask = size - 1;
+        double running = 0.0, best = -1.0, total = 0.0;
+        long long bestAt = start;
+        for (long long i = start - width; i < end; ++i)
+        {
+            const double e0 = delay[0][(size_t) (i & mask)];
+            const double e1 = channels > 1 ? delay[1][(size_t) (i & mask)] : 0.0;
+            running += e0 * e0 + e1 * e1;
+            if (i >= start) total += e0 * e0 + e1 * e1;
+            const double o0 = delay[0][(size_t) ((i - width) & mask)];
+            const double o1 = channels > 1 ? delay[1][(size_t) ((i - width) & mask)] : 0.0;
+            running -= o0 * o0 + o1 * o1;
+            if (i >= start && running > best) { best = running; bestAt = i - width / 2; }
+        }
+        // No clear pulse, as on a nearly pure high note: nothing to line up with.
+        if (best * 2.0 * halfSpan < 4.0 * total * width)
+            return;
+        double found = (double) bestAt - m;
+        found -= period * std::round (found / period);
+        double difference = found - pulseOffset;
+        difference -= period * std::round (difference / period);
+        // The pulse sits at a fixed place against the marks, so once found this hardly moves. Peak picking is noisy and any movement here is jitter.
+        if (pulseGrains == 0)
+        {
+            // A new note: go straight there, so the first grains are already in line.
+            pulseOffset = found;
+            pulseGrains = 1;
+        }
+        else if (std::abs (difference) < 0.2 * period)
+        {
+            pulseOffset += 0.01 * difference;
+        }
+    }
+
     // Called when the newest grain reaches its centre: fixes its fall and schedules the next grain.
     void decide (const PitchTracker& tracker, const Control& c) noexcept
     {
+        plain = c.plainGrains;
+        if (plain || ! c.centreOnPulses)
+            pulseOffset = 0.0;
+        else if (c.voiced && c.inputPeriod > 0.0 && ! c.noCorrection)
+            alignToPulse (tracker, c, c.inputPeriod);
+        else
+            pulseGrains = 0;
         Grain* current = newestGrain();
         const double s = peakOfNewest;
         Grain next;
@@ -293,7 +359,7 @@ private:
                 const long long following = lastMarkUsed + 1;
                 if (following <= tracker.lastMark() && following >= tracker.firstMark())
                 {
-                    const double m = tracker.mark (following).position - lastOffset;
+                    const double m = tracker.mark (following).position + pulseOffset - lastOffset;
                     const double gap = m - s;
                     if (gap > 0.5 * period && gap < 1.6 * period)
                     {
@@ -310,14 +376,14 @@ private:
                 double foundGap = 1.0e12;
                 for (long long q = tracker.lastMark(); q >= tracker.firstMark(); --q)
                 {
-                    const double gap = tracker.mark (q).position - s;
+                    const double gap = tracker.mark (q).position + pulseOffset - s;
                     if (gap < 0.5 * period)
                         break;
                     if (std::abs (s + gap - aim) < foundGap) { foundGap = std::abs (s + gap - aim); found = q; }
                 }
                 if (found >= 0)
                 {
-                    spacing = tracker.mark (found).position - s;
+                    spacing = tracker.mark (found).position + pulseOffset - s;
                     lastMarkUsed = found - 1;
                     lastOffset = 0.0;
                     planned = Plan::locked;
@@ -347,16 +413,24 @@ private:
                 {
                     // Pulses get denser or sparser, so scale for equal power. Once shifted, overlapping grains are no longer
                     // in phase and their crossfade loses a little energy, which the last factor gives back.
-                    const double power = spacing >= shortest ? 1.0 / std::sqrt (ratio) : std::sqrt (ratio);
-                    next.gain = power * (1.0 + 0.09 * std::min (1.0, std::abs (std::log2 (ratio)) * 12.0 / 1.5));
+                    if (c.plainGrains)
+                    {
+                        const double power = spacing >= shortest ? 1.0 / std::sqrt (ratio) : std::sqrt (ratio);
+                        next.gain = power * (1.0 + 0.09 * std::min (1.0, std::abs (std::log2 (ratio)) * 12.0 / 1.5));
+                    }
+                    else
+                    {
+                        // Pulses at a new spacing: each one's strength goes with the spacing's square root for the same power.
+                        next.gain = 1.0 / std::sqrt (ratio);
+                    }
                 }
                 next.rate = c.grainRate;
                 // The grains' harmonics drag the formants along with a shift, by up to a third of it upwards and less downwards,
                 // measured against a voice with the same vocal tract. Reading the grain a little slower cancels most of that.
                 // Tuned on the test voices: see the formant test and README.
-                if (planned != Plan::locked && ratio > 1.0 + 1.0e-4)
+                if (c.plainGrains && planned != Plan::locked && ratio > 1.0 + 1.0e-4)
                     next.rate *= std::pow (ratio, -0.25);
-                else if (planned != Plan::locked && ratio < 1.0 - 1.0e-4)
+                else if (c.plainGrains && planned != Plan::locked && ratio < 1.0 - 1.0e-4)
                     next.rate *= std::pow (ratio, 0.1);
             }
         }
@@ -390,12 +464,12 @@ private:
             const double period = c.inputPeriod;
             // In order, one mark per grain, unless the output has moved over 0.6 periods from where the input is.
             long long q = std::clamp (lastMarkUsed + 1, tracker.firstMark(), tracker.lastMark());
-            while (q < tracker.lastMark() && g.mark - tracker.mark (q).position > 0.6 * period)
+            while (q < tracker.lastMark() && g.mark - (tracker.mark (q).position + pulseOffset) > 0.6 * period)
                 ++q;
-            while (q > tracker.firstMark() && tracker.mark (q).position - g.mark > 0.6 * period)
+            while (q > tracker.firstMark() && tracker.mark (q).position + pulseOffset - g.mark > 0.6 * period)
                 --q;
-            const double offset = tracker.mark (q).position - g.mark;
-            if (std::abs (offset) > 1.6 * period || offset > (double) latency)
+            const double offset = tracker.mark (q).position + pulseOffset - g.mark;
+            if (std::abs (offset) > 1.6 * period || offset > (double) latency - interpolatorReach)
             {
                 // No usable mark near here. Fall back to a plain read for one grain rather than jump far.
                 g.offset = 0.0;
@@ -429,7 +503,9 @@ private:
     Grain pending;
     bool havePending = false, needDecision = true, firstGrain = true;
     Plan planned = Plan::pass;
-    double peakOfNewest = 0.0, lastOffset = 0.0;
+    double peakOfNewest = 0.0, lastOffset = 0.0, pulseOffset = 0.0;
+    int pulseGrains = 0;
+    bool plain = true;
     long long lastMarkUsed = -1;
 };
 } // namespace smoothtune

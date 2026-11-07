@@ -538,7 +538,8 @@ private:
         finePeriod = std::clamp (lagExact, periodMin, periodMax);
         double position = lastMarkPosition + lagExact;
 
-        // Keep marks near the loudest part of each period, gently enough never to bend the pitch.
+        // Keep marks near the loudest part of each period. Marks that slide against the waveform bend a shifted voice's pitch by as much, so
+        // this is slow: Smooth Harmony measured 8.6 cents at the 1% Smooth Tune used, and 1.7 cents at most at this rate.
         if (hasMarks())
         {
             const Mark& older = mark (lastMark());
@@ -555,7 +556,7 @@ private:
                 }
                 const double off = (double) (from + best) - older.position;
                 if (std::abs (off) > 0.1 * period)
-                    position += 0.01 * off;
+                    position += 0.002 * off;
             }
         }
         addMark (position, lagExact, bestMatch);

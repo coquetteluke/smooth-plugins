@@ -15,6 +15,10 @@ namespace limits
     constexpr double speechOutputMedianCents = 12.0;  // real speech at instant speed, median distance from the nearest note
     constexpr double sungOutputMedianCents = 8.0;     // sung-style say material at instant speed
 
+    // Stand-ins for ears on real material. Added before these were measured.
+    constexpr double speechFrameLevelDb = 3.0;        // 99th percentile change in 20 ms frame level, in against out at instant speed
+    constexpr double speechJumpRatio = 2.0;           // biggest sample to sample step, out against in: a click would show here
+
     // Retune Speed: measured 63% time against the set value
     constexpr double retuneToleranceFraction = 0.20;
     constexpr double retuneToleranceMs = 5.0;         // the bigger of the two applies: measuring pitch needs a few periods

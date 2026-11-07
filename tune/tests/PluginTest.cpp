@@ -1089,6 +1089,7 @@ void testRealMaterial()
         { "sung_organ.wav", lowMale, true },
     };
     std::vector<double> speechMedians, sungMedians;
+    double worstFrames = 0.0, worstJump = 0.0;
     double totalSec = 0; long totalEvents = 0;
     for (const auto& it : items)
     {
@@ -1146,9 +1147,25 @@ void testRealMaterial()
         const auto dIn = dist (ref), dOut = dist (refOut);
         std::printf ("INFO  %s: distance from a note, median, before %.1f cents, after %.1f cents, %d voiced frames\n", it.file, median (dIn), median (dOut), (int) dOut.size());
         (it.sung ? sungMedians : speechMedians).push_back (median (dOut));
+
+        // No listening possible here, so look for what bad grains would leave behind: level holes or bursts, and clicks.
+        {
+            const int delay = p->getLatencySamples(), frame = (int) (0.02 * SR);
+            std::vector<double> changes;
+            for (int at = delay; at + frame < (int) out.size(); at += frame)
+            {
+                const double a = rms (x.data() + at - delay, frame), b = rms (out.data() + at, frame);
+                if (a > 1.0e-3)
+                    changes.push_back (std::abs (toDb (b) - toDb (a)));
+            }
+            worstFrames = std::max (worstFrames, percentile (changes, 99));
+            worstJump = std::max (worstJump, maxJump (out.data(), (int) out.size()) / std::max (maxJump (x.data(), (int) x.size()), 1.0e-6));
+        }
         check (countNonFinite (render (*p, x, 256)) == 0, std::string ("  ") + it.file + " gives finite output");
     }
 
+    check (worstFrames <= limits::speechFrameLevelDb, "real material at instant speed: 99th percentile change in 20 ms frame level, worst file", worstFrames, "dB");
+    check (worstJump <= limits::speechJumpRatio, "real material at instant speed: biggest sample step against the input's, worst file", worstJump, "times");
     const double perMinute = totalEvents / std::max (totalSec, 1.0) * 60.0;
     check (perMinute <= limits::speechOctaveErrorsPerMinute, "real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth", perMinute, "per minute");
     const double speech = *std::max_element (speechMedians.begin(), speechMedians.end());
@@ -1399,7 +1416,7 @@ int main (int argc, char** argv)
                 target.deleteFile();
                 if (auto stream = target.createOutputStream())
                 {
-                    std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (stream.get(), SR, 1, 24, {}, 0));
+                    std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (stream.get(), SR, 1, 24, juce::StringPairArray(), 0));
                     if (writer != nullptr)
                     {
                         stream.release();

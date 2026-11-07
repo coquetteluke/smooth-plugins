@@ -92,7 +92,8 @@ Offline, from `tests/PluginTest.cpp`. Full list in `tests/results.txt`. All test
 - **Dropouts:** 48 dips in 30 s at a rate of 2 per second (limit 60 within 30 %), deepest -23.8 dB. **Texture:** -22.1 dB against the tone at 100 %.
 - **Device:** within 0.04 dB of each set shape at 48 and 96 kHz.
 - **Latency:** 355 samples at 48 kHz (7.40 ms): 67 for oversampling, 288 for the tape path. The same when bypassed. Bypass nulls with the delayed input.
-- **CPU:** 9 to 11 % of one core across runs for a stereo instance at 48 kHz with everything on.
+- **CPU:** through the real AU at 48 kHz with 128 frame blocks, percent of one core: default 2.6, worst preset 3.7 (Old Radio Voice), worst single block 5. The test suite with everything on measures about 4.
+- **Same sound after the CPU work:** `tests/null_results.txt` holds the null of 0.2.1 against 0.2.0 for the default, every preset and random automation. Worst peak -114.4 dBFS, on a signal at 24 times full scale.
 
 Three test limits changed after a first run, each because the limit itself was wrong. Why is written beside each one in `tests/PluginTest.cpp`:
 

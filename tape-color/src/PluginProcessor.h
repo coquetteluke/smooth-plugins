@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include "TapeColorDsp.h"
+#include "FastOversampler.h"
 
 // Oversampled tape saturation with Drive, Bias, Tape Speed, Wow, Flutter, Noise, Age, Low Cut, High Cut, Mix and Output.
 // The oversampling and the wow and flutter tape path are reported as latency, and the dry path is matched to them.
@@ -59,6 +60,7 @@ private:
     bool statesAreFinite() const noexcept;
     double curveOffset() const noexcept;
     void buildDeviceFilters();
+    void runHighRate (float* left, float* right, int numChannels, int total, double offset1, double tanh1, double norm1, double dead1, double head1) noexcept;
 
     static constexpr int kChunk = 32;
 
@@ -91,7 +93,7 @@ private:
 
     double sr = 48000.0, osRate = 768000.0;
     int preparedChannels = 2, osStages = 4, osLatency = 0, modCentre = 240;
-    std::unique_ptr<juce::dsp::Oversampling<float>> oversampler;
+    std::unique_ptr<FastOversampler> oversampler;
 
     // Smoothed controls
     juce::SmoothedValue<float> driveSm, biasSm, speedSm, ageSm, wowSm, flutterSm, noiseSm, mixSm, depthSm, outputSm, autoSm, onSm, lowOnSm, highOnSm,
@@ -100,7 +102,9 @@ private:
     bool coefsDirty = true;
 
     // Values for the curve at the end of the last chunk, so each chunk ramps from there.
-    double lastOffset = 0, lastTanh = 0, lastNorm = 1, lastDead = 0, lastHeadroom = tapecolor::kHeadroom;
+    double lastOffset = 0, lastTanh = 0, lastNorm = 1, lastDead = 0, lastHeadroom = tapecolor::kHeadroom, lastHeadroomDb = 0;
+    float lastDriveDb = 0.0f, lastDriveGain = 1.0f; // Drive's gain is only worked out again while Drive moves
+    bool driveGainKnown = false;
 
     tapecolor::SincTable sinc;
     tapecolor::EmphasisCoefs emphasis;
@@ -118,6 +122,8 @@ private:
         tapecolor::FirstOrder filter;
         tapecolor::OnePole sideHp;
         double env = 0, boostDb = 0;
+        double setFor = 0; // the boost in dB that coefs was last worked out for
+        bool coefsSet = false;
     };
 
     struct Channel
@@ -141,6 +147,7 @@ private:
     juce::AudioBuffer<float> work, dryNear, dryFar, encodedNear;
 
     // Device filters, one set per sample rate, built in prepareToPlay. The audio thread only reads them.
+    // Stored back to front, and each channel's deviceLine holds its history twice, so a filter runs over one straight stretch of memory.
     std::array<std::vector<float>, tapecolor::kNumDevices> deviceIrs;
     double deviceIrRate = 0.0;
     int deviceLength = 0, activeDevice = 0, devicePos = 0;

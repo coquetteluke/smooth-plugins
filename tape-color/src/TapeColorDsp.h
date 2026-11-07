@@ -273,6 +273,50 @@ namespace tapecolor
         }
     };
 
+    // Two lanes of double, left and right, for the oversampled part of the signal path.
+    using Lanes = double __attribute__ ((vector_size (16)));
+    using LaneMask = long long __attribute__ ((vector_size (16)));
+
+    // e to the x for x from -60 to 0, about 2e-15 out at worst.
+    inline Lanes fastExp (Lanes x) noexcept
+    {
+        const Lanes k = __builtin_elementwise_roundeven (x * 1.4426950408889634);
+        const Lanes r = x - k * 0.693147180369123816490 - k * 1.90821492927058770002e-10;
+        const Lanes r2 = r * r, r4 = r2 * r2, r8 = r4 * r4;
+        const Lanes p = (1.0 + 0.9999999999999976 * r) + r2 * (0.49999999999997463 + 0.16666666666656707 * r)
+                      + r4 * ((0.04166666667165686 + 0.00833333335146171 * r) + r2 * (0.0013888887236709687 + 0.0001984121248387518 * r))
+                      + r8 * ((2.480345740541587e-05 + 2.762319450353535e-06 * r) + r2 * 2.689136862854972e-07);
+        const LaneMask exponent = (__builtin_convertvector (k, LaneMask) + 1023) << 52;
+        return p * (Lanes) exponent;
+    }
+
+    // log (1 + x) for x from 0 to 1, about 3e-15 out at worst.
+    inline Lanes fastLog1p (Lanes x) noexcept
+    {
+        const Lanes z = x / (2.0 + x), s = z * z, s2 = s * s, s4 = s2 * s2, s8 = s4 * s4;
+        const Lanes p = (0.9999999999999982 + 0.3333333333348546 * s) + s2 * (0.19999999968533064 + 0.14285716987332098 * s)
+                      + s4 * ((0.11110988927344752 + 0.09094138077534714 * s) + s2 * (0.07640514872911665 + 0.07167699795294472 * s))
+                      + s8 * (0.0312266476590116 + 0.12600281083408268 * s);
+        return 2.0 * z * p;
+    }
+
+    // log (cosh (v)) with the same switch at 10 as Curve::antiderivative. The difference from it is far below anything the 32 bit output can hold.
+    inline Lanes fastAntiderivative (Lanes v) noexcept
+    {
+        const Lanes a = __builtin_elementwise_abs (v);
+        const Lanes base = a - 0.693147180559945;
+        const LaneMask near = a <= 10.0;
+        const Lanes extra = fastLog1p (fastExp (-2.0 * __builtin_elementwise_min (a, Lanes { 10.0, 10.0 })));
+        return base + (Lanes) ((LaneMask) extra & near);
+    }
+
+    inline Lanes fastTanh (Lanes v) noexcept
+    {
+        const Lanes a = __builtin_elementwise_min (__builtin_elementwise_abs (v), Lanes { 25.0, 25.0 });
+        const Lanes e = fastExp (-2.0 * a);
+        return __builtin_elementwise_copysign ((1.0 - e) / (1.0 + e), v);
+    }
+
     // Small fast random source. Seeded the same every time, so a bounce is the same every time.
     struct Random
     {
@@ -305,7 +349,7 @@ namespace tapecolor
             to = rng.bipolar();
             phase = 0.0;
         }
-        double tick() noexcept
+        void advance() noexcept
         {
             phase += inc;
             if (phase >= 1.0)
@@ -314,8 +358,8 @@ namespace tapecolor
                 from = to;
                 to = rng.bipolar();
             }
-            return 2.0 * (from + (to - from) * (0.5 - 0.5 * std::cos (kPi * phase)));
         }
+        double value() const noexcept { return 2.0 * (from + (to - from) * (0.5 - 0.5 * std::cos (kPi * phase))); }
     };
 
     // Windowed sinc interpolation for the wow and flutter read head.

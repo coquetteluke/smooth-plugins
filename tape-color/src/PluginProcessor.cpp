@@ -9,6 +9,49 @@ namespace
     constexpr float kLowCutOff = 20.0f, kHighCutOff = 20000.0f;
     constexpr double kEps = 1.0e-10; // detector floor, about -100 dBFS
 
+    // The last input that stood perfectly still, per lane, with its exact curve value.
+    struct HeldCurve { double in[2] {}, out[2] {}; };
+
+    // Where two samples are this close, the average along the curve is the curve at their middle.
+    // A signal standing perfectly still gets the exact value, so silence cancels the curve's offset down to exactly zero.
+    inline Lanes closeCurve (Lanes curve, LaneMask close, Lanes now, Lanes difference, Lanes before, HeldCurve& held) noexcept
+    {
+        Lanes middle = fastTanh (0.5 * (now + before));
+        const LaneMask still = difference == 0.0;
+        for (int lane = 0; lane < 2; ++lane)
+        {
+            if (still[lane] != 0)
+            {
+                if (now[lane] != held.in[lane])
+                {
+                    held.in[lane] = now[lane];
+                    held.out[lane] = std::tanh (now[lane]);
+                }
+                middle[lane] = held.out[lane];
+            }
+        }
+        return (Lanes) (((LaneMask) middle & close) | ((LaneMask) curve & ~close));
+    }
+
+    // Sum of a[k] * b[k]. Each product is 32 bit and the running sum 64 bit.
+    inline double weightedSum (const float* a, const float* b, int size) noexcept
+    {
+        using Four = float __attribute__ ((vector_size (16), aligned (4), may_alias));
+        using Two = float __attribute__ ((vector_size (8)));
+        Lanes low { 0.0, 0.0 }, high { 0.0, 0.0 };
+        int k = 0;
+        for (; k + 4 <= size; k += 4)
+        {
+            const Four p = *(const Four*) (a + k) * *(const Four*) (b + k);
+            low += __builtin_convertvector (Two { p[0], p[1] }, Lanes);
+            high += __builtin_convertvector (Two { p[2], p[3] }, Lanes);
+        }
+        double sum = low[0] + low[1] + high[0] + high[1];
+        for (; k < size; ++k)
+            sum += (double) (a[k] * b[k]);
+        return sum;
+    }
+
     struct Preset
     {
         const char* name;
@@ -146,9 +189,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     // The record boost makes high tones hit the curve very hard, which is why this needs so much.
     osStages = sr <= 50000.0 ? 4 : (sr <= 100000.0 ? 3 : 2);
     osRate = sr * (double) (1 << osStages);
-    oversampler = std::make_unique<juce::dsp::Oversampling<float>> ((size_t) preparedChannels, (size_t) osStages,
-                                                                    juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple,
-                                                                    true, true); // linear phase, whole sample latency
+    oversampler = std::make_unique<FastOversampler> ((size_t) preparedChannels, (size_t) osStages, true); // linear phase, whole sample latency
     oversampler->initProcessing ((size_t) kChunk);
 
     osLatency = (int) std::lround (oversampler->getLatencyInSamples());
@@ -275,11 +316,11 @@ void PluginProcessor::buildDeviceFilters()
         for (int i = 0; i < deviceLength; ++i)
         {
             const double fade = i < fadeFrom ? 1.0 : 0.5 + 0.5 * std::cos (kPi * (i - fadeFrom) / (double) (deviceLength - fadeFrom));
-            ir[(size_t) i] = (float) (out[(size_t) i].real() * fade);
+            ir[(size_t) (deviceLength - 1 - i)] = (float) (out[(size_t) i].real() * fade);
         }
     }
     for (auto& c : chans)
-        c.deviceLine.assign ((size_t) deviceLength, 0.0f);
+        c.deviceLine.assign ((size_t) deviceLength * 2, 0.0f);
 }
 
 void PluginProcessor::reset()
@@ -409,7 +450,8 @@ void PluginProcessor::snapControls() noexcept
     lastTanh = std::tanh (lastOffset);
     lastNorm = juce::square (std::cosh (lastOffset));
     lastDead = deadAmount ((double) biasSm.getCurrentValue());
-    lastHeadroom = kHeadroom * std::pow (10.0, (hardnessHeadroomDb ((double) hardSm.getCurrentValue()) - ageHeadroomDb ((double) ageSm.getCurrentValue())) / 20.0);
+    lastHeadroomDb = hardnessHeadroomDb ((double) hardSm.getCurrentValue()) - ageHeadroomDb ((double) ageSm.getCurrentValue());
+    lastHeadroom = kHeadroom * std::pow (10.0, lastHeadroomDb / 20.0);
     coefsDirty = false;
 }
 
@@ -458,6 +500,127 @@ bool PluginProcessor::statesAreFinite() const noexcept
     return std::isfinite (envIn) && std::isfinite (envOut) && std::isfinite (ratio);
 }
 
+// The oversampled path. Both channels run side by side in the two lanes of one register. With one channel the second lane just repeats the first.
+void PluginProcessor::runHighRate (float* left, float* right, int numChannels, int total, double offset1, double tanh1, double norm1, double dead1, double head1) noexcept
+{
+    auto& cL = chans[0];
+    auto& cR = chans[(size_t) numChannels - 1];
+    Lanes preX { cL.pre.x1, cR.pre.x1 }, preY { cL.pre.y1, cR.pre.y1 }, deX { cL.de.x1, cR.de.x1 }, deY { cL.de.y1, cR.de.y1 };
+    Lanes gap1 { cL.gap.ic1, cR.gap.ic1 }, gap2 { cL.gap.ic2, cR.gap.ic2 }, age1 { cL.ageLp.ic1, cR.ageLp.ic1 }, age2 { cL.ageLp.ic2, cR.ageLp.ic2 };
+    Lanes space1 { cL.spacing1.lp, cR.spacing1.lp }, space2 { cL.spacing2.lp, cR.spacing2.lp };
+    Lanes mainIn { cL.main.lastIn, cR.main.lastIn }, mainF { cL.main.lastF, cR.main.lastF }, deadIn { cL.dead.lastIn, cR.dead.lastIn }, deadF { cL.dead.lastF, cR.dead.lastF };
+
+    const double preB0 = emphasis.b0, preB1 = emphasis.b1, preA1 = emphasis.a1, deB0 = emphasis.ib0, deB1 = emphasis.ib1, deA1 = emphasis.ia1;
+    const double gapA1 = gapCoefs.a1, gapA2 = gapCoefs.a2, gapA3 = gapCoefs.a3, ageA1 = ageLpCoefs.a1, ageA2 = ageLpCoefs.a2, ageA3 = ageLpCoefs.a3;
+    const double spaceC = spacingC;
+    // With no ramp every setting holds for the whole piece. A curve at 0 needs no working out, and neither do Head Spacing's poles at 0.
+    const bool ramp = offset1 != lastOffset || tanh1 != lastTanh || norm1 != lastNorm || dead1 != lastDead || head1 != lastHeadroom;
+    const bool useDead = dead1 != 0.0 || lastDead != 0.0;
+    const bool useSpacing = spaceC != 1.0;
+    const double step = 1.0 / (double) total;
+    double offset = offset1, headroom = head1, curveTanh = tanh1, curveNorm = norm1, deadNow = dead1;
+    double headroomInverse = 1.0 / head1;
+    Lanes v { 0.0, 0.0 }, lost { 0.0, 0.0 };
+    HeldCurve heldMain { { offset1, offset1 }, { tanh1, tanh1 } }, heldDead {};
+
+    for (int i = 0; i < total; ++i)
+    {
+        if (ramp)
+        {
+            const double f = (double) (i + 1) * step;
+            offset = lastOffset + f * (offset1 - lastOffset);
+            headroom = lastHeadroom + f * (head1 - lastHeadroom);
+            headroomInverse = 1.0 / headroom;
+            curveTanh = lastTanh + f * (tanh1 - lastTanh);
+            curveNorm = lastNorm + f * (norm1 - lastNorm);
+            deadNow = lastDead + f * (dead1 - lastDead);
+        }
+
+        const Lanes x { (double) left[i], (double) right[i] };
+        const Lanes boosted = preB0 * x + preB1 * preX - preA1 * preY;
+        preX = x;
+        preY = boosted;
+        v = boosted * headroomInverse;
+
+        // The curve, as an average between this sample and the last. Close together, that average is the curve at their middle.
+        const Lanes u = v + offset;
+        const Lanes F = fastAntiderivative (u);
+        const Lanes d = u - mainIn;
+        Lanes curve = (F - mainF) / d;
+        const LaneMask close = __builtin_elementwise_abs (d) < 1.0e-5;
+        if ((close[0] | close[1]) != 0)
+            curve = closeCurve (curve, close, u, d, mainIn, heldMain);
+        mainIn = u;
+        mainF = F;
+
+        Lanes shaped = (curve - curveTanh) * curveNorm;
+        if (useDead)
+        {
+            const Lanes w = v * (1.0 / kDeadWidth);
+            const Lanes Fd = fastAntiderivative (w);
+            const Lanes dd = w - deadIn;
+            Lanes curveD = (Fd - deadF) / dd;
+            const LaneMask closeD = __builtin_elementwise_abs (dd) < 1.0e-5;
+            if ((closeD[0] | closeD[1]) != 0)
+                curveD = closeCurve (curveD, closeD, w, dd, deadIn, heldDead);
+            deadIn = w;
+            deadF = Fd;
+            shaped -= (deadNow * kDeadWidth) * curveD;
+        }
+
+        const Lanes in = shaped * headroom;
+        const Lanes back = deB0 * in + deB1 * deX - deA1 * deY;
+        deX = in;
+        deY = back;
+
+        // Top end losses: the gap loss, then the age loss.
+        const Lanes gapV3 = back - gap2;
+        const Lanes gapV1 = gapA1 * gap1 + gapA2 * gapV3;
+        const Lanes gapV2 = gap2 + gapA2 * gap1 + gapA3 * gapV3;
+        gap1 = 2.0 * gapV1 - gap1;
+        gap2 = 2.0 * gapV2 - gap2;
+
+        const Lanes ageV3 = gapV2 - age2;
+        const Lanes ageV1 = ageA1 * age1 + ageA2 * ageV3;
+        const Lanes ageV2 = age2 + ageA2 * age1 + ageA3 * ageV3;
+        age1 = 2.0 * ageV1 - age1;
+        age2 = 2.0 * ageV2 - age2;
+        lost = ageV2;
+
+        Lanes out = lost;
+        if (useSpacing)
+        {
+            space1 += spaceC * (lost - space1);
+            space2 += spaceC * (space1 - space2);
+            out = space2;
+        }
+        right[i] = (float) out[1];
+        left[i] = (float) out[0];
+    }
+
+    if (! useSpacing)
+        space1 = space2 = lost;
+
+    for (int lane = numChannels - 1; lane >= 0; --lane)
+    {
+        auto& c = chans[(size_t) lane];
+        c.pre.x1 = preX[lane]; c.pre.y1 = preY[lane];
+        c.de.x1 = deX[lane]; c.de.y1 = deY[lane];
+        c.gap.ic1 = gap1[lane]; c.gap.ic2 = gap2[lane];
+        c.ageLp.ic1 = age1[lane]; c.ageLp.ic2 = age2[lane];
+        c.spacing1.lp = space1[lane]; c.spacing2.lp = space2[lane];
+        c.main.lastIn = mainIn[lane]; c.main.lastF = mainF[lane];
+        if (useDead)
+        {
+            c.dead.lastIn = deadIn[lane]; c.dead.lastF = deadF[lane];
+        }
+        else
+        {
+            c.dead.reset (v[lane] / kDeadWidth); // ready for the moment it fades in
+        }
+    }
+}
+
 void PluginProcessor::processChunk (float* const* channels, int numChannels, int n) noexcept
 {
     // 1. Slow controls for this piece. Filters only recalculate while a control is moving.
@@ -502,74 +665,79 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
         auto& c = chans[(size_t) ch];
         const auto update = [&] (CompanderSide& side, double amount)
         {
-            const double target = companderBoostDb (compMode, 10.0 * std::log10 (side.env + 1.0e-12) + 3.0);
+            const double target = compMode == compOff ? 0.0 : companderBoostDb (compMode, 10.0 * std::log10 (side.env + 1.0e-12) + 3.0);
             side.boostDb += compSlew * (target - side.boostDb);
             if (side.boostDb < 1.0e-4 && compMode == compOff)
                 side.boostDb = 0.0;
-            const double g = std::pow (10.0, side.boostDb * amount / 20.0);
-            side.coefs.set (kCompanderHz / std::sqrt (g), g, sr);
+            const double db = side.boostDb * amount;
+            if (! side.coefsSet || db != side.setFor)
+            {
+                const double g = std::pow (10.0, db / 20.0);
+                side.coefs.set (kCompanderHz / std::sqrt (g), g, sr);
+                side.setFor = db;
+                side.coefsSet = true;
+            }
         };
         update (c.encoder, encodeNow);
         update (c.decoder, decodeNow);
     }
 
     // 2. The dry tap for Mix, the dry tap for Bypass, the encoded signal, and the driven signal, with Drive's gain kept for later.
-    for (int i = 0; i < n; ++i)
     {
-        const float g = juce::Decibels::decibelsToGain (driveSm.getNextValue());
-        const int nearPos = (dryPos - osLatency + dryRingSize) % dryRingSize;
-        const int farPos = dryPos == dryRingSize - 1 ? 0 : dryPos + 1;
-        for (int ch = 0; ch < numChannels; ++ch)
+        float* dryNearOut[2] = { dryNear.getWritePointer (0), dryNear.getWritePointer (numChannels - 1) };
+        float* dryFarOut[2] = { dryFar.getWritePointer (0), dryFar.getWritePointer (numChannels - 1) };
+        float* encodedOut[2] = { encodedNear.getWritePointer (0), encodedNear.getWritePointer (numChannels - 1) };
+        float* workOut[2] = { work.getWritePointer (0), work.getWritePointer (numChannels - 1) };
+        for (int i = 0; i < n; ++i)
         {
-            auto& c = chans[(size_t) ch];
-            const float x = channels[ch][i];
-            c.dryRing[(size_t) dryPos] = x;
-            dryNear.getWritePointer (ch)[i] = c.dryRing[(size_t) nearPos];
-            dryFar.getWritePointer (ch)[i] = c.dryRing[(size_t) farPos];
-
-            auto& e = c.encoder;
-            const double side = e.sideHp.high ((double) x, sideHpC);
-            const double power = side * side;
-            e.env += (power > e.env ? sideAttackC : sideReleaseC) * (power - e.env);
-            const auto encoded = (float) e.filter.tick ((double) x, e.coefs.b0, e.coefs.b1, e.coefs.a1);
-            c.encodedRing[(size_t) gainPos] = encoded;
+            const float driveDb = driveSm.getNextValue();
+            if (! driveGainKnown || driveDb != lastDriveDb)
+            {
+                lastDriveGain = juce::Decibels::decibelsToGain (driveDb);
+                lastDriveDb = driveDb;
+                driveGainKnown = true;
+            }
+            const float g = lastDriveGain;
+            const int nearPos = (dryPos - osLatency + dryRingSize) % dryRingSize;
+            const int farPos = dryPos == dryRingSize - 1 ? 0 : dryPos + 1;
             const int encodedRead = gainPos == gainRingSize - 1 ? 0 : gainPos + 1;
-            encodedNear.getWritePointer (ch)[i] = c.encodedRing[(size_t) encodedRead];
-            work.getWritePointer (ch)[i] = encoded * g;
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                auto& c = chans[(size_t) ch];
+                const float x = channels[ch][i];
+                c.dryRing[(size_t) dryPos] = x;
+                dryNearOut[ch][i] = c.dryRing[(size_t) nearPos];
+                dryFarOut[ch][i] = c.dryRing[(size_t) farPos];
+
+                auto& e = c.encoder;
+                const double side = e.sideHp.high ((double) x, sideHpC);
+                const double power = side * side;
+                e.env += (power > e.env ? sideAttackC : sideReleaseC) * (power - e.env);
+                const auto encoded = (float) e.filter.tick ((double) x, e.coefs.b0, e.coefs.b1, e.coefs.a1);
+                c.encodedRing[(size_t) gainPos] = encoded;
+                encodedOut[ch][i] = c.encodedRing[(size_t) encodedRead];
+                workOut[ch][i] = encoded * g;
+            }
+            dryPos = farPos;
+            gainRing[(size_t) gainPos] = g;
+            gainPos = encodedRead;
+            gainDelayed[(size_t) i] = gainRing[(size_t) gainPos];
         }
-        dryPos = farPos;
-        gainRing[(size_t) gainPos] = g;
-        gainPos = gainPos == gainRingSize - 1 ? 0 : gainPos + 1;
-        gainDelayed[(size_t) i] = gainRing[(size_t) gainPos];
     }
 
     // 3. At the high rate: record boost, curve, the boost taken back out, top end losses. The curve's settings ramp across the piece.
     const double offset1 = curveOffset();
-    const double tanh1 = std::tanh (offset1), norm1 = juce::square (std::cosh (offset1));
+    const bool sameOffset = offset1 == lastOffset;
+    const double tanh1 = sameOffset ? lastTanh : std::tanh (offset1);
+    const double norm1 = sameOffset ? lastNorm : juce::square (std::cosh (offset1));
     const double dead1 = deadAmount ((double) biasSm.getCurrentValue());
-    const double head1 = kHeadroom * std::pow (10.0, (hardnessHeadroomDb ((double) hardSm.getCurrentValue()) - ageHeadroomDb ((double) ageSm.getCurrentValue())) / 20.0);
+    const double headroomDb = hardnessHeadroomDb ((double) hardSm.getCurrentValue()) - ageHeadroomDb ((double) ageSm.getCurrentValue());
+    const double head1 = headroomDb == lastHeadroomDb ? lastHeadroom : kHeadroom * std::pow (10.0, headroomDb / 20.0);
+    lastHeadroomDb = headroomDb;
 
     juce::dsp::AudioBlock<float> workBlock (work);
     auto high = oversampler->processSamplesUp (workBlock.getSubBlock (0, (size_t) n));
-    const int total = n << osStages;
-    const double step = 1.0 / (double) total;
-    for (int ch = 0; ch < numChannels; ++ch)
-    {
-        auto& c = chans[(size_t) ch];
-        auto* y = high.getChannelPointer ((size_t) ch);
-        for (int i = 0; i < total; ++i)
-        {
-            const double f = (double) (i + 1) * step;
-            const double offset = lastOffset + f * (offset1 - lastOffset);
-            const double headroom = lastHeadroom + f * (head1 - lastHeadroom);
-            const double v = c.pre.tick ((double) y[i], emphasis.b0, emphasis.b1, emphasis.a1) / headroom;
-            const double shaped = (c.main.tick (v + offset) - (lastTanh + f * (tanh1 - lastTanh))) * (lastNorm + f * (norm1 - lastNorm))
-                                  - (lastDead + f * (dead1 - lastDead)) * kDeadWidth * c.dead.tick (v / kDeadWidth);
-            const double back = c.de.tick (shaped * headroom, emphasis.ib0, emphasis.ib1, emphasis.ia1);
-            const double lost = c.ageLp.low (c.gap.low (back, gapCoefs), ageLpCoefs);
-            y[i] = (float) c.spacing2.low (c.spacing1.low (lost, spacingC), spacingC);
-        }
-    }
+    runHighRate (high.getChannelPointer (0), high.getChannelPointer ((size_t) numChannels - 1), numChannels, n << osStages, offset1, tanh1, norm1, dead1, head1);
     lastOffset = offset1;
     lastTanh = tanh1;
     lastNorm = norm1;
@@ -628,8 +796,10 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
         phaseWow2 += incWow2; if (phaseWow2 >= kTwoPi) phaseWow2 -= kTwoPi;
         phaseFlutter += incFlutter; if (phaseFlutter >= kTwoPi) phaseFlutter -= kTwoPi;
         phaseFlutter2 += incFlutter2; if (phaseFlutter2 >= kTwoPi) phaseFlutter2 -= kTwoPi;
-        const double rnd = flutterRandom.tick() * kFlutterRandomMs, rndR = flutterRandomR.tick() * kFlutterRandomMs;
-        const double slow = slowRandom.tick() * kRandomRmsMs, slowR = slowRandomR.tick() * kRandomRmsMs;
+        flutterRandom.advance();
+        flutterRandomR.advance();
+        slowRandom.advance();
+        slowRandomR.advance();
         const double depth = (double) depthSm.getNextValue();
         const double stereoAmt = (double) stereoSm.getNextValue();
         const double tilt = (double) azimuthSm.getNextValue();
@@ -638,9 +808,9 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
         if (wowAmt > 0.0)
             swingMs += wowAmt * (wowMs * std::sin (phaseWow) + kWow2Ms * std::sin (phaseWow2));
         if (flutterAmt > 0.0)
-            swingMs += flutterAmt * (flutterMs * std::sin (phaseFlutter) + kFlutter2Ms * std::sin (phaseFlutter2) + rnd);
+            swingMs += flutterAmt * (flutterMs * std::sin (phaseFlutter) + kFlutter2Ms * std::sin (phaseFlutter2) + flutterRandom.value() * kFlutterRandomMs);
         if (randomAmt > 0.0)
-            swingMs += randomAmt * slow;
+            swingMs += randomAmt * slowRandom.value() * kRandomRmsMs;
 
         double swingRightMs = swingMs;
         if (stereoAmt > 0.0)
@@ -649,9 +819,9 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
             if (wowAmt > 0.0)
                 other += wowAmt * (wowMs * std::cos (phaseWow) + kWow2Ms * std::cos (phaseWow2));
             if (flutterAmt > 0.0)
-                other += flutterAmt * (flutterMs * std::cos (phaseFlutter) + kFlutter2Ms * std::cos (phaseFlutter2) + rndR);
+                other += flutterAmt * (flutterMs * std::cos (phaseFlutter) + kFlutter2Ms * std::cos (phaseFlutter2) + flutterRandomR.value() * kFlutterRandomMs);
             if (randomAmt > 0.0)
-                other += randomAmt * slowR;
+                other += randomAmt * slowRandomR.value() * kRandomRmsMs;
             swingRightMs += stereoAmt * (other - swingMs);
         }
 
@@ -717,14 +887,8 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
             if (activeDevice > 0)
             {
                 auto* hist = c.deviceLine.data();
-                hist[devicePos] = (float) v;
-                const auto* ir = deviceIrs[(size_t) (activeDevice - 1)].data();
-                double sum = 0.0;
-                const int firstRun = devicePos + 1;
-                for (int k = 0; k < firstRun; ++k)
-                    sum += (double) (ir[k] * hist[devicePos - k]);
-                for (int k = firstRun; k < deviceLength; ++k)
-                    sum += (double) (ir[k] * hist[devicePos - k + deviceLength]);
+                hist[devicePos] = hist[devicePos + deviceLength] = (float) v;
+                const double sum = weightedSum (deviceIrs[(size_t) (activeDevice - 1)].data(), hist + devicePos + 1, deviceLength);
                 if (deviceAmt > 0.0)
                     v += deviceAmt * (sum - v);
             }

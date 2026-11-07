@@ -365,7 +365,7 @@ void HarmonyEditor::Panel::paint (juce::Graphics& g)
 
     g.setColour (tone::text);
     g.setFont (font (Weight::medium, 26.0f));
-    g.drawText ("Harmony", juce::Rectangle<int> (margin, rowOneY, 130, rowOneHeight), juce::Justification::centredLeft, false);
+    g.drawText ("Choir Loft", juce::Rectangle<int> (margin, rowOneY, 130, rowOneHeight), juce::Justification::centredLeft, false);
 
     g.setColour (tone::muted);
     g.setFont (font (Weight::regular, 13.0f));

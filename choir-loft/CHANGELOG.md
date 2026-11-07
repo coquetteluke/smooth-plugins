@@ -12,6 +12,8 @@ Above 4 voices, the voices together turn down so 8 stay about as loud as 4: -3 d
 
 Defaults and every old preset are bit for bit the same as 1.2.0. Sessions from before open with everyone on and their own voice count.
 
+The window now says Choir Loft, Luke's final name. The build and AU name are unchanged for now.
+
 ## 1.2.0
 
 The custom window. The display shows each voice as a line through time, running into its singer on a stage: up and down is the note, left and right is pan, size is Level. Drag a singer to pan it or change its interval. Voice strips with the note, the interval in words, Level, Pan, Drift and Tone. Everything else is behind Advanced. Replaces the generic window.

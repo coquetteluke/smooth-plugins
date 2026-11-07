@@ -340,7 +340,7 @@ inline std::vector<double> referenceTrack (const std::vector<float>& input, doub
     }
     const int tauMin = (int) (rate / highHz), tauMax = (int) (rate / lowHz) + 1, W = tauMax + 40;
     const int hop = std::max (1, (int) std::lround (hopSec * rate));
-    const int frames = std::max (0, ((int) y.size() - W - tauMax) / hop);
+    const int frames = std::max (0, ((int) y.size() - W - tauMax - 2) / hop);
     struct Cand { double tau; double cost; };
     constexpr int maxCand = 8;
     std::vector<std::array<Cand, maxCand>> cands ((size_t) frames);
@@ -348,7 +348,7 @@ inline std::vector<double> referenceTrack (const std::vector<float>& input, doub
     std::vector<float> d ((size_t) tauMax + 3);
     for (int f = 0; f < frames; ++f)
     {
-        const float* base = y.data() + f * hop + tauMax;
+        const float* base = y.data() + f * hop + tauMax + 2; // +2: tau reaches tauMax + 1, so stay inside the buffer
         float e0 = 0; for (int i = 0; i < W; ++i) e0 += base[i] * base[i];
         auto& c = cands[(size_t) f];
         int found = 0;

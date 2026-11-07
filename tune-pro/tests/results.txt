@@ -222,37 +222,37 @@ PASS  [LL] and the note settles on pitch, offset = 0.002 cents
 PASS  [LL] non-harmonic energy at everyday settings = -46.411 dB
 PASS  [LL] a voice with nothing to correct passes as a plain delay, difference = -96.581 dB
 INFO  [LL] speech_samantha.wav: 3.8 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  [LL] speech_samantha.wav: distance from a note, median, before 21.4 cents, after 6.6 cents, 821 voiced frames
+INFO  [LL] speech_samantha.wav: distance from a note, median, before 20.9 cents, after 6.4 cents, 820 voiced frames
 PASS  [LL]   speech_samantha.wav gives finite output
 INFO  [LL] speech_kathy.wav: 4.9 s voiced in both, 1 octave disagreements, 12.2 per minute
-INFO  [LL] speech_kathy.wav: distance from a note, median, before 27.0 cents, after 2.1 cents, 991 voiced frames
+INFO  [LL] speech_kathy.wav: distance from a note, median, before 26.8 cents, after 2.1 cents, 991 voiced frames
 PASS  [LL]   speech_kathy.wav gives finite output
 INFO  [LL] speech_daniel.wav: 3.4 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  [LL] speech_daniel.wav: distance from a note, median, before 27.5 cents, after 11.8 cents, 725 voiced frames
+INFO  [LL] speech_daniel.wav: distance from a note, median, before 27.9 cents, after 11.5 cents, 726 voiced frames
 PASS  [LL]   speech_daniel.wav gives finite output
 INFO  [LL] speech_fred.wav: 4.5 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  [LL] speech_fred.wav: distance from a note, median, before 23.6 cents, after 3.2 cents, 912 voiced frames
+INFO  [LL] speech_fred.wav: distance from a note, median, before 23.7 cents, after 3.1 cents, 912 voiced frames
 PASS  [LL]   speech_fred.wav gives finite output
 INFO  [LL] held_fred.wav: 5.3 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  [LL] held_fred.wav: distance from a note, median, before 22.9 cents, after 2.8 cents, 1040 voiced frames
+INFO  [LL] held_fred.wav: distance from a note, median, before 23.1 cents, after 2.8 cents, 1042 voiced frames
 PASS  [LL]   held_fred.wav gives finite output
 INFO  [LL] held_kathy.wav: 5.0 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  [LL] held_kathy.wav: distance from a note, median, before 26.6 cents, after 2.9 cents, 1004 voiced frames
+INFO  [LL] held_kathy.wav: distance from a note, median, before 26.4 cents, after 2.9 cents, 1006 voiced frames
 PASS  [LL]   held_kathy.wav gives finite output
 INFO  [LL] sung_cellos.wav: 7.9 s voiced in both, 1 octave disagreements, 7.6 per minute
-INFO  [LL] sung_cellos.wav: distance from a note, median, before 16.9 cents, after 2.1 cents, 1534 voiced frames
+INFO  [LL] sung_cellos.wav: distance from a note, median, before 17.0 cents, after 2.1 cents, 1535 voiced frames
 PASS  [LL]   sung_cellos.wav gives finite output
 INFO  [LL] sung_goodnews.wav: 12.9 s voiced in both, 3 octave disagreements, 13.9 per minute
-INFO  [LL] sung_goodnews.wav: distance from a note, median, before 6.4 cents, after 0.6 cents, 2649 voiced frames
+INFO  [LL] sung_goodnews.wav: distance from a note, median, before 6.4 cents, after 0.6 cents, 2647 voiced frames
 PASS  [LL]   sung_goodnews.wav gives finite output
-INFO  [LL] sung_organ.wav: 4.5 s voiced in both, 9 octave disagreements, 119.6 per minute
-INFO  [LL] sung_organ.wav: distance from a note, median, before 31.7 cents, after 2.1 cents, 837 voiced frames
+INFO  [LL] sung_organ.wav: 4.5 s voiced in both, 10 octave disagreements, 133.3 per minute
+INFO  [LL] sung_organ.wav: distance from a note, median, before 31.7 cents, after 2.2 cents, 836 voiced frames
 PASS  [LL]   sung_organ.wav gives finite output
 PASS  [LL] real material at instant speed: 99th percentile change in 20 ms frame level, worst file = 2.711 dB
 PASS  [LL] real material at instant speed: biggest sample step against the input's, worst file = 1.512 times
-PASS  [LL] real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth = 16.100 per minute
-PASS  [LL] real speech at instant speed: worst file's median distance from a note = 11.833 cents
-PASS  [LL] say singing and held vowels at instant speed: worst file's median distance from a note = 2.925 cents
+PASS  [LL] real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth = 17.258 per minute
+PASS  [LL] real speech at instant speed: worst file's median distance from a note = 11.544 cents
+PASS  [LL] say singing and held vowels at instant speed: worst file's median distance from a note = 2.898 cents
 PASS  [LL] Transpose +7 on A3 gives E4, offset = -0.009 cents
 PASS  [LL] Transpose -12 on A4 gives A3, offset = -0.001 cents
 PASS  [LL] Reference A4 432 Hz puts A3 at 216 Hz, offset = 0.001 cents
@@ -281,9 +281,9 @@ PASS  [LL] hard and natural presets are both there, presets = 12.000
 PASS  [LL] preset Hard Tune flattens vibrato, kept = 3.807 %
 PASS  [LL] preset Natural Pop keeps more vibrato, kept = 97.378 %
 PASS  [LL] presets leave Key, Scale and Input Type alone
-PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 3.329 %
-INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.320 %
-INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 8.072 %
+PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 3.306 %
+INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.282 %
+INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 7.973 %
 PASS  [LL] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.258 cents
 PASS  [LL] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.258 cents
 PASS  [LL] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.126 cents
@@ -424,37 +424,37 @@ PASS  [HQ] and the note settles on pitch, offset = 0.000 cents
 PASS  [HQ] non-harmonic energy at everyday settings = -44.865 dB
 PASS  [HQ] a voice with nothing to correct passes as a plain delay, difference = -98.197 dB
 INFO  [HQ] speech_samantha.wav: 3.8 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  [HQ] speech_samantha.wav: distance from a note, median, before 21.4 cents, after 6.0 cents, 805 voiced frames
+INFO  [HQ] speech_samantha.wav: distance from a note, median, before 20.9 cents, after 6.1 cents, 806 voiced frames
 PASS  [HQ]   speech_samantha.wav gives finite output
 INFO  [HQ] speech_kathy.wav: 4.9 s voiced in both, 1 octave disagreements, 12.2 per minute
-INFO  [HQ] speech_kathy.wav: distance from a note, median, before 27.0 cents, after 2.5 cents, 974 voiced frames
+INFO  [HQ] speech_kathy.wav: distance from a note, median, before 26.8 cents, after 2.5 cents, 974 voiced frames
 PASS  [HQ]   speech_kathy.wav gives finite output
 INFO  [HQ] speech_daniel.wav: 3.4 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  [HQ] speech_daniel.wav: distance from a note, median, before 27.5 cents, after 9.3 cents, 716 voiced frames
+INFO  [HQ] speech_daniel.wav: distance from a note, median, before 27.9 cents, after 9.5 cents, 723 voiced frames
 PASS  [HQ]   speech_daniel.wav gives finite output
 INFO  [HQ] speech_fred.wav: 4.5 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  [HQ] speech_fred.wav: distance from a note, median, before 23.6 cents, after 3.0 cents, 903 voiced frames
+INFO  [HQ] speech_fred.wav: distance from a note, median, before 23.7 cents, after 3.1 cents, 901 voiced frames
 PASS  [HQ]   speech_fred.wav gives finite output
 INFO  [HQ] held_fred.wav: 5.3 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  [HQ] held_fred.wav: distance from a note, median, before 22.9 cents, after 2.6 cents, 1025 voiced frames
+INFO  [HQ] held_fred.wav: distance from a note, median, before 23.1 cents, after 2.8 cents, 1027 voiced frames
 PASS  [HQ]   held_fred.wav gives finite output
 INFO  [HQ] held_kathy.wav: 5.0 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  [HQ] held_kathy.wav: distance from a note, median, before 26.6 cents, after 4.1 cents, 991 voiced frames
+INFO  [HQ] held_kathy.wav: distance from a note, median, before 26.4 cents, after 4.1 cents, 991 voiced frames
 PASS  [HQ]   held_kathy.wav gives finite output
 INFO  [HQ] sung_cellos.wav: 7.9 s voiced in both, 1 octave disagreements, 7.6 per minute
-INFO  [HQ] sung_cellos.wav: distance from a note, median, before 16.9 cents, after 2.1 cents, 1490 voiced frames
+INFO  [HQ] sung_cellos.wav: distance from a note, median, before 17.0 cents, after 2.1 cents, 1490 voiced frames
 PASS  [HQ]   sung_cellos.wav gives finite output
 INFO  [HQ] sung_goodnews.wav: 12.9 s voiced in both, 3 octave disagreements, 13.9 per minute
-INFO  [HQ] sung_goodnews.wav: distance from a note, median, before 6.4 cents, after 0.6 cents, 2640 voiced frames
+INFO  [HQ] sung_goodnews.wav: distance from a note, median, before 6.4 cents, after 0.6 cents, 2643 voiced frames
 PASS  [HQ]   sung_goodnews.wav gives finite output
-INFO  [HQ] sung_organ.wav: 4.5 s voiced in both, 9 octave disagreements, 119.6 per minute
-INFO  [HQ] sung_organ.wav: distance from a note, median, before 31.7 cents, after 2.1 cents, 782 voiced frames
+INFO  [HQ] sung_organ.wav: 4.5 s voiced in both, 10 octave disagreements, 133.3 per minute
+INFO  [HQ] sung_organ.wav: distance from a note, median, before 31.7 cents, after 2.1 cents, 783 voiced frames
 PASS  [HQ]   sung_organ.wav gives finite output
 PASS  [HQ] real material at instant speed: 99th percentile change in 20 ms frame level, worst file = 2.402 dB
 PASS  [HQ] real material at instant speed: biggest sample step against the input's, worst file = 1.000 times
-PASS  [HQ] real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth = 16.100 per minute
-PASS  [HQ] real speech at instant speed: worst file's median distance from a note = 9.250 cents
-PASS  [HQ] say singing and held vowels at instant speed: worst file's median distance from a note = 4.079 cents
+PASS  [HQ] real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth = 17.258 per minute
+PASS  [HQ] real speech at instant speed: worst file's median distance from a note = 9.492 cents
+PASS  [HQ] say singing and held vowels at instant speed: worst file's median distance from a note = 4.143 cents
 PASS  [HQ] Transpose +7 on A3 gives E4, offset = 0.004 cents
 PASS  [HQ] Transpose -12 on A4 gives A3, offset = 0.000 cents
 PASS  [HQ] Reference A4 432 Hz puts A3 at 216 Hz, offset = -0.007 cents
@@ -483,9 +483,9 @@ PASS  [HQ] hard and natural presets are both there, presets = 12.000
 PASS  [HQ] preset Hard Tune flattens vibrato, kept = 3.798 %
 PASS  [HQ] preset Natural Pop keeps more vibrato, kept = 98.342 %
 PASS  [HQ] presets leave Key, Scale and Input Type alone
-PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 2.523 %
-INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.306 %
-INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 8.042 %
+PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 2.486 %
+INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.258 %
+INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 7.926 %
 PASS  [HQ] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.237 cents
 PASS  [HQ] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.183 cents
 PASS  [HQ] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.445 cents
@@ -569,6 +569,6 @@ PASS  the keyboard's target reads A3 = 57.000
 PASS  the pitch window's newest point: input A3 +30 cents, corrected A3 = 57.000 
 PASS  the reading strip: Active Key C Chromatic  |  In 223.8 Hz  |  Out 220.0 Hz  |  Target A3  |  Correction -30 cents
 PASS  the window paints
-PASS  audio keeps running while the window repaints, blocks = 1473.000 
+PASS  audio keeps running while the window repaints, blocks = 1474.000 
 PASS  closing the window leaves audio running
 RESULT FAIL  3 failures

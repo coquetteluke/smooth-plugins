@@ -1,270 +1,576 @@
 #include "KeyEditor.h"
 
+#include "editor/Controls.h"
+#include "editor/KeyViews.h"
+
+using namespace keyui;
+
 namespace
 {
-    const juce::Colour background (0xff12151c), panel (0xff1c212b), ink (0xfff3f5f8), faint (0xff8b93a3);
-    const juce::Colour accent (0xff55d6be), warning (0xffffa94d), keyOff (0xff2a303c), keyOn (0xffd9dee7);
-
+    constexpr int activeRate = 6;   // the analyser's own rate: nothing can change faster than this
     constexpr const char* flatNames[12] = { "", "Db", "", "Eb", "", "", "Gb", "", "Ab", "", "Bb", "" };
-    constexpr int majorSteps[7] = { 0, 2, 4, 5, 7, 9, 11 };
-    constexpr int minorSteps[7] = { 0, 2, 3, 5, 7, 8, 10 };
 
-    bool inScale (int note, int key, bool minor)
+    // How much ink a key's likelihood gets, from 0 to 1. Likelihoods fall away fast, so this opens up the small ones to keep the
+    // runners up visible. A key has to look at least a little likely to show at all.
+    float inkFor (float candidate, bool heardNow)
     {
-        const int step = (note - key + 12) % 12;
-        for (int s : (minor ? minorSteps : majorSteps))
-            if (s == step) return true;
-        return false;
+        const float amount = std::pow (juce::jmax (0.0f, candidate), 0.35f) * (heardNow ? 1.0f : 0.55f);
+        return amount < 0.12f ? 0.0f : juce::jmin (1.0f, amount);
     }
+
+    juce::String centsText (float hz)
+    {
+        const int cents = juce::roundToInt (1200.0f * std::log2 (hz / 440.0f));
+        return juce::String (std::abs (cents)) + (cents >= 0 ? " cents high" : " cents low");
+    }
+
+    // The Advanced line in the footer: its arrow turns as it opens, and it says when something inside has been changed.
+    struct AdvancedHeader final : juce::Component, Hinted
+    {
+        explicit AdvancedHeader (KeyEditor& e) : editor (e)
+        {
+            setComponentID ("advanced");
+            setMouseCursor (juce::MouseCursor::PointingHandCursor);
+            hint = "Response, the manual key and scale, and Bypass.";
+        }
+
+        bool setState (float newAmount, int newChanged)
+        {
+            if (newAmount == amount && newChanged == changed)
+                return false;
+
+            amount = newAmount;
+            changed = newChanged;
+            repaint();
+            return true;
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            ++paintCount;
+            const auto b = getLocalBounds().toFloat();
+            const bool lit = isMouseOver();
+            const juce::Colour colour = lit ? tone::ink : tone::soft;
+            const float wordsWidth = textWidth ("Advanced", medium, 15.0f);
+            const float arrowX = b.getRight() - wordsWidth - 16.0f;
+
+            juce::Path p;
+            p.startNewSubPath (-3.0f, -5.0f);
+            p.lineTo (2.5f, 0.0f);
+            p.lineTo (-3.0f, 5.0f);
+            p.applyTransform (juce::AffineTransform::rotation (amount * juce::MathConstants<float>::halfPi).translated (arrowX, b.getCentreY()));
+            g.setColour (colour);
+            g.strokePath (p, juce::PathStrokeType (1.6f, juce::PathStrokeType::mitered, juce::PathStrokeType::butt));
+            drawTextIn (g, "Advanced", medium, 15.0f, b, Align::right);
+
+            if (changed > 0 && amount < 0.5f)
+            {
+                g.setColour (tone::soft);
+                drawTextIn (g, juce::String (changed) + " changed", book, 14.0f, b.withWidth (arrowX - 12.0f), Align::right);
+            }
+        }
+
+        void mouseEnter (const juce::MouseEvent&) override  { repaint(); }
+        void mouseExit (const juce::MouseEvent&) override   { repaint(); }
+        void mouseDown (const juce::MouseEvent&) override   { editor.setAdvancedOpen (! editor.isAdvancedOpen(), true); }
+
+        KeyEditor& editor;
+        float amount = -1.0f;
+        int changed = -1;
+    };
 }
+
+// ---- everything on the page ---------------------------------------------------------------------------------------
+
+struct KeyEditor::Panel final : juce::Component
+{
+    Panel (KeyEditor& e, PluginProcessor& p)
+        : owner (e),
+          processor (p),
+          mode (p.apvts, "mode", { "Listen", "Manual" }, { 0, 1 }, "Listen finds the key. Manual lets you set it yourself."),
+          listening (p.apvts, "listening", "Listening", "Turn off to freeze the reading where it is."),
+          reset (p.apvts, "Forget everything heard so far and start listening again.", [&p] { p.requestReset(); }),
+          source (p.apvts, "source", { "Full Mix", "Single Voice" }, { 0, 1 }, "Full Mix uses the bass and chords. Single Voice is for one vocal or instrument."),
+          swap (p.apvts, "swapRelative", "Swap", "Show the relative key instead, for when it says C major and you hear A minor.", true),
+          tempoScale (p.apvts, "tempoScale", { "Half", "Normal", "Double" }, { 1, 0, 2 }, "Halve or double the tempo shown, if it is counting at the wrong speed."),
+          response (p.apvts, "response", { "Fast", "Stable" }, { 0, 1 }, "Stable waits until it is sure. Fast reads sooner and may move more."),
+          manualKey (p.apvts, "The key to use in Manual. Click to type one, such as F# or Bb.", [&e] (int key, int scale) { e.setManualKey (key, scale); }),
+          manualScale (p.apvts, "manualScale", { "Major", "Minor" }, { 0, 1 }, "The scale to use in Manual."),
+          bypass (p.apvts, "bypass", "Bypass", "Stops listening. The audio passes through unchanged either way.", true),
+          advancedHeader (e)
+    {
+        setOpaque (true);
+
+        const auto addAll = [this] (std::initializer_list<juce::Component*> list)
+        {
+            for (auto* c : list)
+                addAndMakeVisible (*c);
+        };
+
+        addAll ({ &hero, &circle, &centreBig, &centreSmall, &keyboard, &title, &status, &tuningLabel, &tuningValue, &tuningNote, &tempoLabel, &tempoValue,
+                  &hintLine, &noteLine, &mode, &listening, &reset, &source, &swap, &tempoScale, &advancedHeader });
+        addChildComponent (response);
+        addChildComponent (manualKey);
+        addChildComponent (manualScale);
+        addChildComponent (bypass);
+        addChildComponent (responseLabel);
+        addChildComponent (manualKeyLabel);
+        addChildComponent (manualScaleLabel);
+
+        noteLine.setComponentID ("note");
+        title.setText ("Key");
+        tuningLabel.setText ("Tuning");
+        tempoLabel.setText ("Tempo");
+        responseLabel.setText ("Response");
+        manualKeyLabel.setText ("Manual key");
+        manualScaleLabel.setText ("Manual scale");
+
+        for (auto* r : { &title, &tuningLabel, &tuningNote, &tempoLabel, &hintLine, &noteLine, &responseLabel, &manualKeyLabel, &manualScaleLabel, &centreSmall })
+            r->setInterceptsMouseClicks (false, false);
+
+        tuningValue.hint = "Where the music sits against A at 440 Hz. Red means it is 1 Hz or more away.";
+        tempoValue.hint = "The tempo it hears, after Half or Double.";
+        centreBig.hint = "How sure it is of the key on show.";
+        status.hint = "What it is doing right now.";
+
+        hero.listenHint = "The key it hears. Other plug-ins can read this too.";
+        hero.manualHint = "Click to type a key, such as F# minor or Bb.";
+        circle.listenHint = "Darker keys look more likely. Major outside, minor inside. Red is the key on show.";
+        circle.manualHint = "Click a key to set it.";
+        keyboard.listenHint = "The notes of the key, with the home note in red. Dots are the notes sounding now.";
+        keyboard.manualHint = "Click a note to make it the key.";
+
+        hero.onTyped = [&e] (const juce::String& text)
+        {
+            int key = 0, scale = -1;
+            if (parseKey (text, key, scale))
+                e.setManualKey (key, scale);
+        };
+        const auto resetManual = [&e, &p]
+        {
+            e.setManualKey (juce::roundToInt (defaultOf (*p.apvts.getParameter ("manualKey"))), juce::roundToInt (defaultOf (*p.apvts.getParameter ("manualScale"))));
+        };
+        hero.onReset = resetManual;
+        circle.onReset = resetManual;
+        circle.onPick = [&e] (int key, bool minor) { e.setManualKey (key, minor ? 1 : 0); };
+        keyboard.onPick = [&e] (int note) { e.setManualKey (note, -1); };
+
+        // Hovering anything in the window updates the hint line.
+        addMouseListener (this, true);
+    }
+
+    ~Panel() override
+    {
+        removeMouseListener (this);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (tone::paper);
+    }
+
+    void layout (float advanced)
+    {
+        constexpr int W = designWidth, H = designHeight, margin = 36;
+        constexpr int rowY = 24, rowH = 36, rightColumn = 404, bandH = 128, advancedH = 84;
+
+        title.setBounds (margin, rowY, 72, rowH);
+        int x = margin + 66;
+        mode.setBounds (x, rowY, 168, rowH);                  x += 168 + 10;
+        listening.setBounds (x, rowY, 96, rowH);              x += 96 + 10;
+        reset.setBounds (x, rowY, 70, rowH);                  x += 70 + 28;
+        source.setBounds (x, rowY, 214, rowH);
+        status.setBounds (W - margin - 220, rowY, 220, rowH);
+
+        const int footerTop = H - 40;
+        const int bodyBottom = footerTop - 8 - juce::roundToInt ((float) advancedH * advanced);
+        const int bandTop = bodyBottom - bandH;
+        const int rightX = W - margin - rightColumn;
+        const int bodyTop = rowY + rowH + 20;
+        const int bodyH = bandTop - 14 - bodyTop;
+
+        hero.setBounds (margin, bodyTop, rightX - 28 - margin, bodyH);
+        swap.setBounds (hero.swapBounds().translated (hero.getX(), hero.getY()));
+
+        const int diameter = juce::jmin (rightColumn, bodyH);
+        circle.setBounds (rightX + (rightColumn - diameter) / 2, bodyTop + juce::jmin (6, bodyH - diameter), diameter, diameter);
+
+        const auto c = circle.getBounds().toFloat().getCentre();
+        const float hole = circle.holeRadius();
+        // Both are opaque, so they must stay inside the hole or they cut into the ring.
+        const float boxW = hole * 1.62f;
+        centreBig.setBounds (juce::Rectangle<float> (c.x - boxW * 0.5f, c.y - hole * 0.54f, boxW, hole * 0.70f).getSmallestIntegerContainer());
+        centreSmall.setBounds (juce::Rectangle<float> (c.x - boxW * 0.42f, c.y + hole * 0.16f, boxW * 0.84f, hole * 0.36f).getSmallestIntegerContainer());
+
+        keyboard.setBounds (margin, bandTop, rightX - 28 - margin, bandH);
+
+        const int tempoX = rightX + 198, valueH = 42;
+        tuningLabel.setBounds (rightX, bandTop - 2, 190, 22);
+        tuningValue.setBounds (rightX, bandTop + 22, 190, valueH);
+        tuningNote.setBounds (rightX, bandTop + 22 + valueH + 8, 190, 34);
+        tempoLabel.setBounds (tempoX, bandTop - 2, rightColumn - 198, 22);
+        tempoValue.setBounds (tempoX, bandTop + 22, rightColumn - 198, valueH);
+        tempoScale.setBounds (tempoX, bandTop + 22 + valueH + 8, rightColumn - 198, 34);
+
+        const bool showAdvanced = advanced > 0.02f;
+        const int labelY = bodyBottom + 12, controlY = labelY + 24, controlH = 36;
+        x = margin;
+
+        const auto place = [&] (juce::Component* label, juce::Component& control, int width)
+        {
+            if (label != nullptr)
+            {
+                label->setBounds (x, labelY, width, 22);
+                label->setVisible (showAdvanced);
+                label->setAlpha (advanced);
+            }
+
+            control.setBounds (x, controlY, width, controlH);
+            control.setVisible (showAdvanced);
+            control.setAlpha (advanced);
+            x += width + 40;
+        };
+
+        place (&manualKeyLabel, manualKey, 96);
+        place (&manualScaleLabel, manualScale, 168);
+        place (&responseLabel, response, 168);
+        place (nullptr, bypass, 96);
+
+        hintLine.setBounds (margin, footerTop, hintRoom(), 28);
+        noteLine.setBounds (W - margin - 170 - noteWidth, footerTop, noteWidth, 28);
+        advancedHeader.setBounds (W - margin - 170, footerTop, 170, 28);
+    }
+
+    // The footer shares its line with the note about key.json, and the note always wins.
+    int hintRoom() const
+    {
+        return designWidth - 2 * 36 - 170 - (noteLine.getText().isNotEmpty() ? noteWidth + 12 : 12);
+    }
+
+    void showHint (const juce::String& text)
+    {
+        const auto wanted = text.isEmpty() ? restingHint : text;
+        hintLine.setText (textWidth (wanted, book, 15.0f) <= (float) hintRoom() ? wanted : restingHint);
+    }
+
+    void hintFromComponent (juce::Component* c)
+    {
+        for (; c != nullptr && c != this; c = c->getParentComponent())
+        {
+            if (auto* hinted = dynamic_cast<Hinted*> (c))
+            {
+                if (hinted->hint.isNotEmpty())
+                {
+                    showHint (hinted->hint);
+                    return;
+                }
+            }
+        }
+
+        showHint ({});
+    }
+
+    void mouseEnter (const juce::MouseEvent& e) override  { hintFromComponent (e.eventComponent); }
+    void mouseExit (const juce::MouseEvent&) override     { showHint ({}); }
+
+    int countAdvancedChanges() const
+    {
+        int count = 0;
+
+        for (auto* id : { "response", "manualKey", "manualScale", "bypass" })
+        {
+            auto* param = processor.apvts.getParameter (id);
+            if (std::abs (param->getValue() - param->getDefaultValue()) > 1.0e-4f)
+                ++count;
+        }
+
+        return count;
+    }
+
+    static constexpr int noteWidth = 400;
+
+    KeyEditor& owner;
+    PluginProcessor& processor;
+    const juce::String restingHint { "Double-click any control to put it back." };
+
+    HeroView hero;
+    CircleView circle;
+    KeyboardView keyboard;
+    Readout centreBig { bold, 38.0f, tone::ink, Align::centre }, centreSmall { book, 15.0f, tone::soft, Align::centre };
+    Readout title { heavy, 30.0f, tone::ink }, status { medium, 17.0f, tone::ink, Align::right };
+    Readout tuningLabel { book, 15.0f, tone::soft }, tuningValue { semi, 34.0f, tone::ink }, tuningNote { book, 15.0f, tone::soft };
+    Readout tempoLabel { book, 15.0f, tone::soft }, tempoValue { semi, 34.0f, tone::ink };
+    Readout hintLine { book, 15.0f, tone::soft }, noteLine { medium, 14.0f, tone::red, Align::right };
+    Readout responseLabel { book, 15.0f, tone::soft }, manualKeyLabel { book, 15.0f, tone::soft }, manualScaleLabel { book, 15.0f, tone::soft };
+
+    Segments mode;
+    Pill listening;
+    ResetButton reset;
+    Segments source;
+    Pill swap;
+    Segments tempoScale, response;
+    KeyField manualKey;
+    Segments manualScale;
+    Pill bypass;
+    AdvancedHeader advancedHeader;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Panel)
+};
+
+// ---- the editor ---------------------------------------------------------------------------------------------------
 
 KeyEditor::KeyEditor (PluginProcessor& p) : juce::AudioProcessorEditor (p), processor (p)
 {
-    addChoice (responseBox, responseLabel, "response", "Response");
-    addChoice (sourceBox, sourceLabel, "source", "Source");
-    addChoice (modeBox, modeLabel, "mode", "Mode");
-    addChoice (manualKeyBox, manualKeyLabel, "manualKey", "Manual Key");
-    addChoice (manualScaleBox, manualScaleLabel, "manualScale", "Manual Scale");
-    addChoice (tempoScaleBox, tempoScaleLabel, "tempoScale", "Tempo Scale");
-    responseAttach = std::make_unique<ComboAttachment> (p.apvts, "response", responseBox);
-    sourceAttach = std::make_unique<ComboAttachment> (p.apvts, "source", sourceBox);
-    modeAttach = std::make_unique<ComboAttachment> (p.apvts, "mode", modeBox);
-    manualKeyAttach = std::make_unique<ComboAttachment> (p.apvts, "manualKey", manualKeyBox);
-    manualScaleAttach = std::make_unique<ComboAttachment> (p.apvts, "manualScale", manualScaleBox);
-    tempoScaleAttach = std::make_unique<ComboAttachment> (p.apvts, "tempoScale", tempoScaleBox);
+    setLookAndFeel (&lookAndFeel);
+    panel = std::make_unique<Panel> (*this, p);
+    addAndMakeVisible (*panel);
+    setOpaque (true);   // saves clearing the window under every repaint
 
-    for (auto* b : { &listeningButton, &swapButton })
-    {
-        b->setClickingTogglesState (true);
-        b->setColour (juce::TextButton::buttonColourId, panel);
-        b->setColour (juce::TextButton::buttonOnColourId, accent.darker (0.3f));
-        addAndMakeVisible (*b);
-    }
-    listeningAttach = std::make_unique<ButtonAttachment> (p.apvts, "listening", listeningButton);
-    swapAttach = std::make_unique<ButtonAttachment> (p.apvts, "swapRelative", swapButton);
-
-    resetButton.setColour (juce::TextButton::buttonColourId, panel);
-    resetButton.onStateChange = [this]
-    {
-        // Held on while the mouse is down, so a host recording automation sees a real press.
-        auto* param = processor.apvts.getParameter ("reset");
-        const bool down = resetButton.isDown();
-        if (down == (param->getValue() >= 0.5f))
-            return;
-        if (down) processor.requestReset();
-        param->beginChangeGesture();
-        param->setValueNotifyingHost (down ? 1.0f : 0.0f);
-        param->endChangeGesture();
-    };
-    addAndMakeVisible (resetButton);
-
+    using Proc = PluginProcessor;
+    const double ratio = (double) designWidth / (double) designHeight;
     setResizable (true, true);
-    setResizeLimits (560, 420, 1600, 1200);
-    setSize (820, 600);
+    setResizeLimits (Proc::minWindowWidth, juce::roundToInt (Proc::minWindowWidth / ratio), Proc::maxWindowWidth, juce::roundToInt (Proc::maxWindowWidth / ratio));
+    getConstrainer()->setFixedAspectRatio (ratio);
+
+    advancedAmount = p.advancedOpen.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    panel->setBounds (0, 0, designWidth, designHeight);
+    panel->layout (advancedAmount);
+    panel->showHint ({});
+
+    const int savedWidth = juce::jlimit (Proc::minWindowWidth, Proc::maxWindowWidth, p.windowWidth.load (std::memory_order_relaxed));
+    setSize (savedWidth, juce::roundToInt (savedWidth / ratio));
+    constructed = true;
+
     refresh();
-    startTimerHz (15);
+    timerRate = activeRate;
+    startTimerHz (timerRate);
 }
 
 KeyEditor::~KeyEditor()
 {
     stopTimer();
+    panel.reset();
+    setLookAndFeel (nullptr);
 }
 
-void KeyEditor::addChoice (juce::ComboBox& box, juce::Label& label, const char* paramId, const char* labelText)
+juce::Component& KeyEditor::getPanel()
 {
-    if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (processor.apvts.getParameter (paramId)))
-        box.addItemList (choice->choices, 1);
-    box.setColour (juce::ComboBox::backgroundColourId, panel);
-    box.setColour (juce::ComboBox::outlineColourId, keyOff);
-    addAndMakeVisible (box);
-    label.setText (labelText, juce::dontSendNotification);
-    label.setColour (juce::Label::textColourId, faint);
-    label.setJustificationType (juce::Justification::centredLeft);
-    label.setInterceptsMouseClicks (false, false);
-    addAndMakeVisible (label);
+    return *panel;
+}
+
+juce::Rectangle<int> KeyEditor::getKeyLetterBounds()
+{
+    return panel->hero.keyLetterBounds().translated (panel->hero.getX(), panel->hero.getY());
+}
+
+void KeyEditor::paint (juce::Graphics& g)
+{
+    // The panel covers all but what rounding leaves. JUCE does not skip this paint for a child with a transform, so filling the
+    // whole window here would run on every repaint.
+    g.setColour (tone::paper);
+    const int panelBottom = juce::roundToInt ((float) designHeight * (float) getWidth() / (float) designWidth);
+    g.fillRect (getWidth() - 2, 0, 2, getHeight());
+    g.fillRect (0, panelBottom - 2, getWidth(), juce::jmax (2, getHeight() - panelBottom + 2));
+}
+
+void KeyEditor::resized()
+{
+    if (panel == nullptr)
+        return;
+
+    panel->setTransform (juce::AffineTransform::scale ((float) getWidth() / (float) designWidth));
+
+    if (constructed)
+        processor.windowWidth.store (juce::jlimit (PluginProcessor::minWindowWidth, PluginProcessor::maxWindowWidth, getWidth()), std::memory_order_relaxed);
+}
+
+bool KeyEditor::isAdvancedOpen() const noexcept
+{
+    return processor.advancedOpen.load (std::memory_order_relaxed);
+}
+
+void KeyEditor::setAdvancedOpen (bool shouldBeOpen, bool animate)
+{
+    processor.advancedOpen.store (shouldBeOpen, std::memory_order_relaxed);
+
+    if (animate)
+    {
+        lastTick = juce::Time::getMillisecondCounterHiRes();
+        timerRate = 60;
+        startTimerHz (timerRate);
+        return;
+    }
+
+    advancedAmount = shouldBeOpen ? 1.0f : 0.0f;
+    panel->layout (advancedAmount);
+    panel->advancedHeader.setState (advancedAmount, panel->countAdvancedChanges());
+    panel->repaint();
+}
+
+void KeyEditor::setManualKey (int key, int scale)
+{
+    auto& keyParam = *processor.apvts.getParameter ("manualKey");
+    auto& scaleParam = *processor.apvts.getParameter ("manualScale");
+
+    if (juce::roundToInt (keyParam.convertFrom0to1 (keyParam.getValue())) != key)
+        setAsGesture (keyParam, (float) key);
+
+    if (scale >= 0 && juce::roundToInt (scaleParam.convertFrom0to1 (scaleParam.getValue())) != scale)
+        setAsGesture (scaleParam, (float) scale);
+}
+
+void KeyEditor::previewHover (const juce::String& componentId)
+{
+    if (auto* c = panel->findChildWithID (componentId))
+        panel->hintFromComponent (c);
+}
+
+void KeyEditor::timerCallback()
+{
+    refresh();
+
+    // Advanced glides open and shut, in about a fifth of a second.
+    const float target = isAdvancedOpen() ? 1.0f : 0.0f;
+
+    if (advancedAmount != target)
+    {
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        const float seconds = (float) juce::jmin (0.05, (now - lastTick) * 0.001);
+        lastTick = now;
+        const float next = advancedAmount + (target - advancedAmount) * (1.0f - std::exp (-seconds / 0.05f));
+        advancedAmount = std::abs (next - target) < 0.01f ? target : next;
+        panel->layout (advancedAmount);
+        panel->repaint();
+        quietTicks = 0;
+        return;
+    }
+
+    // Readings arrive about six times a second, and often do not change. A stopped session polls more slowly and draws nothing.
+    const int wanted = quietTicks > 12 ? 3 : activeRate;
+
+    if (wanted != timerRate)
+    {
+        timerRate = wanted;
+        startTimerHz (timerRate);
+    }
 }
 
 void KeyEditor::refresh()
 {
     const auto d = processor.getDisplay();
-    shownKey = d.key;
-    shownMinor = d.minor;
-    confidence = d.confidence;
-    chroma = d.chroma;
+    auto& p = *panel;
+    bool moved = false;
+
+    const bool bypassed = processor.apvts.getRawParameterValue ("bypass")->load (std::memory_order_relaxed) >= 0.5f;
+
+    if (d.manual) statusText = "Set by hand";
+    else if (bypassed) statusText = "Bypassed";
+    else if (! d.active) statusText = "Paused";
+    else if (! d.signal) statusText = d.key >= 0 ? "No audio, last key heard" : "Waiting for audio";
+    else statusText = d.key >= 0 ? "Hearing audio" : "Hearing audio, no key yet";
+
+    const bool dimmed = d.key < 0 || (! d.manual && (! d.signal || ! d.active));
+
+    HeroView::Content hero;
+    hero.hasKey = d.key >= 0;
+    hero.dimmed = dimmed;
+    hero.manual = d.manual;
 
     if (d.key >= 0)
     {
         keyText = smoothkey::keyNames[d.key];
-        scaleText = d.minor ? "minor" : "major";
-        otherNameText = juce::String (flatNames[d.key]).isNotEmpty() ? "also written " + juce::String (flatNames[d.key]) : juce::String();
+        hero.scale = d.minor ? "minor" : "major";
+        hero.otherName = juce::String (flatNames[d.key]).isNotEmpty() ? "Also written " + juce::String (flatNames[d.key]) : juce::String();
         const int rel = d.minor ? (d.key + 3) % 12 : (d.key + 9) % 12;
-        relativeText = "Relative: " + juce::String (smoothkey::keyNames[rel]) + (d.minor ? " major" : " minor");
+        hero.relative = juce::String (smoothkey::keyNames[rel]) + (d.minor ? " major" : " minor");
     }
     else
     {
         keyText = "--";
-        scaleText = "";
-        otherNameText = "";
-        relativeText = "";
+        hero.scale = d.signal && d.active ? "no key yet" : "waiting for audio";
     }
 
-    if (d.manual) statusText = "Set by hand";
-    else if (! d.active) statusText = "Paused";
-    else if (! d.signal) statusText = d.key >= 0 ? "No audio, last key heard" : "Waiting for audio";
-    else statusText = d.key >= 0 ? "Listening" : "Listening, no key yet";
-    dimmed = d.key < 0 || (! d.manual && d.active && ! d.signal);
+    hero.key = d.key >= 0 ? keyText : juce::String ("?");
+    moved = p.hero.set (hero) || moved;
 
-    noteText = processor.hasFileFailed() ? "Could not save key.json, so other plug-ins will not see this key" : "";
+    // The circle shows what it hears, so it stays empty in Manual, where it is not listening.
+    // Eased over about half a second, and a key only redraws when it has really moved, so the circle breathes and does not flicker.
+    for (size_t k = 0; k < 24; ++k)
+    {
+        const float target = d.manual ? 0.0f : inkFor (d.candidates[k], d.signal && d.active);
+        candidateInk[k] += (target - candidateInk[k]) * 0.3f;
+        const float inSteps = candidateInk[k] * (float) CircleView::levels;
 
+        if (target == 0.0f && candidateInk[k] < 0.05f)
+            candidateLevels[k] = 0;
+        else if (std::abs (inSteps - (float) candidateLevels[k]) > 0.7f)
+            candidateLevels[k] = (juce::uint8) juce::roundToInt (inSteps);
+    }
+
+    const int shownKey = d.key >= 0 ? d.key + (d.minor ? 12 : 0) : -1;
+    moved = p.circle.set (candidateLevels, shownKey, dimmed, d.manual) || moved;
+
+    moved = p.keyboard.setScale (d.key, d.minor, dimmed, d.manual) || moved;
+
+    std::array<float, 12> notes {};
+    if (d.active)
+        notes = d.liveNotes;
+    moved = p.keyboard.setNotes (notes) || moved;
+
+    // How sure, in the middle of the circle.
     if (d.manual)
     {
-        referenceText = "A = 440 Hz";
-        referenceOff = false;
-        tempoText = "--- BPM";
+        moved = p.centreBig.setText ({}) || moved;
+        moved = p.centreSmall.set ("Click a key", tone::soft) || moved;
     }
     else
     {
-        referenceText = d.key >= 0 ? "A = " + juce::String (d.referenceHz, 1) + " Hz" : "A = --- Hz";
+        moved = p.centreBig.set (d.key >= 0 ? juce::String (juce::roundToInt (d.confidence * 100.0f)) + "%" : juce::String(), dimmed ? tone::faint : tone::ink) || moved;
+        moved = p.centreSmall.set (d.key >= 0 ? "sure" : "No key yet", tone::soft) || moved;
+    }
+
+    moved = p.status.set (statusText, dimmed && ! d.manual ? tone::soft : tone::ink) || moved;
+    p.status.setDot (d.active && d.signal);
+
+    noteText = processor.hasFileFailed() ? "Could not save key.json, so other plug-ins will not see this key" : "";
+
+    if (p.noteLine.setText (noteText))
+    {
+        moved = true;
+        p.noteLine.setVisible (noteText.isNotEmpty());
+        p.hintLine.setBounds (p.hintLine.getBounds().withWidth (p.hintRoom()));
+        p.showHint ({});
+    }
+
+    juce::String tuning, tuningNote, tempo;
+    bool referenceOff = false;
+
+    if (d.manual)
+    {
+        tuning = "A 440 Hz";
+        tempo = "No beat";
+        tuningNote = "Not listening";
+    }
+    else
+    {
+        tuning = d.key >= 0 ? "A " + juce::String (d.referenceHz, 1) + " Hz" : "No reading";
         referenceOff = d.key >= 0 && std::abs (d.referenceHz - 440.0f) >= 1.0f;
-        tempoText = d.shownBpm >= 1.0f ? juce::String (d.shownBpm, 1) + " BPM" : "--- BPM";
-    }
-    repaint();
-}
-
-void KeyEditor::resized()
-{
-    auto area = getLocalBounds().reduced (juce::jmax (10, getWidth() / 50));
-    const int rowHeight = juce::jlimit (26, 34, getHeight() / 20);
-    const int labelHeight = 16;
-
-    auto controls = area.removeFromBottom (rowHeight * 2 + labelHeight * 2 + 12);
-    const auto rowOf = [&] (std::initializer_list<std::pair<juce::Label*, juce::ComboBox*>> boxes, std::initializer_list<juce::Button*> buttons)
-    {
-        auto row = controls.removeFromTop (rowHeight + labelHeight + 6);
-        const int count = (int) (boxes.size() + buttons.size());
-        const int width = row.getWidth() / juce::jmax (1, count);
-        for (auto& pair : boxes)
-        {
-            auto cell = row.removeFromLeft (width).reduced (4, 0);
-            pair.first->setBounds (cell.removeFromTop (labelHeight));
-            pair.second->setBounds (cell.removeFromTop (rowHeight));
-        }
-        for (auto* b : buttons)
-        {
-            auto cell = row.removeFromLeft (width).reduced (4, 0);
-            cell.removeFromTop (labelHeight);
-            b->setBounds (cell.removeFromTop (rowHeight));
-        }
-    };
-    rowOf ({ { &modeLabel, &modeBox }, { &responseLabel, &responseBox }, { &sourceLabel, &sourceBox } }, { &listeningButton, &resetButton });
-    rowOf ({ { &manualKeyLabel, &manualKeyBox }, { &manualScaleLabel, &manualScaleBox }, { &tempoScaleLabel, &tempoScaleBox } }, { &swapButton });
-
-    area.removeFromBottom (8);
-    keyboardArea = area.removeFromBottom (juce::jmax (46, area.getHeight() / 7));
-    area.removeFromBottom (6);
-    meterArea = area.removeFromBottom (juce::jmax (30, area.getHeight() / 9));
-    area.removeFromBottom (6);
-    infoArea = area.removeFromBottom (juce::jmax (22, area.getHeight() / 11));
-    readoutArea = area;
-}
-
-void KeyEditor::paint (juce::Graphics& g)
-{
-    g.fillAll (background);
-
-    auto top = readoutArea;
-    const float small = juce::jlimit (13.0f, 20.0f, (float) getHeight() / 36.0f);
-    auto header = top.removeFromTop ((int) small + 8);
-    g.setFont (juce::FontOptions (small, juce::Font::bold));
-    g.setColour (faint);
-    g.drawText ("Smooth Key", header, juce::Justification::centredLeft);
-    g.setColour (dimmed ? faint : accent);
-    g.drawText (statusText, header, juce::Justification::centredRight);
-
-    // The reading itself. The whole area goes to it, and the text is fitted to the width.
-    auto line = top.toFloat();
-    auto sub = line.removeFromBottom (small + 10.0f);
-    const float keySize = line.getHeight() * 0.92f;
-    juce::Font keyFont { juce::FontOptions (keySize, juce::Font::bold) };
-    juce::Font scaleFont { juce::FontOptions (keySize * 0.42f) };
-    float keyWidth = juce::GlyphArrangement::getStringWidth (keyFont, keyText);
-    float scaleWidth = scaleText.isNotEmpty() ? juce::GlyphArrangement::getStringWidth (scaleFont, " " + scaleText) : 0.0f;
-    const float fit = juce::jmin (1.0f, line.getWidth() / juce::jmax (1.0f, keyWidth + scaleWidth));
-    keyFont.setHeight (keySize * fit);
-    scaleFont.setHeight (keySize * 0.42f * fit);
-    keyWidth *= fit;
-    scaleWidth *= fit;
-    const float startX = line.getCentreX() - (keyWidth + scaleWidth) * 0.5f;
-    const float alpha = dimmed ? 0.4f : 0.45f + 0.55f * juce::jlimit (0.0f, 1.0f, confidence * 1.4f);
-    g.setColour (ink.withAlpha (alpha));
-    g.setFont (keyFont);
-    g.drawText (keyText, juce::Rectangle<float> (startX, line.getY(), keyWidth + 4.0f, line.getHeight()), juce::Justification::centredLeft, false);
-    g.setFont (scaleFont);
-    g.drawText (" " + scaleText, juce::Rectangle<float> (startX + keyWidth, line.getY(), scaleWidth + 4.0f, line.getHeight()), juce::Justification::centredLeft, false);
-
-    g.setFont (juce::FontOptions (small));
-    g.setColour (faint);
-    g.drawText (otherNameText, sub, juce::Justification::centredLeft);
-    g.drawText (relativeText, sub, juce::Justification::centredRight);
-
-    // Reference pitch and tempo. Orange when the music is not at A = 440.
-    auto info = infoArea.toFloat();
-    g.setFont (juce::FontOptions (juce::jlimit (15.0f, 26.0f, info.getHeight() * 0.8f), juce::Font::bold));
-    g.setColour (referenceOff ? warning : faint);
-    g.drawText (referenceText, info.removeFromLeft (info.getWidth() * 0.5f), juce::Justification::centredLeft);
-    g.setColour (faint);
-    g.drawText (tempoText, info, juce::Justification::centredRight);
-
-    // Confidence
-    auto meter = meterArea.toFloat();
-    const float meterFont = juce::jlimit (18.0f, 44.0f, meter.getHeight() * 0.85f);
-    auto number = meter.removeFromRight (meterFont * 2.6f);
-    g.setFont (juce::FontOptions (meterFont, juce::Font::bold));
-    g.setColour (ink);
-    g.drawText (juce::String (juce::roundToInt (confidence * 100.0f)) + "%", number, juce::Justification::centredRight);
-    meter = meter.reduced (0.0f, meter.getHeight() * 0.18f);
-    g.setColour (panel);
-    g.fillRoundedRectangle (meter, 5.0f);
-    g.setColour (accent);
-    g.fillRoundedRectangle (meter.withWidth (meter.getWidth() * juce::jlimit (0.0f, 1.0f, confidence)), 5.0f);
-
-    // One octave of keys: scale notes lit and named, the home note bold, and a level for how much each note is sounding.
-    const auto keys = keyboardArea.toFloat();
-    constexpr int whiteNotes[7] = { 0, 2, 4, 5, 7, 9, 11 };
-    constexpr int blackNotes[5] = { 1, 3, 6, 8, 10 };
-    constexpr float blackAfter[5] = { 1.0f, 2.0f, 4.0f, 5.0f, 6.0f };
-    const float whiteWidth = keys.getWidth() / 7.0f;
-    const float labelSize = juce::jlimit (11.0f, 18.0f, keys.getHeight() * 0.28f);
-    const auto drawKey = [&] (juce::Rectangle<float> r, int note)
-    {
-        const bool lit = shownKey >= 0 && inScale (note, shownKey, shownMinor);
-        const bool home = note == shownKey;
-        g.setColour (lit ? (home ? accent : keyOn) : keyOff);
-        g.fillRoundedRectangle (r.reduced (1.0f), 3.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.25f));
-        g.fillRect (r.reduced (1.0f).removeFromBottom (r.getHeight() * 0.12f * chroma[(size_t) note]));
-        if (lit)
-        {
-            g.setColour (juce::Colours::black);
-            g.setFont (juce::FontOptions (labelSize, home ? juce::Font::bold : juce::Font::plain));
-            g.drawText (smoothkey::keyNames[note], r, juce::Justification::centredBottom);
-        }
-    };
-    for (int i = 0; i < 7; ++i)
-        drawKey ({ keys.getX() + (float) i * whiteWidth, keys.getY(), whiteWidth, keys.getHeight() }, whiteNotes[i]);
-    for (int i = 0; i < 5; ++i)
-    {
-        const float w = whiteWidth * 0.62f;
-        juce::Rectangle<float> r (keys.getX() + blackAfter[i] * whiteWidth - w * 0.5f, keys.getY(), w, keys.getHeight() * 0.62f);
-        g.setColour (background);
-        g.fillRect (r);
-        drawKey (r, blackNotes[i]);
+        tempo = d.shownBpm >= 1.0f ? juce::String (d.shownBpm, 1) + " BPM" : "No beat";
+        tuningNote = referenceOff ? centsText (d.referenceHz) : (d.key >= 0 ? "In tune with A 440" : juce::String());
     }
 
-    if (noteText.isNotEmpty())
-    {
-        g.setColour (warning);
-        g.setFont (juce::FontOptions (small * 0.8f));
-        g.drawText (noteText, header.translated (0, (int) small + 6), juce::Justification::centred);
-    }
+    moved = p.tuningValue.set (tuning, referenceOff ? tone::red : (d.key >= 0 && ! dimmed ? tone::ink : tone::faint)) || moved;
+    moved = p.tuningNote.set (tuningNote, referenceOff ? tone::red : tone::soft) || moved;
+    moved = p.tempoValue.set (tempo, d.shownBpm >= 1.0f && ! d.manual && ! dimmed ? tone::ink : tone::faint) || moved;
+
+    // These do nothing in Manual, and say so. They still work, and automation still moves them.
+    p.listening.setDimmed (d.manual);
+    p.swap.setDimmed (d.manual);
+    p.source.setDimmed (d.manual);
+    p.response.setDimmed (d.manual);
+    p.tempoScale.setDimmed (d.manual);
+
+    p.advancedHeader.setState (advancedAmount, p.countAdvancedChanges());
+
+    quietTicks = moved ? 0 : quietTicks + 1;
 }

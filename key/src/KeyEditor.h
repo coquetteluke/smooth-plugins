@@ -1,13 +1,16 @@
 #pragma once
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
+#include "editor/Theme.h"
 
-// The readout window: a big key and scale that can be read from across the room, then confidence and the controls.
-// It only polls the processor on a timer. Everything it sets is a real parameter.
+// The window: a sheet of paper with the key on it in black, large enough to read from across a room, beside a circle of fifths
+// whose ink shows which keys look likely right now. It only polls the processor on a timer. Everything it sets is a real parameter.
 class KeyEditor final : public juce::AudioProcessorEditor,
                         private juce::Timer
 {
 public:
+    static constexpr int designWidth = 1100, designHeight = 700;
+
     explicit KeyEditor (PluginProcessor&);
     ~KeyEditor() override;
 
@@ -20,28 +23,34 @@ public:
     juce::String getStatusText() const { return statusText; }
     juce::String getNoteText() const { return noteText; }
 
-private:
-    void timerCallback() override { refresh(); }
-    void addChoice (juce::ComboBox&, juce::Label&, const char* paramId, const char* labelText);
+    bool isAdvancedOpen() const noexcept;
+    void setAdvancedOpen (bool shouldBeOpen, bool animate);
 
-    using ComboAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
+    // Sets Manual Key, and Manual Scale when scale is 0 or 1, as one gesture each.
+    void setManualKey (int key, int scale);
+
+    // For the tests and the offline renders.
+    juce::Component& getPanel();
+    juce::Rectangle<int> getKeyLetterBounds();   // in panel coordinates
+    void previewHover (const juce::String& componentId);
+
+private:
+    struct Panel;
+
+    void timerCallback() override;
 
     PluginProcessor& processor;
+    keyui::LookAndFeel lookAndFeel;
+    juce::SharedResourcePointer<keyui::Assets> assets;
+    std::unique_ptr<Panel> panel;
 
-    juce::ComboBox responseBox, sourceBox, modeBox, manualKeyBox, manualScaleBox, tempoScaleBox;
-    juce::Label responseLabel, sourceLabel, modeLabel, manualKeyLabel, manualScaleLabel, tempoScaleLabel;
-    juce::TextButton listeningButton { "Listening" }, swapButton { "Relative Swap" }, resetButton { "Reset" };
-    std::unique_ptr<ComboAttachment> responseAttach, sourceAttach, modeAttach, manualKeyAttach, manualScaleAttach, tempoScaleAttach;
-    std::unique_ptr<ButtonAttachment> listeningAttach, swapAttach;
-
-    juce::String keyText, scaleText, otherNameText, relativeText, statusText, noteText, referenceText, tempoText;
-    bool referenceOff = false, dimmed = true;
-    float confidence = 0.0f;
-    int shownKey = -1;
-    bool shownMinor = false;
-    std::array<float, 12> chroma {};
-    juce::Rectangle<int> readoutArea, meterArea, keyboardArea, infoArea;
+    juce::String keyText, statusText, noteText;
+    float advancedAmount = 0.0f;
+    std::array<float, 24> candidateInk {};
+    std::array<juce::uint8, 24> candidateLevels {};
+    int quietTicks = 0, timerRate = 0;
+    double lastTick = 0.0;
+    bool constructed = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (KeyEditor)
 };

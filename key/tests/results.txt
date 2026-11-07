@@ -62,11 +62,11 @@ PASS  decimal points kept under a comma locale (locale was available)
 PASS  path ignores a redirected HOME: ~/Library/Application Support/SmoothPlugins/key.json
 PASS  the folder is created when missing
 PASS  contents parse as valid JSON with the five fields
-INFO  atomic write test: writes = 13470.000 
-INFO  atomic write test: reads while writing = 115342.000 
+INFO  atomic write test: writes = 12780.000 
+INFO  atomic write test: reads while writing = 112072.000 
 PASS  the atomic test really raced reads against writes
 PASS  reads that saw a partial or missing file = 0.000 
-PASS  each write replaces the file by rename rather than writing into it, replacements = 13470.000 
+PASS  each write replaces the file by rename rather than writing into it, replacements = 12780.000 
 PASS  no temporary files left behind, files in the folder = 1.000 
 PASS  nothing changed: one write in 10 s = 1.000 
 PASS  changing every 0.1 s for 10 s: writes (limit 2 per second) = 20.000 
@@ -74,10 +74,11 @@ PASS  a write failure is noticed
 PASS  audio still bit identical after the write failed
 PASS  readings still work after the write failed
 PASS  the window shows a note: Could not save key.json, so other plug-ins will not see this key
+PASS  that note is on screen
 PASS  write retries after 5 s and recovers when the folder can be made
 PASS  Manual mode shows all 24 keys at confidence 1 = 100.000 %
 PASS  Manual mode writes all 24 keys to key.json = 100.000 %
-PASS  a Manual Key change reaches key.json within = 0.595 s
+PASS  a Manual Key change reaches key.json within = 0.590 s
 PASS  Relative Swap off shows the detected key
 INFO  Relative Swap, key.json key index matches (1 is yes) = 1.000 
 PASS  Relative Swap off shows the detected key
@@ -89,24 +90,58 @@ PASS  each preset sets the controls it says
 PASS  window created, painted and destroyed 20 times offline
 PASS  window with no key yet shows no key
 PASS  window shows the key: A#
-INFO  key letters, bright rows in the window, of height = 144.000 px
-INFO  window height = 600.000 px
-PASS  key letters are at least a fifth of the window height, rows = 144.000 
+INFO  key letters, dark rows in the window, of height = 266.000 px
+INFO  window height = 636.000 px
+PASS  key letters are at least a fifth of the window height, rows = 266.000 
 PASS  window closed before the plug-in
+PASS  every reading bit identical to the 1.0.0 analyser
+PASS  the font gives a true heavy weight, wider than regular by a factor of = 1.140 
+PASS  typed keys are read correctly
+PASS  typing something that is not a key does nothing
+PASS  the window opens
+PASS  every writable parameter has a visible control in the window
+PASS  Advanced does not cover the keyboard
+PASS  Advanced folds away
+PASS  Advanced remembers it is shut
+PASS  automation moves the window's controls
+PASS  clicking Half sets Tempo Scale, as one gesture
+PASS  double-click returns Tempo Scale to its default
+PASS  Swap sets Relative Swap, as one gesture
+PASS  double-click returns Relative Swap to its default
+PASS  Listening turns off, as one gesture
+PASS  Reset is held while pressed and lets go, as real presses
+PASS  typing Bb minor sets Manual Key and Manual Scale, as a gesture each
+PASS  typing nonsense leaves the key alone
+PASS  double-click returns Manual Key to its default
+PASS  each of the 24 keys on the circle is where its label says
+PASS  the middle of the circle is not a key
+PASS  clicking the circle in Listen changes nothing
+PASS  clicking E minor on the circle in Manual sets it
+PASS  each of the 12 keyboard notes is under its label
+INFO  height of the key letters at the smallest window = 204.509 pt
+PASS  key letters at least 150 points tall at the smallest window = 204.509 pt
+PASS  window size and Advanced come back with the session
+PASS  the window reopens at its saved size with Advanced open
+PASS  only window size and open section are added to saved state, attributes = 2.000 
+PASS  a damaged window size is clamped
+PASS  a session from before the window opens at the default size
+PASS  audio bit identical while the window opened, drew and closed 30 times, blocks = 225.000 
+INFO  slowest audio block during that = 0.020 ms
+PASS  no audio block took longer than the block itself during that = 0.020 ms
 PASS  no file written before there is a key
 PASS  real background thread finds G minor through processBlock
 PASS  samples dropped by the queue at 7 times real time = 0.000 
-PASS  key.json writes per second while confidence moves = 0.402 per s
-PASS  key.json is valid: {"key":"G","scale":"minor","confidence":0.96,"time":1794023720.6,"listening":true}
+PASS  key.json writes per second while confidence moves = 0.405 per s
+PASS  key.json is valid: {"key":"G","scale":"minor","confidence":0.97,"time":1794073591.9,"listening":true}
 PASS  key.json holds the key found
 PASS  key.json says listening
 PASS  key.json time is Unix seconds, now
-PASS  readings as AU parameters: G Minor 93.123398
+PASS  readings as AU parameters: G Minor 93.076401
 PASS  readings changing never notify the host as automation, notifications = 0.000 
 PASS  Listening off: reading frozen with another key playing, confidence moved = 0.000 
 PASS  Listening off: key.json says listening false
 PASS  nothing changing: no more writes in 1.2 s, writes = 0.000 
-PASS  no calls from the host for 5 s: confidence falls = 0.127 
+PASS  no calls from the host for 5 s: confidence falls = 0.128 
 PASS  the key stays shown when the host stops
 PASS  Reset: no key and confidence 0
 PASS  Reset: key.json shows confidence 0

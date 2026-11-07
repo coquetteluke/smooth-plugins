@@ -83,6 +83,8 @@ public:
         float detectedBpm = 0.0f;  // as measured
         float shownBpm = 0.0f;     // after Tempo Scale
         std::array<float, 12> chroma {};
+        std::array<float, 24> candidates {}; // for the circle: 0 to 11 major from C, then minor. Before Relative Swap.
+        std::array<float, 12> liveNotes {};  // for the keyboard: the notes sounding now
     };
     Display getDisplay() const noexcept;
     bool hasFileFailed() const noexcept { return fileFailed.load (std::memory_order_relaxed); }
@@ -91,6 +93,11 @@ public:
     void requestReset() noexcept { resetRequest.store (true, std::memory_order_relaxed); }
 
     juce::AudioProcessorValueTreeState apvts;
+
+    // The window's size and open section. Saved with the session, and not sound settings. The height follows from the width.
+    static constexpr int defaultWindowWidth = 1000, minWindowWidth = 760, maxWindowWidth = 1800;
+    std::atomic<int> windowWidth { defaultWindowWidth };
+    std::atomic<bool> advancedOpen { false };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
@@ -129,6 +136,8 @@ private:
     std::atomic<int> packedReading { 0 };
     std::atomic<float> shownConfidence { 0.0f }, referenceHz { 440.0f }, detectedBpm { 0.0f };
     std::array<std::atomic<float>, 12> chroma {};
+    std::array<std::atomic<float>, 24> candidates {};
+    std::array<std::atomic<float>, 12> liveNotes {};
 
     int currentProgram = 0;
     std::unique_ptr<Worker> worker;

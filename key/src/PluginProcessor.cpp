@@ -36,6 +36,8 @@ namespace
     juce::String hertzText (float v) { return juce::String (v, 1); }
     juce::String bpmText (float v) { return v < 1.0f ? juce::String ("None") : juce::String (v, 1); }
 
+    const juce::Identifier windowWidthAttribute { "windowWidth" }, advancedOpenAttribute { "advancedOpen" };
+
     int relativeKey (int key, bool minor) noexcept { return minor ? (key + 3) % 12 : (key + 9) % 12; }
 }
 
@@ -185,6 +187,8 @@ PluginProcessor::PluginProcessor (const juce::String& jsonPath, double minWriteS
     addParameter (tempoReading = new ReadingParameter ("detectedTempo", "Detected Tempo", "BPM", 0.0f, 480.0f, 0.0f, bpmText));
 
     for (auto& c : chroma) c.store (0.0f, std::memory_order_relaxed);
+    for (auto& c : candidates) c.store (0.0f, std::memory_order_relaxed);
+    for (auto& n : liveNotes) n.store (0.0f, std::memory_order_relaxed);
 
     worker = std::make_unique<Worker> (*this, jsonPath, minWriteSeconds);
     worker->startThread (juce::Thread::Priority::low);
@@ -273,7 +277,12 @@ void PluginProcessor::workerPublish (const smoothkey::Reading& r) noexcept
     referenceHz.store (hz, std::memory_order_relaxed);
     detectedBpm.store (r.tempoBpm, std::memory_order_relaxed);
     for (size_t i = 0; i < 12; ++i)
+    {
         chroma[i].store (r.chroma[i], std::memory_order_relaxed);
+        liveNotes[i].store (r.liveNotes[i], std::memory_order_relaxed);
+    }
+    for (size_t k = 0; k < 24; ++k)
+        candidates[k].store (r.candidates[k], std::memory_order_relaxed);
 
     keyReading->set ((float) key);
     scaleReading->set (minor ? 1.0f : 0.0f);
@@ -297,7 +306,12 @@ PluginProcessor::Display PluginProcessor::getDisplay() const noexcept
     const int scale = juce::roundToInt (tempoScale->load (std::memory_order_relaxed));
     d.shownBpm = d.detectedBpm * (scale == 1 ? 0.5f : (scale == 2 ? 2.0f : 1.0f));
     for (size_t i = 0; i < 12; ++i)
+    {
         d.chroma[i] = chroma[i].load (std::memory_order_relaxed);
+        d.liveNotes[i] = liveNotes[i].load (std::memory_order_relaxed);
+    }
+    for (size_t k = 0; k < 24; ++k)
+        d.candidates[k] = candidates[k].load (std::memory_order_relaxed);
     return d;
 }
 
@@ -328,14 +342,25 @@ void PluginProcessor::setCurrentProgram (int i)
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     if (auto xml = apvts.copyState().createXml())
+    {
+        xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
+        xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, dest);
+    }
 }
 
 void PluginProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
         if (xml->hasTagName (apvts.state.getType()))
+        {
+            if (xml->hasAttribute (windowWidthAttribute))
+                windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
+            advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            xml->removeAttribute (windowWidthAttribute);
+            xml->removeAttribute (advancedOpenAttribute);
             applySafeState (apvts, *xml);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PluginProcessor(); }

@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <sys/stat.h>
+#include <set>
 #include <thread>
 #include <unistd.h>
 
@@ -563,6 +564,8 @@ static void testFileFailure()
         auto* key = dynamic_cast<KeyEditor*> (ed.get());
         key->refresh();
         check (key->getNoteText().isNotEmpty(), std::string ("the window shows a note: ") + key->getNoteText().toStdString());
+        auto* noteOnScreen = key->getPanel().findChildWithID ("note");
+        check (noteOnScreen != nullptr && noteOnScreen->isVisible() && noteOnScreen->getWidth() > 300, "that note is on screen");
     }
 
     // It carries on trying and recovers when the path works again.
@@ -836,19 +839,24 @@ static void testEditor()
         sleepMs (100);
         key->refresh();
         check (key->getKeyText() == "A#" && key->getStatusText() == "Set by hand", "window shows the key: " + key->getKeyText().toStdString());
-        // The text must be big: readable across a room is about 1/4 of the window height for the key letters.
+        // The text must be big: readable across a room is about 1/4 of the window height for the key letters. On paper white,
+        // the letters are the black pixels inside the area the reading is drawn in. Same limit as the dark window had.
         const auto image = ed->createComponentSnapshot (ed->getLocalBounds());
+        const float toWindow = (float) ed->getWidth() / (float) KeyEditor::designWidth;
+        const auto letters = key->getKeyLetterBounds().toFloat() * toWindow;
         int topRow = -1, bottomRow = -1;
-        for (int y = 0; y < image.getHeight() / 2 + 60; ++y)
-            for (int x = 0; x < image.getWidth(); x += 2)
-                if (image.getPixelAt (x, y).getBrightness() > 0.85f && y > 40) { if (topRow < 0) topRow = y; bottomRow = y; break; }
-        info ("key letters, bright rows in the window, of height", bottomRow - topRow, "px");
+        for (int y = juce::jmax (0, (int) letters.getY() - 10); y < juce::jmin (image.getHeight(), (int) letters.getBottom() + 10); ++y)
+            for (int x = (int) letters.getX(); x < juce::jmin (image.getWidth(), (int) letters.getRight()); x += 2)
+                if (image.getPixelAt (x, y).getBrightness() < 0.2f) { if (topRow < 0) topRow = y; bottomRow = y; break; }
+        info ("key letters, dark rows in the window, of height", bottomRow - topRow, "px");
         info ("window height", image.getHeight(), "px");
         check (bottomRow - topRow >= image.getHeight() / 5, "key letters are at least a fifth of the window height, rows", bottomRow - topRow);
         saveShot ("window-key.png");
     }
     check (true, "window closed before the plug-in");
 }
+
+#include "WindowTests.h"
 
 int main (int argc, char** argv)
 {
@@ -870,6 +878,7 @@ int main (int argc, char** argv)
     testManualAndSwap();
     testPresets();
     testEditor();
+    testWindow();
     testEndToEnd();
     testSilenceAndNoise();
     testReferencePitch();

@@ -93,6 +93,9 @@ struct Reading
     float tuningCents = 0.0f;     // how far the music sits from A440
     float tempoBpm = 0.0f;        // 0 until a steady beat is found
     std::array<float, 12> chroma {};
+    // For the window only. Nothing in the analyser reads these back.
+    std::array<float, 24> candidates {}; // how likely each key looks now: 0 to 11 major from C, then 12 to 23 minor
+    std::array<float, 12> liveNotes {};  // the notes sounding in about the last fifth of a second
 };
 
 class KeyAnalyser
@@ -570,6 +573,7 @@ private:
             bassMemory[(size_t) i] = bassMemory[(size_t) i] * decay + frameWeight * b;
             const double recentDecay = std::exp (-hopSeconds / (response == Response::fast ? knobs.recentFast : knobs.recentStable));
             recentMemory[(size_t) i] = recentMemory[(size_t) i] * recentDecay + frameWeight * (t + b);
+            current.liveNotes[(size_t) i] += (float) ((frameWeight * (t + b) - (double) current.liveNotes[(size_t) i]) * (1.0 - std::exp (-hopSeconds / 0.2)));
         }
         heardSeconds += hopSeconds;
         sinceLetGo += hopSeconds;
@@ -738,6 +742,9 @@ private:
         int shown = current.key < 0 ? -1 : current.key + (current.minor ? 12 : 0);
         const double gate = confidenceGate();
 
+        for (size_t k = 0; k < 24; ++k)
+            current.candidates[k] = (float) (probs[k] * gate * presence);
+
         if (shown < 0)
         {
             const double first = stable ? knobs.firstStable : knobs.firstFast;
@@ -814,6 +821,9 @@ private:
         if (smoothedConfidence < 0.005) smoothedConfidence = 0.0;
         current.confidence = (float) smoothedConfidence;
         current.signal = false;
+        for (auto& c : current.candidates) c *= (float) f;
+        const float noteFade = (float) std::exp (-seconds / 0.2);
+        for (auto& n : current.liveNotes) n *= noteFade;
     }
 
     // After a long silence the next audio may be another song. Weaken the old memory and listen for an opening chord again.

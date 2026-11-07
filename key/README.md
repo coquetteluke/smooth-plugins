@@ -31,7 +31,25 @@ Whole Song (Stable, Full Mix). Quick Check (Fast, Full Mix). Vocal Track (Stable
 
 ## Window
 
-Big key and scale, confidence bar and percent, reference pitch (orange when 1 Hz or more away from A = 440), tempo, relative key, one octave of keys with the scale lit and the home note marked, all controls, and a small note if the file can't be written. The window can be resized.
+A sheet of paper with the key on it. See `docs/window/`.
+
+- Key and scale in heavy black type, as large as they fit: the letters are about 40% of the window's height, and every key is the same size so the reading does not jump.
+- Circle of fifths, major outside and minor inside. The darker a key, the more likely it looks right now. Red is the key on show. The middle says how sure it is.
+- Keyboard, one octave, every note named. Notes of the key are solid, the home note is red and bold, and dots grow with the notes sounding now.
+- Relative key with its Swap button, and the other spelling (Bb for A#).
+- Tuning, red when the music is 1 Hz or more from A 440, with how many cents. Tempo, with Half, Normal and Double.
+- Top row: Mode, Listening, Reset, Source, and what it is doing now. Advanced, in the footer: Manual Key, Manual Scale, Response, Bypass. Controls that do nothing in Manual dim but still work.
+- In Manual, click a key on the circle or a note on the keyboard, or click the big letters and type a key such as F# minor, Bb or Am. Manual Key can also be typed, dragged or scrolled.
+- Double-click a control to put it back. A one line hint explains whatever is under the mouse. If key.json can't be written, a small red note says so in the footer.
+- Resize from the corner. The size and whether Advanced is open are saved with the session. Nothing else was added to saved state.
+
+The window sets only real parameters, with begin and end gestures, and automation moves it. It reads the processor without locks and never touches the audio thread.
+
+Type is Jost, under the SIL Open Font License in `assets/fonts/OFL.txt`. It is a variable font and JUCE can only use its default weight, so `src/editor/FontOutlines.cpp` gets the letter shapes at any weight from CoreText.
+
+CPU of the open window, Retina, real window, every run with nothing else building: 1.9, 2.1, 2.1, 2.2% of one core on real speech, 1.1, 3.1, 3.3, 4.0% on steady test music (the higher ones landed on slow cores, 0.8% of a fast core's work each time), 0.5, 0.6, 0.6, 0.8% silent with nothing drawing. Earlier runs on speech, with other builds pushing it onto slow cores: 2.6, 2.6, 2.9, 2.9, 5.0, 5.9, 6.7%, for the same 2.4 to 3.0% of a fast core's work. Audio CPU did not change: 0.4% before and after.
+
+Render every state to PNG with real speech from macOS `say`: `build/RenderWindow_artefacts/Release/RenderWindow docs/window`. Measure the real window's CPU: `build/RenderWindow_artefacts/Release/RenderWindow --live 5 6 speech`.
 
 ## Shared file
 
@@ -84,4 +102,5 @@ Other results:
 - A loop heard from its second chord: 66.3% exact, 100% within related keys. With the opening chord gone, some loops can't be told from their relative. This is the main weakness to expect on real songs joined midway.
 - Silence from the start: no key and no file. White noise: no key.
 - key.json: 13470 writes raced against 115342 reads with no partial file seen. A blocked path shows the note and audio stays bit identical.
-- Window created, painted and destroyed 20 times offline.
+- Window created, painted and destroyed 20 times offline, and 30 more times while audio ran, with audio bit identical throughout.
+- Every detection reading is bit identical to 1.0.0 over 12 clips, checked by a fingerprint in `tests/ReadingFingerprint.h`.

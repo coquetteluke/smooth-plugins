@@ -8,7 +8,16 @@ namespace
         const char* name;
         int voices;
         float rate, depth, delay, wow, flutter, saturation, tone, spread, mix;
+        // Added in 0.2.0. The defaults leave a preset sounding as it did.
+        float feedback = 0.0f, lowCut = TapeChorusEngine::lowCutOffHz, highCut = TapeChorusEngine::highCutOffHz;
+        float wowRate = TapeChorusEngine::defaultWowHz, flutterRate = TapeChorusEngine::defaultFlutterHz;
+        float random = 0.0f, randomRate = 1.0f;
+        bool unsync = false;
+        float degrade = 0.0f, degradeRate = 2.0f, noise = 0.0f;
     };
+
+    constexpr float lowOff = TapeChorusEngine::lowCutOffHz, highOff = TapeChorusEngine::highCutOffHz;
+    constexpr float wowDef = TapeChorusEngine::defaultWowHz, flutterDef = TapeChorusEngine::defaultFlutterHz;
 
     constexpr Preset presets[] = {
         { "Default Tape Chorus", 2, 0.8f,  1.5f, 15.0f, 15.0f, 10.0f, 20.0f, -2.0f,  70.0f, 35.0f },
@@ -18,6 +27,13 @@ namespace
         { "Slow Drift",          3, 0.15f, 3.5f, 25.0f, 35.0f,  5.0f, 15.0f, -4.0f,  85.0f, 40.0f },
         { "Fast Shimmer",        2, 4.5f,  0.5f,  7.0f,  0.0f, 15.0f, 10.0f,  1.5f,  80.0f, 35.0f },
         { "Mono Thickener",      3, 1.1f,  1.0f, 20.0f, 10.0f,  5.0f, 20.0f, -2.0f,   0.0f, 35.0f },
+        //                        v  rate   depth delay  wow    flut   sat    tone   spread mix    fb     lowcut  highcut  wowHz   flutHz    rand   randHz unsync degr  degrHz noise
+        { "Eight Voice Stack",   8, 0.3f,  1.2f, 18.0f, 12.0f,  5.0f, 15.0f, -2.0f, 100.0f, 35.0f,  0.0f, 180.0f,  highOff, wowDef, flutterDef, 15.0f, 0.5f, true,  0.0f, 2.0f,  0.0f },
+        { "Clean Reel Lift",     4, 0.5f,  1.0f, 16.0f,  8.0f,  3.0f, 10.0f,  0.0f,  90.0f, 28.0f,  0.0f, 300.0f,  highOff, wowDef, flutterDef,  0.0f, 1.0f, false, 0.0f, 2.0f,  0.0f },
+        { "Cassette Backing",    6, 0.25f, 1.5f, 20.0f, 30.0f, 20.0f, 40.0f, -3.0f, 100.0f, 45.0f, 10.0f, 150.0f,  7000.0f, 0.4f,   6.0f,       20.0f, 0.7f, true,  20.0f, 1.5f, 15.0f },
+        { "Lo-Fi Tape Double",   2, 0.4f,  0.8f, 22.0f, 40.0f, 35.0f, 50.0f, -4.0f,  70.0f, 40.0f,  0.0f, 250.0f,  5000.0f, 0.7f,   9.0f,       10.0f, 1.0f, true,  35.0f, 3.0f, 30.0f },
+        { "Random Drift Double", 2, 0.2f,  0.3f, 16.0f,  5.0f,  3.0f, 10.0f, -2.0f,  80.0f, 32.0f,  0.0f, 150.0f,  highOff, wowDef, flutterDef, 45.0f, 0.8f, true,  0.0f, 2.0f,  0.0f },
+        { "Resonant Tape Swirl", 3, 0.35f, 2.0f,  9.0f, 15.0f,  8.0f, 20.0f, -2.0f, 100.0f, 40.0f, 55.0f, 220.0f,  9000.0f, wowDef, flutterDef, 10.0f, 0.5f, true,  0.0f, 2.0f,  0.0f },
     };
 
     juce::NormalisableRange<float> skewed (float lo, float hi, float step, float centre)
@@ -49,6 +65,28 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     floatParam ("spread", "Spread", NormalisableRange<float> (0.0f, 100.0f, 0.1f), d.spread, "%");
     floatParam ("mix", "Mix", NormalisableRange<float> (0.0f, 100.0f, 0.1f), d.mix, "%");
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "bypass", 1 }, "Bypass", false));
+
+    // Added in 0.2.0, after the first set so their order does not change.
+    floatParam ("feedback", "Feedback", NormalisableRange<float> (0.0f, TapeChorusEngine::maxFeedbackPct, 0.1f), 0.0f, "%");
+    floatParam ("inputGain", "Input Gain", NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, "dB");
+    floatParam ("outputGain", "Output Gain", NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, "dB");
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "lowCut", 1 }, "Low Cut", skewed (lowOff, 1000.0f, 0.1f, 150.0f), lowOff,
+        AudioParameterFloatAttributes().withLabel ("Hz")
+            .withStringFromValueFunction ([] (float v, int) { return v <= lowOff + 0.01f ? String ("Off") : String (v, 1); })
+            .withValueFromStringFunction ([] (const String& t) { return t.trim().equalsIgnoreCase ("off") ? lowOff : t.getFloatValue(); })));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "highCut", 1 }, "High Cut", skewed (1000.0f, highOff, 1.0f, 6000.0f), highOff,
+        AudioParameterFloatAttributes().withLabel ("Hz")
+            .withStringFromValueFunction ([] (float v, int) { return v >= highOff - 0.5f ? String ("Off") : String (v, 0); })
+            .withValueFromStringFunction ([] (const String& t) { return t.trim().equalsIgnoreCase ("off") ? highOff : t.getFloatValue(); })));
+    floatParam ("wowRate", "Wow Rate", skewed (0.1f, 4.0f, 0.001f, 0.6f), wowDef, "Hz");
+    floatParam ("flutterRate", "Flutter Rate", skewed (3.0f, 30.0f, 0.01f, 9.0f), flutterDef, "Hz");
+    floatParam ("random", "Random", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, "%");
+    floatParam ("randomRate", "Random Rate", skewed (0.1f, 20.0f, 0.001f, 1.5f), 1.0f, "Hz");
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "unsync", 1 }, "Unsync", false));
+    floatParam ("degrade", "Degrade", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, "%");
+    floatParam ("degradeRate", "Degrade Rate", skewed (0.2f, 20.0f, 0.001f, 2.5f), 2.0f, "Hz");
+    floatParam ("noise", "Noise", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, "%");
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "noiseGate", 1 }, "Noise Gate", true));
     return layout;
 }
 
@@ -68,6 +106,36 @@ PluginProcessor::PluginProcessor()
     spread = apvts.getRawParameterValue ("spread");
     mix = apvts.getRawParameterValue ("mix");
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
+    feedback = apvts.getRawParameterValue ("feedback");
+    inputGain = apvts.getRawParameterValue ("inputGain");
+    outputGain = apvts.getRawParameterValue ("outputGain");
+    lowCut = apvts.getRawParameterValue ("lowCut");
+    highCut = apvts.getRawParameterValue ("highCut");
+    wowRate = apvts.getRawParameterValue ("wowRate");
+    flutterRate = apvts.getRawParameterValue ("flutterRate");
+    randomDepth = apvts.getRawParameterValue ("random");
+    randomRate = apvts.getRawParameterValue ("randomRate");
+    unsync = apvts.getRawParameterValue ("unsync");
+    degrade = apvts.getRawParameterValue ("degrade");
+    degradeRate = apvts.getRawParameterValue ("degradeRate");
+    noiseAmount = apvts.getRawParameterValue ("noise");
+    noiseGate = apvts.getRawParameterValue ("noiseGate");
+
+    // Readings sit outside the value tree: never saved, never automated.
+    inputLevel = new Reading ("inputLevel", "Input Level", "dB", -60.0f, 24.0f, 1, "-inf", juce::AudioProcessorParameter::inputMeter);
+    addParameter (inputLevel);
+    outputLevel = new Reading ("outputLevel", "Output Level", "dB", -60.0f, 24.0f, 1, "-inf", juce::AudioProcessorParameter::outputMeter);
+    addParameter (outputLevel);
+    pitchSwing = new Reading ("pitchSwing", "Pitch Swing", "cents", 0.0f, 1200.0f, 1, "0");
+    addParameter (pitchSwing);
+}
+
+double PluginProcessor::getTailLengthSeconds() const
+{
+    // Time for the feedback to die away by 60 dB, the longest pass being the delay plus the furthest a voice can swing.
+    const double g = (double) feedback->load() * 0.01;
+    const double passes = g > 0.001 ? 3.0 / -std::log10 (g) : 0.0;
+    return 0.08 + passes * ((double) delay->load() + (double) depth->load() + 12.0) * 0.001;
 }
 
 bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -91,6 +159,20 @@ TapeChorusEngine::Params PluginProcessor::readParams() const
     p.spreadPct = spread->load();
     p.mixPct = mix->load();
     p.bypass = bypass->get();
+    p.feedbackPct = feedback->load();
+    p.inputDb = inputGain->load();
+    p.outputDb = outputGain->load();
+    p.lowCutHz = lowCut->load();
+    p.highCutHz = highCut->load();
+    p.wowHz = wowRate->load();
+    p.flutterHz = flutterRate->load();
+    p.randomPct = randomDepth->load();
+    p.randomHz = randomRate->load();
+    p.unsync = unsync->load() > 0.5f;
+    p.degradePct = degrade->load();
+    p.degradeHz = degradeRate->load();
+    p.noisePct = noiseAmount->load();
+    p.noiseGate = noiseGate->load() > 0.5f;
     return p;
 }
 
@@ -98,6 +180,8 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
 {
     engine.prepare (sampleRate, readParams());
     setLatencySamples (0); // the wet path's filter delay is taken off its read head, so nothing is added, bypassed or not
+    for (auto* r : { inputLevel, outputLevel, pitchSwing })
+        r->set (-1.0e6f);
 }
 
 void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
@@ -109,6 +193,9 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
     if (numIn < 1 || numOut < 1)
         return;
     engine.process (buffer.getArrayOfWritePointers(), numIn, numOut, buffer.getNumSamples(), readParams(), forceBypass);
+    inputLevel->set (juce::Decibels::gainToDecibels (engine.getInputPeak(), -100.0f));
+    outputLevel->set (juce::Decibels::gainToDecibels (engine.getOutputPeak(), -100.0f));
+    pitchSwing->set (engine.getPitchSwingCents());
 }
 
 void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -149,6 +236,20 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("tone", pr.tone);
     set ("spread", pr.spread);
     set ("mix", pr.mix);
+    set ("feedback", pr.feedback);
+    set ("lowCut", pr.lowCut);
+    set ("highCut", pr.highCut);
+    set ("wowRate", pr.wowRate);
+    set ("flutterRate", pr.flutterRate);
+    set ("random", pr.random);
+    set ("randomRate", pr.randomRate);
+    set ("unsync", pr.unsync ? 1.0f : 0.0f);
+    set ("degrade", pr.degrade);
+    set ("degradeRate", pr.degradeRate);
+    set ("noise", pr.noise);
+    set ("noiseGate", 1.0f);
+    set ("inputGain", 0.0f);
+    set ("outputGain", 0.0f);
 }
 
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)

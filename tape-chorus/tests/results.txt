@@ -1,6 +1,6 @@
 PASS  parameter names are clear, unique, no em dash
-INFO  parameter count = 11.000 
-PASS  factory presets = 7.000 
+INFO  parameter count = 28.000 
+PASS  factory presets = 13.000 
 PASS  preset names are not empty, no em dash
 PASS  presets change the state
 PASS  state save and restore
@@ -24,7 +24,7 @@ PASS  no NaN after silence
 PASS  no denormals decaying into silence = 0.000 samples
 PASS  recovers after NaN, inf and huge input, peak in the last second = 0.376 
 INFO  click test baseline step = 0.005 
-PASS  no click when Voices jumps, biggest step = 0.005 
+PASS  no click when Voices jumps, biggest step = 0.006 
 PASS  no click when Rate jumps, biggest step = 0.005 
 PASS  no click when Depth jumps, biggest step = 0.006 
 PASS  no click when Delay Time jumps, biggest step = 0.005 
@@ -35,10 +35,28 @@ PASS  no click when Tone jumps, biggest step = 0.005
 PASS  no click when Spread jumps, biggest step = 0.005 
 PASS  no click when Mix jumps, biggest step = 0.005 
 PASS  no click when Bypass jumps, biggest step = 0.005 
+PASS  no click when Feedback jumps, biggest step = 0.006 
+PASS  no click when Input Gain jumps, biggest step = 0.054 
+PASS  no click when Output Gain jumps, biggest step = 0.081 
+PASS  no click when Low Cut jumps, biggest step = 0.004 
+PASS  no click when High Cut jumps, biggest step = 0.005 
+PASS  no click when Wow Rate jumps, biggest step = 0.005 
+PASS  no click when Flutter Rate jumps, biggest step = 0.005 
+PASS  no click when Random jumps, biggest step = 0.006 
+PASS  no click when Random Rate jumps, biggest step = 0.005 
+PASS  no click when Unsync jumps, biggest step = 0.005 
+PASS  no click when Degrade jumps, biggest step = 0.005 
+PASS  no click when Degrade Rate jumps, biggest step = 0.005 
+PASS  no click when Noise jumps, biggest step = 0.021 
+PASS  no click when Noise Gate jumps, biggest step = 0.005 
 PASS  Voices 1: copies of one pulse = 1.000 
 PASS  Voices 2: copies of one pulse = 2.000 
 PASS  Voices 3: copies of one pulse = 3.000 
 PASS  Voices 4: copies of one pulse = 4.000 
+PASS  Voices 5: copies of one pulse = 5.000 
+PASS  Voices 6: copies of one pulse = 6.000 
+PASS  Voices 7: copies of one pulse = 7.000 
+PASS  Voices 8: copies of one pulse = 8.000 
 PASS  Voices 1 modulated: copies per pulse (median) = 1.000 
 PASS  Voices 1 modulated: smallest travel of any one copy (Depth 0.8 ms) = 1.562 ms
 PASS  Voices 2 modulated: copies per pulse (median) = 2.000 
@@ -47,11 +65,23 @@ PASS  Voices 3 modulated: copies per pulse (median) = 3.000
 PASS  Voices 3 modulated: smallest travel of any one copy (Depth 0.8 ms) = 1.562 ms
 PASS  Voices 4 modulated: copies per pulse (median) = 4.000 
 PASS  Voices 4 modulated: smallest travel of any one copy (Depth 0.8 ms) = 1.562 ms
+PASS  Voices 5 modulated: copies per pulse (median) = 5.000 
+PASS  Voices 5 modulated: smallest travel of any one copy (Depth 0.8 ms) = 1.583 ms
+PASS  Voices 6 modulated: copies per pulse (median) = 6.000 
+PASS  Voices 6 modulated: smallest travel of any one copy (Depth 0.8 ms) = 1.438 ms
+PASS  Voices 7 modulated: copies per pulse (median) = 7.000 
+PASS  Voices 7 modulated: smallest travel of any one copy (Depth 0.8 ms) = 1.562 ms
+PASS  Voices 8 modulated: copies per pulse (median) = 8.000 
+PASS  Voices 8 modulated: smallest travel of any one copy (Depth 0.8 ms) = 1.562 ms
 PASS  Voices 2: noise level against 1 voice = -0.040 dB
 PASS  Voices 3: noise level against 1 voice = 0.002 dB
 PASS  Voices 4: noise level against 1 voice = 0.006 dB
-INFO  steady sharpest bend, 1 and 4 voices, in thousandths = 0.141 
-PASS  Voices change, no click: sharpest bend while switching, in thousandths = 0.275 
+PASS  Voices 5: noise level against 1 voice = 0.000 dB
+PASS  Voices 6: noise level against 1 voice = 0.078 dB
+PASS  Voices 7: noise level against 1 voice = -0.012 dB
+PASS  Voices 8: noise level against 1 voice = -0.013 dB
+INFO  steady sharpest bend, 1, 4 and 8 voices, in thousandths = 0.141 
+PASS  Voices change, no click: sharpest bend while switching, in thousandths = 0.183 
 PASS  Voices change, no click: biggest step while switching = 0.006 
 PASS  Rate measures (set 0.50 Hz, 3.0 ms, 48000 Hz rate) = 0.500 Hz
 PASS  Depth peak swing measures (set 0.50 Hz, 3.0 ms, 48000 Hz rate) = 3.000 ms
@@ -81,6 +111,10 @@ PASS  Delay Time 30 ms at 96000 Hz, pulse arrives at = 30.000 ms
 PASS  Delay Time 20 ms with 2 ms Depth, centre of the swing = 19.976 ms
 PASS  Delay Time 20 ms, 3 voices, average of the copies = 20.000 ms
 PASS  Delay Time 20 ms, 4 voices, average of the copies = 20.000 ms
+PASS  Delay Time 20 ms, 5 voices, average of the copies = 20.000 ms
+PASS  Delay Time 20 ms, 6 voices, average of the copies = 20.000 ms
+PASS  Delay Time 20 ms, 7 voices, average of the copies = 20.000 ms
+PASS  Delay Time 20 ms, 8 voices, average of the copies = 20.000 ms
 PASS  Delay 3 ms with everything at maximum: output stays finite
 PASS  Delay 3 ms with everything at maximum: not silent = -17.675 dBFS
 INFO  shortest possible delay at 48 kHz = 1.323 ms
@@ -121,6 +155,14 @@ PASS  Spread 100, 3 voices: correlation, dark noise = 0.163
 PASS  Spread 100, 3 voices: left against right level = -0.380 dB
 PASS  Spread 100, 4 voices: correlation, dark noise = 0.267 
 PASS  Spread 100, 4 voices: left against right level = 0.145 dB
+PASS  Spread 100, 5 voices: correlation, dark noise = 0.263 
+PASS  Spread 100, 5 voices: left against right level = 0.086 dB
+PASS  Spread 100, 6 voices: correlation, dark noise = 0.094 
+PASS  Spread 100, 6 voices: left against right level = 0.035 dB
+PASS  Spread 100, 7 voices: correlation, dark noise = 0.282 
+PASS  Spread 100, 7 voices: left against right level = -0.262 dB
+PASS  Spread 100, 8 voices: correlation, dark noise = 0.230 
+PASS  Spread 100, 8 voices: left against right level = -0.128 dB
 PASS  Spread 100, 1 voice, Depth 0.5 ms: correlation, dark noise = -0.010 
 PASS  Spread 100, 1 voice, Depth 0.5 ms: correlation, white noise = 0.005 
 PASS  reported latency at 44100 Hz = 0.000 samples
@@ -159,11 +201,178 @@ PASS  preset Worn Cassette: level against input = -2.203 dB
 PASS  preset Slow Drift: level against input = -1.027 dB
 PASS  preset Fast Shimmer: level against input = 0.057 dB
 PASS  preset Mono Thickener: level against input = -0.601 dB
+PASS  preset Eight Voice Stack: level against input = -0.607 dB
+PASS  preset Clean Reel Lift: level against input = -0.183 dB
+PASS  preset Cassette Backing: level against input = -1.899 dB
+PASS  preset Lo-Fi Tape Double: level against input = -1.610 dB
+PASS  preset Random Drift Double: level against input = -0.488 dB
+PASS  preset Resonant Tape Swirl: level against input = -1.287 dB
 PASS  damaged state: every control ends up in range
 PASS  damaged state: NaN depth does not reach the audio
 PASS  damaged state: infinite delay does not reach the audio = 15.000 ms
 PASS  damaged state: huge mix is limited = 100.000 %
 PASS  damaged state: audio stays finite = 0.000 samples
-PASS  damaged state: audio stays at a sane level = 0.414 
+PASS  damaged state: audio stays at a sane level = 0.430 
 PASS  rubbish state bytes are ignored
+PASS  first preset 1 still holds its 0.1.0 values
+PASS  first preset 2 still holds its 0.1.0 values
+PASS  first preset 3 still holds its 0.1.0 values
+PASS  first preset 4 still holds its 0.1.0 values
+PASS  first preset 5 still holds its 0.1.0 values
+PASS  first preset 6 still holds its 0.1.0 values
+PASS  first preset 7 still holds its 0.1.0 values
+PASS  The 7 first presets match 0.1.0 at 44100 Hz, largest difference = -240.000 dB
+PASS  first preset 1 still holds its 0.1.0 values
+PASS  first preset 2 still holds its 0.1.0 values
+PASS  first preset 3 still holds its 0.1.0 values
+PASS  first preset 4 still holds its 0.1.0 values
+PASS  first preset 5 still holds its 0.1.0 values
+PASS  first preset 6 still holds its 0.1.0 values
+PASS  first preset 7 still holds its 0.1.0 values
+PASS  The 7 first presets match 0.1.0 at 48000 Hz, largest difference = -240.000 dB
+PASS  first preset 1 still holds its 0.1.0 values
+PASS  first preset 2 still holds its 0.1.0 values
+PASS  first preset 3 still holds its 0.1.0 values
+PASS  first preset 4 still holds its 0.1.0 values
+PASS  first preset 5 still holds its 0.1.0 values
+PASS  first preset 6 still holds its 0.1.0 values
+PASS  first preset 7 still holds its 0.1.0 values
+PASS  The 7 first presets match 0.1.0 at 96000 Hz, largest difference = -240.000 dB
+PASS  Voices default is still 2
+PASS  Voices now reaches 8
+PASS  Tail length with no feedback is still = 0.080 s
+PASS  Delay 6 ms, 2 voices: swing after a visit to 8 voices against never visiting = 0.000 ms
+INFO  Delay 6 ms, 2 voices, swing = 2.000 ms
+PASS  Feedback: time between repeats at Delay 30 ms, 44100 Hz = 30.000 ms
+PASS  Feedback 70: repeats above a third of the first = 3.000 
+PASS  Feedback: time between repeats at Delay 30 ms, 48000 Hz = 30.000 ms
+PASS  Feedback 70: repeats above a third of the first = 3.000 
+PASS  Feedback: time between repeats at Delay 30 ms, 96000 Hz = 30.000 ms
+PASS  Feedback 70: repeats above a third of the first = 3.000 
+PASS  Feedback 30: drop per pass at 1 kHz, wanted -10.5 dB = -10.512 dB
+PASS  Feedback 60: drop per pass at 1 kHz, wanted -4.4 dB = -4.492 dB
+PASS  Feedback 90: drop per pass at 1 kHz, wanted -0.9 dB = -0.970 dB
+PASS  Feedback 0: biggest sudden change after the first copy = -135.130 dB
+PASS  Feedback 50, 1 voices: noise level against Feedback 0 = -0.353 dB
+PASS  Feedback 90, 1 voices: noise level against Feedback 0 = -1.877 dB
+PASS  Feedback 50, 8 voices: noise level against Feedback 0 = -0.030 dB
+PASS  Feedback 90, 8 voices: noise level against Feedback 0 = -0.104 dB
+PASS  Feedback 50, 1 voice: dark noise level against Feedback 0 = 0.016 dB
+PASS  Feedback 90, 1 voice: dark noise level against Feedback 0 = 0.408 dB
+PASS  Feedback 90, 1 voices, full scale noise: peak = 1.532 
+PASS  Feedback 90, 1 voices, full scale sine on the loop's resonance: peak = 1.255 
+PASS  Feedback 90, 1 voices, full scale 1 kHz: peak = 1.807 
+PASS  Feedback 90, 8 voices, full scale noise: peak = 2.661 
+PASS  Feedback 90, 8 voices, full scale sine on the loop's resonance: peak = 0.715 
+PASS  Feedback 90, 8 voices, full scale 1 kHz: peak = 5.936 
+INFO  reported tail at Feedback 90, Delay 40 ms = 3.620 s
+PASS  Feedback 90: level at the end of the reported tail against while playing = -222.029 dB
+PASS  Feedback 70, left only in: right stays silent = -240.000 dBFS
+PASS  Mono to stereo, Spread 0, Feedback 70: left and right the same, largest difference = -240.000 dB
+PASS  Mono to stereo, Feedback 70: second pass is there and lower = -4.576 dB
+PASS  Mono to mono, Feedback 70: second pass is there and lower = -4.576 dB
+PASS  Input Gain +6 at Mix 0 = 6.000 dB
+PASS  Input Gain -12 at Mix 0 = -12.000 dB
+PASS  Output Gain +6 at Mix 0 = 6.000 dB
+PASS  Output Gain -12 at Mix 0 = -12.000 dB
+PASS  Input Gain +6 at Mix 100 = 6.000 dB
+PASS  Input Gain -12 at Mix 100 = -12.000 dB
+PASS  Output Gain +6 at Mix 100 = 6.000 dB
+PASS  Output Gain -12 at Mix 100 = -12.000 dB
+PASS  Input Gain +12 with Saturation 50: THD rises, from 2.092 % to = 8.793 %
+PASS  Output Gain +12 with Saturation 50: THD against 0 dB = -0.000 %
+PASS  Bypass with Input Gain and Output Gain set: largest difference from the input = -240.000 dB
+PASS  Low Cut 200: level at 200 Hz at 44100 Hz rate = -3.010 dB
+PASS  Low Cut 200: level at 100 Hz at 44100 Hz rate = -12.305 dB
+PASS  Low Cut 200: level at 5 kHz at 44100 Hz rate = -0.000 dB
+PASS  High Cut 5 kHz: level at 5 kHz at 44100 Hz rate = -3.010 dB
+PASS  High Cut 5 kHz: level at 10 kHz at 44100 Hz rate = -14.777 dB
+PASS  High Cut 5 kHz: level at 200 Hz at 44100 Hz rate = -0.000 dB
+PASS  Low Cut 200: level at 200 Hz at 48000 Hz rate = -3.010 dB
+PASS  Low Cut 200: level at 100 Hz at 48000 Hz rate = -12.305 dB
+PASS  Low Cut 200: level at 5 kHz at 48000 Hz rate = -0.000 dB
+PASS  High Cut 5 kHz: level at 5 kHz at 48000 Hz rate = -3.010 dB
+PASS  High Cut 5 kHz: level at 10 kHz at 48000 Hz rate = -14.331 dB
+PASS  High Cut 5 kHz: level at 200 Hz at 48000 Hz rate = -0.000 dB
+PASS  Low Cut 200: level at 200 Hz at 96000 Hz rate = -3.010 dB
+PASS  Low Cut 200: level at 100 Hz at 96000 Hz rate = -12.305 dB
+PASS  Low Cut 200: level at 5 kHz at 96000 Hz rate = -0.000 dB
+PASS  High Cut 5 kHz: level at 5 kHz at 96000 Hz rate = -3.010 dB
+PASS  High Cut 5 kHz: level at 10 kHz at 96000 Hz rate = -12.758 dB
+PASS  High Cut 5 kHz: level at 200 Hz at 96000 Hz rate = -0.000 dB
+PASS  Low Cut and High Cut at Mix 0: largest difference from the input = -240.000 dB
+PASS  High Cut 3 kHz, Feedback 70: drop per pass at 6 kHz, wanted about -15.4 dB = -16.819 dB
+PASS  Wow Rate 2 Hz: share of its movement from 1.5 to 6 Hz = 99.737 %
+PASS  Wow Rate 0.25 Hz: share of its movement below 1 Hz = 99.983 %
+PASS  Flutter Rate 20 Hz: share of its movement from 14 to 46 Hz = 99.669 %
+PASS  Flutter Rate 4 Hz: share of its movement from 2.5 to 11 Hz = 99.571 %
+PASS  Wow Rate 2 Hz: peak swing still no more than 2.5 ms = 2.395 ms
+PASS  Flutter Rate 20 Hz: peak swing still no more than 0.25 ms = 0.210 ms
+PASS  Random 0: delay does not move = 0.000 ms
+PASS  Random 100: peak swing, 1 to 2 ms wanted = 2.000 ms
+PASS  Random 100 against Random 50, movement ratio = 2.000 
+INFO  Random Rate 0.5 Hz: movement (rms) = 0.780 ms
+INFO  Random Rate 5 Hz: movement (rms) = 0.794 ms
+INFO  Random Rate 0.5 Hz: crossings of its centre = 0.896 per s
+INFO  Random Rate 5 Hz: crossings of its centre = 7.608 per s
+PASS  Random Rate 5 Hz against 0.5 Hz: how much more often the delay crosses its centre = 8.495 
+PASS  Random Rate 5 Hz against 0.5 Hz: movement ratio = 1.017 
+PASS  Unsync off: left and right delay move together, correlation = 1.000 
+PASS  Unsync on: left and right delay move apart, correlation = -0.052 
+PASS  Degrade 0: level movement (rms) = 0.000 dB
+PASS  Degrade 25, 50, 100: level movement keeps rising, at 100 = 2.397 dB
+INFO  Degrade 25 level movement (rms) = 0.368 dB
+INFO  Degrade 50 level movement (rms) = 0.815 dB
+PASS  Degrade 100: deepest dip, -6 to -21 dB wanted = -20.000 dB
+PASS  Degrade Rate 10 Hz against 1 Hz: how much more often the level crosses its average = 6.361 
+PASS  Degrade 100, Spread 0: left and right the same, largest difference = -240.000 dB
+PASS  Noise 100 with moving read heads, wanted -40 dBFS rms = -40.114 dBFS
+PASS  Noise 0: nothing added = -240.000 dBFS
+PASS  Noise 25, gate off, silent input, wanted -64 dBFS rms = -64.855 dBFS
+PASS  Noise 50, gate off, silent input, wanted -52 dBFS rms = -52.813 dBFS
+PASS  Noise 100, gate off, silent input, wanted -40 dBFS rms = -40.772 dBFS
+PASS  Noise 100, gate on, input playing at -30 dBFS, wanted -40 dBFS rms = -40.772 dBFS
+PASS  Noise 100, gate on, silent input: gate holds it down to = -240.000 dBFS
+PASS  Noise 100 at Mix 0: nothing added = -240.000 dBFS
+PASS  Noise Gate: hiss from 0.5 s after the input stops = -97.394 dBFS
+PASS  Noise, Spread 0: left and right correlation = 1.000 
+PASS  Noise, Spread 100: left and right correlation = -0.001 
+PASS  Input Level with a -12 dBFS sine = -12.048 dB
+PASS  Output Level with a -12 dBFS sine at Mix 0 = -12.048 dB
+PASS  Input Level with Input Gain +6 reads after the gain = -6.048 dB
+PASS  Output Level with Input Gain +6 = -6.048 dB
+PASS  Input Level with Output Gain -6 does not change = -12.048 dB
+PASS  Output Level with Output Gain -6 = -18.048 dB
+PASS  Input Level in silence reads -inf
+PASS  readings write no automation: host notifications while playing = 0.000 
+PASS  Pitch Swing at Rate 1, Depth 2 reads 21.62 cents, measured = 21.866 cents
+PASS  Pitch Swing with Depth 0 = 0.000 cents
+PASS  Pitch Swing when Depth has to shrink to fit, full Depth would read 84.9 = 18.147 cents
+PASS  read head reading, voice 1 of 2 at Delay 15 = 13.000 ms
+PASS  read head reading, voice 2 of 2 at Delay 15 = 17.000 ms
+PASS  read head reading, a silent voice reads 0
+PASS  the window has 3 live reading rows
+PASS  everything on: same output at block 512 and block 37, largest difference = -240.000 dB
+PASS  everything on: same output at block 512 and block 1, largest difference = -240.000 dB
+PASS  everything on: prepared again after another rate, largest difference = -240.000 dB
+PASS  everything on: allocations during audio = 0.000 
+PASS  everything on: recovers after NaN, inf and huge input, later peak at 44100 Hz = 0.503 
+PASS  everything on: no denormals at 44100 Hz = 0.000 samples
+PASS  everything on: recovers after NaN, inf and huge input, later peak at 48000 Hz = 0.479 
+PASS  everything on: no denormals at 48000 Hz = 0.000 samples
+PASS  everything on: recovers after NaN, inf and huge input, later peak at 96000 Hz = 0.530 
+PASS  everything on: no denormals at 96000 Hz = 0.000 samples
+PASS  damaged state: Feedback cannot pass 90 = 90.000 %
+PASS  damaged state: NaN High Cut does not reach the audio
+PASS  damaged state in new controls: audio stays finite
+PASS  Low Cut at its lowest reads Off
+PASS  High Cut at its highest reads Off
+PASS  Low Cut takes the text Off
+PASS  High Cut takes the text Off
+PASS  0.1.0 session: Voices 4 opens as 4 = 4.000 
+PASS  0.1.0 session: Depth is kept = 3.250 ms
+PASS  0.1.0 session: Feedback opens at 0 = 0.000 %
+PASS  0.1.0 session: Noise opens at 0 = 0.000 %
+PASS  0.1.0 session: Low Cut opens Off = 20.000 Hz
+PASS  0.1.0 session: High Cut opens Off = 20000.000 Hz
 RESULT PASS  0 failures

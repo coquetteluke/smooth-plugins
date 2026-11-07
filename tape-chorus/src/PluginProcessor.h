@@ -2,6 +2,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "TapeChorusEngine.h"
+#include "MeterEditor.h"
 
 class PluginProcessor final : public juce::AudioProcessor
 {
@@ -14,13 +15,13 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor (*this); }
+    juce::AudioProcessorEditor* createEditor() override { return new MeterEditor (*this, { inputLevel, outputLevel, pitchSwing }); }
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Smooth Tape Chorus"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.08; }
+    double getTailLengthSeconds() const override;
 
     // These become the AU factory presets.
     int getNumPrograms() override;
@@ -36,6 +37,11 @@ public:
 
     double getWetLatencySamples() const { return engine.getWetLatencySamples(); }
     double getMinDelayMs() const { return engine.getMinDelayMs(); }
+    // For a later window: where each voice's read head is now, in ms. 0 when that voice is silent.
+    float getVoiceDelayMs (int side, int voice) const noexcept { return engine.getVoiceDelayMs (side, voice); }
+    Reading* getInputLevel() const noexcept { return inputLevel; }
+    Reading* getOutputLevel() const noexcept { return outputLevel; }
+    Reading* getPitchSwing() const noexcept { return pitchSwing; }
 
     juce::AudioProcessorValueTreeState apvts;
 
@@ -45,7 +51,11 @@ private:
     void run (juce::AudioBuffer<float>&, bool forceBypass);
 
     std::atomic<float>* voices = nullptr, *rate = nullptr, *depth = nullptr, *delay = nullptr, *wow = nullptr, *flutter = nullptr,
-                      * saturation = nullptr, *tone = nullptr, *spread = nullptr, *mix = nullptr;
+                      * saturation = nullptr, *tone = nullptr, *spread = nullptr, *mix = nullptr,
+                      * feedback = nullptr, *inputGain = nullptr, *outputGain = nullptr, *lowCut = nullptr, *highCut = nullptr,
+                      * wowRate = nullptr, *flutterRate = nullptr, *randomDepth = nullptr, *randomRate = nullptr, *unsync = nullptr,
+                      * degrade = nullptr, *degradeRate = nullptr, *noiseAmount = nullptr, *noiseGate = nullptr;
+    Reading* inputLevel = nullptr, *outputLevel = nullptr, *pitchSwing = nullptr;
     juce::AudioParameterBool* bypass = nullptr;
     TapeChorusEngine engine;
     int currentProgram = 0;

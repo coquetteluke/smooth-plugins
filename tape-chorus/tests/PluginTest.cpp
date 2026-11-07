@@ -3,6 +3,7 @@
 #define SMOOTH_COUNT_ALLOCS
 #include "TestKit.h"
 #include "PluginProcessor.h"
+#include "EngineV010.h"
 #include <algorithm>
 #include <numeric>
 
@@ -176,7 +177,7 @@ static void testVoices()
     const double sr = 48000.0;
 
     // Without modulation: one pulse in, count the copies that come out.
-    for (int n = 1; n <= 4; ++n)
+    for (int n = 1; n <= 8; ++n)
     {
         PluginProcessor p;
         plain (p, n);
@@ -189,7 +190,7 @@ static void testVoices()
     }
 
     // With modulation: a pulse every 200 ms. The copies stay separate and each one moves on its own.
-    for (int n = 1; n <= 4; ++n)
+    for (int n = 1; n <= 8; ++n)
     {
         PluginProcessor p;
         plain (p, n);
@@ -224,7 +225,7 @@ static void testVoices()
     // Level stays about the same as voices are added.
     {
         double base = 0;
-        for (int n = 1; n <= 4; ++n)
+        for (int n = 1; n <= 8; ++n)
         {
             PluginProcessor p;
             plain (p, n);
@@ -252,14 +253,18 @@ static void testVoices()
         set (p, "voices", 4.0f);
         render (p, in, 256);
         auto steady4 = render (p, in, 256);
-        const double baseline = std::max (maxSecondDiff (steady1.getReadPointer (0), 96000), maxSecondDiff (steady4.getReadPointer (0), 96000));
+        // 8 lined up copies are louder than 4, so steady playback of 8 voices belongs in the baseline now that the test visits it.
+        set (p, "voices", 8.0f);
+        render (p, in, 256);
+        auto steady8 = render (p, in, 256);
+        const double baseline = std::max ({ maxSecondDiff (steady1.getReadPointer (0), 96000), maxSecondDiff (steady4.getReadPointer (0), 96000), maxSecondDiff (steady8.getReadPointer (0), 96000) });
         int nextVoices = 1;
         auto sw = render (p, in, 256, nullptr, [&] (int idx)
         {
-            if (idx % 20 == 10) { set (p, "voices", (float) nextVoices); nextVoices = nextVoices % 4 + 1; }
+            if (idx % 20 == 10) { set (p, "voices", (float) nextVoices); nextVoices = nextVoices % 8 + 1; }
         });
         const double sharp = maxSecondDiff (sw.getReadPointer (0), 96000);
-        info ("steady sharpest bend, 1 and 4 voices, in thousandths", baseline * 1000.0);
+        info ("steady sharpest bend, 1, 4 and 8 voices, in thousandths", baseline * 1000.0);
         check (sharp <= 2.0 * baseline + 1.0e-4, "Voices change, no click: sharpest bend while switching, in thousandths", sharp * 1000.0);
         check (maxJump (sw.getReadPointer (0), 96000) < 0.02, "Voices change, no click: biggest step while switching", maxJump (sw.getReadPointer (0), 96000));
     }
@@ -323,7 +328,7 @@ static void testDelay()
             check (std::abs (got - ms) < 1.0, "Delay Time " + juce::String (ms, 0).toStdString() + " ms at " + std::to_string ((int) sr) + " Hz, pulse arrives at", got, "ms");
         }
     // Centre of a moving delay, and of several voices.
-    for (int voices : { 1, 3, 4 })
+    for (int voices : { 1, 3, 4, 5, 6, 7, 8 })
     {
         PluginProcessor p;
         plain (p, voices);
@@ -542,7 +547,7 @@ static void testSpread()
         else check (c < last, tag, c);
         last = c;
     }
-    for (int voices : { 3, 4 })
+    for (int voices : { 3, 4, 5, 6, 7, 8 })
     {
         PluginProcessor p;
         plain (p, voices);
@@ -831,11 +836,827 @@ static void testDamagedState()
     check (true, "rubbish state bytes are ignored");
 }
 
+// ---- Second pass, 0.2.0. Limits below were written before the first run. ----
+
+// Everything new at its neutral value must give the sound of 0.1.0, sample for sample.
+static void testSameAsBefore()
+{
+    using Old = TapeChorusEngineV010;
+    struct OldPreset { int voices; float rate, depth, delay, wow, flutter, sat, tone, spread, mix; };
+    const OldPreset table[] = { { 2, 0.8f, 1.5f, 15.0f, 15.0f, 10.0f, 20.0f, -2.0f, 70.0f, 35.0f },
+                                { 2, 0.6f, 1.2f, 14.0f, 10.0f, 5.0f, 15.0f, -2.0f, 60.0f, 30.0f },
+                                { 4, 0.45f, 2.0f, 18.0f, 15.0f, 8.0f, 25.0f, -3.0f, 100.0f, 45.0f },
+                                { 2, 0.35f, 1.0f, 12.0f, 60.0f, 45.0f, 55.0f, -7.0f, 50.0f, 50.0f },
+                                { 3, 0.15f, 3.5f, 25.0f, 35.0f, 5.0f, 15.0f, -4.0f, 85.0f, 40.0f },
+                                { 2, 4.5f, 0.5f, 7.0f, 0.0f, 15.0f, 10.0f, 1.5f, 80.0f, 35.0f },
+                                { 3, 1.1f, 1.0f, 20.0f, 10.0f, 5.0f, 20.0f, -2.0f, 0.0f, 35.0f } };
+    const int block = 512;
+    for (double sr : { 44100.0, 48000.0, 96000.0 })
+    {
+        const int n = (int) (sr * 3.0);
+        std::vector<float> left ((size_t) n), right ((size_t) n);
+        noise (left.data(), n, 0.2, 11);
+        noise (right.data(), n, 0.2, 12);
+        double worst = 0.0;
+        for (int i = 0; i < 7; ++i)
+        {
+            PluginProcessor p;
+            p.setCurrentProgram (i);
+            prepare (p, 2, sr, block);
+            auto now = renderLR (p, left, &right, block);
+
+            // Values as the controls hold them, which is what 0.1.0 read too. A control can store 1.5 as 1.5000001.
+            const auto raw = [&p] (const char* id) { return p.apvts.getRawParameterValue (id)->load(); };
+            const auto& t = table[i];
+            check (juce::roundToInt (raw ("voices")) == t.voices && std::abs (raw ("rate") - t.rate) < 1.0e-3f && std::abs (raw ("depth") - t.depth) < 1.0e-3f
+                   && std::abs (raw ("delay") - t.delay) < 0.01f && std::abs (raw ("wow") - t.wow) < 0.1f && std::abs (raw ("flutter") - t.flutter) < 0.1f
+                   && std::abs (raw ("saturation") - t.sat) < 0.1f && std::abs (raw ("tone") - t.tone) < 0.01f && std::abs (raw ("spread") - t.spread) < 0.1f
+                   && std::abs (raw ("mix") - t.mix) < 0.1f, "first preset " + std::to_string (i + 1) + " still holds its 0.1.0 values");
+            Old::Params op;
+            op.voices = juce::roundToInt (raw ("voices")); op.rateHz = raw ("rate"); op.depthMs = raw ("depth"); op.delayMs = raw ("delay");
+            op.wowPct = raw ("wow"); op.flutterPct = raw ("flutter"); op.satPct = raw ("saturation"); op.toneDb = raw ("tone");
+            op.spreadPct = raw ("spread"); op.mixPct = raw ("mix");
+            auto engine = std::make_unique<Old>();
+            engine->prepare (sr, op);
+            std::vector<float> a (left), b (right);
+            for (int pos = 0; pos < n; pos += block)
+            {
+                float* io[2] = { a.data() + pos, b.data() + pos };
+                engine->process (io, 2, 2, std::min (block, n - pos), op, false);
+            }
+            for (int k = 0; k < n; ++k)
+                worst = std::max ({ worst, (double) std::abs (a[(size_t) k] - now.getSample (0, k)), (double) std::abs (b[(size_t) k] - now.getSample (1, k)) });
+        }
+        check (toDb (worst) < -120.0, "The 7 first presets match 0.1.0 at " + std::to_string ((int) sr) + " Hz, largest difference", toDb (worst), "dB");
+    }
+    PluginProcessor fresh;
+    check (fresh.apvts.getParameter ("voices")->convertFrom0to1 (fresh.apvts.getParameter ("voices")->getDefaultValue()) == 2.0f, "Voices default is still 2");
+    check (fresh.apvts.getParameter ("voices")->convertFrom0to1 (1.0f) == 8.0f, "Voices now reaches 8");
+    check (std::abs (fresh.getTailLengthSeconds() - 0.08) < 1.0e-9, "Tail length with no feedback is still", fresh.getTailLengthSeconds(), "s");
+}
+
+// Going up to 8 voices and back must leave no trace: 2 voices afterwards sweep as far as 2 voices always did.
+static void testVoiceRoom()
+{
+    const double sr = 48000.0;
+    const auto swing = [&] (bool visitEight)
+    {
+        PluginProcessor p;
+        plain (p, 2);
+        set (p, "delay", 6.0f); set (p, "depth", 2.0f); set (p, "rate", 1.0f);
+        prepare (p, 2, sr, 512);
+        std::vector<float> in (96000, 0.0f);
+        if (visitEight)
+        {
+            set (p, "voices", 8.0f); render (p, in, 512);
+            set (p, "voices", 2.0f);
+        }
+        render (p, in, 512);
+        std::vector<double> track;
+        for (int k = 0; k < 80; ++k)
+        {
+            std::vector<float> small (1200, 0.0f);
+            render (p, small, 512);
+            track.push_back ((double) p.getVoiceDelayMs (0, 0));
+        }
+        const auto mm = std::minmax_element (track.begin(), track.end());
+        return 0.5 * (*mm.second - *mm.first);
+    };
+    const double fresh = swing (false), after = swing (true);
+    check (std::abs (after - fresh) < 0.05, "Delay 6 ms, 2 voices: swing after a visit to 8 voices against never visiting", after - fresh, "ms");
+    info ("Delay 6 ms, 2 voices, swing", fresh, "ms");
+}
+
+// Level of each pass of a short burst, in dB.
+static std::vector<double> passLevels (const float* y, int n, double sr, int startSample, double delayMs, int passes)
+{
+    std::vector<double> out;
+    for (int k = 1; k <= passes; ++k)
+    {
+        const int from = startSample + (int) ((k * delayMs - 2.0) * 0.001 * sr), len = (int) (0.012 * sr);
+        out.push_back (from + len <= n ? toDb (rms (y + from, len)) : -240.0);
+    }
+    return out;
+}
+
+static std::vector<float> hannBurst (double f0, double sr, double amp, int startSample, double lenSec, int total)
+{
+    std::vector<float> x ((size_t) total, 0.0f);
+    const int len = (int) (lenSec * sr);
+    for (int i = 0; i < len; ++i)
+        x[(size_t) (startSample + i)] = (float) (amp * (0.5 - 0.5 * std::cos (pi2 * i / len)) * std::sin (pi2 * f0 * i / sr));
+    return x;
+}
+
+static void testFeedback()
+{
+    // One pass round the loop takes the Delay Time.
+    for (double sr : { 44100.0, 48000.0, 96000.0 })
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "delay", 30.0f); set (p, "feedback", 70.0f);
+        prepare (p, 2, sr, 512);
+        // A soft 1 ms bump. The loop rolls off from 12 kHz, so a one sample pulse would lose height for that reason alone.
+        std::vector<float> in ((size_t) (sr * 0.3), 0.0f);
+        const int bump = (int) (0.001 * sr);
+        for (int i = 0; i < bump; ++i) in[(size_t) (100 + i)] = (float) (0.5 * (0.5 - 0.5 * std::cos (pi2 * i / bump)));
+        auto out = render (p, in, 512);
+        const auto pk = peaksIn (out.getReadPointer (0), out.getNumSamples(), sr);
+        const double gap = pk.size() >= 2 ? (pk[1] - pk[0]) * 1000.0 / sr : -1.0;
+        check (std::abs (gap - 30.0) < 0.05, "Feedback: time between repeats at Delay 30 ms, " + std::to_string ((int) sr) + " Hz", gap, "ms");
+        check (pk.size() >= 3, "Feedback 70: repeats above a third of the first", (double) pk.size());
+    }
+
+    // Each pass falls by the amount set.
+    const double sr = 48000.0;
+    for (float amount : { 30.0f, 60.0f, 90.0f })
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "delay", 40.0f); set (p, "feedback", amount);
+        prepare (p, 2, sr, 512);
+        auto in = hannBurst (1000.0, sr, 0.25, 480, 0.005, 24000);
+        auto out = render (p, in, 512);
+        const auto lv = passLevels (out.getReadPointer (0), 24000, sr, 480, 40.0, 3);
+        const double want = 20.0 * std::log10 (amount * 0.01);
+        check (std::abs ((lv[1] - lv[0]) - want) < 1.0, "Feedback " + std::to_string ((int) amount) + ": drop per pass at 1 kHz, wanted " + juce::String (want, 1).toStdString() + " dB", lv[1] - lv[0], "dB");
+    }
+
+    // Off means no repeat at all.
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "delay", 30.0f);
+        prepare (p, 2, sr, 512);
+        std::vector<float> in (24000, 0.0f);
+        in[100] = 0.5f;
+        auto out = render (p, in, 512);
+        // The DC block leaves a very slow, very small slope after a pulse, in 0.1.0 too. A repeat would show as a sudden change, so look at those.
+        const int from = 100 + (int) (0.045 * sr);
+        const double sudden = maxJump (out.getReadPointer (0) + from, 24000 - from);
+        check (toDb (sudden) < -120.0, "Feedback 0: biggest sudden change after the first copy", toDb (sudden), "dB");
+    }
+
+    // The level holds as Feedback goes up.
+    for (int voices : { 1, 8 })
+    {
+        double base = 0;
+        for (float amount : { 0.0f, 50.0f, 90.0f })
+        {
+            PluginProcessor p;
+            plain (p, voices);
+            set (p, "depth", 1.5f); set (p, "rate", 0.7f); set (p, "feedback", amount);
+            prepare (p, 2, sr, 512);
+            std::vector<float> in (240000);
+            noise (in.data(), 240000, 0.25);
+            auto out = render (p, in, 512);
+            const double db = rmsDb (out, 0, 96000);
+            if (amount == 0.0f) { base = db; continue; }
+            check (std::abs (db - base) < (voices == 1 ? 2.0 : 3.0), "Feedback " + std::to_string ((int) amount) + ", " + std::to_string (voices) + " voices: noise level against Feedback 0", db - base, "dB");
+        }
+    }
+
+    // A voice has more low end than white noise, and the loop passes that more fully. Same limit with darker noise.
+    {
+        double base = 0;
+        for (float amount : { 0.0f, 50.0f, 90.0f })
+        {
+            PluginProcessor p;
+            plain (p, 1);
+            set (p, "depth", 1.5f); set (p, "rate", 0.7f); set (p, "feedback", amount);
+            prepare (p, 2, sr, 512);
+            std::vector<float> in (240000);
+            noise (in.data(), 240000, 0.5);
+            double z = 0;
+            for (auto& x : in) { z += 0.12 * ((double) x - z); x = (float) z; } // one pole at about 1 kHz
+            auto out = render (p, in, 512);
+            const double db = rmsDb (out, 0, 96000);
+            if (amount == 0.0f) { base = db; continue; }
+            check (std::abs (db - base) < 2.0, "Feedback " + std::to_string ((int) amount) + ", 1 voice: dark noise level against Feedback 0", db - base, "dB");
+        }
+    }
+
+    // Worst cases stay bounded. 8 copies lined up at a low note add up to +9 dB even with no feedback, so its limit is higher.
+    for (int voices : { 1, 8 })
+        for (int kind = 0; kind < 3; ++kind)
+        {
+            PluginProcessor p;
+            plain (p, voices);
+            set (p, "feedback", 90.0f);
+            set (p, "delay", 15.0f);
+            prepare (p, 2, sr, 512);
+            const int n = 240000;
+            std::vector<float> in ((size_t) n);
+            if (kind == 0) noise (in.data(), n, 1.0);
+            else sine (in.data(), n, kind == 1 ? 1000.0 / 15.0 : 1000.0, sr, 1.0);
+            auto out = render (p, in, 512);
+            const double limit = voices == 1 ? 2.5 : 6.0;
+            const char* names[] = { "full scale noise", "full scale sine on the loop's resonance", "full scale 1 kHz" };
+            check (peak (out.getReadPointer (0), n) <= limit && countNonFinite (out) == 0, "Feedback 90, " + std::to_string (voices) + " voices, " + names[kind] + ": peak", peak (out.getReadPointer (0), n));
+        }
+
+    // The tail the plug-in reports covers the real tail.
+    {
+        PluginProcessor p;
+        plain (p, 4);
+        set (p, "delay", 40.0f); set (p, "depth", 2.0f); set (p, "feedback", 90.0f);
+        prepare (p, 2, sr, 512);
+        const double tail = p.getTailLengthSeconds();
+        const int on = 96000, n = on + (int) (tail * sr);
+        std::vector<float> in ((size_t) n, 0.0f);
+        noise (in.data(), on, 0.25);
+        auto out = render (p, in, 512);
+        const double before = rmsDb (out, 0, on - 24000, 24000);
+        const double end = rmsDb (out, 0, n - 4800, 4800);
+        info ("reported tail at Feedback 90, Delay 40 ms", tail, "s");
+        check (end - before < -60.0, "Feedback 90: level at the end of the reported tail against while playing", end - before, "dB");
+    }
+
+    // Left stays left, also through the loop, and all layouts carry repeats.
+    {
+        PluginProcessor p;
+        plain (p, 4);
+        set (p, "feedback", 70.0f); set (p, "spread", 100.0f);
+        prepare (p, 2, sr, 512);
+        std::vector<float> left (48000);
+        noise (left.data(), 48000, 0.25);
+        std::vector<float> none (48000, 0.0f);
+        auto out = renderLR (p, left, &none, 512);
+        check (rmsDb (out, 1) < -200.0, "Feedback 70, left only in: right stays silent", rmsDb (out, 1), "dBFS");
+    }
+    {
+        PluginProcessor p;
+        plain (p, 2);
+        set (p, "feedback", 70.0f); set (p, "delay", 30.0f);
+        prepareLayout (p, juce::AudioChannelSet::mono(), juce::AudioChannelSet::stereo(), sr, 512);
+        auto in = hannBurst (1000.0, sr, 0.25, 480, 0.005, 24000);
+        auto out = renderLR (p, in, nullptr, 512);
+        double diff = 0;
+        for (int i = 0; i < 24000; ++i) diff = std::max (diff, (double) std::abs (out.getSample (0, i) - out.getSample (1, i)));
+        check (toDb (diff) < -200.0, "Mono to stereo, Spread 0, Feedback 70: left and right the same, largest difference", toDb (diff), "dB");
+        const auto lv = passLevels (out.getReadPointer (0), 24000, sr, 480, 30.0, 2);
+        check (lv[1] - lv[0] > -12.0 && lv[1] < lv[0], "Mono to stereo, Feedback 70: second pass is there and lower", lv[1] - lv[0], "dB");
+        p.releaseResources();
+        prepareLayout (p, juce::AudioChannelSet::mono(), juce::AudioChannelSet::mono(), sr, 512);
+        auto outM = renderLR (p, in, nullptr, 512);
+        const auto lm = passLevels (outM.getReadPointer (0), 24000, sr, 480, 30.0, 2);
+        check (lm[1] - lm[0] > -12.0 && lm[1] < lm[0], "Mono to mono, Feedback 70: second pass is there and lower", lm[1] - lm[0], "dB");
+    }
+}
+
+static double levelWithGains (float inputDb, float outputDb, float mix)
+{
+    PluginProcessor p;
+    plain (p, 1);
+    set (p, "mix", mix); set (p, "inputGain", inputDb); set (p, "outputGain", outputDb);
+    prepare (p, 2, 48000.0, 512);
+    std::vector<float> in (48000);
+    sine (in.data(), 48000, 1000.0, 48000.0, 0.1);
+    auto out = render (p, in, 512);
+    return rmsDb (out, 0, 9600);
+}
+
+static void testGains()
+{
+    for (float mix : { 0.0f, 100.0f })
+    {
+        const double base = levelWithGains (0.0f, 0.0f, mix);
+        const auto tag = " at Mix " + std::to_string ((int) mix);
+        check (std::abs (levelWithGains (6.0f, 0.0f, mix) - base - 6.0) < 0.1, "Input Gain +6" + tag, levelWithGains (6.0f, 0.0f, mix) - base, "dB");
+        check (std::abs (levelWithGains (-12.0f, 0.0f, mix) - base + 12.0) < 0.1, "Input Gain -12" + tag, levelWithGains (-12.0f, 0.0f, mix) - base, "dB");
+        check (std::abs (levelWithGains (0.0f, 6.0f, mix) - base - 6.0) < 0.1, "Output Gain +6" + tag, levelWithGains (0.0f, 6.0f, mix) - base, "dB");
+        check (std::abs (levelWithGains (0.0f, -12.0f, mix) - base + 12.0) < 0.1, "Output Gain -12" + tag, levelWithGains (0.0f, -12.0f, mix) - base, "dB");
+    }
+    // Input Gain drives the tape harder. Output Gain does not.
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "saturation", 50.0f);
+        prepare (p, 2, 48000.0, 512);
+        const double plainThd = thdPercent (p, 1000.0, 48000.0, 0.1);
+        set (p, "inputGain", 12.0f);
+        prepare (p, 2, 48000.0, 512);
+        const double hot = thdPercent (p, 1000.0, 48000.0, 0.1);
+        check (hot > 1.5 * plainThd, "Input Gain +12 with Saturation 50: THD rises, from " + juce::String (plainThd, 3).toStdString() + " % to", hot, "%");
+        set (p, "inputGain", 0.0f); set (p, "outputGain", 12.0f);
+        prepare (p, 2, 48000.0, 512);
+        const double outThd = thdPercent (p, 1000.0, 48000.0, 0.1);
+        check (std::abs (outThd - plainThd) < 0.02 * plainThd + 1.0e-3, "Output Gain +12 with Saturation 50: THD against 0 dB", outThd - plainThd, "%");
+    }
+    // Bypass ignores both.
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "inputGain", 12.0f); set (p, "outputGain", -6.0f); set (p, "bypass", 1.0f);
+        prepare (p, 2, 48000.0, 512);
+        std::vector<float> in (48000);
+        noise (in.data(), 48000, 0.25);
+        auto out = render (p, in, 512);
+        double e = 0;
+        for (int i = 4800; i < 48000; ++i) e = std::max (e, (double) std::abs (out.getSample (0, i) - in[(size_t) i]));
+        check (toDb (e) < -200.0, "Bypass with Input Gain and Output Gain set: largest difference from the input", toDb (e), "dB");
+    }
+}
+
+static double wetTone (double f, float lowCut, float highCut, double sr = 48000.0, float mix = 100.0f)
+{
+    PluginProcessor p;
+    plain (p, 1);
+    set (p, "lowCut", lowCut); set (p, "highCut", highCut); set (p, "mix", mix);
+    prepare (p, 2, sr, 512);
+    const int n = (int) sr * 2;
+    std::vector<float> in ((size_t) n);
+    sine (in.data(), n, f, sr, 0.1);
+    auto out = render (p, in, 512);
+    return toneDb (out.getReadPointer (0) + n / 2, n / 2, f, sr);
+}
+
+static void testCuts()
+{
+    for (double sr : { 44100.0, 48000.0, 96000.0 })
+    {
+        const auto tag = " at " + std::to_string ((int) sr) + " Hz rate";
+        const auto lowChange = [&] (double f, float hz) { return wetTone (f, hz, 20000.0f, sr) - wetTone (f, 20.0f, 20000.0f, sr); };
+        const auto highChange = [&] (double f, float hz) { return wetTone (f, 20.0f, hz, sr) - wetTone (f, 20.0f, 20000.0f, sr); };
+        check (std::abs (lowChange (200.0, 200.0f) + 3.01) < 0.5, "Low Cut 200: level at 200 Hz" + tag, lowChange (200.0, 200.0f), "dB");
+        check (std::abs (lowChange (100.0, 200.0f) + 12.3) < 1.0, "Low Cut 200: level at 100 Hz" + tag, lowChange (100.0, 200.0f), "dB");
+        check (std::abs (lowChange (5000.0, 200.0f)) < 0.1, "Low Cut 200: level at 5 kHz" + tag, lowChange (5000.0, 200.0f), "dB");
+        check (std::abs (highChange (5000.0, 5000.0f) + 3.01) < 0.5, "High Cut 5 kHz: level at 5 kHz" + tag, highChange (5000.0, 5000.0f), "dB");
+        check (std::abs (highChange (10000.0, 5000.0f) + 12.3) < 2.5, "High Cut 5 kHz: level at 10 kHz" + tag, highChange (10000.0, 5000.0f), "dB");
+        check (std::abs (highChange (200.0, 5000.0f)) < 0.1, "High Cut 5 kHz: level at 200 Hz" + tag, highChange (200.0, 5000.0f), "dB");
+    }
+    // Wet path only: at Mix 0 both do nothing.
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "mix", 0.0f); set (p, "lowCut", 500.0f); set (p, "highCut", 2000.0f);
+        prepare (p, 2, 48000.0, 512);
+        std::vector<float> in (48000);
+        noise (in.data(), 48000, 0.25);
+        auto out = render (p, in, 512);
+        double e = 0;
+        for (int i = 0; i < 48000; ++i) e = std::max (e, (double) std::abs (out.getSample (0, i) - in[(size_t) i]));
+        check (toDb (e) < -200.0, "Low Cut and High Cut at Mix 0: largest difference from the input", toDb (e), "dB");
+    }
+    // Inside the feedback loop: each pass goes through High Cut again.
+    {
+        const double sr = 48000.0;
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "delay", 40.0f); set (p, "feedback", 70.0f); set (p, "highCut", 3000.0f);
+        prepare (p, 2, sr, 512);
+        auto in = hannBurst (6000.0, sr, 0.25, 480, 0.005, 24000);
+        auto out = render (p, in, 512);
+        const auto lv = passLevels (out.getReadPointer (0), 24000, sr, 480, 40.0, 2);
+        const double want = 20.0 * std::log10 (0.7) - 12.3;
+        check (std::abs ((lv[1] - lv[0]) - want) < 2.0, "High Cut 3 kHz, Feedback 70: drop per pass at 6 kHz, wanted about " + juce::String (want, 1).toStdString() + " dB", lv[1] - lv[0], "dB");
+    }
+}
+
+static void testWowFlutterRates()
+{
+    const double sr = 48000.0;
+    const int n = (int) (sr * 24.0), from = (int) sr;
+    std::vector<float> in ((size_t) n);
+    sine (in.data(), n, 1000.0, sr, 0.25);
+    const auto measure = [&] (const char* amount, const char* speed, float hz)
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, amount, 100.0f); set (p, speed, hz);
+        prepare (p, 2, sr, 512);
+        auto out = render (p, in, 512);
+        return trackDelayMs (out.getReadPointer (0), n, 1000.0, sr, 10, 15.0);
+    };
+    const auto w2 = measure ("wow", "wowRate", 2.0f);
+    const auto w025 = measure ("wow", "wowRate", 0.25f);
+    const auto f20 = measure ("flutter", "flutterRate", 20.0f);
+    const auto f4 = measure ("flutter", "flutterRate", 4.0f);
+    check (bandShare (w2, sr, from, 1.5, 6.0) > 0.85, "Wow Rate 2 Hz: share of its movement from 1.5 to 6 Hz", bandShare (w2, sr, from, 1.5, 6.0) * 100.0, "%");
+    check (bandShare (w025, sr, from, 0.0, 1.0) > 0.85, "Wow Rate 0.25 Hz: share of its movement below 1 Hz", bandShare (w025, sr, from, 0.0, 1.0) * 100.0, "%");
+    check (bandShare (f20, sr, from, 14.0, 46.0, 60.0) > 0.85, "Flutter Rate 20 Hz: share of its movement from 14 to 46 Hz", bandShare (f20, sr, from, 14.0, 46.0, 60.0) * 100.0, "%");
+    check (bandShare (f4, sr, from, 2.5, 11.0, 60.0) > 0.85, "Flutter Rate 4 Hz: share of its movement from 2.5 to 11 Hz", bandShare (f4, sr, from, 2.5, 11.0, 60.0) * 100.0, "%");
+    check (analyse (w2, sr, 1.0).amp <= 2.6, "Wow Rate 2 Hz: peak swing still no more than 2.5 ms", analyse (w2, sr, 1.0).amp, "ms");
+    check (analyse (f20, sr, 1.0).amp <= 0.27, "Flutter Rate 20 Hz: peak swing still no more than 0.25 ms", analyse (f20, sr, 1.0).amp, "ms");
+}
+
+static void testRandom()
+{
+    const double sr = 48000.0;
+    const int n = (int) (sr * 40.0);
+    std::vector<float> in ((size_t) n);
+    sine (in.data(), n, 1000.0, sr, 0.25);
+    const auto measure = [&] (float amount, float hz, bool unsync, int side = 0)
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "random", amount); set (p, "randomRate", hz); set (p, "unsync", unsync ? 1.0f : 0.0f);
+        prepare (p, 2, sr, 512);
+        auto out = render (p, in, 512);
+        // A 3 ms window. At fast rates the pitch can move by 100 Hz, where a 10 ms window goes deaf and the reading slips by a whole period.
+        return trackDelayMs (out.getReadPointer (side), n, 1000.0, sr, 3, 15.0);
+    };
+    const auto r0 = analyse (measure (0.0f, 2.0f, false), sr, 1.0);
+    const auto r50 = analyse (measure (50.0f, 2.0f, false), sr, 1.0);
+    const auto r100 = analyse (measure (100.0f, 2.0f, false), sr, 1.0);
+    check (r0.amp < 0.001, "Random 0: delay does not move", r0.amp, "ms");
+    check (r100.amp <= 2.05 && r100.amp > 1.0, "Random 100: peak swing, 1 to 2 ms wanted", r100.amp, "ms");
+    check (std::abs (r100.rms / r50.rms - 2.0) < 0.3, "Random 100 against Random 50, movement ratio", r100.rms / r50.rms);
+    const auto slow = analyse (measure (100.0f, 0.5f, false), sr, 1.0);
+    const auto fast = analyse (measure (100.0f, 5.0f, false), sr, 1.0);
+    info ("Random Rate 0.5 Hz: movement (rms)", slow.rms, "ms");
+    info ("Random Rate 5 Hz: movement (rms)", fast.rms, "ms");
+    info ("Random Rate 0.5 Hz: crossings of its centre", slow.hz, "per s");
+    info ("Random Rate 5 Hz: crossings of its centre", fast.hz, "per s");
+    check (fast.hz / slow.hz > 4.0, "Random Rate 5 Hz against 0.5 Hz: how much more often the delay crosses its centre", fast.hz / slow.hz);
+    check (fast.rms / slow.rms > 0.6 && fast.rms / slow.rms < 1.6, "Random Rate 5 Hz against 0.5 Hz: movement ratio", fast.rms / slow.rms);
+
+    const auto trackCorr = [&] (bool unsync)
+    {
+        const auto a = measure (100.0f, 2.0f, unsync, 0), b = measure (100.0f, 2.0f, unsync, 1);
+        const double ma = std::accumulate (a.begin(), a.end(), 0.0) / (double) a.size(), mb = std::accumulate (b.begin(), b.end(), 0.0) / (double) b.size();
+        double ab = 0, aa = 0, bb = 0;
+        for (size_t i = (size_t) sr; i < a.size(); ++i) { ab += (a[i] - ma) * (b[i] - mb); aa += (a[i] - ma) * (a[i] - ma); bb += (b[i] - mb) * (b[i] - mb); }
+        return ab / std::sqrt (std::max (aa * bb, 1.0e-30));
+    };
+    check (trackCorr (false) > 0.999, "Unsync off: left and right delay move together, correlation", trackCorr (false));
+    check (std::abs (trackCorr (true)) < 0.5, "Unsync on: left and right delay move apart, correlation", trackCorr (true));
+}
+
+// Short term level of a steady sine, in dB, one value for each 5 ms.
+static std::vector<double> levelTrack (const float* y, int n, double sr)
+{
+    const int w = (int) (0.005 * sr);
+    std::vector<double> out;
+    for (int i = 0; i + w <= n; i += w) out.push_back (toDb (rms (y + i, w)));
+    return out;
+}
+
+static void testDegrade()
+{
+    const double sr = 48000.0;
+    const int n = (int) (sr * 30.0);
+    std::vector<float> in ((size_t) n);
+    sine (in.data(), n, 1000.0, sr, 0.25);
+    struct Res { double spread, deepest, crossings; };
+    const auto measure = [&] (float amount, float hz)
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "degrade", amount); set (p, "degradeRate", hz);
+        prepare (p, 2, sr, 512);
+        auto out = render (p, in, 512);
+        auto t = levelTrack (out.getReadPointer (0) + (int) sr, n - (int) sr, sr);
+        const double m = std::accumulate (t.begin(), t.end(), 0.0) / (double) t.size();
+        double sq = 0, top = -300, low = 300; int cross = 0;
+        for (size_t i = 0; i < t.size(); ++i)
+        {
+            sq += (t[i] - m) * (t[i] - m);
+            top = std::max (top, t[i]); low = std::min (low, t[i]);
+            if (i > 0 && t[i - 1] < m && t[i] >= m) ++cross;
+        }
+        return Res { std::sqrt (sq / (double) t.size()), low - top, cross / ((n - sr) / sr) };
+    };
+    const auto d0 = measure (0.0f, 2.0f), d25 = measure (25.0f, 2.0f), d50 = measure (50.0f, 2.0f), d100 = measure (100.0f, 2.0f);
+    check (d0.spread < 0.05, "Degrade 0: level movement (rms)", d0.spread, "dB");
+    check (d25.spread > d0.spread && d50.spread > 1.4 * d25.spread && d100.spread > 1.4 * d50.spread, "Degrade 25, 50, 100: level movement keeps rising, at 100", d100.spread, "dB");
+    info ("Degrade 25 level movement (rms)", d25.spread, "dB");
+    info ("Degrade 50 level movement (rms)", d50.spread, "dB");
+    check (d100.deepest < -6.0 && d100.deepest >= -21.0, "Degrade 100: deepest dip, -6 to -21 dB wanted", d100.deepest, "dB");
+    const auto slow = measure (100.0f, 1.0f), fast = measure (100.0f, 10.0f);
+    check (fast.crossings / slow.crossings > 4.0, "Degrade Rate 10 Hz against 1 Hz: how much more often the level crosses its average", fast.crossings / slow.crossings);
+    // Spread 0 still keeps a mono source centred with Degrade on.
+    {
+        PluginProcessor p;
+        plain (p, 2);
+        set (p, "degrade", 100.0f);
+        prepareLayout (p, juce::AudioChannelSet::mono(), juce::AudioChannelSet::stereo(), sr, 512);
+        std::vector<float> s (48000);
+        sine (s.data(), 48000, 500.0, sr, 0.25);
+        auto out = renderLR (p, s, nullptr, 512);
+        double e = 0;
+        for (int i = 0; i < 48000; ++i) e = std::max (e, (double) std::abs (out.getSample (0, i) - out.getSample (1, i)));
+        check (toDb (e) < -200.0, "Degrade 100, Spread 0: left and right the same, largest difference", toDb (e), "dB");
+    }
+}
+
+static void testNoise()
+{
+    const double sr = 48000.0;
+    const int n = (int) (sr * 3.0);
+    const auto hiss = [&] (float amount, bool gateOn, float inAmp, float mix = 100.0f)
+    {
+        const auto run = [&] (float a)
+        {
+            PluginProcessor p;
+            plain (p, 1);
+            set (p, "noise", a); set (p, "noiseGate", gateOn ? 1.0f : 0.0f); set (p, "mix", mix);
+            prepare (p, 2, sr, 512);
+            std::vector<float> in ((size_t) n);
+            sine (in.data(), n, 200.0, sr, inAmp);
+            return render (p, in, 512);
+        };
+        auto with = run (amount), without = run (0.0f);
+        // The same render without Noise is taken away, which leaves only the hiss.
+        double sq = 0;
+        for (int i = n / 3; i < n; ++i) { const double d = with.getSample (0, i) - without.getSample (0, i); sq += d * d; }
+        return toDb (std::sqrt (sq / (n - n / 3)));
+    };
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "noise", 100.0f); set (p, "noiseGate", 0.0f); set (p, "depth", 3.0f); set (p, "rate", 2.0f);
+        prepare (p, 2, sr, 512);
+        std::vector<float> in ((size_t) n, 0.0f);
+        auto out = render (p, in, 512);
+        check (std::abs (rmsDb (out, 0, n / 3) + 40.0) < 1.0, "Noise 100 with moving read heads, wanted -40 dBFS rms", rmsDb (out, 0, n / 3), "dBFS");
+    }
+    check (hiss (0.0f, false, 0.0f) < -200.0, "Noise 0: nothing added", hiss (0.0f, false, 0.0f), "dBFS");
+    check (std::abs (hiss (25.0f, false, 0.0f) + 64.1) < 1.0, "Noise 25, gate off, silent input, wanted -64 dBFS rms", hiss (25.0f, false, 0.0f), "dBFS");
+    check (std::abs (hiss (50.0f, false, 0.0f) + 52.0) < 1.0, "Noise 50, gate off, silent input, wanted -52 dBFS rms", hiss (50.0f, false, 0.0f), "dBFS");
+    check (std::abs (hiss (100.0f, false, 0.0f) + 40.0) < 1.0, "Noise 100, gate off, silent input, wanted -40 dBFS rms", hiss (100.0f, false, 0.0f), "dBFS");
+    check (std::abs (hiss (100.0f, true, 0.03f) + 40.0) < 1.5, "Noise 100, gate on, input playing at -30 dBFS, wanted -40 dBFS rms", hiss (100.0f, true, 0.03f), "dBFS");
+    check (hiss (100.0f, true, 0.0f) < -100.0, "Noise 100, gate on, silent input: gate holds it down to", hiss (100.0f, true, 0.0f), "dBFS");
+    check (hiss (100.0f, false, 0.0f, 0.0f) < -200.0, "Noise 100 at Mix 0: nothing added", hiss (100.0f, false, 0.0f, 0.0f), "dBFS");
+
+    // The gate shuts soon after the voice stops.
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "noise", 100.0f);
+        prepare (p, 2, sr, 512);
+        std::vector<float> in ((size_t) (2 * sr), 0.0f);
+        sine (in.data(), (int) sr, 300.0, sr, 0.1);
+        auto out = render (p, in, 512);
+        const double afterHalf = rmsDb (out, 0, (int) (1.5 * sr), (int) (0.5 * sr));
+        check (afterHalf < -80.0, "Noise Gate: hiss from 0.5 s after the input stops", afterHalf, "dBFS");
+    }
+
+    // Spread 0 keeps the hiss centred too. Full Spread gives two different hisses.
+    {
+        const auto corr = [&] (float spreadPct)
+        {
+            PluginProcessor p;
+            plain (p, 1);
+            set (p, "noise", 100.0f); set (p, "noiseGate", 0.0f); set (p, "spread", spreadPct); set (p, "delay", 40.0f);
+            prepare (p, 2, sr, 512);
+            std::vector<float> in (96000, 0.0f);
+            auto out = render (p, in, 512);
+            return correlation (out.getReadPointer (0) + 9600, out.getReadPointer (1) + 9600, 86400);
+        };
+        check (corr (0.0f) > 0.9999, "Noise, Spread 0: left and right correlation", corr (0.0f));
+        check (std::abs (corr (100.0f)) < 0.1, "Noise, Spread 100: left and right correlation", corr (100.0f));
+    }
+}
+
+static void testReadings()
+{
+    const double sr = 48000.0;
+    const auto levels = [&] (float inputDb, float outputDb)
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "mix", 0.0f); set (p, "inputGain", inputDb); set (p, "outputGain", outputDb);
+        prepare (p, 2, sr, 512);
+        std::vector<float> in (48000);
+        sine (in.data(), 48000, 1000.0, sr, 0.25);
+        render (p, in, 512);
+        return std::make_pair ((double) p.getInputLevel()->get(), (double) p.getOutputLevel()->get());
+    };
+    const auto l0 = levels (0.0f, 0.0f), l1 = levels (6.0f, 0.0f), l2 = levels (0.0f, -6.0f);
+    check (std::abs (l0.first + 12.04) < 0.5, "Input Level with a -12 dBFS sine", l0.first, "dB");
+    check (std::abs (l0.second + 12.04) < 0.5, "Output Level with a -12 dBFS sine at Mix 0", l0.second, "dB");
+    check (std::abs (l1.first + 6.02) < 0.5, "Input Level with Input Gain +6 reads after the gain", l1.first, "dB");
+    check (std::abs (l1.second + 6.02) < 0.5, "Output Level with Input Gain +6", l1.second, "dB");
+    check (std::abs (l2.first + 12.04) < 0.5, "Input Level with Output Gain -6 does not change", l2.first, "dB");
+    check (std::abs (l2.second + 18.06) < 0.5, "Output Level with Output Gain -6", l2.second, "dB");
+
+    // Fall back to the bottom in silence, and never tell the host anything from the audio thread.
+    {
+        struct Count final : juce::AudioProcessorListener
+        {
+            std::atomic<int> changes { 0 };
+            void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override { ++changes; }
+            void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+        } count;
+        PluginProcessor p;
+        plain (p, 1);
+        prepare (p, 2, sr, 512);
+        p.addListener (&count);
+        std::vector<float> in (240000, 0.0f);
+        sine (in.data(), 48000, 1000.0, sr, 0.25);
+        render (p, in, 512);
+        p.removeListener (&count);
+        check (p.getInputLevel()->getCurrentValueAsText() == "-inf", "Input Level in silence reads -inf");
+        check (count.changes.load() == 0, "readings write no automation: host notifications while playing", (double) count.changes.load());
+    }
+
+    // Pitch Swing against the pitch actually measured from a sine.
+    {
+        const int n = (int) (sr * 6.0);
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "rate", 1.0f); set (p, "depth", 2.0f);
+        prepare (p, 2, sr, 512);
+        std::vector<float> in ((size_t) n);
+        sine (in.data(), n, 1000.0, sr, 0.25);
+        auto out = render (p, in, 512);
+        const auto d = trackDelayMs (out.getReadPointer (0), n, 1000.0, sr, 10, 15.0);
+        const int step = (int) (0.005 * sr);
+        double steep = 0;
+        for (int i = (int) sr; i + step < (int) d.size(); i += step) steep = std::max (steep, std::abs (d[(size_t) (i + step)] - d[(size_t) i]) / 5.0);
+        const double measured = 1200.0 * std::log2 (1.0 + steep), reading = p.getPitchSwing()->get();
+        check (std::abs (reading - measured) < 0.05 * measured, "Pitch Swing at Rate 1, Depth 2 reads " + juce::String (reading, 2).toStdString() + " cents, measured", measured, "cents");
+
+        set (p, "depth", 0.0f);
+        std::vector<float> rest (48000, 0.0f);
+        render (p, rest, 512);
+        check (p.getPitchSwing()->get() < 0.01f, "Pitch Swing with Depth 0", p.getPitchSwing()->get(), "cents");
+
+        // When Delay Time is too short to hold the Depth, the reading follows what really happens.
+        PluginProcessor q;
+        plain (q, 1);
+        set (q, "rate", 1.0f); set (q, "depth", 8.0f); set (q, "delay", 3.0f);
+        prepare (q, 2, sr, 512);
+        render (q, rest, 512);
+        const double full = 1200.0 * std::log2 (1.0 + pi2 * 8.0 * 0.001);
+        check (q.getPitchSwing()->get() < 0.5 * full, "Pitch Swing when Depth has to shrink to fit, full Depth would read " + juce::String (full, 1).toStdString(), q.getPitchSwing()->get(), "cents");
+    }
+
+    // For a later window: where the read heads are.
+    {
+        PluginProcessor p;
+        plain (p, 2);
+        prepare (p, 2, sr, 512);
+        std::vector<float> rest (4800, 0.0f);
+        render (p, rest, 512);
+        check (std::abs (p.getVoiceDelayMs (0, 0) - 13.0f) < 0.02, "read head reading, voice 1 of 2 at Delay 15", p.getVoiceDelayMs (0, 0), "ms");
+        check (std::abs (p.getVoiceDelayMs (0, 1) - 17.0f) < 0.02, "read head reading, voice 2 of 2 at Delay 15", p.getVoiceDelayMs (0, 1), "ms");
+        check (p.getVoiceDelayMs (0, 2) == 0.0f, "read head reading, a silent voice reads 0");
+    }
+
+    // The window has a live row for each reading.
+    {
+        PluginProcessor p;
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+        auto* me = dynamic_cast<MeterEditor*> (ed.get());
+        check (me != nullptr && me->getNumRows() == 3, "the window has 3 live reading rows");
+    }
+}
+
+static void allOn (PluginProcessor& p)
+{
+    set (p, "voices", 8.0f); set (p, "depth", 2.0f); set (p, "rate", 1.3f); set (p, "wow", 40.0f); set (p, "flutter", 40.0f);
+    set (p, "saturation", 60.0f); set (p, "spread", 100.0f); set (p, "mix", 60.0f);
+    set (p, "feedback", 70.0f); set (p, "inputGain", 3.0f); set (p, "outputGain", -3.0f); set (p, "lowCut", 150.0f); set (p, "highCut", 7000.0f);
+    set (p, "wowRate", 1.1f); set (p, "flutterRate", 12.0f); set (p, "random", 40.0f); set (p, "randomRate", 2.0f); set (p, "unsync", 1.0f);
+    set (p, "degrade", 50.0f); set (p, "degradeRate", 4.0f); set (p, "noise", 50.0f);
+}
+
+// The shared checks run at default settings, where the new code sits idle. These repeat the important ones with everything on.
+static void testAllOn()
+{
+    const double sr = 48000.0;
+    const int n = 96000;
+    std::vector<float> in ((size_t) n);
+    noise (in.data(), n, 0.25);
+
+    const auto run = [&] (int block)
+    {
+        PluginProcessor p;
+        allOn (p);
+        prepare (p, 2, sr, block);
+        return render (p, in, block);
+    };
+    auto base = run (512), small = run (37), one = run (1);
+    double e1 = 0, e2 = 0;
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < n; ++i)
+        {
+            e1 = std::max (e1, (double) std::abs (base.getSample (ch, i) - small.getSample (ch, i)));
+            e2 = std::max (e2, (double) std::abs (base.getSample (ch, i) - one.getSample (ch, i)));
+        }
+    check (e1 < 1.0e-5, "everything on: same output at block 512 and block 37, largest difference", toDb (e1), "dB");
+    check (e2 < 1.0e-5, "everything on: same output at block 512 and block 1, largest difference", toDb (e2), "dB");
+
+    // Prepared again gives the same result.
+    {
+        PluginProcessor p;
+        allOn (p);
+        prepare (p, 2, 96000.0, 512);
+        render (p, in, 512);
+        prepare (p, 2, sr, 512);
+        auto again = render (p, in, 512);
+        double e = 0;
+        for (int i = 0; i < n; ++i) e = std::max (e, (double) std::abs (base.getSample (0, i) - again.getSample (0, i)));
+        check (e < 1.0e-5, "everything on: prepared again after another rate, largest difference", toDb (e), "dB");
+    }
+
+    // No allocation in the audio path.
+    {
+        PluginProcessor p;
+        allOn (p);
+        prepare (p, 2, sr, 512);
+        long before = 0, total = 0; bool armed = false;
+        render (p, in, 512, nullptr, [&] (int)
+        {
+            if (armed) total += allocs.load() - before;
+            armed = true;
+            before = allocs.load();
+        });
+        check (total == 0, "everything on: allocations during audio", (double) total);
+    }
+
+    // Bad input cannot stick, and silence decays cleanly.
+    for (double rate : { 44100.0, 48000.0, 96000.0 })
+    {
+        PluginProcessor p;
+        allOn (p);
+        prepare (p, 2, rate, 512);
+        const int len = (int) (rate * 8.0);
+        std::vector<float> dirty ((size_t) len, 0.0f);
+        sine (dirty.data(), (int) rate, 440.0, rate, 0.25);
+        const float badInput[] = { std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(), 1.0e38f };
+        for (int i = 0; i < 512; ++i) dirty[(size_t) (i + (int) rate / 2)] = badInput[(size_t) i % 4];
+        sine (dirty.data() + (int) (rate * 5.0), (int) rate, 440.0, rate, 0.25);
+        auto out = render (p, dirty, 512);
+        const double lastPeak = peak (out.getReadPointer (0) + (int) (rate * 5.5), (int) (rate * 0.5));
+        const auto tag = " at " + std::to_string ((int) rate) + " Hz";
+        check (countNonFinite (out) == 0 && lastPeak < 4.0 && lastPeak > 0.01, "everything on: recovers after NaN, inf and huge input, later peak" + tag, lastPeak);
+        check (countDenormals (out) == 0, "everything on: no denormals" + tag, (double) countDenormals (out), "samples");
+    }
+
+    // Damaged values in the new controls.
+    {
+        PluginProcessor p;
+        juce::MemoryBlock st;
+        p.getStateInformation (st);
+        auto xml = p.getXmlFromBinary (st.getData(), (int) st.getSize());
+        for (auto* c : xml->getChildIterator())
+        {
+            const auto id = c->getStringAttribute ("id");
+            if (id == "feedback") c->setAttribute ("value", "99999");
+            if (id == "highCut") c->setAttribute ("value", "nan");
+            if (id == "lowCut") c->setAttribute ("value", "-5");
+            if (id == "noise") c->setAttribute ("value", "inf");
+        }
+        juce::MemoryBlock bad;
+        p.copyXmlToBinary (*xml, bad);
+        p.setStateInformation (bad.getData(), (int) bad.getSize());
+        check (p.apvts.getRawParameterValue ("feedback")->load() <= 90.0f, "damaged state: Feedback cannot pass 90", p.apvts.getRawParameterValue ("feedback")->load(), "%");
+        check (std::isfinite (p.apvts.getRawParameterValue ("highCut")->load()), "damaged state: NaN High Cut does not reach the audio");
+        prepare (p, 2, sr, 512);
+        auto out = render (p, in, 512);
+        check (countNonFinite (out) == 0, "damaged state in new controls: audio stays finite");
+    }
+
+    // Value strings work both ways, because a host can read and set by name and text.
+    {
+        PluginProcessor p;
+        auto* low = p.apvts.getParameter ("lowCut");
+        auto* high = p.apvts.getParameter ("highCut");
+        check (low->getText (low->getValue(), 32) == "Off", "Low Cut at its lowest reads Off");
+        check (high->getText (high->getValue(), 32) == "Off", "High Cut at its highest reads Off");
+        check (std::abs (low->convertFrom0to1 (low->getValueForText ("Off")) - 20.0f) < 0.01f, "Low Cut takes the text Off");
+        check (std::abs (high->convertFrom0to1 (high->getValueForText ("Off")) - 20000.0f) < 0.5f, "High Cut takes the text Off");
+    }
+}
+
+// A session saved with 0.1.0 has none of the new controls. It must open at the old sound with its own settings.
+static void testOldSession()
+{
+    PluginProcessor source;
+    set (source, "voices", 4.0f); set (source, "depth", 3.25f); set (source, "mix", 55.0f);
+    juce::MemoryBlock st;
+    source.getStateInformation (st);
+    auto xml = source.getXmlFromBinary (st.getData(), (int) st.getSize());
+    const juce::StringArray firstSet { "voices", "rate", "depth", "delay", "wow", "flutter", "saturation", "tone", "spread", "mix", "bypass" };
+    std::vector<juce::XmlElement*> drop;
+    for (auto* c : xml->getChildIterator())
+        if (! firstSet.contains (c->getStringAttribute ("id")))
+            drop.push_back (c);
+    for (auto* c : drop) xml->removeChildElement (c, true);
+    juce::MemoryBlock old;
+    source.copyXmlToBinary (*xml, old);
+
+    PluginProcessor p;
+    allOn (p);
+    p.setStateInformation (old.getData(), (int) old.getSize());
+    check (p.apvts.getRawParameterValue ("voices")->load() == 4.0f, "0.1.0 session: Voices 4 opens as 4", p.apvts.getRawParameterValue ("voices")->load());
+    check (std::abs (p.apvts.getRawParameterValue ("depth")->load() - 3.25f) < 0.01f, "0.1.0 session: Depth is kept", p.apvts.getRawParameterValue ("depth")->load(), "ms");
+    check (p.apvts.getRawParameterValue ("feedback")->load() == 0.0f, "0.1.0 session: Feedback opens at 0", p.apvts.getRawParameterValue ("feedback")->load(), "%");
+    check (p.apvts.getRawParameterValue ("noise")->load() == 0.0f, "0.1.0 session: Noise opens at 0", p.apvts.getRawParameterValue ("noise")->load(), "%");
+    check (p.apvts.getRawParameterValue ("lowCut")->load() == 20.0f, "0.1.0 session: Low Cut opens Off", p.apvts.getRawParameterValue ("lowCut")->load(), "Hz");
+    check (p.apvts.getRawParameterValue ("highCut")->load() == 20000.0f, "0.1.0 session: High Cut opens Off", p.apvts.getRawParameterValue ("highCut")->load(), "Hz");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
     GenericOptions opt;
     opt.minPresets = 4;
+    opt.readOnly = { "inputLevel", "outputLevel", "pitchSwing" };
     runGenericChecks ([] { return std::make_unique<PluginProcessor>(); }, opt);
     testVoices();
     testRateDepth();
@@ -849,5 +1670,17 @@ int main()
     testRepeatable();
     testPresets();
     testDamagedState();
+    testSameAsBefore();
+    testVoiceRoom();
+    testFeedback();
+    testGains();
+    testCuts();
+    testWowFlutterRates();
+    testRandom();
+    testDegrade();
+    testNoise();
+    testReadings();
+    testAllOn();
+    testOldSession();
     return finish();
 }

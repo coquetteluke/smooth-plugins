@@ -171,6 +171,8 @@ INFO  [LL]   high notes against a real voice, worst, not a usable reading = 40.0
 INFO  [LL]   and the tool's floor there: the input against a real voice with the same vocal tract = 14.886 %
 PASS  [LL] high notes around 440 and 660 Hz, +/-3 semitones, worst formant move against the input = 16.476 %
 PASS  [LL] high notes, first formant against its surroundings, flatter than a real voice, worst case = 13.591 dB
+PASS  [LL] high notes, first formant sharper than a real voice, worst case = -6.318 dB
+INFO  [LL]   high notes, the same reading only where a harmonic crosses the formant, worst = 12.744 dB
 INFO  [LL]   high notes, level change, worst = 0.322 dB
 INFO  [LL] colour on high notes, worst = 5.679 dB
 INFO  [LL]   and the input against that real voice, worst = 3.391 dB
@@ -281,9 +283,9 @@ PASS  [LL] hard and natural presets are both there, presets = 12.000
 PASS  [LL] preset Hard Tune flattens vibrato, kept = 3.807 %
 PASS  [LL] preset Natural Pop keeps more vibrato, kept = 97.378 %
 PASS  [LL] presets leave Key, Scale and Input Type alone
-PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 3.430 %
-INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.361 %
-INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 8.165 %
+PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 3.313 %
+INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.300 %
+INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 8.025 %
 PASS  [LL] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.258 cents
 PASS  [LL] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.258 cents
 PASS  [LL] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.126 cents
@@ -373,6 +375,8 @@ INFO  [HQ]   high notes against a real voice, worst, not a usable reading = 40.0
 INFO  [HQ]   and the tool's floor there: the input against a real voice with the same vocal tract = 14.886 %
 PASS  [HQ] high notes around 440 and 660 Hz, +/-3 semitones, worst formant move against the input = 16.476 %
 FAIL  [HQ] high notes, first formant against its surroundings, flatter than a real voice, worst case = 13.487 dB
+PASS  [HQ] high notes, first formant sharper than a real voice, worst case = -6.228 dB
+INFO  [HQ]   high notes, the same reading only where a harmonic crosses the formant, worst = 13.267 dB
 INFO  [HQ]   high notes, level change, worst = 0.355 dB
 INFO  [HQ] colour on high notes, worst = 5.689 dB
 INFO  [HQ]   and the input against that real voice, worst = 3.391 dB
@@ -483,9 +487,9 @@ PASS  [HQ] hard and natural presets are both there, presets = 12.000
 PASS  [HQ] preset Hard Tune flattens vibrato, kept = 3.798 %
 PASS  [HQ] preset Natural Pop keeps more vibrato, kept = 98.342 %
 PASS  [HQ] presets leave Key, Scale and Input Type alone
-PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 2.571 %
-INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.350 %
-INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 8.210 %
+PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 2.453 %
+INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.242 %
+INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 7.841 %
 PASS  [HQ] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.237 cents
 PASS  [HQ] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.183 cents
 PASS  [HQ] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.445 cents
@@ -560,6 +564,25 @@ INFO  Low Latency, big shifts, formant move against a real voice = 6.319 %
 INFO  High Quality, big shifts, formant move against a real voice = 5.944 %
 INFO  Low Latency, big shifts, first formant against its surroundings, flatter = 6.054 dB
 INFO  High Quality, big shifts, first formant against its surroundings, flatter = 4.349 dB
+FAIL  [HQ] held out vowels and pitches, 98 to 220 Hz, worst formant move against the input = 5.824 %
+INFO  [HQ]   and the tool's floor there = 2.700 %
+INFO  [HQ]   first formant against its surroundings, flatter than a real voice, worst = 6.734 dB
+INFO  [HQ]   colour, worst = 3.047 dB
+INFO  [HQ]   and the input against that real voice, worst = 1.522 dB
+PASS  [HQ]   level change, worst = 1.165 dB
+FAIL  [HQ] held out vowels and pitches, 392 to 740 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst = 16.804 dB
+INFO  [HQ]   the same with every case, including where the whole glide stays above the formant = 16.804 dB
+PASS  [HQ]   first formant sharper than a real voice, worst = -2.030 dB
+PASS  [HQ]   formant move against the input, worst, against the floor plus 2% = 24.802 %
+INFO  [HQ]   and the tool's floor there = 28.466 %
+INFO  [HQ]   colour, worst = 5.682 dB
+INFO  [HQ]   and the input against that real voice, worst = 4.119 dB
+INFO  [HQ]   level change, worst = 0.575 dB
+INFO  [HQ]   held notes, harmonics against a real voice, mean of the RMS = 4.586 dB
+INFO  [HQ]   held notes, harmonics against a real voice, worst RMS = 10.343 dB
+INFO  [HQ]   held notes, harmonics against a real voice, worst single harmonic = 21.343 dB
+FAIL  [HQ]   held notes, harmonics against a real voice, mean of the RMS = 4.586 dB
+PASS  [LL] null test against 1.2.1: output, parameters and latency bit for bit the same, cases = 24.000 
 PASS  the window is the custom one
 PASS  controls in the window, knobs, choices and switches = 22.000 
 PASS  clicking the A key goes Remove, Bypass, Tune
@@ -569,7 +592,7 @@ PASS  the keyboard's target reads A3 = 57.000
 PASS  the pitch window's newest point: input A3 +30 cents, corrected A3 = 57.000 
 PASS  the reading strip: Active Key C Chromatic  |  In 223.8 Hz  |  Out 220.0 Hz  |  Target A3  |  Correction -30 cents
 PASS  the window paints
-PASS  audio keeps running while the window repaints, blocks = 75.000 
+PASS  audio keeps running while the window repaints, blocks = 40.000 
 PASS  every control in the window is found by its parameter ID
 PASS  Flex Tune is a slider in the window
 PASS  automation moves the window's slider = 42.000 
@@ -593,6 +616,6 @@ PASS  it paints at the smallest, largest and in between sizes
 PASS  with no audio arriving the display asks for no frames
 PASS  null test, window open against no window, largest sample difference = 0.000 
 PASS  25 opens and closes with no audio
-PASS  25 opens and closes with audio running, blocks = 720.000 
+PASS  25 opens and closes with audio running, blocks = 372.000 
 PASS  closing the window leaves audio running
-RESULT FAIL  3 failures
+RESULT FAIL  6 failures

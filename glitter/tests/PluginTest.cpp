@@ -1813,6 +1813,224 @@ void testOfflineAndBlocks()
     }
 }
 
+// ------------------------------------------------------------------------------------------------------------- the window
+
+// Counts gestures, so a drag in the window is known to reach the host the way automation needs it to.
+struct GestureCounter final : public juce::AudioProcessorParameter::Listener
+{
+    int began = 0, ended = 0, changes = 0;
+    void parameterValueChanged (int, float) override { ++changes; }
+    void parameterGestureChanged (int, bool starting) override { (starting ? began : ended) += 1; }
+};
+
+void testWindow()
+{
+    // Every control has its place on screen, under its own real parameter ID.
+    {
+        auto p = make();
+        prepare (*p, 2, SR, 256);
+        TuneFxEditor editor (*p);
+        int missing = 0, total = 0;
+        for (auto* prm : p->getParameters())
+        {
+            const auto id = dynamic_cast<juce::AudioProcessorParameterWithID&> (*prm).getParameterID();
+            if (std::find (readings.begin(), readings.end(), id.toStdString()) != readings.end() || id.startsWith ("note"))
+                continue;
+            ++total;
+            if (editor.findControl (id) == nullptr)
+            {
+                ++missing;
+                std::printf ("  no control for %s\n", id.toRawUTF8());
+            }
+        }
+        check (missing == 0 && total > 50, "every parameter has a control in the window, parameters checked", total);
+
+        // Automation moves the window, and the window moves the parameter.
+        auto* retune = dynamic_cast<fxui::ParamSlider*> (editor.findControl ("retune"));
+        setParam (*p, "retune", 120.0f);
+        check (retune != nullptr && std::abs (retune->getValue() - 120.0) < 0.2, "automation moves Retune Speed in the window", retune != nullptr ? retune->getValue() : -1.0);
+        retune->setValue (35.0, juce::sendNotificationSync);
+        check (std::abs (p->apvts.getRawParameterValue ("retune")->load() - 35.0f) < 0.2f, "the window moves Retune Speed", p->apvts.getRawParameterValue ("retune")->load());
+        retune->applyTyped ("80");
+        check (std::abs (p->apvts.getRawParameterValue ("retune")->load() - 80.0f) < 0.2f, "typing a value moves Retune Speed", p->apvts.getRawParameterValue ("retune")->load());
+        if (auto* cutoff = dynamic_cast<fxui::ParamSlider*> (editor.findControl ("filterCutoff")))
+        {
+            cutoff->applyTyped ("2.5k");
+            check (std::abs (p->apvts.getRawParameterValue ("filterCutoff")->load() - 2500.0f) < 1.0f, "typing 2.5k gives 2500 Hz");
+        }
+
+        // A block's switch is the module's On parameter, with one whole gesture.
+        {
+            GestureCounter gestures;
+            auto* on = p->apvts.getParameter ("delayOn");
+            on->addListener (&gestures);
+            editor.getRow().pressSwitch (9);
+            check (p->apvts.getRawParameterValue ("delayOn")->load() > 0.5f && gestures.began == 1 && gestures.ended == 1, "a block's switch turns its module on, in one gesture");
+            check (editor.getSelectedModule() == 9, "turning a module on brings up its panel");
+            on->removeListener (&gestures);
+            setParam (*p, "reverbOn", 1.0f);
+            check (editor.getRow().isOn (10), "automation lights a block");
+            setParam (*p, "reverbOn", 0.0f);
+            check (! editor.getRow().isOn (10), "automation unlights a block");
+        }
+
+        // Each pad drags real parameters, with begin and end gesture, and every module's picture can be drawn at either end of its controls.
+        for (int m = 0; m < fxui::numModules; ++m)
+        {
+            editor.selectModule (m);
+            check (editor.getSelectedModule() == m && p->selectedModule.load() == m, (std::string ("select ") + fxui::modules()[(size_t) m].name).c_str());
+            for (int h = 0; h < editor.getGraph().getNumHandles(); ++h)
+                for (const juce::Point<float> at : { juce::Point<float> (0.0f, 0.0f), juce::Point<float> (1.0f, 1.0f), juce::Point<float> (0.3f, 0.7f) })
+                {
+                    editor.getGraph().dragHandleTo (h, at);
+                    editor.tick (1.0 / 30.0);
+                    juce::Image image (juce::Image::ARGB, 400, 300, true);
+                    juce::Graphics g (image);
+                    editor.getGraph().paintEntireComponent (g, false);
+                }
+        }
+        {
+            editor.selectModule (7);
+            GestureCounter gestures;
+            auto* cutoff = p->apvts.getParameter ("filterCutoff");
+            auto* resonance = p->apvts.getParameter ("filterResonance");
+            cutoff->addListener (&gestures);
+            resonance->addListener (&gestures);
+            setParam (*p, "filterCutoff", 800.0f);
+            gestures.began = gestures.ended = gestures.changes = 0;
+            editor.getGraph().dragHandleTo (0, { 0.8f, 0.3f });
+            check (gestures.began == 2 && gestures.ended == 2 && gestures.changes >= 1, "the Filter pad moves Cutoff and Resonance inside gestures", gestures.changes);
+            check (p->apvts.getRawParameterValue ("filterCutoff")->load() > 2000.0f, "the Filter pad moves Cutoff", p->apvts.getRawParameterValue ("filterCutoff")->load());
+            cutoff->removeListener (&gestures);
+            resonance->removeListener (&gestures);
+        }
+
+        // Whole-number controls stay whole through a pad.
+        {
+            editor.selectModule (0);
+            editor.getGraph().dragHandleTo (0, { 0.61f, 0.33f });
+            const float semis = p->apvts.getRawParameterValue ("pitchSemitones")->load(), octs = p->apvts.getRawParameterValue ("pitchOctave")->load();
+            check (semis == std::round (semis) && octs == std::round (octs), "the Pitch pad lands on whole semitones and octaves", semis);
+        }
+
+        // The keys of your own scale are the Custom parameters.
+        {
+            editor.clickCustomKey (5);
+            check (juce::roundToInt (p->apvts.getRawParameterValue ("note5")->load()) == 1, "a click on a key sets Custom F to Remove");
+            editor.clickCustomKey (5);
+            check (juce::roundToInt (p->apvts.getRawParameterValue ("note5")->load()) == 2, "a second click sets it to Bypass");
+            editor.clickCustomKey (5);
+            check (juce::roundToInt (p->apvts.getRawParameterValue ("note5")->load()) == 0, "a third click sets it back to Tune");
+        }
+
+        // Advanced opens over the panel, and picking a module closes it.
+        editor.setAdvancedOpen (true, false);
+        check (p->advancedOpen.load(), "Advanced opens");
+        editor.selectModule (3);
+        check (! p->advancedOpen.load(), "picking a module closes Advanced");
+    }
+
+    // The window's size, open section and selected module come back with the session, nothing else goes in, and a damaged value cannot hurt.
+    {
+        auto a = make();
+        a->windowWidth = 1400;
+        a->advancedOpen = true;
+        a->selectedModule = 8;
+        setParam (*a, "ringMix", 77.0f);
+        juce::MemoryBlock st;
+        a->getStateInformation (st);
+        auto b = make();
+        b->setStateInformation (st.getData(), (int) st.getSize());
+        check (b->windowWidth.load() == 1400 && b->advancedOpen.load() && b->selectedModule.load() == 8, "window size, Advanced and module come back with the session");
+        check (std::abs (b->apvts.getRawParameterValue ("ringMix")->load() - 77.0f) < 0.01f, "parameters come back beside them");
+        check (! b->apvts.state.hasProperty ("windowWidth") && ! b->apvts.state.hasProperty ("selectedModule"), "the window's settings stay out of the parameter state");
+
+        auto xml = juce::AudioProcessor::getXmlFromBinary (st.getData(), (int) st.getSize());
+        xml->setAttribute ("windowWidth", 99999999);
+        xml->setAttribute ("selectedModule", -40);
+        juce::MemoryBlock bad;
+        juce::AudioProcessor::copyXmlToBinary (*xml, bad);
+        auto c = make();
+        c->setStateInformation (bad.getData(), (int) bad.getSize());
+        check (c->windowWidth.load() == PluginProcessor::maxWindowWidth && c->selectedModule.load() == 0, "damaged window settings are limited to what is legal");
+
+        // Open with Advanced saved open, at the smallest size: it stays open and lays out.
+        c->windowWidth = PluginProcessor::minWindowWidth;
+        c->advancedOpen = true;
+        prepare (*c, 2, SR, 256);
+        TuneFxEditor editor (*c);
+        check (editor.getWidth() == PluginProcessor::minWindowWidth && editor.getStrip().getWidth() > 0, "the smallest saved size lays out", editor.getStrip().getWidth());
+        check (c->advancedOpen.load(), "Advanced saved open stays open");
+    }
+
+    // The display's reads change nothing in the audio: with the window open and drawing, all on and tuning a voice, the output is the same to the last bit.
+    {
+        const Settings allOn { { "pitchOn", 1 }, { "pitchSemitones", 3 }, { "throatOn", 1 }, { "throatLength", 110 }, { "motionOn", 1 }, { "harmonyOn", 1 }, { "harmonyVoices", 1 }, { "doublerOn", 1 },
+                               { "vocoderOn", 1 }, { "distOn", 1 }, { "filterOn", 1 }, { "filterSweepDepth", 2 }, { "ringOn", 1 }, { "delayOn", 1 }, { "reverbOn", 1 } };
+        const auto x = steadyVoice (196.0, 3.0);
+        auto closed = with (allOn, 2);
+        auto open = with (allOn, 2);
+        TuneFxEditor editor (*open);
+        const auto a = render (*closed, x, 256);
+        juce::Image image (juce::Image::ARGB, 1120, 720, true);
+        int frame = 0;
+        const auto b = render (*open, x, 256, nullptr, [&] (int)
+        {
+            if (++frame % 10 == 0)
+            {
+                editor.tick (1.0 / 30.0);
+                juce::Graphics g (image);
+                editor.paintEntireComponent (g, false);
+            }
+        });
+        const double d = residualDb (a, b, 0);
+        check (d <= -200.0, "window open and drawing against no window, must be exact zero, difference", d, "dB");
+    }
+
+    // Open and close it over and over, with and without audio running on another thread.
+    {
+        auto p = with ({ { "harmonyOn", 1 }, { "motionOn", 1 } }, 2);
+        for (int i = 0; i < 20; ++i)
+        {
+            TuneFxEditor editor (*p);
+            editor.tick (1.0 / 30.0);
+        }
+        check (true, "20 windows opened and closed with no audio");
+
+        std::atomic<bool> running { true };
+        std::atomic<int> blocks { 0 };
+        std::thread audio ([&]
+        {
+            juce::AudioBuffer<float> buffer (2, 256);
+            juce::MidiBuffer midi;
+            const auto x = steadyVoice (220.0, 1.0);
+            size_t at = 0;
+            while (running.load())
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < 256; ++i)
+                        buffer.setSample (ch, i, x[(at + (size_t) i) % x.size()]);
+                at += 256;
+                p->processBlock (buffer, midi);
+                ++blocks;
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            }
+        });
+        for (int i = 0; i < 40; ++i)
+        {
+            TuneFxEditor editor (*p);
+            for (int k = 0; k < 3; ++k)
+                editor.tick (1.0 / 30.0);
+            juce::Image image (juce::Image::ARGB, 1120, 720, true);
+            juce::Graphics g (image);
+            editor.paintEntireComponent (g, false);
+        }
+        running = false;
+        audio.join();
+        check (blocks.load() > 10, "40 windows opened, drawn and closed with audio running, blocks processed", blocks.load());
+    }
+}
+
 void testPresets()
 {
     const auto x = loadWav ("held_kathy.wav");
@@ -1929,6 +2147,7 @@ int main (int argc, char** argv)
     if (want ("stereo")) testStereo();
     if (want ("offline")) testOfflineAndBlocks();
     if (want ("presets")) testPresets();
+    if (want ("window")) testWindow();
     if (want ("cpu")) testCpu();
     return finish();
 }

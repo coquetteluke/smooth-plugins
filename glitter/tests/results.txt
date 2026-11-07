@@ -451,6 +451,43 @@ PASS  preset Synth Voice: finite, level near the plain voice, not overloading, l
 PASS    latency unchanged = 659.000 samples
 PASS  presets leave Key and Scale alone
 PASS  first preset is exactly the default sound, difference = -240.000 dB
-INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 1.742 %
-PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 2.913 %
+PASS  every parameter has a control in the window, parameters checked = 62.000 
+PASS  automation moves Retune Speed in the window = 120.000 
+PASS  the window moves Retune Speed = 35.000 
+PASS  typing a value moves Retune Speed = 80.000 
+PASS  typing 2.5k gives 2500 Hz
+PASS  a block's switch turns its module on, in one gesture
+PASS  turning a module on brings up its panel
+PASS  automation lights a block
+PASS  automation unlights a block
+PASS  select Pitch
+PASS  select Motion
+PASS  select Throat
+PASS  select Harmony
+PASS  select Doubler
+PASS  select Vocoder
+PASS  select Distortion
+PASS  select Filter
+PASS  select Ring
+PASS  select Delay
+PASS  select Reverb
+PASS  the Filter pad moves Cutoff and Resonance inside gestures = 2.000 
+PASS  the Filter pad moves Cutoff = 5024.000 
+PASS  the Pitch pad lands on whole semitones and octaves = 3.000 
+PASS  a click on a key sets Custom F to Remove
+PASS  a second click sets it to Bypass
+PASS  a third click sets it back to Tune
+PASS  Advanced opens
+PASS  picking a module closes Advanced
+PASS  window size, Advanced and module come back with the session
+PASS  parameters come back beside them
+PASS  the window's settings stay out of the parameter state
+PASS  damaged window settings are limited to what is legal
+PASS  the smallest saved size lays out = 481.000 
+PASS  Advanced saved open stays open
+PASS  window open and drawing against no window, must be exact zero, difference = -240.000 dB
+PASS  20 windows opened and closed with no audio
+PASS  40 windows opened, drawn and closed with audio running, blocks processed = 432.000 
+INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 1.793 %
+PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 2.997 %
 RESULT PASS  0 failures

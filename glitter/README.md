@@ -52,7 +52,7 @@ Every control is a real AU parameter that a host can find by name.
 
 Also Output Gain and Bypass. Tempo comes from the host, and falls back to 120 BPM with none.
 
-Readings, which never write automation: Pitch Off Target, Detected Pitch, Correction Applied, Target Note, Active Key, MIDI Notes Held. JUCE's generic rows do not redraw for those, so the window has a live strip on top.
+Readings, which never write automation: Pitch Off Target, Detected Pitch, Correction Applied, Target Note, Active Key, MIDI Notes Held. The window shows them live.
 
 ## Presets
 
@@ -109,8 +109,22 @@ All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before
 - The vocoder is one filter bank, not models of old machines.
 - Harmony and Level were first read from a clean tone, which turned out to be the wrong tool: a sine loses level when grains move its one peak. Those tests moved to a voice, with the same limit.
 
-## For the later window
+## Window
 
-`getReadings()`, `getPitchPoint()` and the module switches give it everything without touching audio. A tuner like this usually shows: big Retune and Humanize knobs, a row of module slots with an X/Y pad on the selected one, a preset browser on one side, a keyboard along the bottom lighting up the detected pitch and scale notes, and a Motion view with a small piano roll of the pattern.
+Black, with hot magenta for the voice and one colour per module. PNGs are in `docs/window/`.
+
+- **Top:** Retune Speed and Humanize set large, the live pitch strip, and the note coming out. On the strip, white is your voice, magenta is what comes out, and Harmony's voices are in Harmony's colour. Pitch and Motion show up as the magenta line moving away from the white one. A flat piano on the right lights the scale and the note.
+- **Middle:** eleven blocks in signal order. A lit block is on. Each says what it is set to, so the row reads at a glance. A click on a block shows its controls, and a click on its switch turns it on or off.
+- **Bottom:** one panel, in the colour of the block it belongs to, with that module's name, a picture drawn from its real settings, and all of its controls. On most modules the picture is a pad, where a dot moves two controls together. Filter's picture is the real response, Distortion's the real curve, Motion's the real pattern in your key, with the step playing right now in white.
+- **Advanced:** rises over the panel. Input Type, MIDI Target, Reference A4, Tracking, and a one octave keyboard for Custom C to Custom B. A click on a key goes round Tune, Remove and Bypass. Picking a module closes it.
+- Double-click resets, click a value to type it (2.5k works), drag the corner to resize. The size, whether Advanced is open and which module is showing are saved with the session. Nothing else was added to saved state.
+
+Every control is the same real AU parameter as before, with the same ID, name and range, so hosts still find them all by name. The window only reads and writes those parameters, inside begin and end gestures. No control lives only in the window, and the tests check that every parameter has its place.
+
+Added for the display, all plain relaxed stores from the audio thread that the audio never reads back: Harmony's two notes in the pitch history, Motion's step, the swept Filter cutoff, and the scale in use. Bypassed, the history shows the voice unchanged, because that is what comes out. Proof it changes no audio: all 12 presets rendered on `say` speech are byte for byte the same files as the build before the window, and all on with the window open and drawing against no window is exact zero.
+
+Run `build/RenderWindow_artefacts/Release/RenderWindow` from the repo root to redraw the PNGs on real `say` speech, and `RenderWindow --live [runs] [seconds] [audio, silent or background] [module]` to measure CPU on the real window.
+
+Window CPU, MacBook 2x screen, at 30 frames a second, is in the changelog. What moved it: the strip writes its pixels straight into a ring image instead of stroking paths, text and the piano are kept as cached images because macOS merges nearby repaints, and Filter's sweep marker moves at half the frame rate.
 
 `build/PluginTest_artefacts/Release/PluginTest demo` writes every preset on a `say` voice to `build/demo`, for a quick listen outside any host.

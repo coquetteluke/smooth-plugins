@@ -90,10 +90,21 @@ public:
     Readings getReadings() const noexcept;
 
     // The last few seconds of pitch, one point every 5 ms, for a graph. Read newest back from getPitchHistoryCount() - 1.
-    struct PitchPoint { std::atomic<float> inputNote { 0.0f }, outputNote { 0.0f }, targetNote { 0.0f }; };
+    // Harmony 1 and 2 are the added voices' notes, 0 when that voice is off or nothing is voiced. Display only.
+    struct PitchPoint { std::atomic<float> inputNote { 0.0f }, outputNote { 0.0f }, targetNote { 0.0f }, harmony1 { 0.0f }, harmony2 { 0.0f }; };
     static constexpr int pitchHistorySize = 2048;
     const PitchPoint& getPitchPoint (long long index) const noexcept { return pitchHistory[(size_t) (index & (pitchHistorySize - 1))]; }
     long long getPitchHistoryCount() const noexcept { return pitchHistoryCount.load (std::memory_order_relaxed); }
+
+    // For the window. Plain relaxed stores from the audio thread that nothing in the audio ever reads back.
+    int getMotionStep() const noexcept { return motionStepShown.load (std::memory_order_relaxed); }         // 0 to 15, or -1 with Motion off
+    float getFilterHz() const noexcept { return filterHzShown.load (std::memory_order_relaxed); }           // where the sweep has the cutoff now
+    std::uint16_t getScaleMask() const noexcept { return (std::uint16_t) scaleShown.load (std::memory_order_relaxed); } // notes in use, a bit per pitch class from C
+
+    // The window's size, whether Advanced is open and which module is showing are the only things it adds to a session.
+    static constexpr int minWindowWidth = 840, defaultWindowWidth = 1120, maxWindowWidth = 1680;
+    std::atomic<int> windowWidth { defaultWindowWidth }, selectedModule { 0 };
+    std::atomic<bool> advancedOpen { false };
 
     // Latency in samples for an Input Type at a sample rate. No module has any say in it.
     static int latencyFor (int inputType, double sampleRate) noexcept;
@@ -218,8 +229,10 @@ private:
     std::array<PitchPoint, pitchHistorySize> pitchHistory;
     std::atomic<long long> pitchHistoryCount { 0 };
 
-    std::atomic<int> voicedNow { 0 };
+    std::atomic<int> voicedNow { 0 }, motionStepShown { -1 }, scaleShown { 0x0FFF };
+    std::atomic<float> filterHzShown { 800.0f };
     std::atomic<double> preparedRate { 0.0 };
+    bool displayBypassed = false;
     bool hostLatencyUpdates = true;
     int currentProgram = 0;
     std::unique_ptr<Worker> worker;

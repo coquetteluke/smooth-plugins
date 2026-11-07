@@ -696,8 +696,13 @@ void PluginProcessor::tick() noexcept
     {
         const double shifted = beat - latencyNow * beatStep;
         const int step = (int) std::floor (shifted * motionStepsPerBeat[motionRateNow]);
+        motionStepShown.store (((step % 16) + 16) % 16, std::memory_order_relaxed);
         const auto& s = motionPattern (motionPatternNow)[(size_t) (((step % 16) + 16) % 16)];
         motionWanted = (double) (walkScale (target, s.degrees, scaleAllowed) - target) + 12.0 * s.octaves;
+    }
+    else
+    {
+        motionStepShown.store (-1, std::memory_order_relaxed);
     }
     motionNow += slew (juce::jmax (2.0, motionGlideMs)) * (motionWanted - motionNow);
     if (std::abs (motionNow - motionWanted) < 1.0e-5) motionNow = motionWanted;
@@ -779,8 +784,12 @@ void PluginProcessor::tick() noexcept
         const auto at = pitchHistoryCount.load (std::memory_order_relaxed);
         auto& point = pitchHistory[(size_t) (at & (pitchHistorySize - 1))];
         point.inputNote.store (voiced ? (float) corrector.inputPitch() : 0.0f, std::memory_order_relaxed);
-        point.outputNote.store (voiced ? (float) (corrector.outputPitch() + pitchShiftNow + motionNow) : 0.0f, std::memory_order_relaxed);
+        // Bypassed, what comes out is what went in, and the display says so. This changes nothing but the display.
+        point.outputNote.store (voiced ? (float) (displayBypassed ? corrector.inputPitch() : corrector.outputPitch() + pitchShiftNow + motionNow) : 0.0f, std::memory_order_relaxed);
         point.targetNote.store ((float) target, std::memory_order_relaxed);
+        const double lead = corrector.outputPitch() + pitchShiftNow + motionNow;
+        point.harmony1.store (voiced && harmonyActive && ! displayBypassed ? (float) (lead + harmonyOffset[0]) : 0.0f, std::memory_order_relaxed);
+        point.harmony2.store (voiced && harmonyActive && twoVoices && ! displayBypassed ? (float) (lead + harmonyOffset[1]) : 0.0f, std::memory_order_relaxed);
         pitchHistoryCount.store (at + 1, std::memory_order_relaxed);
     }
 }
@@ -797,7 +806,9 @@ void PluginProcessor::controlRate() noexcept
     {
         const double phase = twoPi * (beat - latencyNow * beatStep) / sweepBeats[filterRateIndex];
         const double logHz = filterLogSmooth + filterDepthNow * std::sin (phase);
-        filter.set (std::pow (2.0, logHz), filterQSmooth);
+        const double sweptHz = std::pow (2.0, logHz);
+        filterHzShown.store ((float) sweptHz, std::memory_order_relaxed);
+        filter.set (sweptHz, filterQSmooth);
     }
 
     ringInc = (float) ((double) ringInc + chunkCoef * (ringHzNow / sr - (double) ringInc));
@@ -1018,6 +1029,7 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     if (wantedTypeNow != typeNow)
         fading = true;
     const float bypassTarget = (forceBypass || wantBypass) ? 0.0f : 1.0f;
+    displayBypassed = forceBypass || wantBypass;
 
     // Mono input feeds both sides. With no input channel at all, the plug-in hears silence.
     const float* inL = numIn > 0 ? buffer.getReadPointer (0) : nullptr;
@@ -1103,6 +1115,7 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     keyReading->set ((float) (activeKeyNow + 12 * activeScaleNow));
     heldReading->set ((float) heldCount);
     voicedNow.store (voiced ? 1 : 0, std::memory_order_relaxed);
+    scaleShown.store ((int) scaleAllowed, std::memory_order_relaxed);
 }
 
 PluginProcessor::Readings PluginProcessor::getReadings() const noexcept
@@ -1169,14 +1182,29 @@ void PluginProcessor::setCurrentProgram (int i)
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     if (auto xml = apvts.copyState().createXml())
+    {
+        xml->setAttribute ("windowWidth", windowWidth.load (std::memory_order_relaxed));
+        xml->setAttribute ("advancedOpen", advancedOpen.load (std::memory_order_relaxed));
+        xml->setAttribute ("selectedModule", selectedModule.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, dest);
+    }
 }
 
 void PluginProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
         if (xml->hasTagName (apvts.state.getType()))
+        {
+            // The window's own settings, checked like everything else from a saved session, then taken out so they never reach the parameters.
+            if (xml->hasAttribute ("windowWidth"))
+                windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute ("windowWidth", defaultWindowWidth)), std::memory_order_relaxed);
+            advancedOpen.store (xml->getBoolAttribute ("advancedOpen", false), std::memory_order_relaxed);
+            selectedModule.store (juce::jlimit (0, 10, xml->getIntAttribute ("selectedModule", 0)), std::memory_order_relaxed);
+            xml->removeAttribute ("windowWidth");
+            xml->removeAttribute ("advancedOpen");
+            xml->removeAttribute ("selectedModule");
             applySafeState (apvts, *xml);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PluginProcessor(); }

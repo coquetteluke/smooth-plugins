@@ -21,7 +21,7 @@ namespace smoothmorph
 class EnvelopeEngine
 {
 public:
-    static constexpr int maxOrder = 72;
+    static constexpr int maxOrder = 80;
     static constexpr int updateEvery = 8; // samples between refreshed filter coefficients
     static constexpr int numBands = 64;   // readout for a later window: dB per band, up to 12 kHz
 
@@ -34,7 +34,7 @@ public:
         while ((1 << logN) < (int) std::lround (sr * 0.0213)) ++logN;
         N = 1 << logN;
         hop = N / 8;
-        order = std::clamp ((int) std::lround (sr / 1000.0), 16, 72);
+        order = std::clamp ((int) std::lround (sr / 1000.0), 16, maxOrder);
 
         if (setup != nullptr) vDSP_destroy_fftsetupD (setup);
         setup = vDSP_create_fftsetupD ((vDSP_Length) logN, kFFTRadix2);

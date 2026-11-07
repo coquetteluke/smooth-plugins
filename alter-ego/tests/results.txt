@@ -49,7 +49,7 @@ PASS  delay measured by correlation against the reported one, samples off = 0.00
 PASS  latency reports the same with a fresh prepare
 PASS  latency at 96000 Hz = 24.188 ms
 INFO    in samples = 2322.000 
-PASS  default settings null against the input delayed by the reported latency, 96000 Hz = -141.682 dB
+PASS  default settings null against the input delayed by the reported latency, 96000 Hz = -141.823 dB
 PASS  delay measured by correlation against the reported one, samples off = 0.000 
 PASS  latency reports the same with a fresh prepare
 PASS  Mix 0 with Pitch +7 is the input delayed, on noise = -141.121 dB
@@ -58,7 +58,7 @@ PASS  Pitch +/-1 to +/-12, notes 98 to 349 Hz, worst 95th percentile = 4.422 cen
 PASS  level stays put over those, worst change = 0.281 dB
 PASS  a voice's own vibrato of 40 cents at Pitch -7 reads = 40.689 cents
 PASS  Pitch at 44100 Hz, worst = 2.748 cents
-PASS  Pitch at 96000 Hz, worst = 2.403 cents
+PASS  Pitch at 96000 Hz, worst = 4.150 cents
 PASS  formants across Pitch +/-3 to +/-12, better reading, worst move = 4.563 %
 INFO    output against input on its own, worst = 30.265 %
 INFO    output against a real voice at the new pitch on its own, worst = 16.569 %
@@ -70,7 +70,7 @@ PASS  Formant Shift +/-2 to +/-7 semitones, measured ratio against 2^(st/12), be
 INFO    worst ratio reading on its own = 17.410 %
 INFO    worst reading against a real voice with moved formants on its own = 4.772 %
 PASS  Formant Shift +/-4 at 44100 Hz, ratio reading, worst = 2.499 %
-FAIL  Formant Shift +/-4 at 96000 Hz, ratio reading, worst = 6.692 %
+PASS  Formant Shift +/-4 at 96000 Hz, ratio reading, worst = 2.499 %
 PASS  pitch while Formant Shift goes to +/-12, worst 95th percentile = 1.414 cents
 PASS  Deep: pitch moves as stated, worst = 0.443 cents
 PASS  Deep: formants move as stated, worst = 4.146 %
@@ -192,6 +192,6 @@ PASS  every preset sounds different from every other
 PASS  any block size gives the same output, biggest difference = 0.000 
 PASS  preparing again starts clean, biggest difference = 0.000 
 PASS  stereo balance holds: right was 6 dB down, reads = -6.021 dB
-PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 6.437 %
-PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 21.570 %
-RESULT FAIL  1 failures
+PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 6.472 %
+PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 24.098 %
+RESULT PASS  0 failures

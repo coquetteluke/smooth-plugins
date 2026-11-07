@@ -328,5 +328,33 @@ inline std::vector<float> melodyClip (int tonic, bool minor, const Timbre& t, un
     return out;
 }
 
+// A beat for the tempo test: kick on each beat, hat on each half beat, quiet sustained chords under them.
+inline std::vector<float> beatClip (double bpm, int tonic, unsigned seed, double sr, double seconds)
+{
+    std::mt19937 rng (seed);
+    std::uniform_real_distribution<double> uni (-1.0, 1.0);
+    std::vector<float> out ((size_t) (seconds * sr));
+    const auto ps = progressions();
+    const Timbre pad { "pad", stack (6, 1.5), 1, 0.0, 200.0, false, 0.0 };
+    renderNotes (out, chordNotes (tonic, ps[(size_t) (seed % ps.size())], seconds, 240.0 / bpm, 0), pad, 0.0, sr, seed + 1);
+    const double beat = 60.0 / bpm;
+    for (double t = 0.0; t < seconds; t += beat)
+    {
+        const int start = (int) (t * sr), len = (int) (0.14 * sr);
+        for (int i = 0; i < len && start + i < (int) out.size(); ++i)
+        {
+            const double sec = i / sr;
+            out[(size_t) (start + i)] += (float) (0.7 * std::exp (-sec * 30.0) * std::sin (twoPi * (55.0 * sec + 2.0 * (1.0 - std::exp (-sec * 40.0)))));
+        }
+        for (int half = 0; half < 2; ++half)
+        {
+            const int hs = (int) ((t + half * beat * 0.5) * sr), hl = (int) (0.03 * sr);
+            for (int i = 0; i < hl && hs + i < (int) out.size(); ++i)
+                out[(size_t) (hs + i)] += (float) (0.18 * uni (rng) * std::exp (-(i / sr) * 150.0));
+        }
+    }
+    return out;
+}
+
 inline unsigned clipSeed (unsigned base, int a, int b, int c) { return base * 31u + (unsigned) a * 1009u + (unsigned) b * 101u + (unsigned) c * 7u; }
 } // namespace corpus

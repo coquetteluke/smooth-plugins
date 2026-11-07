@@ -3,16 +3,16 @@ set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "" FORCE)
 
 # ---- edit these for each plug-in ----
-set(SP_TARGET  SmoothTemplate)
-set(SP_NAME    "Smooth Template")
-set(SP_CODE    STmp)
-set(SP_BUNDLE  "com.lukegarito.smoothtemplate")
-set(SP_DESC    "Template gain plug-in")
-set(SP_VERSION 0.1.0)
+set(SP_TARGET  SmoothKey)
+set(SP_NAME    "Smooth Key")
+set(SP_CODE    SKey)
+set(SP_BUNDLE  "com.lukegarito.smoothkey")
+set(SP_DESC    "Live key, scale and tempo detection")
+set(SP_VERSION 1.0.0)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice
-set(SP_SOURCES src/PluginProcessor.cpp) # every .cpp except tests
+set(SP_SOURCES src/PluginProcessor.cpp src/KeyEditor.cpp) # every .cpp except tests
 # -------------------------------------
 
 project(${SP_TARGET} VERSION ${SP_VERSION} LANGUAGES C CXX)

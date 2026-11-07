@@ -36,6 +36,8 @@ private:
     class PeakReading;
     class BandPicker;
     class AdvancedHeader;
+    class ChannelMeters;
+    class SmallButton;
 
     struct Panel final : public juce::Component
     {
@@ -52,6 +54,8 @@ private:
         void hintFromComponent (juce::Component*);
         void showBand (int);
         void layoutSide();
+        void refreshDots();
+        void refreshChannels();
         int countAdvancedChanges() const;
 
         ResonanceEditor& owner;
@@ -64,9 +68,11 @@ private:
         std::unique_ptr<PeakReading> reading;
         std::unique_ptr<BandPicker> bandPicker;
         std::unique_ptr<AdvancedHeader> advancedHeader;
+        std::unique_ptr<ChannelMeters> channelMeters;
+        std::unique_ptr<SmallButton> listenButton, removeButton[smoothres::Params::numBands];
 
-        ui::ParamSlider depth, sharpness, selectivity, attack, release;
-        ui::ParamChoice mode;
+        ui::ParamSlider depth, maxCut, sharpness, selectivity, attack, release;
+        ui::ParamChoice mode, quality;
         ui::ParamSlider hardThreshold;
         ui::ParamChoice stereoMode;
         ui::ParamSlider link, stereoFocus, sharpnessTilt, attackTilt, releaseTilt, wetTrim;
@@ -79,6 +85,8 @@ private:
         juce::Label hintLine;
         float advancedAmount = 0.0f;   // 0 closed, 1 open
         bool thresholdShown = false;
+        juce::uint32 dotsShown = 0xffffffff;
+        int listenShown = -2, channelsShown = -1;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Panel)
     };

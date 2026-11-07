@@ -19,7 +19,7 @@ namespace
     // even cadence on a 60 or 120 Hz screen, where 45 would skip every fourth refresh. See docs/window-cpu.md.
     constexpr double maxFramesPerSecond = 30.0;
 
-    const juce::String restingHint = "Drag the dots on the graph. Double-click anything to reset it.";
+    const juce::String restingHint = "Drag the dots. Double-click the graph to add one, or anything else to reset it.";
 }
 
 // ---- preset name with next and previous arrows ----------------------------------------------------------------
@@ -220,7 +220,7 @@ class ResonanceEditor::BandPicker final : public juce::Component,
 public:
     explicit BandPicker (ResonanceGraph& g) : graph (g)
     {
-        hint = "Pick a dot. The values next to this belong to it.";
+        hint = "Pick a dot. A faint number is a free dot: click it to add it.";
         setTitle ("Selected dot");
     }
 
@@ -230,15 +230,29 @@ public:
         g.setFont (font (Weight::regular, 13.0f));
         g.drawText ("Dot", juce::Rectangle<float> (0.0f, 6.0f, 60.0f, 18.0f), juce::Justification::centredLeft, false);
 
-        for (int b = 0; b < 3; ++b)
+        for (int b = 0; b < smoothres::Params::numBands; ++b)
         {
             const auto c = cellFor (b);
-            const bool on = graph.getSelectedBand() == b;
-            g.setColour (on ? tone::text : tone::text.withAlpha (hovered == b ? 0.12f : 0.06f));
-            g.fillEllipse (c);
-            g.setColour (on ? tone::well : (hovered == b ? tone::text : tone::muted));
+            const bool on = graph.isBandOn (b);
+            const bool chosen = on && graph.getSelectedBand() == b;
+            const bool lit = hovered == b;
+
+            if (on)
+            {
+                g.setColour (chosen ? tone::text : tone::text.withAlpha (lit ? 0.2f : 0.11f));
+                g.fillEllipse (c);
+                g.setColour (chosen ? tone::well : (lit ? tone::text : tone::text.withAlpha (0.85f)));
+            }
+            else
+            {
+                // Free: an outline only, which turns into a plus when it would add the dot.
+                g.setColour (tone::text.withAlpha (lit ? 0.45f : 0.16f));
+                g.drawEllipse (c.reduced (0.5f), 1.0f);
+                g.setColour (lit ? tone::text : tone::faint.withAlpha (0.8f));
+            }
+
             g.setFont (font (Weight::medium, 12.0f));
-            g.drawText (juce::String (b + 1), c, juce::Justification::centred, false);
+            g.drawText (! on && lit ? juce::String ("+") : juce::String (b + 1), c, juce::Justification::centred, false);
         }
     }
 
@@ -251,7 +265,11 @@ public:
 
         if (hit >= 0)
         {
-            graph.setSelectedBand (hit);
+            if (graph.isBandOn (hit))
+                graph.setSelectedBand (hit);
+            else
+                graph.addBand (hit);
+
             repaint();
         }
     }
@@ -259,12 +277,12 @@ public:
 private:
     juce::Rectangle<float> cellFor (int b) const
     {
-        return { (float) b * 28.0f, 26.0f, 22.0f, 22.0f };
+        return { (float) b * 24.0f, 27.0f, 20.0f, 20.0f };
     }
 
     int cellAt (juce::Point<float> p) const
     {
-        for (int b = 0; b < 3; ++b)
+        for (int b = 0; b < smoothres::Params::numBands; ++b)
             if (cellFor (b).expanded (2.0f).contains (p))
                 return b;
 
@@ -282,6 +300,155 @@ private:
 
     ResonanceGraph& graph;
     int hovered = -1;
+};
+
+// ---- the two small buttons that belong to the selected dot -------------------------------------------------------
+
+class ResonanceEditor::SmallButton final : public juce::Component,
+                                           public Hinted
+{
+public:
+    SmallButton (const juce::String& textToShow, const juce::String& id, const juce::String& hintText, juce::Colour onColourToUse)
+        : text (textToShow), onColour (onColourToUse)
+    {
+        hint = hintText;
+        setComponentID (id);
+        setTitle (textToShow);
+        setRepaintsOnMouseActivity (true);
+    }
+
+    std::function<void()> onClick;
+
+    void setOn (bool shouldBeOn)
+    {
+        if (on != shouldBeOn)
+        {
+            on = shouldBeOn;
+            repaint();
+        }
+    }
+
+    bool isOn() const noexcept  { return on; }
+
+    void setText (const juce::String& newText)
+    {
+        if (text != newText)
+        {
+            text = newText;
+            repaint();
+        }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto b = getLocalBounds().toFloat();
+        const bool lit = isEnabled() && isMouseOverOrDragging();
+        g.setColour (on ? onColour : tone::text.withAlpha (lit ? 0.11f : 0.06f));
+        g.fillRoundedRectangle (b, 6.0f);
+        g.setColour ((on ? tone::well : (lit ? tone::text : tone::muted)).withMultipliedAlpha (isEnabled() ? 1.0f : 0.4f));
+        g.setFont (font (Weight::medium, 12.0f));
+        g.drawText (text, b, juce::Justification::centred, false);
+    }
+
+    void enablementChanged() override  { repaint(); }
+
+    void mouseDown (const juce::MouseEvent&) override
+    {
+        if (isEnabled() && onClick != nullptr)
+            onClick();
+    }
+
+private:
+    juce::String text;
+    const juce::Colour onColour;
+    bool on = false;
+};
+
+// ---- how much each channel is cut, in surround ----------------------------------------------------------------
+
+class ResonanceEditor::ChannelMeters final : public juce::Component
+{
+public:
+    explicit ChannelMeters (SmoothResonanceProcessor& p) : processor (p)
+    {
+        setInterceptsMouseClicks (false, false);
+        setOpaque (true);
+    }
+
+    void refreshLayout()
+    {
+        names = processor.getChannelNames();
+        lfe = processor.getLfeChannel();
+        layout = processor.getLayoutName();
+        shown.fill (0.0f);
+        repaint();
+    }
+
+    int heightWanted() const noexcept
+    {
+        return 22 + rowHeight * (names.size() > perRow ? 2 : 1);
+    }
+
+    void update (const smoothres::GraphFrame& frame, double dt)
+    {
+        bool moved = false;
+
+        for (int ch = 0; ch < names.size(); ++ch)
+        {
+            const float target = ch < frame.numChannels ? frame.channelReductionDb[(size_t) ch] : 0.0f;
+            auto& now = shown[(size_t) ch];
+            const float next = target > now ? target : now + (target - now) * (1.0f - std::exp (-(float) dt / 0.2f));
+            moved = moved || std::abs (next - drawn[(size_t) ch]) > 0.25f;
+            now = next;
+        }
+
+        if (moved)
+        {
+            drawn = shown;
+            repaint();
+        }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (tone::base);
+        g.setColour (tone::muted);
+        g.setFont (font (Weight::regular, 13.0f));
+        g.drawText ("Channels", juce::Rectangle<float> (0.0f, 0.0f, 84.0f, 18.0f), juce::Justification::centredLeft, false);
+        g.setColour (tone::faint);
+        g.drawText (lfe >= 0 ? "LFE only delayed" : "All treated", juce::Rectangle<float> (84.0f, 0.0f, (float) getWidth() - 84.0f, 18.0f), juce::Justification::centredRight, false);
+
+        const float cell = (float) getWidth() / (float) perRow;
+
+        for (int ch = 0; ch < names.size(); ++ch)
+        {
+            const float x = cell * (float) (ch % perRow);
+            const float y = 22.0f + (float) (rowHeight * (ch / perRow));
+            const auto bar = juce::Rectangle<float> (x, y, cell - 5.0f, 4.0f);
+
+            g.setColour (tone::text.withAlpha (0.08f));
+            g.fillRoundedRectangle (bar, 2.0f);
+
+            if (ch != lfe)
+            {
+                g.setColour (tone::gold);
+                g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * juce::jlimit (0.0f, 1.0f, drawn[(size_t) ch] / 24.0f)), 2.0f);
+            }
+
+            g.setColour (ch == lfe ? tone::faint : tone::muted);
+            g.setFont (font (Weight::regular, 11.0f));
+            g.drawText (names[ch], juce::Rectangle<float> (x, y + 6.0f, cell - 2.0f, 14.0f), juce::Justification::centredLeft, false);
+        }
+    }
+
+private:
+    static constexpr int perRow = 8, rowHeight = 23;
+
+    SmoothResonanceProcessor& processor;
+    juce::StringArray names;
+    juce::String layout;
+    int lfe = -1;
+    std::array<float, smoothres::maxEngineChannels> shown {}, drawn {};
 };
 
 // ---- the line that opens the rest of the controls --------------------------------------------------------------
@@ -354,12 +521,14 @@ ResonanceEditor::Panel::Panel (ResonanceEditor& e, SmoothResonanceProcessor& p)
     : owner (e),
       processor (p),
       graph (p),
-      depth (p.parameters, "depth", "Depth", "The most any one spot can be turned down.", Kind::bigDial, Unit::db, tone::gold),
+      depth (p.parameters, "depth", "Depth", "How hard it works. Also the most any spot is cut, unless Max Cut is lower.", Kind::bigDial, Unit::db, tone::gold),
+      maxCut (p.parameters, "maxCut", "Max Cut", "No spot goes deeper than this. With high Depth, more of the area reaches it.", Kind::row, Unit::db, tone::gold),
       sharpness (p.parameters, "sharpness", "Sharpness", "Low treats wide areas. High treats narrow spots.", Kind::dial, Unit::percent),
       selectivity (p.parameters, "selectivity", "Selectivity", "Low catches small bumps too. High catches only the worst.", Kind::dial, Unit::percent),
       attack (p.parameters, "attack", "Attack", "How fast it grabs a harsh peak.", Kind::dial, Unit::ms),
       release (p.parameters, "release", "Release", "How fast it lets go.", Kind::dial, Unit::ms),
       mode (p.parameters, "mode", "Mode", "Soft compares each spot to its neighbours. Hard uses a fixed level."),
+      quality (p.parameters, "quality", "Quality", "Low Latency 11 ms, for recording. Normal 43 ms. High 85 ms, finest detail, slower to react."),
       hardThreshold (p.parameters, "hardThreshold", "Threshold", "In Hard mode, the level where it starts working.", Kind::row, Unit::db),
       stereoMode (p.parameters, "stereoMode", "Stereo", "Stereo treats left and right. Mid/Side treats center and sides."),
       link (p.parameters, "link", "Link", "At 100% both sides move together. Lower treats them apart.", Kind::row, Unit::percent),
@@ -383,14 +552,19 @@ ResonanceEditor::Panel::Panel (ResonanceEditor& e, SmoothResonanceProcessor& p)
     reading = std::make_unique<PeakReading> (p);
     bandPicker = std::make_unique<BandPicker> (graph);
     advancedHeader = std::make_unique<AdvancedHeader> (e);
+    channelMeters = std::make_unique<ChannelMeters> (p);
+    listenButton = std::make_unique<SmallButton> ("Listen", "bandListen", "Hear only this dot's area. With Delta, only what it loses there. This changes the output.", tone::listen);
+    listenButton->onClick = [this] { graph.toggleListen (graph.getSelectedBand()); };
 
     addAndMakeVisible (graph);
     addAndMakeVisible (*presets);
     addAndMakeVisible (*reading);
     addAndMakeVisible (*bandPicker);
     addAndMakeVisible (*advancedHeader);
+    addChildComponent (*channelMeters);
+    addAndMakeVisible (*listenButton);
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &depth, &sharpness, &selectivity, &attack, &release, &mode, &hardThreshold, &stereoMode,
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &depth, &maxCut, &sharpness, &selectivity, &attack, &release, &mode, &quality, &hardThreshold, &stereoMode,
                                                                         &link, &stereoFocus, &sharpnessTilt, &attackTilt, &releaseTilt, &wetTrim,
                                                                         &sideChain, &sideChainListen, &lowFreq, &highFreq, &bypass, &delta, &mix, &outputGain })
         addAndMakeVisible (c);
@@ -404,6 +578,17 @@ ResonanceEditor::Panel::Panel (ResonanceEditor& e, SmoothResonanceProcessor& p)
         addChildComponent (*bandFreq[b]);
         addChildComponent (*bandSens[b]);
         addChildComponent (*bandWidth[b]);
+
+        // One for each dot, since each is the home of that dot's real On parameter.
+        removeButton[b] = std::make_unique<SmallButton> ("Remove", "band" + number + "On", "Take this dot away.", tone::text);
+        removeButton[b]->onClick = [this, b]
+        {
+            if (graph.isBandOn (b))
+                graph.removeBand (b);
+            else
+                graph.addBand (b);
+        };
+        addChildComponent (*removeButton[b]);
     }
 
     hintLine.setInterceptsMouseClicks (false, false);
@@ -418,12 +603,15 @@ ResonanceEditor::Panel::Panel (ResonanceEditor& e, SmoothResonanceProcessor& p)
     graph.onBandSelected = [this] (int b)
     {
         showBand (b);
+        refreshDots();
         bandPicker->repaint();
     };
 
     graph.onHint = [this] (const juce::String& text) { showHint (text); };
 
     showBand (graph.getSelectedBand());
+    refreshDots();
+    refreshChannels();
 
     // Hovering anything in the window updates the hint line.
     addMouseListener (this, true);
@@ -441,7 +629,61 @@ void ResonanceEditor::Panel::showBand (int band)
         bandFreq[b]->setVisible (b == band);
         bandSens[b]->setVisible (b == band);
         bandWidth[b]->setVisible (b == band);
+        removeButton[b]->setVisible (b == band);
     }
+}
+
+void ResonanceEditor::Panel::refreshDots()
+{
+    // Automation can turn dots on and off, and move the listening, so this runs on every display frame. Only a change costs anything.
+    juce::uint32 mask = (juce::uint32) graph.getSelectedBand() << 8;
+
+    for (int b = 0; b < smoothres::Params::numBands; ++b)
+        if (graph.isBandOn (b))
+            mask |= 1u << b;
+
+    const int listening = graph.getListeningBand();
+
+    if (mask == dotsShown && listening == listenShown)
+        return;
+
+    dotsShown = mask;
+    listenShown = listening;
+
+    const int selected = graph.getSelectedBand();
+    const bool selectedOn = graph.isBandOn (selected);
+    bandFreq[selected]->setEnabled (selectedOn);
+    bandSens[selected]->setEnabled (selectedOn);
+    bandWidth[selected]->setEnabled (selectedOn);
+    listenButton->setEnabled (selectedOn || listening >= 0);
+    removeButton[selected]->setText (selectedOn ? "Remove" : "Add");
+    removeButton[selected]->hint = selectedOn ? "Take this dot away." : "Put this dot back.";
+    listenButton->setOn (listening >= 0);
+    bandPicker->repaint();
+}
+
+void ResonanceEditor::Panel::refreshChannels()
+{
+    const int channels = processor.getMainBusNumOutputChannels();
+
+    if (channels == channelsShown)
+        return;
+
+    channelsShown = channels;
+
+    // Mid and side only mean something on two channels.
+    const bool surround = channels > 2;
+    channelMeters->refreshLayout();
+    channelMeters->setVisible (surround);
+    stereoMode.setEnabled (channels == 2);
+    stereoMode.hint = channels == 2 ? juce::String ("Stereo treats left and right. Mid/Side treats center and sides.")
+                                    : juce::String ("Mid/Side only works on stereo. Here every channel is treated on its own, joined by Link.");
+    link.hint = surround ? juce::String ("At 100% all channels move together, except the LFE. Lower treats them apart.")
+                         : juce::String ("At 100% both sides move together. Lower treats them apart.");
+    stereoFocus.hint = surround ? juce::String ("Moves the work toward the left or right side channels. Center channels stay as they are.")
+                                : juce::String ("Moves the work toward one side. Left of center is left or mid.");
+    layoutSide();
+    repaint (sideLeft, 0, designWidth - sideLeft, designHeight - footerHeight);
 }
 
 void ResonanceEditor::Panel::showHint (const juce::String& text)
@@ -506,11 +748,15 @@ void ResonanceEditor::Panel::layoutSide()
 
     // Closed, the top of Depth lines up with the top of the graph. Open, Depth gives up its room.
     int y = blend ((float) graphTop, 14.0f);
-    const int ring = blend (176.0f, 116.0f);
+    const int ring = blend (176.0f, 110.0f);
     depth.setBounds (sideLeft + (width - ring) / 2, y, ring, ring);
-    y += ring + blend (36.0f, 12.0f);
+    y += ring + blend (10.0f, 2.0f);
 
-    const int dialHeight = 46, dialGap = blend (24.0f, 12.0f), columnWidth = (width - 12) / 2;
+    // The ceiling sits right under the control it limits.
+    maxCut.setBounds (sideLeft, y, width, 28);
+    y += 28 + blend (18.0f, 6.0f);
+
+    const int dialHeight = 46, dialGap = blend (22.0f, 8.0f), columnWidth = (width - 12) / 2;
 
     const auto rowOfDials = [&] (juce::Component& left, juce::Component& right)
     {
@@ -530,6 +776,8 @@ void ResonanceEditor::Panel::layoutSide()
         y += rowHeight;
     };
 
+    place (quality);
+    y += 2;
     place (mode);
 
     // Threshold belongs to Hard mode, so it is out with Mode whenever it does something, and in Advanced the rest of the time.
@@ -570,6 +818,13 @@ void ResonanceEditor::Panel::layoutSide()
     sideChainListen.setVisible (a > 0.01f);
 
     repaint (sideLeft, y, labelColumn, rowHeight + 4);
+
+    // In surround, the channels come last, under whatever else is showing.
+    if (channelMeters->isVisible())
+    {
+        const int top = juce::jmax (advancedHeader->getBottom() + 8, juce::roundToInt ((float) (advancedHeader->getBottom() + 8) + (float) (sideChain.getBottom() + 6 - advancedHeader->getBottom() - 8) * a));
+        channelMeters->setBounds (sideLeft, top, width, channelMeters->heightWanted());
+    }
 }
 
 void ResonanceEditor::Panel::resized()
@@ -591,9 +846,19 @@ void ResonanceEditor::Panel::resized()
         lowFreq.setBounds (strip.removeFromLeft (96));
         highFreq.setBounds (strip.removeFromRight (96));
         highFreq.setRightAligned (true);
-        strip.removeFromLeft (40);
-        bandPicker->setBounds (strip.removeFromLeft (96));
-        strip.removeFromLeft (24);
+        strip.removeFromLeft (10);
+        bandPicker->setBounds (strip.removeFromLeft (192));
+        strip.removeFromLeft (22);
+
+        // Listen and Remove belong to the selected dot, so they sit straight after its values.
+        auto buttons = strip.removeFromRight (64);
+        strip.removeFromRight (16);
+        buttons = buttons.withSizeKeepingCentre (64, 50);
+        listenButton->setBounds (buttons.removeFromTop (24));
+        buttons.removeFromTop (2);
+
+        for (auto& button : removeButton)
+            button->setBounds (buttons);
 
         const auto fields = strip;
         const int each = fields.getWidth() / 3;
@@ -759,6 +1024,11 @@ void ResonanceEditor::tick (double dtSeconds)
 
     panel.reading->advance (dtSeconds);
     panel.presets->refresh();
+    panel.refreshDots();
+    panel.refreshChannels();
+
+    if (panel.channelMeters->isVisible())
+        panel.channelMeters->update (panel.graph.getFrame(), dtSeconds);
 
     // Advanced glides open and shut, in about a fifth of a second.
     const float target = isAdvancedOpen() ? 1.0f : 0.0f;

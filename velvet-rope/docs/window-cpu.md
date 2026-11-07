@@ -38,3 +38,7 @@ Forced onto the slow cores: 7.4% to 8.8% of one core for the same 3.0% of work. 
 4. Thin curves with a tolerance of a fraction of a pixel. No glow strokes, and no `strokePath` per frame. Merge paths of the same colour.
 5. Do not paint behind a root with a transform: JUCE runs the parent's `paint` under it. Mark the editor opaque, which also saves clearing under every frame. Make small live readouts opaque, so they do not repaint the panel.
 6. Skip the repaint when nothing moved by more than a quarter of a pixel, counting small changes until they add up. That is what makes a stopped session nearly free.
+
+## 0.5.0, with 8 dots, Quality, Max Cut and Band Listen
+
+Same machine, same method, one other test running. 30 frames a second, 5 runs: 3.5% to 3.8% of one core, 2.8% to 2.9% of a fast core, the same work as 0.4.1. Silent: 0.6% to 0.7%. Dots and Quality only touch the cached picture, so they cost nothing per frame.

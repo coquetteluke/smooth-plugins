@@ -14,7 +14,7 @@ namespace ui
         constexpr float tiltDbPerOctave = 4.5f;   // display only
         constexpr float cornerRadius = 10.0f;
 
-        const juce::String bandNames[] = { "1", "2", "3" };
+        const juce::String bandNames[] = { "1", "2", "3", "4", "5", "6", "7", "8" };
 
         constexpr float gridHz[] = { 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f };
 
@@ -67,7 +67,7 @@ namespace ui
         for (int b = 0; b < numBands; ++b)
         {
             const auto number = juce::String (b + 1);
-            bands[b] = { s.getParameter ("band" + number + "Freq"), s.getParameter ("band" + number + "Sens"), s.getParameter ("band" + number + "Width") };
+            bands[b] = { s.getParameter ("band" + number + "Freq"), s.getParameter ("band" + number + "Sens"), s.getParameter ("band" + number + "Width"), s.getParameter ("band" + number + "On") };
         }
 
         lowParam = s.getParameter ("lowFreq");
@@ -76,6 +76,8 @@ namespace ui
         mixParam = s.getParameter ("mix");
         deltaParam = s.getParameter ("delta");
         bypassParam = s.getParameter ("bypass");
+        maxCutParam = s.getParameter ("maxCut");
+        listenParam = s.getParameter ("bandListen");
 
         const float octaves = std::log2 (hiHz / loHz);
 
@@ -248,7 +250,11 @@ namespace ui
             mixIn (b.freq);
             mixIn (b.sens);
             mixIn (b.width);
+            mixIn (b.on);
         }
+
+        mixIn (maxCutParam);
+        mixIn (listenParam);
 
         mixIn (lowParam);
         mixIn (highParam);
@@ -257,6 +263,7 @@ namespace ui
         if (stamp != paramStamp)
         {
             paramStamp = stamp;
+            selectAnotherIfOff();
             staticLayerStale = true;
             fullRepaint = true;
         }
@@ -702,7 +709,7 @@ namespace ui
 
         for (int b = 0; b < numBands; ++b)
         {
-            amounts[b] = getReal (*bands[b].sens);
+            amounts[b] = isBandOn (b) ? getReal (*bands[b].sens) : 0.0f;
             centres[b] = std::log2 (juce::jmax (getReal (*bands[b].freq), 1.0f));
             sigmas[b] = juce::jmax (getReal (*bands[b].width), 0.05f) / 2.3548f;
         }
@@ -732,8 +739,11 @@ namespace ui
         // The dots.
         for (int b = 0; b < numBands; ++b)
         {
+            if (! isBandOn (b))
+                continue;
+
             const auto grab = (Grab) ((int) Grab::band1 + b);
-            const auto c = juce::Point<float> (xForHz (getReal (*bands[b].freq)), yForSensitivity (getReal (*bands[b].sens)));
+            const auto c = dotCentre (b);
             const bool isSelected = b == selectedBand;
             const bool lit = hover == grab || drag == grab;
             const float r = 10.0f;
@@ -768,6 +778,22 @@ namespace ui
             g.setColour (isSelected ? tone::well : tone::text);
             g.setFont (font (Weight::medium, 12.0f));
             g.drawText (bandNames[b], juce::Rectangle<float> (c.x - r, c.y - r, r * 2.0f, r * 2.0f), juce::Justification::centred, false);
+
+            // A hovered dot offers its own way out.
+            if (hover == grab && drag == Grab::none)
+            {
+                const auto badge = removeBadge (b);
+                g.setColour (overRemove ? tone::text : tone::base.brighter (0.5f));
+                g.fillEllipse (badge);
+                g.setColour (overRemove ? tone::well : tone::text);
+                const auto m = badge.reduced (4.2f);
+                juce::Path cross;
+                cross.startNewSubPath (m.getTopLeft());
+                cross.lineTo (m.getBottomRight());
+                cross.startNewSubPath (m.getTopRight());
+                cross.lineTo (m.getBottomLeft());
+                g.strokePath (cross, juce::PathStrokeType (1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
         }
     }
 
@@ -819,10 +845,27 @@ namespace ui
     {
         const auto w = (float) getWidth(), h = (float) getHeight();
 
-        // Hovering Depth draws the limit it sets.
-        if (highlight == "depth")
+        // While listening to one dot, what you do not hear steps back, and the edges of what you do hear are marked.
+        const int listening = getListeningBand();
+        const float listenEnds = 1.0f - bypassShown;
+
+        if (listening >= 0 && listenEnds > 0.01f)
         {
-            const float y = yForReductionLine (getReal (*depthParam));
+            const float hz = getReal (*bands[listening].freq), half = getReal (*bands[listening].width) * 0.5f;
+            const float x1 = juce::jmax (0.0f, xForHz (hz * std::pow (2.0f, -half))), x2 = juce::jmin (w, xForHz (hz * std::pow (2.0f, half)));
+            g.setColour (tone::well.withAlpha (0.78f * listenEnds));
+            g.fillRect (juce::Rectangle<float> (0.0f, 0.0f, x1, h));
+            g.fillRect (juce::Rectangle<float> (x2, 0.0f, w - x2, h));
+            g.setColour (tone::listen.withAlpha (listenEnds));
+            g.fillRect (juce::Rectangle<float> (x1 - 0.75f, 0.0f, 1.5f, h));
+            g.fillRect (juce::Rectangle<float> (x2 - 0.75f, 0.0f, 1.5f, h));
+        }
+
+        // Hovering Depth or Max Cut draws the limit it sets.
+        if (highlight == "depth" || highlight == "maxCut")
+        {
+            const bool ceilingOnly = highlight == "maxCut";
+            const float y = yForReductionLine (ceilingOnly ? getReal (*maxCutParam) : juce::jmin (getReal (*depthParam), getReal (*maxCutParam)));
             juce::Path line;
             line.startNewSubPath (0.0f, y);
             line.lineTo (w, y);
@@ -832,7 +875,7 @@ namespace ui
             g.setColour (tone::goldEdge);
             g.fillPath (dashed);
             g.setFont (font (Weight::regular, 12.5f));
-            g.drawText ("Deepest cut", juce::Rectangle<float> (14.0f, y - 22.0f, 200.0f, 20.0f), juce::Justification::centredLeft, false);
+            g.drawText (ceilingOnly ? "Max Cut" : "Deepest cut", juce::Rectangle<float> (14.0f, y - 22.0f, 200.0f, 20.0f), juce::Justification::centredLeft, false);
         }
         else if (highlight == "lowFreq" || highlight == "highFreq")
         {
@@ -854,8 +897,20 @@ namespace ui
 
         if (bypassShown > 0.01f)
             status ("Bypassed: you hear the untouched sound", tone::text, bypassShown);
-        else
+        else if (listening < 0)
             status ("Delta: you hear only what is being taken out", tone::goldEdge, deltaShown);
+
+        // Band Listen changes what comes out of the track, so it cannot be missed: a solid banner, and a click on it stops it.
+        if (listening >= 0 && bypassShown < 0.99f)
+        {
+            const auto box = listenBanner();
+            g.setColour (tone::listen.withMultipliedAlpha (1.0f - bypassShown));
+            g.fillRoundedRectangle (box, 7.0f);
+            g.setColour (tone::well.withMultipliedAlpha (1.0f - bypassShown));
+            g.setFont (font (Weight::medium, 13.0f));
+            g.drawText ((deltaShown > 0.5f ? "Listening to what dot " + bandNames[listening] + " loses" : "Listening to dot " + bandNames[listening] + " only") + ". Click to stop.",
+                        box, juce::Justification::centred, false);
+        }
 
         // An empty graph says what to do.
         if (hintShown > 0.01f && drag == Grab::none)
@@ -893,14 +948,161 @@ namespace ui
 
     // ---- mouse -----------------------------------------------------------------------------------------------
 
+    juce::Point<float> ResonanceGraph::dotCentre (int band) const
+    {
+        return { xForHz (getReal (*bands[band].freq)), yForSensitivity (getReal (*bands[band].sens)) };
+    }
+
+    juce::Rectangle<float> ResonanceGraph::removeBadge (int band) const
+    {
+        const auto c = dotCentre (band);
+        return { c.x + 8.0f, c.y - 22.0f, 14.0f, 14.0f };
+    }
+
+    juce::Rectangle<float> ResonanceGraph::listenBanner() const
+    {
+        return { 10.0f, 10.0f, 300.0f, 28.0f };
+    }
+
+    int ResonanceGraph::getListeningBand() const noexcept
+    {
+        return juce::roundToInt (getReal (*listenParam)) - 1;
+    }
+
+    int ResonanceGraph::addBandAt (juce::Point<float> p)
+    {
+        for (int b = 0; b < numBands; ++b)
+        {
+            if (! isBandOn (b))
+            {
+                setAsGesture (*bands[b].freq, juce::jlimit (20.0f, 20000.0f, hzForX (p.x)));
+                setAsGesture (*bands[b].sens, juce::jlimit (-12.0f, 12.0f, sensitivityForY (p.y)));
+                setAsGesture (*bands[b].width, bands[b].width->convertFrom0to1 (bands[b].width->getDefaultValue()));
+                addBand (b);
+                return b;
+            }
+        }
+
+        if (onHint != nullptr)
+            onHint ("All 8 dots are in use. Take one away to add another.");
+
+        return -1;
+    }
+
+    void ResonanceGraph::addBand (int band)
+    {
+        setAsGesture (*bands[band].on, 1.0f);
+        setSelectedBand (band);
+        staticLayerStale = true;
+        repaint();
+    }
+
+    void ResonanceGraph::removeBand (int band)
+    {
+        if (getListeningBand() == band)
+            setAsGesture (*listenParam, 0.0f);
+
+        setAsGesture (*bands[band].on, 0.0f);
+
+        if (hover == (Grab) ((int) Grab::band1 + band))
+            hover = Grab::none;
+
+        overRemove = false;
+        selectAnotherIfOff();
+        staticLayerStale = true;
+        repaint();
+    }
+
+    void ResonanceGraph::selectAnotherIfOff()
+    {
+        if (isBandOn (selectedBand))
+            return;
+
+        // The nearest on dot, by number. With none left the selection stays, and the strip shows it as off.
+        for (int distance = 1; distance < numBands; ++distance)
+        {
+            for (int candidate : { selectedBand + distance, selectedBand - distance })
+            {
+                if (juce::isPositiveAndBelow (candidate, numBands) && isBandOn (candidate))
+                {
+                    setSelectedBand (candidate);
+                    return;
+                }
+            }
+        }
+    }
+
+    void ResonanceGraph::toggleListen (int band)
+    {
+        setAsGesture (*listenParam, getListeningBand() == band ? 0.0f : (float) band + 1.0f);
+        repaint();
+    }
+
+    void ResonanceGraph::showDotMenu (int band, juce::Point<float> p)
+    {
+        juce::PopupMenu menu;
+        menu.setLookAndFeel (&getLookAndFeel());
+        menu.addItem (1, getListeningBand() == band ? "Stop listening" : "Listen to dot " + bandNames[band]);
+        menu.addItem (2, "Reset dot " + bandNames[band]);
+        menu.addItem (3, "Remove dot " + bandNames[band]);
+
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (juce::Rectangle<int> (1, 1).withPosition (localPointToGlobal (p.toInt()))).withStandardItemHeight (28),
+                            [safe = juce::Component::SafePointer<ResonanceGraph> (this), band] (int result)
+                            {
+                                if (safe == nullptr)
+                                    return;
+
+                                if (result == 1)
+                                {
+                                    safe->setSelectedBand (band);
+                                    safe->toggleListen (band);
+                                }
+                                else if (result == 2)
+                                {
+                                    for (auto* prm : { safe->bands[band].freq, safe->bands[band].sens, safe->bands[band].width })
+                                        setAsGesture (*prm, prm->convertFrom0to1 (prm->getDefaultValue()));
+                                }
+                                else if (result == 3)
+                                {
+                                    safe->removeBand (band);
+                                }
+                            });
+    }
+
+    void ResonanceGraph::showEmptyMenu (juce::Point<float> p)
+    {
+        juce::PopupMenu menu;
+        menu.setLookAndFeel (&getLookAndFeel());
+        bool anyFree = false;
+
+        for (int b = 0; b < numBands; ++b)
+            anyFree = anyFree || ! isBandOn (b);
+
+        menu.addItem (1, anyFree ? "Add a dot here" : "All 8 dots are in use", anyFree);
+
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (juce::Rectangle<int> (1, 1).withPosition (localPointToGlobal (p.toInt()))).withStandardItemHeight (28),
+                            [safe = juce::Component::SafePointer<ResonanceGraph> (this), p] (int result)
+                            {
+                                if (safe != nullptr && result == 1)
+                                    safe->addBandAt (p);
+                            });
+    }
+
     ResonanceGraph::Grab ResonanceGraph::grabAt (juce::Point<float> p) const
     {
+        // The small x sits just outside the dot it belongs to, and only counts while that dot is hovered.
+        if ((int) hover >= (int) Grab::band1 && removeBadge ((int) hover - (int) Grab::band1).expanded (2.0f).contains (p))
+            return hover;
+
         Grab best = Grab::none;
         float bestDistance = 18.0f;
 
         for (int b = 0; b < numBands; ++b)
         {
-            const float d = p.getDistanceFrom ({ xForHz (getReal (*bands[b].freq)), yForSensitivity (getReal (*bands[b].sens)) });
+            if (! isBandOn (b))
+                continue;
+
+            const float d = p.getDistanceFrom (dotCentre (b));
 
             if (d < bestDistance)
             {
@@ -927,6 +1129,17 @@ namespace ui
         mousePos = p;
         mouseInside = true;
 
+        const bool nowOverRemove = (int) now >= (int) Grab::band1 && removeBadge ((int) now - (int) Grab::band1).expanded (2.0f).contains (p);
+
+        if (nowOverRemove != overRemove)
+        {
+            overRemove = nowOverRemove;
+            staticLayerStale = true;
+
+            if (onHint != nullptr && overRemove)
+                onHint ("Take this dot away.");
+        }
+
         if (now != hover)
         {
             hover = now;
@@ -943,7 +1156,7 @@ namespace ui
                 else if (now == Grab::high)
                     onHint ("Nothing above this line is touched. Double-click to reset.");
                 else if (now != Grab::none)
-                    onHint ("Up finds more here, down protects it. Scroll for width. Double-click to reset.");
+                    onHint ("Up finds more here, down protects it. Scroll for width. The x takes it away.");
                 else
                     onHint ({});
             }
@@ -965,6 +1178,7 @@ namespace ui
             staticLayerStale = true;
 
         hover = Grab::none;
+        overRemove = false;
 
         if (onHint != nullptr)
             onHint ({});
@@ -981,6 +1195,9 @@ namespace ui
             selectedBand = band;
             staticLayerStale = true;
             repaint();
+
+            if (getListeningBand() >= 0 && isBandOn (band))
+                setAsGesture (*listenParam, (float) band + 1.0f);
 
             if (onBandSelected != nullptr)
                 onBandSelected (band);
@@ -1000,7 +1217,33 @@ namespace ui
     {
         endGesture();
         staticLayerStale = true;
-        drag = grabAt (e.position);
+
+        if (getListeningBand() >= 0 && listenBanner().contains (e.position))
+        {
+            setAsGesture (*listenParam, 0.0f);
+            repaint();
+            return;
+        }
+
+        const auto touched = grabAt (e.position);
+
+        if (e.mods.isPopupMenu())
+        {
+            if ((int) touched >= (int) Grab::band1)
+                showDotMenu ((int) touched - (int) Grab::band1, e.position);
+            else
+                showEmptyMenu (e.position);
+
+            return;
+        }
+
+        if ((int) touched >= (int) Grab::band1 && touched == hover && removeBadge ((int) touched - (int) Grab::band1).expanded (2.0f).contains (e.position))
+        {
+            removeBand ((int) touched - (int) Grab::band1);
+            return;
+        }
+
+        drag = touched;
         lastDrag = e.position;
         logicalPos = e.position;
         widthDrag = false;
@@ -1110,6 +1353,13 @@ namespace ui
     void ResonanceGraph::mouseDoubleClick (const juce::MouseEvent& e)
     {
         const auto grab = grabAt (e.position);
+
+        if (grab == Grab::none && ! listenBanner().contains (e.position))
+        {
+            addBandAt (e.position);
+            return;
+        }
+
         const auto reset = [] (juce::RangedAudioParameter& p)
         {
             p.beginChangeGesture();

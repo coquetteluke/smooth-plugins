@@ -39,7 +39,27 @@ namespace ui
         void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
         int getSelectedBand() const noexcept  { return selectedBand; }
+
+        /** Selecting another dot while listening moves the listening to that dot. */
         void setSelectedBand (int);
+
+        bool isBandOn (int band) const noexcept  { return bands[band].on->getValue() > 0.5f; }
+
+        /** Puts the first free dot here, in graph coordinates. Returns which one, or -1 if all 8 are in use. */
+        int addBandAt (juce::Point<float>);
+
+        /** Turns a dot on where its parameters already say. For the row of dot buttons. */
+        void addBand (int);
+
+        /** Takes a dot away. Its sound effect goes, and listening to it stops. */
+        void removeBand (int);
+
+        /** Listens to this dot, or stops if already listening to it. */
+        void toggleListen (int);
+        int getListeningBand() const noexcept;
+
+        /** The newest data, for what else in the window needs to read it. */
+        const smoothres::GraphFrame& getFrame() const noexcept  { return frame; }
 
         /** Lights the part of the graph a side control is about. Empty for none. */
         void setHighlight (const juce::String& paramId);
@@ -67,9 +87,16 @@ namespace ui
         static constexpr int numBands = smoothres::Params::numBands;
         static constexpr int numSensSteps = 221;
 
-        enum class Grab { none, band1, band2, band3, low, high };
+        enum class Grab { none, low, high, band1, band2, band3, band4, band5, band6, band7, band8 };
 
-        struct BandParams { juce::RangedAudioParameter* freq, * sens, * width; };
+        struct BandParams { juce::RangedAudioParameter* freq, * sens, * width, * on; };
+
+        juce::Point<float> dotCentre (int band) const;
+        juce::Rectangle<float> removeBadge (int band) const;
+        juce::Rectangle<float> listenBanner() const;
+        void showDotMenu (int band, juce::Point<float>);
+        void showEmptyMenu (juce::Point<float>);
+        void selectAnotherIfOff();
 
         float hzForX (float x) const noexcept;
         float yForSensitivity (float db) const noexcept;
@@ -108,7 +135,7 @@ namespace ui
 
         SmoothResonanceProcessor& processor;
         BandParams bands[numBands];
-        juce::RangedAudioParameter* lowParam, * highParam, * depthParam, * mixParam, * deltaParam, * bypassParam;
+        juce::RangedAudioParameter* lowParam, * highParam, * depthParam, * mixParam, * deltaParam, * bypassParam, * maxCutParam, * listenParam;
 
         smoothres::GraphFrame frame;
 
@@ -151,7 +178,7 @@ namespace ui
         Grab hover = Grab::none, drag = Grab::none;
         juce::Point<float> mousePos { -1.0f, -1.0f }, logicalPos, lastDrag;
         float dragStartY = 0.0f, widthAtDragStart = 1.0f;
-        bool mouseInside = false, widthDrag = false;
+        bool mouseInside = false, widthDrag = false, overRemove = false;
         juce::String highlight;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ResonanceGraph)

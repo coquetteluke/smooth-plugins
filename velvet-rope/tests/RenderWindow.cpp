@@ -250,6 +250,9 @@ static int runLive (int repeats, int seconds, bool withAudio, bool background)
         Session s;
         s.processor.setCurrentProgram (1);
         setParam (s.processor, "depth", 14.0f);
+        if (std::getenv ("RENDER_WINDOW_LISTEN") != nullptr)
+            setParam (s.processor, "bandListen", 2.0f);
+
         s.editor.reset();
         juce::AudioBuffer<float> buffer (2, kBlock);
         juce::MidiBuffer midi;
@@ -279,6 +282,9 @@ static int runLive (int repeats, int seconds, bool withAudio, bool background)
         Session s;
         s.processor.setCurrentProgram (1);
         setParam (s.processor, "depth", 14.0f);
+        if (std::getenv ("RENDER_WINDOW_LISTEN") != nullptr)
+            setParam (s.processor, "bandListen", 2.0f);
+
 
         std::atomic<bool> running { true };
         std::atomic<double> audioCpu { 0.0 };
@@ -369,7 +375,7 @@ int main (int argc, char** argv)
         return runLive (argc > 2 ? atoi (argv[2]) : 5, argc > 3 ? atoi (argv[3]) : 6, ! (argc > 4 && juce::String (argv[4]) == "silent"), argc > 4 && juce::String (argv[4]) == "background");
 
     const bool cpuOnly = argc > 1 && juce::String (argv[1]) == "--cpu";
-    const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 && ! cpuOnly ? argv[1] : "docs/window-v2");
+    const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 && ! cpuOnly ? argv[1] : "docs/window-v3");
     folder.createDirectory();
 
     auto voice = loadVoice();
@@ -519,6 +525,131 @@ int main (int argc, char** argv)
         s.editor->setAdvancedOpen (true, false);
         s.play (voice, 0, bestFrame + 1, &rightVoice);
         s.saveBoth (folder, "channels-apart");
+    }
+
+    // State 9: all 8 dots in use, the preset that shows them.
+    if (! cpuOnly)
+    {
+        Session s;
+        s.processor.setCurrentProgram (9);
+        s.editor->getGraph().setSelectedBand (5);
+        s.play (voice, 0, bestFrame + 1);
+        s.saveBoth (folder, "eight-dots");
+    }
+
+    // State 10: Band Listen on, which has to be impossible to miss.
+    if (! cpuOnly)
+    {
+        Session s;
+        setUpActive (s.processor);
+        s.editor->getGraph().setSelectedBand (1);
+        setParam (s.processor, "bandListen", 2.0f);
+        s.play (voice, 0, bestFrame + 1);
+        s.saveBoth (folder, "band-listen");
+    }
+
+    // State 11: Band Listen with Delta.
+    if (! cpuOnly)
+    {
+        Session s;
+        setUpActive (s.processor);
+        s.editor->getGraph().setSelectedBand (1);
+        setParam (s.processor, "bandListen", 2.0f);
+        setParam (s.processor, "delta", 1.0f);
+        s.play (voice, 0, bestFrame + 1);
+        s.saveBoth (folder, "band-listen-delta");
+    }
+
+    // State 12: Depth at the top held by Max Cut, in High, with Max Cut hovered, which draws its line on the graph.
+    if (! cpuOnly)
+    {
+        Session s;
+        setUpActive (s.processor);
+        setParam (s.processor, "depth", 24.0f);
+        setParam (s.processor, "maxCut", 8.0f);
+        setParam (s.processor, "quality", 2.0f);
+        s.processor.prepareToPlay (kRate, kBlock);
+        s.play (voice, 0, bestFrame + 1);
+        s.editor->previewHover ("maxCut");
+        s.saveBoth (folder, "max-cut-hovered");
+    }
+
+    // State 13: a free dot, and a dot hovered with the real mouse handlers, which shows how to take it away.
+    if (! cpuOnly)
+    {
+        Session s;
+        setUpActive (s.processor);
+        s.play (voice, 0, bestFrame + 1);
+        auto& graph = s.editor->getGraph();
+        const float x = (float) graph.getWidth() * std::log (3200.0f / 20.0f) / std::log (1000.0f);
+        const float y = (float) graph.getHeight() * (0.5f - 2.0f / 12.0f * 0.30f);
+        const juce::Point<float> at (x, y);
+        const auto now = juce::Time::getCurrentTime();
+        graph.mouseMove (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &graph, &graph, now, at, now, 0, false));
+        s.saveBoth (folder, "dot-hovered");
+    }
+
+    // State 14 and 15: surround layouts, closed and with Advanced open, on real speech with a different resonance in each pair.
+    for (const auto& surround : { std::make_pair (juce::String ("surround-5-1"), juce::AudioChannelSet::create5point1()),
+                                  std::make_pair (juce::String ("surround-7-1-4-advanced"), juce::AudioChannelSet::create7point1point4()) })
+    {
+        if (cpuOnly)
+            break;
+
+        SmoothResonanceProcessor processor;
+        auto layout = processor.getBusesLayout();
+        layout.inputBuses.getReference (0) = surround.second;
+        layout.outputBuses.getReference (0) = surround.second;
+        processor.setBusesLayout (layout);
+        processor.setRateAndBufferSizeDetails (kRate, kBlock);
+        processor.prepareToPlay (kRate, kBlock);
+        setUpActive (processor);
+        setParam (processor, "link", 40.0f);
+
+        std::unique_ptr<ResonanceEditor> editor (dynamic_cast<ResonanceEditor*> (processor.createEditor()));
+        editor->setVisible (true);
+
+        if (surround.second.size() > 8)
+            editor->setAdvancedOpen (true, false);
+
+        const int channels = surround.second.size();
+        std::vector<std::vector<float>> feeds;
+
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            auto feed = voice;
+            feed.resize (juce::jmin (feed.size(), (size_t) (bestFrame + 2) * kSamplesPerFrame));
+            addResonance (feed, 1400.0 + 700.0 * ch, 7.0, 4.0 + 1.5 * ch);
+            feeds.push_back (std::move (feed));
+        }
+
+        juce::AudioBuffer<float> buffer (channels, kBlock);
+        juce::MidiBuffer midi;
+
+        for (int frame = 0; frame <= bestFrame; ++frame)
+        {
+            for (int done = 0; done < kSamplesPerFrame; done += kBlock)
+            {
+                const int n = std::min (kBlock, kSamplesPerFrame - done);
+                buffer.setSize (channels, n, false, false, true);
+
+                for (int ch = 0; ch < channels; ++ch)
+                    std::copy_n (feeds[(size_t) ch].data() + (size_t) frame * kSamplesPerFrame + (size_t) done, n, buffer.getWritePointer (ch));
+
+                processor.processBlock (buffer, midi);
+            }
+
+            editor->tick (1.0 / 60.0);
+        }
+
+        for (float scale : { 1.0f, 2.0f })
+        {
+            auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, scale);
+            auto file = folder.getChildFile (surround.first + (scale > 1.5f ? "@2x.png" : "@1x.png"));
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            juce::PNGImageFormat().writeImageToStream (image, out);
+        }
     }
 
     // The smallest size the window can be.

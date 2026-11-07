@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0
+
+Five new features. With the new controls at their defaults, the default sound and all 8 old presets null exactly against 0.4.1, as do old saved sessions. The window now reads Velvet Rope. The build and the AU are still named Smooth Resonance.
+
+- **8 dots.** Dots 4 to 8 are new parameters, off by default, and all 8 have an On. Double-click the graph to add one. Hover a dot and click its x, or use Remove in the strip, or right-click it, to take it away.
+- **Quality.** Low Latency (10.7 ms at 48 kHz), Normal (42.7 ms, the old sound) and High (85.3 ms). Automatable, with a clean crossfade and no old audio left behind.
+- **Max Cut.** A ceiling on the deepest cut anywhere, 0 to 24 dB, default 24, which changes nothing. Depth keeps its ID, range and meaning.
+- **Band Listen.** Solos one dot's region. With Delta it plays only what is coming out of that region. A solid banner on the graph says when it is on.
+- **Multichannel.** Quad, LCRS, 5.0, 5.1, 6.0, 6.1, 7.0, 7.1, 5.1.2, 7.1.2, 5.1.4, 7.0.4, 7.1.4 and 9.1.6, in matching layouts. Channels link with Stereo Link. The LFE is only delayed. Mid/Side only works on stereo, and Focus goes by left and right side channels.
+
+Three new presets: Tracking Low Latency, Eight Dot Vocal Sculpt and High Detail With Ceiling. The old presets keep their numbers. New renders are in `docs/window-v3/`. New tests: `tests/NullTest.cpp`, `tests/FeatureTest.cpp`, `tests/LayoutCheck.cpp`.
+
 ## 0.4.1
 
 Window CPU pinned down and cut: 3.0% to 5.0% of one core over 8 runs, down from a swing of 3.2% to 17.4%. The swing came from which CPU cores macOS picks, not from the work. If macOS puts the window on the slow cores it still reads 7% to 9%. Findings are in `docs/window-cpu.md`.

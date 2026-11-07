@@ -316,14 +316,39 @@ namespace ui
         return getLocalBounds().toFloat().withTrimmedLeft (84.0f).withSizeKeepingCentre ((float) getWidth() - 84.0f, 28.0f);
     }
 
-    int ParamChoice::segmentAt (juce::Point<float> p) const
+    juce::Rectangle<float> ParamChoice::cellFor (int index) const
     {
         const auto area = buttonsArea();
 
-        if (! area.contains (p))
-            return -1;
+        if (choices.size() <= 2)
+        {
+            const float each = area.getWidth() / (float) choices.size();
+            return { area.getX() + each * (float) index, area.getY(), each, area.getHeight() };
+        }
 
-        return juce::jlimit (0, choices.size() - 1, (int) ((p.x - area.getX()) / area.getWidth() * (float) choices.size()));
+        // More than two share the width by how long their names are, so a long name is not clipped. Spare room is shared evenly.
+        const auto f = font (Weight::medium, 12.0f);
+        float used = 0.0f;
+
+        for (const auto& choice : choices)
+            used += juce::GlyphArrangement::getStringWidth (f, choice);
+
+        const float spare = juce::jmax (0.0f, area.getWidth() - used) / (float) choices.size();
+        float x = area.getX();
+
+        for (int i = 0; i < index; ++i)
+            x += juce::GlyphArrangement::getStringWidth (f, choices[i]) + spare;
+
+        return { x, area.getY(), juce::GlyphArrangement::getStringWidth (f, choices[index]) + spare, area.getHeight() };
+    }
+
+    int ParamChoice::segmentAt (juce::Point<float> p) const
+    {
+        for (int i = 0; i < choices.size(); ++i)
+            if (cellFor (i).contains (p))
+                return i;
+
+        return -1;
     }
 
     void ParamChoice::mouseMove (const juce::MouseEvent& e)
@@ -347,14 +372,15 @@ namespace ui
     {
         const int hit = segmentAt (e.position);
 
-        if (hit >= 0 && hit != selected)
+        if (isEnabled() && hit >= 0 && hit != selected)
             attachment.setValueAsCompleteGesture ((float) hit);
     }
 
     void ParamChoice::paint (juce::Graphics& g)
     {
         auto b = getLocalBounds().toFloat();
-        g.setColour (hovered >= 0 ? tone::text : tone::muted);
+        const float strength = isEnabled() ? 1.0f : 0.4f;
+        g.setColour ((hovered >= 0 && isEnabled() ? tone::text : tone::muted).withMultipliedAlpha (strength));
         g.setFont (font (Weight::regular, 13.0f));
         g.drawText (label, b.removeFromLeft (84.0f), juce::Justification::centredLeft, false);
 
@@ -362,11 +388,9 @@ namespace ui
         g.setColour (tone::text.withAlpha (0.06f));
         g.fillRoundedRectangle (area, 7.0f);
 
-        const float segment = area.getWidth() / (float) choices.size();
-
         for (int i = 0; i < choices.size(); ++i)
         {
-            const auto cell = juce::Rectangle<float> (area.getX() + segment * (float) i, area.getY(), segment, area.getHeight());
+            const auto cell = cellFor (i);
 
             if (i == selected)
             {
@@ -374,8 +398,8 @@ namespace ui
                 g.fillRoundedRectangle (cell.reduced (2.0f), 5.5f);
             }
 
-            g.setColour (i == selected || i == hovered ? tone::text : tone::muted);
-            g.setFont (font (Weight::medium, 13.0f));
+            g.setColour ((i == selected || i == hovered ? tone::text : tone::muted).withMultipliedAlpha (strength));
+            g.setFont (font (Weight::medium, choices.size() > 2 ? 12.0f : 13.0f));
             g.drawText (choices[i], cell, juce::Justification::centred, false);
         }
     }

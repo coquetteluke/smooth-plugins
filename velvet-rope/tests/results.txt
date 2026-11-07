@@ -2,8 +2,8 @@ Smooth Resonance test results, 2026-11-07
 
 ===== ProcessorTest: the real processor, every control, generic checks
 PASS  parameter names are clear, unique, no em dash
-INFO  parameter count = 33.000 
-PASS  factory presets = 8.000 
+INFO  parameter count = 59.000 
+PASS  factory presets = 11.000 
 PASS  preset names are not empty, no em dash
 PASS  presets change the state
 PASS  state save and restore
@@ -52,14 +52,40 @@ PASS  no click when Band 2 Width jumps, biggest step = 0.004
 PASS  no click when Band 3 Frequency jumps, biggest step = 0.004 
 PASS  no click when Band 3 Sensitivity jumps, biggest step = 0.004 
 PASS  no click when Band 3 Width jumps, biggest step = 0.004 
+PASS  no click when Band 4 Frequency jumps, biggest step = 0.004 
+PASS  no click when Band 4 Sensitivity jumps, biggest step = 0.004 
+PASS  no click when Band 4 Width jumps, biggest step = 0.004 
+PASS  no click when Band 5 Frequency jumps, biggest step = 0.004 
+PASS  no click when Band 5 Sensitivity jumps, biggest step = 0.004 
+PASS  no click when Band 5 Width jumps, biggest step = 0.004 
+PASS  no click when Band 6 Frequency jumps, biggest step = 0.004 
+PASS  no click when Band 6 Sensitivity jumps, biggest step = 0.004 
+PASS  no click when Band 6 Width jumps, biggest step = 0.004 
+PASS  no click when Band 7 Frequency jumps, biggest step = 0.004 
+PASS  no click when Band 7 Sensitivity jumps, biggest step = 0.004 
+PASS  no click when Band 7 Width jumps, biggest step = 0.004 
+PASS  no click when Band 8 Frequency jumps, biggest step = 0.004 
+PASS  no click when Band 8 Sensitivity jumps, biggest step = 0.004 
+PASS  no click when Band 8 Width jumps, biggest step = 0.004 
 PASS  no click when Sharpness Tilt jumps, biggest step = 0.004 
 PASS  no click when Attack Tilt jumps, biggest step = 0.004 
 PASS  no click when Release Tilt jumps, biggest step = 0.004 
 PASS  no click when Wet Trim jumps, biggest step = 0.057 
 PASS  no click when Side Chain jumps, biggest step = 0.004 
 PASS  no click when Side Chain Listen jumps, biggest step = 0.004 
-PASS  every control has the right ID, name, range and default, and is automatable = 31.000 
-PASS  parameter count is the controls plus 2 readings = 33.000 
+PASS  no click when Max Cut jumps, biggest step = 0.004 
+PASS  no click when Quality jumps, biggest step = 0.004 
+PASS  no click when Band Listen jumps, biggest step = 0.004 
+PASS  no click when Band 1 On jumps, biggest step = 0.004 
+PASS  no click when Band 2 On jumps, biggest step = 0.004 
+PASS  no click when Band 3 On jumps, biggest step = 0.004 
+PASS  no click when Band 4 On jumps, biggest step = 0.004 
+PASS  no click when Band 5 On jumps, biggest step = 0.004 
+PASS  no click when Band 6 On jumps, biggest step = 0.004 
+PASS  no click when Band 7 On jumps, biggest step = 0.004 
+PASS  no click when Band 8 On jumps, biggest step = 0.004 
+PASS  every control has the right ID, name, range and default, and is automatable = 57.000 
+PASS  parameter count is the controls plus 2 readings = 59.000 
 PASS  Bypass is the host's bypass parameter
 PASS  Depth shows a real value string
 PASS  Mode shows Soft by default
@@ -75,7 +101,9 @@ PASS  96000 Hz 2 ch: reported latency, measured on and bypassed all agree = 4096
 PASS  processBlockBypassed keeps the 2048 sample delay = 1.000 
 PASS  mono and stereo accepted with no key
 PASS  mono and stereo keys accepted on both
-PASS  surround refused
+PASS  5.1 is accepted since 0.5.0, tested fully in FeatureTest
+PASS  unnamed channels are refused
+PASS  a surround side chain is refused
 PASS  still works after being prepared three times = -12.000 dB
 PASS  44100 Hz: tone in range, Depth 12 (limit 0.5) = -12.000 dB
 PASS  44100 Hz: Low Frequency 4 kHz leaves a 2.5 kHz tone alone (limit 0.1) = 0.000 dB
@@ -161,8 +189,8 @@ PASS  graph gain curve is deepest at the tone (limit 400 Hz) = 2404.961 Hz
 PASS  graph gain curve depth (limit 0.3) = 12.000 dB
 PASS  graph sensitivity curve marks what is outside Low and High = 119.000 
 PASS  graph sensitivity curve shows a +6 band at its centre (limit 0.3) = 5.990 dB
-PASS  graph reader thread while audio runs: reads with 0 bad values = 936.000 
-PASS  at least 4 presets = 8.000 
+PASS  graph reader thread while audio runs: reads with 0 bad values = 937.000 
+PASS  at least 4 presets = 11.000 
 PASS  preset names are all different
 PASS  first preset is the default settings
 PASS  preset Gentle Vocal Polish: finite, not silent, Max Reduction within its Depth = 6.000 dB
@@ -173,14 +201,17 @@ PASS  preset Sibilance Soother: finite, not silent, Max Reduction within its Dep
 PASS  preset Boxy Low Mids: finite, not silent, Max Reduction within its Depth = 8.000 dB
 PASS  preset Hard Whistle Catcher: finite, not silent, Max Reduction within its Depth = 14.000 dB
 PASS  preset Side Chain Carve: finite, not silent, Max Reduction within its Depth = 6.000 dB
+PASS  preset Tracking Low Latency: finite, not silent, Max Reduction within its Depth = 8.000 dB
+PASS  preset Eight Dot Vocal Sculpt: finite, not silent, Max Reduction within its Depth = 12.000 dB
+PASS  preset High Detail With Ceiling: finite, not silent, Max Reduction within its Depth = 6.000 dB
 PASS  no allocation with side chain, bands and tilts all moving = 0.000 
 PASS  the window opens, draws and closes 40 times with no audio = 40.000 
-PASS  audio kept running while the window opened and closed 12 times = 23607.000 blocks
+PASS  audio kept running while the window opened and closed 12 times = 22255.000 blocks
 PASS  the graph's reduction follows the live audio (limit 3 dB shown on a 12 dB cut)
 PASS  with no audio and nothing moving, the graph does not repaint
 PASS  automation moving a dot repaints with no audio running
 PASS  and then stops again
-PASS  every changeable parameter has a control in the window, of 31 = 0.000 missing
+PASS  every changeable parameter has a control in the window, of 57 = 0.000 missing
 PASS  Advanced starts closed
 PASS  Depth, Sharpness, Selectivity, Attack, Release and Mode show with Advanced closed
 PASS  the rest is tucked away with Advanced closed
@@ -216,6 +247,547 @@ PASS  a reloaded session opens the window at its saved size = 1400.000 wide
 PASS  the window keeps its shape
 PASS  a damaged window size is kept in range = 1856.000 wide
 PASS  and the window opens at a legal size = 1856.000 wide
+
+== Window: dots, Band Listen, Quality, Max Cut and surround
+PASS  double-clicking the graph turns on dot 4
+PASS  at the frequency clicked = 800.000 Hz
+PASS  and the height clicked = 5.000 dB
+PASS  and it becomes the selected dot
+PASS  four more double-clicks fill all 8 dots = 8.000 
+PASS  a ninth moves nothing and says all 8 are in use
+PASS  clicking a dot does not remove it
+PASS  clicking the x beside a hovered dot removes it
+PASS  and selection moves to a dot that is still on
+PASS  the freed dot is reused by the next double-click
+PASS  the selected dot's Remove button is showing
+PASS  Remove takes the selected dot away
+PASS  automation turning off the selected dot moves the selection
+PASS  the Listen button is on screen
+PASS  Listen solos the selected dot, through the real parameter
+PASS  selecting another dot moves the listening with it
+PASS  a click on the banner stops it
+PASS  the banner really is painted, solid, when listening = 227.000 
+PASS  taking away the dot being listened to stops the listening
+PASS  automation of Band Listen lights the Listen button, opacity = 255.000 
+PASS  Quality and Max Cut show with Advanced closed
+PASS  clicking Low Latency sets it
+PASS  and the host is told straight away = 512.000 samples
+PASS  clicking High sets it
+PASS  automation moves the Max Cut value
+PASS  in surround Mid/Side is greyed out
+PASS  with Advanced open everything still fits above the hint
+PASS  in surround Mid/Side is greyed out
+PASS  with Advanced open everything still fits above the hint
+PASS  no em dash in any parameter or preset name
+RESULT PASS  0 failures
+
+===== NullTest: old sessions, presets and defaults against 0.4.1
+PASS  baseline input found
+PASS  default: latency still 2048 = 2048.000 samples
+PASS  default: against the saved 0.4.1 render (limit -90) = -240.000 dBFS
+PASS  default: old saved session, against the saved render (limit -90) = -240.000 dBFS
+PASS  every-old-control: latency still 2048 = 2048.000 samples
+PASS  every-old-control: against the saved 0.4.1 render (limit -90) = -240.000 dBFS
+PASS  every-old-control: old saved session, against the saved render (limit -90) = -240.000 dBFS
+PASS  preset-0: latency still 2048 = 2048.000 samples
+PASS  preset-0: against the saved 0.4.1 render (limit -90) = -240.000 dBFS
+PASS  preset-0: old saved session, against the saved render (limit -90) = -240.000 dBFS
+PASS  preset-1: latency still 2048 = 2048.000 samples
+PASS  preset-1: against the saved 0.4.1 render (limit -90) = -240.000 dBFS
+PASS  preset-1: old saved session, against the saved render (limit -90) = -240.000 dBFS
+PASS  preset-2: latency still 2048 = 2048.000 samples
+PASS  preset-2: against the saved 0.4.1 render (limit -90) = -240.000 dBFS
+PASS  preset-2: old saved session, against the saved render (limit -90) = -240.000 dBFS
+PASS  preset-3: latency still 2048 = 2048.000 samples
+PASS  preset-3: against the saved 0.4.1 render (limit -90) = -240.000 dBFS
+PASS  preset-3: old saved session, against the saved render (limit -90) = -240.000 dBFS
+PASS  preset-4: latency still 2048 = 2048.000 samples
+PASS  preset-4: against the saved 0.4.1 render (limit -90) = -240.000 dBFS
+PASS  preset-4: old saved session, against the saved render (limit -90) = -138.474 dBFS
+PASS  preset-5: latency still 2048 = 2048.000 samples
+PASS  preset-5: against the saved 0.4.1 render (limit -90) = -240.000 dBFS
+PASS  preset-5: old saved session, against the saved render (limit -90) = -138.474 dBFS
+PASS  preset-6: latency still 2048 = 2048.000 samples
+PASS  preset-6: against the saved 0.4.1 render (limit -90) = -240.000 dBFS
+PASS  preset-6: old saved session, against the saved render (limit -90) = -240.000 dBFS
+PASS  preset-7: latency still 2048 = 2048.000 samples
+PASS  preset-7: against the saved 0.4.1 render (limit -90) = -240.000 dBFS
+PASS  preset-7: old saved session, against the saved render (limit -90) = -240.000 dBFS
+PASS  speech files found
+PASS  Speech, default and presets against the frozen 0.4.1 engine, rate 44100, channels 2, block 256 (limit -90) = -240.000 dBFS
+PASS  Speech, default and presets against the frozen 0.4.1 engine, rate 48000, channels 1, block 64 (limit -90) = -240.000 dBFS
+PASS  Speech, default and presets against the frozen 0.4.1 engine, rate 48000, channels 2, block 1024 (limit -90) = -240.000 dBFS
+PASS  Speech, default and presets against the frozen 0.4.1 engine, rate 88200, channels 2, block 128 (limit -90) = -240.000 dBFS
+PASS  Speech, default and presets against the frozen 0.4.1 engine, rate 96000, channels 1, block 480 (limit -90) = -240.000 dBFS
+RESULT PASS  0 failures
+
+===== FeatureTest: 8 dots, Quality, Max Cut, Band Listen, multichannel
+
+== Up to 8 dots
+PASS  dots 1 to 8 each have frequency, sensitivity, width and on, as real named parameters
+PASS  dots 1 to 3 start on and dots 4 to 8 start off
+PASS  without new dots the test tone is cut (limit over 4 dB) = 12.000 dB
+PASS  dot 4 on, -12 dB at the tone: treatment off there (limit under 0.5 dB) = 0.068 dB
+PASS  dot 4 off with the same settings does nothing (limit 0.01 dB) = 0.000 dB
+PASS  dot 5 on, -12 dB at the tone: treatment off there (limit under 0.5 dB) = 0.068 dB
+PASS  dot 5 off with the same settings does nothing (limit 0.01 dB) = 0.000 dB
+PASS  dot 6 on, -12 dB at the tone: treatment off there (limit under 0.5 dB) = 0.068 dB
+PASS  dot 6 off with the same settings does nothing (limit 0.01 dB) = 0.000 dB
+PASS  dot 7 on, -12 dB at the tone: treatment off there (limit under 0.5 dB) = 0.068 dB
+PASS  dot 7 off with the same settings does nothing (limit 0.01 dB) = 0.000 dB
+PASS  dot 8 on, -12 dB at the tone: treatment off there (limit under 0.5 dB) = 0.068 dB
+PASS  dot 8 off with the same settings does nothing (limit 0.01 dB) = 0.000 dB
+PASS  dot 2 taken away: its setting no longer counts (limit 0.01 dB) = 0.000 dB
+PASS  all 8 dots on, all at 0 dB: nulls against 3 dots (limit -90) = -240.000 dBFS
+PASS  dots switched on and off with sound going through: no click (limit 3x) = 1.000 x
+
+== Quality: latency
+PASS  Quality is Normal by default
+PASS  Quality is automatable
+PASS  Low Latency at 44100 Hz: reported 512, first sound at 512, measured = 512.000 samples
+PASS  Low Latency, bypassed at 44100 Hz: reported 512, first sound at 512, measured = 512.000 samples
+PASS  Normal at 44100 Hz: reported 2048, first sound at 2048, measured = 2048.000 samples
+PASS  Normal, bypassed at 44100 Hz: reported 2048, first sound at 2048, measured = 2048.000 samples
+PASS  High at 44100 Hz: reported 4096, first sound at 4096, measured = 4096.000 samples
+PASS  High, bypassed at 44100 Hz: reported 4096, first sound at 4096, measured = 4096.000 samples
+PASS  Low Latency at 48000 Hz: reported 512, first sound at 512, measured = 512.000 samples
+PASS  Low Latency, bypassed at 48000 Hz: reported 512, first sound at 512, measured = 512.000 samples
+PASS  Normal at 48000 Hz: reported 2048, first sound at 2048, measured = 2048.000 samples
+PASS  Normal, bypassed at 48000 Hz: reported 2048, first sound at 2048, measured = 2048.000 samples
+PASS  High at 48000 Hz: reported 4096, first sound at 4096, measured = 4096.000 samples
+PASS  High, bypassed at 48000 Hz: reported 4096, first sound at 4096, measured = 4096.000 samples
+PASS  Low Latency at 88200 Hz: reported 1024, first sound at 1024, measured = 1024.000 samples
+PASS  Low Latency, bypassed at 88200 Hz: reported 1024, first sound at 1024, measured = 1024.000 samples
+PASS  Normal at 88200 Hz: reported 4096, first sound at 4096, measured = 4096.000 samples
+PASS  Normal, bypassed at 88200 Hz: reported 4096, first sound at 4096, measured = 4096.000 samples
+PASS  High at 88200 Hz: reported 8192, first sound at 8192, measured = 8192.000 samples
+PASS  High, bypassed at 88200 Hz: reported 8192, first sound at 8192, measured = 8192.000 samples
+PASS  Low Latency at 96000 Hz: reported 1024, first sound at 1024, measured = 1024.000 samples
+PASS  Low Latency, bypassed at 96000 Hz: reported 1024, first sound at 1024, measured = 1024.000 samples
+PASS  Normal at 96000 Hz: reported 4096, first sound at 4096, measured = 4096.000 samples
+PASS  Normal, bypassed at 96000 Hz: reported 4096, first sound at 4096, measured = 4096.000 samples
+PASS  High at 96000 Hz: reported 8192, first sound at 8192, measured = 8192.000 samples
+PASS  High, bypassed at 96000 Hz: reported 8192, first sound at 8192, measured = 8192.000 samples
+INFO  Latency at 48 kHz, Low Latency = 10.667 ms
+INFO  Latency at 48 kHz, Normal = 42.667 ms
+INFO  Latency at 48 kHz, High = 85.333 ms
+PASS  after a live switch Low Latency to Normal, delay equals what the host is told = 2048.000 samples
+PASS  after a live switch Low Latency to Normal, bypassed, delay equals what the host is told = 2048.000 samples
+PASS  after a live switch Low Latency to High, delay equals what the host is told = 4096.000 samples
+PASS  after a live switch Low Latency to High, bypassed, delay equals what the host is told = 4096.000 samples
+PASS  after a live switch Normal to Low Latency, delay equals what the host is told = 512.000 samples
+PASS  after a live switch Normal to Low Latency, bypassed, delay equals what the host is told = 512.000 samples
+PASS  after a live switch Normal to High, delay equals what the host is told = 4096.000 samples
+PASS  after a live switch Normal to High, bypassed, delay equals what the host is told = 4096.000 samples
+PASS  after a live switch High to Low Latency, delay equals what the host is told = 512.000 samples
+PASS  after a live switch High to Low Latency, bypassed, delay equals what the host is told = 512.000 samples
+PASS  after a live switch High to Normal, delay equals what the host is told = 2048.000 samples
+PASS  after a live switch High to Normal, bypassed, delay equals what the host is told = 2048.000 samples
+PASS  setting Quality on the message thread updates the reported latency at once = 512.000 samples
+PASS  an old preset goes back to Normal and its latency = 2048.000 samples
+PASS  a session saved in High comes back with High's latency = 4096.000 samples
+PASS  and still after prepareToPlay = 4096.000 samples
+
+== Quality: switching with sound going through
+PASS  Low Latency to Normal: no click on a 1 kHz sine, second difference (limit 2x steady) = 1.000 x
+PASS  Low Latency to Normal: level never jumps by more than the crossfade's 3 dB = 0.000 dB
+PASS  Low Latency to Normal: no click on noise, biggest step (limit 1.5x) = 1.081 x
+PASS  Low Latency to Normal: sound stopped at the switch leaves nothing behind (limit -120) = -240.000 dBFS
+PASS  Low Latency to Normal and back over silence: no old audio returns (limit -120) = -240.000 dBFS
+PASS  Low Latency to High: no click on a 1 kHz sine, second difference (limit 2x steady) = 1.000 x
+PASS  Low Latency to High: level never jumps by more than the crossfade's 3 dB = 0.000 dB
+PASS  Low Latency to High: no click on noise, biggest step (limit 1.5x) = 1.081 x
+PASS  Low Latency to High: sound stopped at the switch leaves nothing behind (limit -120) = -240.000 dBFS
+PASS  Low Latency to High and back over silence: no old audio returns (limit -120) = -240.000 dBFS
+PASS  Normal to Low Latency: no click on a 1 kHz sine, second difference (limit 2x steady) = 1.000 x
+PASS  Normal to Low Latency: level never jumps by more than the crossfade's 3 dB = -0.000 dB
+PASS  Normal to Low Latency: no click on noise, biggest step (limit 1.5x) = 1.081 x
+PASS  Normal to Low Latency: sound stopped at the switch leaves nothing behind (limit -120) = -240.000 dBFS
+PASS  Normal to Low Latency and back over silence: no old audio returns (limit -120) = -240.000 dBFS
+PASS  Normal to High: no click on a 1 kHz sine, second difference (limit 2x steady) = 1.000 x
+PASS  Normal to High: level never jumps by more than the crossfade's 3 dB = -0.000 dB
+PASS  Normal to High: no click on noise, biggest step (limit 1.5x) = 1.081 x
+PASS  Normal to High: sound stopped at the switch leaves nothing behind (limit -120) = -240.000 dBFS
+PASS  Normal to High and back over silence: no old audio returns (limit -120) = -240.000 dBFS
+PASS  High to Low Latency: no click on a 1 kHz sine, second difference (limit 2x steady) = 1.000 x
+PASS  High to Low Latency: level never jumps by more than the crossfade's 3 dB = 0.000 dB
+PASS  High to Low Latency: no click on noise, biggest step (limit 1.5x) = 1.081 x
+PASS  High to Low Latency: sound stopped at the switch leaves nothing behind (limit -120) = -240.000 dBFS
+PASS  High to Low Latency and back over silence: no old audio returns (limit -120) = -240.000 dBFS
+PASS  High to Normal: no click on a 1 kHz sine, second difference (limit 2x steady) = 1.000 x
+PASS  High to Normal: level never jumps by more than the crossfade's 3 dB = 0.000 dB
+PASS  High to Normal: no click on noise, biggest step (limit 1.5x) = 1.081 x
+PASS  High to Normal: sound stopped at the switch leaves nothing behind (limit -120) = -240.000 dBFS
+PASS  High to Normal and back over silence: no old audio returns (limit -120) = -240.000 dBFS
+PASS  Quality flipped every 10 ms for 1.5 s: no click (limit 2.5x) = 1.414 x
+PASS  and silence afterwards stays silent = -240.000 dBFS
+PASS  no allocations from a Quality switch on the audio path = 0.000 
+
+== Quality: time resolution, frequency resolution and CPU
+PASS  Low Latency: the cut does arrive (limit over 8 dB) = 12.000 dB
+INFO  Time for the cut to reach half way after a tone starts, Low Latency = 5.333 ms
+INFO  Width of the cut at half depth, sharpest setting, Low Latency = 656.250 Hz
+INFO  Size of one FFT bin, Low Latency = 93.750 Hz
+INFO  Two tones 400 Hz apart, cut comes back up between them by, Low Latency = 0.000 dB
+PASS  CPU, stereo, 48 kHz, Low Latency (limit 5% of a core) = 1.093 %
+PASS  Worst single block, Low Latency (limit 50%) = 1.325 %
+PASS  Normal: the cut does arrive (limit over 8 dB) = 12.000 dB
+INFO  Time for the cut to reach half way after a tone starts, Normal = 13.333 ms
+INFO  Width of the cut at half depth, sharpest setting, Normal = 210.938 Hz
+INFO  Size of one FFT bin, Normal = 23.438 Hz
+INFO  Two tones 400 Hz apart, cut comes back up between them by, Normal = 12.000 dB
+PASS  CPU, stereo, 48 kHz, Normal (limit 5% of a core) = 1.250 %
+PASS  Worst single block, Normal (limit 50%) = 3.441 %
+PASS  High: the cut does arrive (limit over 8 dB) = 12.000 dB
+INFO  Time for the cut to reach half way after a tone starts, High = 24.000 ms
+INFO  Width of the cut at half depth, sharpest setting, High = 175.781 Hz
+INFO  Size of one FFT bin, High = 11.719 Hz
+INFO  Two tones 400 Hz apart, cut comes back up between them by, High = 12.000 dB
+PASS  CPU, stereo, 48 kHz, High (limit 5% of a core) = 1.391 %
+PASS  Worst single block, High (limit 50%) = 6.736 %
+PASS  Low Latency reacts at least twice as fast as Normal = 0.400 x
+PASS  High reacts slower than Normal = 1.800 x
+PASS  Low Latency's cut is at least 1.5 times as wide as Normal's = 3.111 x
+PASS  High's cut is no wider than Normal's = 0.833 x
+PASS  High separates two close tones at least as well as Normal = 0.000 dB
+PASS  speech found: Daniel
+PASS  speech found: Karen
+PASS  speech found: Moira
+PASS  speech found: Samantha
+PASS  Real speech, Low Latency: a 12 dB boost at 3150 Hz, mean removed over 4 voices (limit 3 dB) = 5.754 dB
+INFO  Real speech, Low Latency: least removed of the 4 voices = 1.350 dB
+PASS  Real speech, Low Latency: clean voice, overall level change (limit 0.5 dB) = 0.108 dB
+INFO  Real speech, Low Latency: clean voice, worst third octave from 1 to 8.5 kHz = 4.008 dB
+PASS  Flat noise, Low Latency, Depth 12: 1 to 12 kHz change (limit 1.5 dB) = -0.000 dB
+PASS  speech found: Daniel
+PASS  speech found: Karen
+PASS  speech found: Moira
+PASS  speech found: Samantha
+PASS  Real speech, Normal: a 12 dB boost at 3150 Hz, mean removed over 4 voices (limit 5 dB) = 6.332 dB
+INFO  Real speech, Normal: least removed of the 4 voices = 1.367 dB
+PASS  Real speech, Normal: clean voice, overall level change (limit 0.5 dB) = 0.134 dB
+INFO  Real speech, Normal: clean voice, worst third octave from 1 to 8.5 kHz = 4.054 dB
+PASS  Flat noise, Normal, Depth 12: 1 to 12 kHz change (limit 1.5 dB) = 0.014 dB
+PASS  speech found: Daniel
+PASS  speech found: Karen
+PASS  speech found: Moira
+PASS  speech found: Samantha
+PASS  Real speech, High: a 12 dB boost at 3150 Hz, mean removed over 4 voices (limit 5 dB) = 6.589 dB
+INFO  Real speech, High: least removed of the 4 voices = 1.433 dB
+PASS  Real speech, High: clean voice, overall level change (limit 0.5 dB) = 0.132 dB
+INFO  Real speech, High: clean voice, worst third octave from 1 to 8.5 kHz = 3.850 dB
+PASS  Flat noise, High, Depth 12: 1 to 12 kHz change (limit 1.5 dB) = 0.014 dB
+PASS  Low Latency colours a clean voice no more than Normal (limit 0.5 dB more) = -0.047 dB
+PASS  High colours a clean voice no more than Normal (limit 0.5 dB more) = -0.204 dB
+
+== Max Cut
+PASS  Max Cut is a real, named, automatable parameter
+PASS  Max Cut defaults to 24 dB, as deep as Depth goes
+PASS  Depth keeps its ID and range
+PASS  Depth 24 with no limit cuts this test signal deeply (limit over 11 dB) = 24.000 dB
+PASS  Max Cut 3 with Depth 24: deepest cut anywhere, at any moment (limit 3 dB) = 3.000 dB
+PASS  and it really gets there (limit within 0.5 dB) = 0.000 dB
+PASS  the tone in the output comes down by no more than that (limit + 0.3 dB) = 3.000 dB
+PASS  Max Cut 6 with Depth 24: deepest cut anywhere, at any moment (limit 6 dB) = 6.000 dB
+PASS  and it really gets there (limit within 0.5 dB) = 0.000 dB
+PASS  the tone in the output comes down by no more than that (limit + 0.3 dB) = 6.000 dB
+PASS  Max Cut 9 with Depth 24: deepest cut anywhere, at any moment (limit 9 dB) = 9.000 dB
+PASS  and it really gets there (limit within 0.5 dB) = 0.000 dB
+PASS  the tone in the output comes down by no more than that (limit + 0.3 dB) = 9.000 dB
+PASS  found a peak with a shallow cut for this check = 2.867 dB
+PASS  a peak cut less than the limit keeps its cut, while a bigger one is held (limit 0.25 dB) = 0.000 dB
+PASS  Depth 24 with Max Cut 6 and Depth 6 alone reach the same deepest cut (limit 0.5 dB) = 0.000 dB
+PASS  but Depth 24 holds down more of the area around the peak (limit 1.15x) = 1.404 x
+PASS  Depth 24, Max Cut at its default, nulls against the 0.4.1 engine (limit -90) = -240.000 dBFS
+PASS  Max Cut 0: the output is the input, delayed (limit -90) = -134.952 dBFS
+PASS  with Max Cut on, sound plus Delta rebuilds the input (limit -90) = -186.639 dBFS
+
+== Band Listen
+PASS  Band Listen is a real, named, automatable parameter
+PASS  Band Listen is off by default
+PASS  and reads Dot 3 when set to dot 3
+PASS  dot 2 at 3 kHz, 1 octave wide: tone at the centre passes (limit 0.3 dB) = -0.001 dB
+PASS  half an octave up, the end of the width marker: -6 dB (limit 1 dB) = -6.020 dB
+PASS  2 octaves below: gone (limit -60 dB) = -96.008 dB
+PASS  2 octaves above: gone (limit -60 dB) = -96.303 dB
+PASS  every dot, every Quality, 300 Hz to 9 kHz: the centre passes (limit 1 dB) = 0.631 dB
+PASS  Band Listen with Delta plus Band Listen without it rebuilds the region (limit -80 dB) = -130.625 dB
+PASS  Without Delta you hear the region after treatment: the tone comes down (limit over 3 dB) = 12.000 dB
+PASS  With Delta you hear what is coming out of it (limit over -30 dBFS) = -8.516 dBFS
+PASS  With Delta, what is removed outside the region stays out (limit -80 dBFS) = -204.424 dBFS
+PASS  Output Gain applies to what you hear (limit 0.05 dB off 6) = 6.000 dB
+PASS  With Delta, Output Gain does not apply, same as Delta alone (limit 0.05 dB) = -0.000 dB
+PASS  Mix 0: the untreated region (limit -90) = -144.494 dBFS
+PASS  Bypass wins over it: untouched input (limit -90) = -144.494 dBFS
+PASS  Band Listen delay in Low Latency equals the reported latency = 512.000 samples
+PASS  Band Listen delay in Normal equals the reported latency = 2048.000 samples
+PASS  Band Listen delay in High equals the reported latency = 4096.000 samples
+PASS  turned on, moved to another dot and turned off: no click (limit 1.5x) = 1.000 x
+PASS  turning it on again over silence plays nothing old (limit -120) = -240.000 dBFS
+PASS  Band Listen allocates nothing = 0.000 
+PASS  CPU with Band Listen on (limit 8% of a core) = 1.443 %
+
+== Multichannel
+PASS  Different layouts in and out are refused
+PASS  Unnamed channels are refused, since no one can say which is the LFE
+PASS  mono: accepted
+PASS  mono, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  mono, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  mono, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  mono: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  mono: no channel's tone in any other channel (limit -90 dBFS) = -300.000 dBFS
+PASS  mono: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  mono: every channel but the LFE really is treated
+PASS  mono: no allocations while playing = 0.000 
+PASS  mono: CPU at default, one core (limit 2.5% per treated channel) = 0.563 %
+INFO  mono: worst single block = 1.647 %
+PASS  stereo: accepted
+PASS  stereo, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  stereo, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  stereo, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  stereo: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  stereo: no channel's tone in any other channel (limit -90 dBFS) = -205.562 dBFS
+PASS  stereo: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  stereo: every channel but the LFE really is treated
+PASS  stereo: no allocations while playing = 0.000 
+PASS  stereo: CPU at default, one core (limit 2.5% per treated channel) = 1.010 %
+INFO  stereo: worst single block = 3.047 %
+PASS  quad: accepted
+PASS  quad, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  quad, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  quad, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  quad: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  quad: no channel's tone in any other channel (limit -90 dBFS) = -197.952 dBFS
+PASS  quad: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  quad: every channel but the LFE really is treated
+PASS  quad: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.069 dB
+PASS  quad: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  quad: Mid/Side does nothing over stereo
+PASS  quad: no allocations while playing = 0.000 
+PASS  quad: CPU at default, one core (limit 2.5% per treated channel) = 1.826 %
+INFO  quad: worst single block = 4.253 %
+PASS  LCRS: accepted
+PASS  LCRS, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  LCRS, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  LCRS, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  LCRS: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  LCRS: no channel's tone in any other channel (limit -90 dBFS) = -197.952 dBFS
+PASS  LCRS: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  LCRS: every channel but the LFE really is treated
+PASS  LCRS: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.069 dB
+PASS  LCRS: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  LCRS: Mid/Side does nothing over stereo
+PASS  LCRS: no allocations while playing = 0.000 
+PASS  LCRS: CPU at default, one core (limit 2.5% per treated channel) = 1.822 %
+INFO  LCRS: worst single block = 5.066 %
+PASS  5.0: accepted
+PASS  5.0, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  5.0, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  5.0, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  5.0: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  5.0: no channel's tone in any other channel (limit -90 dBFS) = -197.952 dBFS
+PASS  5.0: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  5.0: every channel but the LFE really is treated
+PASS  5.0: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.069 dB
+PASS  5.0: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  5.0: Mid/Side does nothing over stereo
+PASS  5.0: no allocations while playing = 0.000 
+PASS  5.0: CPU at default, one core (limit 2.5% per treated channel) = 2.217 %
+INFO  5.0: worst single block = 5.053 %
+PASS  5.1: accepted
+PASS  5.1, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  5.1, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  5.1, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  5.1: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  5.1: no channel's tone in any other channel (limit -90 dBFS) = -185.457 dBFS
+PASS  5.1: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  5.1: every channel but the LFE really is treated
+PASS  5.1: the LFE has nothing removed, not one bit
+PASS  5.1: the LFE comes out as the input, delayed, exact to the bit
+PASS  5.1: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.069 dB
+PASS  5.1: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  5.1: the LFE stays out of the link (limit 0.01 dB) = 0.000 dB
+PASS  5.1: what is in the LFE has no effect on any other channel
+PASS  5.1: Mid/Side does nothing over stereo
+PASS  5.1: no allocations while playing = 0.000 
+PASS  5.1: CPU at default, one core (limit 2.5% per treated channel) = 2.227 %
+INFO  5.1: worst single block = 5.316 %
+PASS  6.0: accepted
+PASS  6.0, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  6.0, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  6.0, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  6.0: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  6.0: no channel's tone in any other channel (limit -90 dBFS) = -197.952 dBFS
+PASS  6.0: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  6.0: every channel but the LFE really is treated
+PASS  6.0: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.069 dB
+PASS  6.0: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  6.0: Mid/Side does nothing over stereo
+PASS  6.0: no allocations while playing = 0.000 
+PASS  6.0: CPU at default, one core (limit 2.5% per treated channel) = 2.594 %
+INFO  6.0: worst single block = 6.387 %
+PASS  6.1: accepted
+PASS  6.1, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  6.1, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  6.1, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  6.1: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  6.1: no channel's tone in any other channel (limit -90 dBFS) = -185.457 dBFS
+PASS  6.1: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  6.1: every channel but the LFE really is treated
+PASS  6.1: the LFE has nothing removed, not one bit
+PASS  6.1: the LFE comes out as the input, delayed, exact to the bit
+PASS  6.1: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.077 dB
+PASS  6.1: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  6.1: the LFE stays out of the link (limit 0.01 dB) = 0.000 dB
+PASS  6.1: what is in the LFE has no effect on any other channel
+PASS  6.1: Mid/Side does nothing over stereo
+PASS  6.1: no allocations while playing = 0.000 
+PASS  6.1: CPU at default, one core (limit 2.5% per treated channel) = 2.605 %
+INFO  6.1: worst single block = 5.892 %
+PASS  7.0: accepted
+PASS  7.0, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  7.0, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  7.0, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  7.0: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  7.0: no channel's tone in any other channel (limit -90 dBFS) = -194.679 dBFS
+PASS  7.0: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  7.0: every channel but the LFE really is treated
+PASS  7.0: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.077 dB
+PASS  7.0: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  7.0: Mid/Side does nothing over stereo
+PASS  7.0: no allocations while playing = 0.000 
+PASS  7.0: CPU at default, one core (limit 2.5% per treated channel) = 2.996 %
+INFO  7.0: worst single block = 7.223 %
+PASS  7.1: accepted
+PASS  7.1, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  7.1, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  7.1, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  7.1: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  7.1: no channel's tone in any other channel (limit -90 dBFS) = -185.457 dBFS
+PASS  7.1: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  7.1: every channel but the LFE really is treated
+PASS  7.1: the LFE has nothing removed, not one bit
+PASS  7.1: the LFE comes out as the input, delayed, exact to the bit
+PASS  7.1: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.077 dB
+PASS  7.1: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  7.1: the LFE stays out of the link (limit 0.01 dB) = 0.000 dB
+PASS  7.1: what is in the LFE has no effect on any other channel
+PASS  7.1: Mid/Side does nothing over stereo
+PASS  7.1: no allocations while playing = 0.000 
+PASS  7.1: CPU at default, one core (limit 2.5% per treated channel) = 3.015 %
+INFO  7.1: worst single block = 7.328 %
+PASS  5.1.2: accepted
+PASS  5.1.2, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  5.1.2, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  5.1.2, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  5.1.2: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  5.1.2: no channel's tone in any other channel (limit -90 dBFS) = -185.457 dBFS
+PASS  5.1.2: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  5.1.2: every channel but the LFE really is treated
+PASS  5.1.2: the LFE has nothing removed, not one bit
+PASS  5.1.2: the LFE comes out as the input, delayed, exact to the bit
+PASS  5.1.2: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.077 dB
+PASS  5.1.2: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  5.1.2: the LFE stays out of the link (limit 0.01 dB) = 0.000 dB
+PASS  5.1.2: what is in the LFE has no effect on any other channel
+PASS  5.1.2: Mid/Side does nothing over stereo
+PASS  5.1.2: no allocations while playing = 0.000 
+PASS  5.1.2: CPU at default, one core (limit 2.5% per treated channel) = 3.017 %
+INFO  5.1.2: worst single block = 6.886 %
+PASS  7.1.2: accepted
+PASS  7.1.2, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  7.1.2, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  7.1.2, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  7.1.2: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  7.1.2: no channel's tone in any other channel (limit -90 dBFS) = -185.457 dBFS
+PASS  7.1.2: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  7.1.2: every channel but the LFE really is treated
+PASS  7.1.2: the LFE has nothing removed, not one bit
+PASS  7.1.2: the LFE comes out as the input, delayed, exact to the bit
+PASS  7.1.2: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.077 dB
+PASS  7.1.2: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  7.1.2: the LFE stays out of the link (limit 0.01 dB) = 0.000 dB
+PASS  7.1.2: what is in the LFE has no effect on any other channel
+PASS  7.1.2: Mid/Side does nothing over stereo
+PASS  7.1.2: no allocations while playing = 0.000 
+PASS  7.1.2: CPU at default, one core (limit 2.5% per treated channel) = 3.900 %
+INFO  7.1.2: worst single block = 9.923 %
+PASS  5.1.4: accepted
+PASS  5.1.4, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  5.1.4, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  5.1.4, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  5.1.4: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  5.1.4: no channel's tone in any other channel (limit -90 dBFS) = -185.457 dBFS
+PASS  5.1.4: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  5.1.4: every channel but the LFE really is treated
+PASS  5.1.4: the LFE has nothing removed, not one bit
+PASS  5.1.4: the LFE comes out as the input, delayed, exact to the bit
+PASS  5.1.4: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.077 dB
+PASS  5.1.4: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  5.1.4: the LFE stays out of the link (limit 0.01 dB) = 0.000 dB
+PASS  5.1.4: what is in the LFE has no effect on any other channel
+PASS  5.1.4: Mid/Side does nothing over stereo
+PASS  5.1.4: no allocations while playing = 0.000 
+PASS  5.1.4: CPU at default, one core (limit 2.5% per treated channel) = 3.856 %
+INFO  5.1.4: worst single block = 8.419 %
+PASS  7.0.4: accepted
+PASS  7.0.4, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  7.0.4, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  7.0.4, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  7.0.4: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  7.0.4: no channel's tone in any other channel (limit -90 dBFS) = -193.101 dBFS
+PASS  7.0.4: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  7.0.4: every channel but the LFE really is treated
+PASS  7.0.4: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.077 dB
+PASS  7.0.4: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  7.0.4: Mid/Side does nothing over stereo
+PASS  7.0.4: no allocations while playing = 0.000 
+PASS  7.0.4: CPU at default, one core (limit 2.5% per treated channel) = 4.710 %
+INFO  7.0.4: worst single block = 10.978 %
+PASS  7.1.4: accepted
+PASS  7.1.4, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  7.1.4, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  7.1.4, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  7.1.4: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  7.1.4: no channel's tone in any other channel (limit -90 dBFS) = -184.383 dBFS
+PASS  7.1.4: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  7.1.4: every channel but the LFE really is treated
+PASS  7.1.4: the LFE has nothing removed, not one bit
+PASS  7.1.4: the LFE comes out as the input, delayed, exact to the bit
+PASS  7.1.4: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.077 dB
+PASS  7.1.4: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  7.1.4: the LFE stays out of the link (limit 0.01 dB) = 0.000 dB
+PASS  7.1.4: what is in the LFE has no effect on any other channel
+PASS  7.1.4: Mid/Side does nothing over stereo
+PASS  7.1.4: no allocations while playing = 0.000 
+PASS  7.1.4: CPU at default, one core (limit 2.5% per treated channel) = 4.742 %
+INFO  7.1.4: worst single block = 10.750 %
+PASS  9.1.6: accepted
+PASS  9.1.6, Low Latency: every channel, LFE too, delayed exactly the reported latency = 512.000 samples
+PASS  9.1.6, Normal: every channel, LFE too, delayed exactly the reported latency = 2048.000 samples
+PASS  9.1.6, High: every channel, LFE too, delayed exactly the reported latency = 4096.000 samples
+PASS  9.1.6: each channel's own tone arrives at its own level (limit 1.5 dB) = 0.000 dB
+PASS  9.1.6: no channel's tone in any other channel (limit -90 dBFS) = -184.383 dBFS
+PASS  9.1.6: sound plus Delta rebuilds the input in every channel (limit -90) = -162.556 dBFS
+PASS  9.1.6: every channel but the LFE really is treated
+PASS  9.1.6: the LFE has nothing removed, not one bit
+PASS  9.1.6: the LFE comes out as the input, delayed, exact to the bit
+PASS  9.1.6: Link 100, resonance in one channel: all treated channels cut alike (spread limit 1 dB) = 0.077 dB
+PASS  9.1.6: Link 0: only that channel is cut, the others at most (limit 1.5 dB) = 0.000 dB
+PASS  9.1.6: the LFE stays out of the link (limit 0.01 dB) = 0.000 dB
+PASS  9.1.6: what is in the LFE has no effect on any other channel
+PASS  9.1.6: Mid/Side does nothing over stereo
+PASS  9.1.6: no allocations while playing = 0.000 
+PASS  9.1.6: CPU at default, one core (limit 2.5% per treated channel) = 6.392 %
+INFO  9.1.6: worst single block = 13.939 %
+PASS  5.1, Focus -100: left side channels treated (limit over 3 dB) = 12.000 dB
+PASS  5.1, Focus -100: right side channels left alone (limit 0.1 dB) = -0.000 dB
+PASS  5.1, Focus -100: the centre is neither side, so it keeps its treatment = 12.000 dB
+PASS  5.1 with a stereo side chain is accepted
+PASS  5.1, Side Chain on: the key's tone is carved from every treated channel (limit over 4 dB) = 12.000 dB
+PASS  5.1, Side Chain on: the LFE is still untouched
+PASS  the window gets 6 channels' readings and names in 5.1
+PASS  the treated channel reads its cut, and the LFE reads none = 12.000 dB
 RESULT PASS  0 failures
 
 ===== DspTest: synthetic signals through the DSP
@@ -374,9 +946,9 @@ PASS  60 s run: level change -1.651 dB early, -1.620 dB late
 
 == Real-time safety and CPU
 PASS  48 kHz: 0 allocations while processing
-PASS  48 kHz stereo with moving controls: 1.60% of one core (62x faster than real time, limit 5%)
+PASS  48 kHz stereo with moving controls: 1.63% of one core (61x faster than real time, limit 5%)
 PASS  96 kHz: 0 allocations while processing
-PASS  96 kHz stereo with moving controls: 3.29% of one core (30x faster than real time, limit 5%)
+PASS  96 kHz stereo with moving controls: 3.36% of one core (30x faster than real time, limit 5%)
 
 89 passed, 0 failed
 
@@ -458,7 +1030,7 @@ PASS  Moira     mean gain change per 5.3 ms frame where active: 0.140 dB (limit 
 
 ===== HostCheck in this repo: the installed AU through AudioToolbox, measured
 PASS  reported latency = 2048.000 samples
-PASS  parameters found by name = 33.000 
+PASS  parameters found by name = 59.000 
 PASS  tone over noise, Depth 6 through the real AU = -6.000 dB
 PASS  Max Reduction reading through the AU, just after the signal ends = 6.000 dB
 PASS  tone over noise, Depth 12 through the real AU = -12.000 dB
@@ -472,21 +1044,189 @@ PASS  latency unchanged by Bypass = 2048.000 samples
 PASS  Side Chain on: main carved by a tone in the key, Depth 12 = -12.001 dB
 RESULT PASS  0 failures
 
+===== LayoutCheck: the installed AU once per channel layout, and Quality through the real AU
+
+== mono, 1 channels
+PASS  mono: initialises
+PASS  mono: Depth is found by name
+PASS  mono: latency property = 2048.000 samples
+PASS  mono: renders
+PASS  mono: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  mono: and from no other (limit -90 dBFS) = -300.000 dBFS
+PASS  mono: every other channel does
+PASS  mono: CPU through the real AU (limit 2.5% per treated channel) = 0.413 %
+
+== stereo, 2 channels
+PASS  stereo: initialises
+PASS  stereo: Depth is found by name
+PASS  stereo: latency property = 2048.000 samples
+PASS  stereo: renders
+PASS  stereo: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  stereo: and from no other (limit -90 dBFS) = -210.173 dBFS
+PASS  stereo: every other channel does
+PASS  stereo: CPU through the real AU (limit 2.5% per treated channel) = 0.812 %
+
+== quad, 4 channels
+PASS  quad: initialises
+PASS  quad: Depth is found by name
+PASS  quad: latency property = 2048.000 samples
+PASS  quad: renders
+PASS  quad: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  quad: and from no other (limit -90 dBFS) = -201.473 dBFS
+PASS  quad: every other channel does
+PASS  quad: CPU through the real AU (limit 2.5% per treated channel) = 1.573 %
+
+== 5.0, 5 channels
+PASS  5.0: initialises
+PASS  5.0: Depth is found by name
+PASS  5.0: latency property = 2048.000 samples
+PASS  5.0: renders
+PASS  5.0: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  5.0: and from no other (limit -90 dBFS) = -195.303 dBFS
+PASS  5.0: every other channel does
+PASS  5.0: CPU through the real AU (limit 2.5% per treated channel) = 1.963 %
+
+== 5.1, LFE fourth, 6 channels
+PASS  5.1, LFE fourth: initialises
+PASS  5.1, LFE fourth: Depth is found by name
+PASS  5.1, LFE fourth: latency property = 2048.000 samples
+PASS  5.1, LFE fourth: renders
+PASS  5.1, LFE fourth: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  5.1, LFE fourth: and from no other (limit -90 dBFS) = -195.303 dBFS
+PASS  5.1, LFE fourth: the channel the layout calls LFE, number 4, has nothing taken out
+PASS  5.1, LFE fourth: every other channel does
+PASS  5.1, LFE fourth: CPU through the real AU (limit 2.5% per treated channel) = 1.996 %
+
+== 6.0, 6 channels
+PASS  6.0: initialises
+PASS  6.0: Depth is found by name
+PASS  6.0: latency property = 2048.000 samples
+PASS  6.0: renders
+PASS  6.0: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  6.0: and from no other (limit -90 dBFS) = -195.303 dBFS
+PASS  6.0: every other channel does
+PASS  6.0: CPU through the real AU (limit 2.5% per treated channel) = 2.359 %
+
+== 7.0, 7 channels
+PASS  7.0: initialises
+PASS  7.0: Depth is found by name
+PASS  7.0: latency property = 2048.000 samples
+PASS  7.0: renders
+PASS  7.0: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  7.0: and from no other (limit -90 dBFS) = -195.303 dBFS
+PASS  7.0: every other channel does
+PASS  7.0: CPU through the real AU (limit 2.5% per treated channel) = 2.758 %
+
+== 7.1, 8 channels
+PASS  7.1: initialises
+PASS  7.1: Depth is found by name
+PASS  7.1: latency property = 2048.000 samples
+PASS  7.1: renders
+PASS  7.1: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  7.1: and from no other (limit -90 dBFS) = -192.680 dBFS
+PASS  7.1: the channel the layout calls LFE, number 4, has nothing taken out
+PASS  7.1: every other channel does
+PASS  7.1: CPU through the real AU (limit 2.5% per treated channel) = 2.817 %
+
+== 5.1.2, 8 channels
+PASS  5.1.2: initialises
+PASS  5.1.2: Depth is found by name
+PASS  5.1.2: latency property = 2048.000 samples
+PASS  5.1.2: renders
+PASS  5.1.2: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  5.1.2: and from no other (limit -90 dBFS) = -192.680 dBFS
+PASS  5.1.2: the channel the layout calls LFE, number 4, has nothing taken out
+PASS  5.1.2: every other channel does
+PASS  5.1.2: CPU through the real AU (limit 2.5% per treated channel) = 2.818 %
+
+== 7.1.2, 10 channels
+PASS  7.1.2: initialises
+PASS  7.1.2: Depth is found by name
+PASS  7.1.2: latency property = 2048.000 samples
+PASS  7.1.2: renders
+PASS  7.1.2: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  7.1.2: and from no other (limit -90 dBFS) = -192.680 dBFS
+PASS  7.1.2: the channel the layout calls LFE, number 4, has nothing taken out
+PASS  7.1.2: every other channel does
+PASS  7.1.2: CPU through the real AU (limit 2.5% per treated channel) = 3.696 %
+
+== 5.1.4, 10 channels
+PASS  5.1.4: initialises
+PASS  5.1.4: Depth is found by name
+PASS  5.1.4: latency property = 2048.000 samples
+PASS  5.1.4: renders
+PASS  5.1.4: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  5.1.4: and from no other (limit -90 dBFS) = -192.680 dBFS
+PASS  5.1.4: the channel the layout calls LFE, number 4, has nothing taken out
+PASS  5.1.4: every other channel does
+PASS  5.1.4: CPU through the real AU (limit 2.5% per treated channel) = 3.693 %
+
+== 7.1.4, 12 channels
+PASS  7.1.4: initialises
+PASS  7.1.4: Depth is found by name
+PASS  7.1.4: latency property = 2048.000 samples
+PASS  7.1.4: renders
+PASS  7.1.4: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  7.1.4: and from no other (limit -90 dBFS) = -192.680 dBFS
+PASS  7.1.4: the channel the layout calls LFE, number 4, has nothing taken out
+PASS  7.1.4: every other channel does
+PASS  7.1.4: CPU through the real AU (limit 2.5% per treated channel) = 4.614 %
+
+== 9.1.6, 16 channels
+PASS  9.1.6: initialises
+PASS  9.1.6: Depth is found by name
+PASS  9.1.6: latency property = 2048.000 samples
+PASS  9.1.6: renders
+PASS  9.1.6: each channel's tone comes out of the same channel (limit 0.2 dB) = 0.000 dB
+PASS  9.1.6: and from no other (limit -90 dBFS) = -192.680 dBFS
+PASS  9.1.6: the channel the layout calls LFE, number 4, has nothing taken out
+PASS  9.1.6: every other channel does
+PASS  9.1.6: CPU through the real AU (limit 2.5% per treated channel) = 6.224 %
+
+== 5.1 with the LFE last, a tag JUCE does not keep
+INFO  tag says the LFE is channel 6, the wrapper leaves channel 4 untreated
+
+== Quality through the real AU
+PASS  Normal = 2048.000 samples
+PASS  Low Latency: set by name
+PASS  Low Latency: the latency property follows at once = 512.000 samples
+PASS  Low Latency: the host's latency listener is called = 1.000 
+PASS  High: set by name
+PASS  High: the latency property follows at once = 4096.000 samples
+PASS  High: the host's latency listener is called = 1.000 
+PASS  Normal again: set by name
+PASS  Normal again: the latency property follows at once = 2048.000 samples
+PASS  Normal again: the host's latency listener is called = 1.000 
+PASS  Low Latency: the impulse arrives exactly when the property says = 512.000 samples
+
+RESULT PASS  0 failures
+
 ===== Shared HostCheck: aufx SmRs Luke
 Name: Luke Garito: Smooth Resonance
 Latency: 2048 samples at 48 kHz (42.67 ms)
-Parameters (33):
+Parameters (59):
   Mix                              0.00 to       1.00 default       1.00 
   Stereo Link                      0.00 to       1.00 default       1.00 
   Mode                             0.00 to       1.00 default       0.00 
   Delta                            0.00 to       1.00 default       0.00 
   Depth                            0.00 to       1.00 default       0.25 
+  Band Listen                      0.00 to       8.00 default       0.00 
   Band 1 Frequency                 0.00 to       1.00 default       0.37 
   Band 1 Sensitivity               0.00 to       1.00 default       0.50 
   Band 2 Frequency                 0.00 to       1.00 default       0.65 
   Band 2 Sensitivity               0.00 to       1.00 default       0.50 
   Band 3 Frequency                 0.00 to       1.00 default       0.79 
   Band 3 Sensitivity               0.00 to       1.00 default       0.50 
+  Band 4 Frequency                 0.00 to       1.00 default       0.31 
+  Band 4 Sensitivity               0.00 to       1.00 default       0.50 
+  Band 5 Frequency                 0.00 to       1.00 default       0.44 
+  Band 5 Sensitivity               0.00 to       1.00 default       0.50 
+  Band 6 Frequency                 0.00 to       1.00 default       0.55 
+  Band 6 Sensitivity               0.00 to       1.00 default       0.50 
+  Band 7 Frequency                 0.00 to       1.00 default       0.73 
+  Band 7 Sensitivity               0.00 to       1.00 default       0.50 
+  Band 8 Frequency                 0.00 to       1.00 default       0.87 
+  Band 8 Sensitivity               0.00 to       1.00 default       0.50 
   Attack Tilt                      0.00 to       1.00 default       0.50 
   Release Tilt                     0.00 to       1.00 default       0.50 
   Selectivity                      0.00 to       1.00 default       0.50 
@@ -498,18 +1238,33 @@ Parameters (33):
   Sharpness Tilt                   0.00 to       1.00 default       0.50 
   Max Reduction                    0.00 to       1.00 default       1.00 (read only)
   Hard Threshold                   0.00 to       1.00 default       0.55 
+  Quality                          0.00 to       2.00 default       1.00 
   Stereo Mode                      0.00 to       1.00 default       0.00 
   Attack                           0.00 to       1.00 default       0.46 
   Bypass                           0.00 to       1.00 default       0.00 
   Output Gain                      0.00 to       1.00 default       0.50 
+  Max Cut                          0.00 to       1.00 default       1.00 
   Release                          0.00 to       1.00 default       0.50 
   Wet Trim                         0.00 to       1.00 default       0.50 
   Band 1 Width                     0.00 to       1.00 default       0.50 
   Band 2 Width                     0.00 to       1.00 default       0.50 
   Band 3 Width                     0.00 to       1.00 default       0.50 
+  Band 4 Width                     0.00 to       1.00 default       0.50 
+  Band 5 Width                     0.00 to       1.00 default       0.50 
+  Band 6 Width                     0.00 to       1.00 default       0.50 
+  Band 7 Width                     0.00 to       1.00 default       0.50 
+  Band 8 Width                     0.00 to       1.00 default       0.50 
+  Band 1 On                        0.00 to       1.00 default       1.00 
+  Band 2 On                        0.00 to       1.00 default       1.00 
+  Band 3 On                        0.00 to       1.00 default       1.00 
+  Band 4 On                        0.00 to       1.00 default       0.00 
+  Band 5 On                        0.00 to       1.00 default       0.00 
+  Band 6 On                        0.00 to       1.00 default       0.00 
+  Band 7 On                        0.00 to       1.00 default       0.00 
+  Band 8 On                        0.00 to       1.00 default       0.00 
   Stereo Focus                     0.00 to       1.00 default       0.50 
   Side Chain Listen                0.00 to       1.00 default       0.00 
-Factory presets (8):
+Factory presets (11):
   0 Gentle Vocal Polish
   1 Harsh Lead Vocal
   2 Vocal Stack Smoother
@@ -518,6 +1273,9 @@ Factory presets (8):
   5 Boxy Low Mids
   6 Hard Whistle Catcher
   7 Side Chain Carve
+  8 Tracking Low Latency
+  9 Eight Dot Vocal Sculpt
+  10 High Detail With Ceiling
 Rendered 3 s: output -15.1 dBFS RMS, peak 0.250, non-finite samples 0
 Bypass property: accepted
 shared HostCheck exit code 0

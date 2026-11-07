@@ -217,7 +217,7 @@ int main()
     }
 
     check (unit.latencySamples == 2048.0, "reported latency", unit.latencySamples, "samples");
-    check (unit.ids.size() == 33, "parameters found by name", (double) unit.ids.size(), "");
+    check (unit.ids.size() == 59, "parameters found by name", (double) unit.ids.size(), "");
 
     const auto input = toneOverNoise (4.0, 2500.0, 0.25, 0.003, 1);
     unit.source.main = input;

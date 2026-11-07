@@ -101,6 +101,13 @@ static void testParameters()
         { "band3Freq", "Band 3 Frequency", 20, 20000, 7000 }, { "band3Sens", "Band 3 Sensitivity", -12, 12, 0 }, { "band3Width", "Band 3 Width", 0.1f, 4, 1 },
         { "sharpnessTilt", "Sharpness Tilt", -100, 100, 0 }, { "attackTilt", "Attack Tilt", -100, 100, 0 }, { "releaseTilt", "Release Tilt", -100, 100, 0 },
         { "wetTrim", "Wet Trim", -24, 24, 0 }, { "sideChain", "Side Chain", 0, 1, 0 }, { "sideChainListen", "Side Chain Listen", 0, 1, 0 },
+        { "maxCut", "Max Cut", 0, 24, 24 }, { "quality", "Quality", 0, 2, 1 }, { "bandListen", "Band Listen", 0, 8, 0 },
+        { "band1On", "Band 1 On", 0, 1, 1 }, { "band2On", "Band 2 On", 0, 1, 1 }, { "band3On", "Band 3 On", 0, 1, 1 },
+        { "band4Freq", "Band 4 Frequency", 20, 20000, 150 }, { "band4Sens", "Band 4 Sensitivity", -12, 12, 0 }, { "band4Width", "Band 4 Width", 0.1f, 4, 1 }, { "band4On", "Band 4 On", 0, 1, 0 },
+        { "band5Freq", "Band 5 Frequency", 20, 20000, 600 }, { "band5Sens", "Band 5 Sensitivity", -12, 12, 0 }, { "band5Width", "Band 5 Width", 0.1f, 4, 1 }, { "band5On", "Band 5 On", 0, 1, 0 },
+        { "band6Freq", "Band 6 Frequency", 20, 20000, 1500 }, { "band6Sens", "Band 6 Sensitivity", -12, 12, 0 }, { "band6Width", "Band 6 Width", 0.1f, 4, 1 }, { "band6On", "Band 6 On", 0, 1, 0 },
+        { "band7Freq", "Band 7 Frequency", 20, 20000, 5000 }, { "band7Sens", "Band 7 Sensitivity", -12, 12, 0 }, { "band7Width", "Band 7 Width", 0.1f, 4, 1 }, { "band7On", "Band 7 On", 0, 1, 0 },
+        { "band8Freq", "Band 8 Frequency", 20, 20000, 11000 }, { "band8Sens", "Band 8 Sensitivity", -12, 12, 0 }, { "band8Width", "Band 8 Width", 0.1f, 4, 1 }, { "band8On", "Band 8 On", 0, 1, 0 },
     };
 
     bool allOk = true;
@@ -176,7 +183,9 @@ static void testLatencyAndLayouts()
         };
         check (layout (stereo, juce::AudioChannelSet::disabled()) && layout (mono, juce::AudioChannelSet::disabled()), "mono and stereo accepted with no key");
         check (layout (stereo, stereo) && layout (stereo, mono) && layout (mono, mono) && layout (mono, stereo), "mono and stereo keys accepted on both");
-        check (! layout (juce::AudioChannelSet::create5point1(), juce::AudioChannelSet::disabled()), "surround refused");
+        check (layout (juce::AudioChannelSet::create5point1(), juce::AudioChannelSet::disabled()), "5.1 is accepted since 0.5.0, tested fully in FeatureTest");
+        check (! layout (juce::AudioChannelSet::discreteChannels (6), juce::AudioChannelSet::disabled()), "unnamed channels are refused");
+        check (! layout (juce::AudioChannelSet::create5point1(), juce::AudioChannelSet::create5point1()), "a surround side chain is refused");
     }
 
     // prepareToPlay again at another rate must leave a working plug-in.
@@ -994,7 +1003,7 @@ static void testWindow()
         window->setAdvancedOpen (true, false);
         int unreachable = 0;
 
-        for (int band = 0; band < 3; ++band)
+        for (int band = 0; band < smoothres::Params::numBands; ++band)
         {
             window->getGraph().setSelectedBand (band);
 
@@ -1006,7 +1015,7 @@ static void testWindow()
                     continue;
 
                 const auto id = ranged->getParameterID();
-                const bool otherBand = id.startsWith ("band") && ! id.startsWith ("band" + juce::String (band + 1));
+                const bool otherBand = id.startsWith ("band") && id != "bandListen" && ! id.startsWith ("band" + juce::String (band + 1));
 
                 if (otherBand)
                     continue;
@@ -1024,7 +1033,7 @@ static void testWindow()
         check (unreachable == 0, "with Advanced open and each dot selected, every control is on screen", unreachable, "out of reach");
 
         int overlaps = 0;
-        const char* column[] = { "depth", "sharpness", "attack", "mode", "hardThreshold", "advanced", "stereoMode", "link", "stereoFocus", "sharpnessTilt", "attackTilt", "releaseTilt", "wetTrim", "sideChain" };
+        const char* column[] = { "depth", "maxCut", "sharpness", "attack", "quality", "mode", "hardThreshold", "advanced", "stereoMode", "link", "stereoFocus", "sharpnessTilt", "attackTilt", "releaseTilt", "wetTrim", "sideChain" };
 
         for (size_t i = 0; i + 1 < std::size (column); ++i)
             if (panel.findChildWithID (column[i])->getBottom() > panel.findChildWithID (column[i + 1])->getY())
@@ -1217,6 +1226,181 @@ static void testWindow()
     }
 }
 
+/** Adding, removing and listening with the real mouse handlers, and everything the window has to show for the new features. */
+static void testWindowNewFeatures()
+{
+    std::puts ("\n== Window: dots, Band Listen, Quality, Max Cut and surround");
+    using Editor = ResonanceEditor;
+
+    const auto real = [] (Proc& p, const juce::String& id)
+    {
+        auto* prm = p.parameters.getParameter (id);
+        return prm->convertFrom0to1 (prm->getValue());
+    };
+
+    Proc p;
+    p.setPlayConfigDetails (2, 2, kRate, 256);
+    p.prepareToPlay (kRate, 256);
+    std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+    auto* window = dynamic_cast<Editor*> (editor.get());
+    auto& graph = window->getGraph();
+    auto& panel = window->getPanel();
+
+    const auto xFor = [&graph] (float hz) { return (float) graph.getWidth() * std::log (hz / 20.0f) / std::log (1000.0f); };
+    const auto yFor = [&graph] (float sens) { return (float) graph.getHeight() * (0.5f - sens / 12.0f * 0.30f); };
+
+    // Double-click on an empty part of the graph adds the first free dot right there.
+    {
+        const juce::Point<float> at (xFor (800.0f), yFor (5.0f));
+        graph.mouseDoubleClick (mouseEventFor (graph, at, 2));
+        check (real (p, "band4On") > 0.5f, "double-clicking the graph turns on dot 4");
+        check (std::abs (real (p, "band4Freq") - 800.0f) < 8.0f, "at the frequency clicked", real (p, "band4Freq"), "Hz");
+        check (std::abs (real (p, "band4Sens") - 5.0f) < 0.2f, "and the height clicked", real (p, "band4Sens"), "dB");
+        check (graph.getSelectedBand() == 3, "and it becomes the selected dot");
+    }
+
+    // Up to 8, and a 9th only says why not.
+    for (float hz : { 120.0f, 200.0f, 500.0f, 10000.0f })
+        graph.mouseDoubleClick (mouseEventFor (graph, { xFor (hz), yFor (-5.0f) }, 2));
+
+    {
+        int on = 0;
+        for (int b = 1; b <= 8; ++b) on += real (p, "band" + juce::String (b) + "On") > 0.5f ? 1 : 0;
+        check (on == 8, "four more double-clicks fill all 8 dots", on);
+        juce::String said;
+        auto oldHint = graph.onHint;
+        graph.onHint = [&said] (const juce::String& text) { said = text; };
+        const auto before = real (p, "band8Freq");
+        graph.mouseDoubleClick (mouseEventFor (graph, { xFor (40.0f), yFor (8.0f) }, 2));
+        check (real (p, "band8Freq") == before && said.contains ("All 8"), "a ninth moves nothing and says all 8 are in use");
+        graph.onHint = oldHint;
+    }
+
+    // Hovering shows an x beside the dot, and a click on it takes the dot away. A click on the dot itself does not.
+    {
+        const juce::Point<float> dot (xFor (real (p, "band4Freq")), yFor (real (p, "band4Sens")));
+        graph.mouseMove (mouseEventFor (graph, dot, 0, juce::ModifierKeys()));
+        graph.mouseDown (mouseEventFor (graph, dot));
+        graph.mouseUp (mouseEventFor (graph, dot));
+        check (real (p, "band4On") > 0.5f, "clicking a dot does not remove it");
+        const auto badge = dot + juce::Point<float> (15.0f, -15.0f);
+        graph.mouseMove (mouseEventFor (graph, badge, 0, juce::ModifierKeys()));
+        graph.mouseDown (mouseEventFor (graph, badge));
+        check (real (p, "band4On") < 0.5f, "clicking the x beside a hovered dot removes it");
+        graph.mouseUp (mouseEventFor (graph, badge));
+        graph.mouseExit (mouseEventFor (graph, badge, 0, juce::ModifierKeys()));
+        check (graph.getSelectedBand() != 3 && graph.isBandOn (graph.getSelectedBand()), "and selection moves to a dot that is still on");
+
+        // The freed slot is what the next double-click uses.
+        graph.mouseDoubleClick (mouseEventFor (graph, { xFor (1100.0f), yFor (0.0f) }, 2));
+        check (real (p, "band4On") > 0.5f && std::abs (real (p, "band4Freq") - 1100.0f) < 11.0f, "the freed dot is reused by the next double-click");
+    }
+
+    // The Remove button in the strip, and automation turning a dot off.
+    {
+        graph.setSelectedBand (6);
+        auto* button = panel.findChildWithID ("band7On");
+        check (button != nullptr && button->isVisible(), "the selected dot's Remove button is showing");
+        button->mouseDown (mouseEventFor (*button, { 5.0f, 5.0f }));
+        check (real (p, "band7On") < 0.5f, "Remove takes the selected dot away");
+        setParam (p, "band7On", 1.0f);
+        graph.setSelectedBand (6);
+        setParam (p, "band7On", 0.0f);
+        window->tick (1.0 / 30.0);
+        check (graph.getSelectedBand() != 6, "automation turning off the selected dot moves the selection");
+        setParam (p, "band7On", 1.0f);
+    }
+
+    // Band Listen: the button, moving with the selection, the banner, and taking the dot away.
+    {
+        graph.setSelectedBand (1);
+        window->tick (1.0 / 30.0);
+        auto* listen = panel.findChildWithID ("bandListen");
+        check (listen != nullptr && listen->isVisible(), "the Listen button is on screen");
+        listen->mouseDown (mouseEventFor (*listen, { 5.0f, 5.0f }));
+        check (juce::roundToInt (real (p, "bandListen")) == 2, "Listen solos the selected dot, through the real parameter");
+        graph.setSelectedBand (2);
+        check (juce::roundToInt (real (p, "bandListen")) == 3, "selecting another dot moves the listening with it");
+
+        const auto listening = graph.createComponentSnapshot (graph.getLocalBounds());
+        graph.mouseDown (mouseEventFor (graph, { 60.0f, 20.0f }));
+        check (juce::roundToInt (real (p, "bandListen")) == 0, "a click on the banner stops it");
+        graph.mouseUp (mouseEventFor (graph, { 60.0f, 20.0f }));
+        window->tick (1.0 / 30.0);
+
+        const auto normal = graph.createComponentSnapshot (graph.getLocalBounds());
+        const auto bannerPixel = listening.getPixelAt (20, 24), plainPixel = normal.getPixelAt (20, 24);
+        check (bannerPixel.getGreen() > 180 && plainPixel.getGreen() < 60, "the banner really is painted, solid, when listening", bannerPixel.getGreen());
+
+        setParam (p, "bandListen", 3.0f);
+        window->tick (1.0 / 30.0);
+        graph.removeBand (2);
+        check (juce::roundToInt (real (p, "bandListen")) == 0, "taking away the dot being listened to stops the listening");
+        setParam (p, "band3On", 1.0f);
+
+        setParam (p, "bandListen", 0.0f);
+        window->tick (1.0 / 30.0);
+        const auto off = listen->createComponentSnapshot (listen->getLocalBounds()).getPixelAt (3, listen->getHeight() / 2);
+        setParam (p, "bandListen", 2.0f);
+        window->tick (1.0 / 30.0);
+        const auto on = listen->createComponentSnapshot (listen->getLocalBounds()).getPixelAt (3, listen->getHeight() / 2);
+        check (on.getAlpha() > 200 && off.getAlpha() < 60, "automation of Band Listen lights the Listen button, opacity", on.getAlpha());
+        setParam (p, "bandListen", 0.0f);
+    }
+
+    // Quality and Max Cut are main controls, on screen with Advanced closed.
+    {
+        window->setAdvancedOpen (false, false);
+        auto* quality = dynamic_cast<ui::ParamChoice*> (panel.findChildWithID ("quality"));
+        auto* maxCut = dynamic_cast<ui::ParamSlider*> (panel.findChildWithID ("maxCut"));
+        check (quality != nullptr && quality->isVisible() && maxCut != nullptr && maxCut->isVisible(), "Quality and Max Cut show with Advanced closed");
+        quality->mouseDown (mouseEventFor (*quality, { 110.0f, 14.0f }));
+        check (juce::roundToInt (real (p, "quality")) == 0, "clicking Low Latency sets it");
+        check (p.getLatencySamples() == 512, "and the host is told straight away", p.getLatencySamples(), "samples");
+        quality->mouseDown (mouseEventFor (*quality, { (float) quality->getWidth() - 10.0f, 14.0f }));
+        check (juce::roundToInt (real (p, "quality")) == 2, "clicking High sets it");
+        setParam (p, "quality", 1.0f);
+        setParam (p, "maxCut", 8.0f);
+        check (maxCut->valueText() == "8.0 dB", "automation moves the Max Cut value");
+        setParam (p, "maxCut", 24.0f);
+    }
+
+    // The window is opened and closed in surround, and shows the channels only there.
+    for (const auto& set : { juce::AudioChannelSet::create5point1(), juce::AudioChannelSet::create7point1point4() })
+    {
+        Proc s;
+        auto layout = s.getBusesLayout();
+        layout.inputBuses.getReference (0) = set;
+        layout.outputBuses.getReference (0) = set;
+        s.setBusesLayout (layout);
+        s.setRateAndBufferSizeDetails (kRate, 256);
+        s.prepareToPlay (kRate, 256);
+        std::unique_ptr<juce::AudioProcessorEditor> surroundEditor (s.createEditor());
+        auto* w = dynamic_cast<Editor*> (surroundEditor.get());
+        w->tick (1.0 / 30.0);
+        auto* stereo = w->getPanel().findChildWithID ("stereoMode");
+        check (stereo != nullptr && ! stereo->isEnabled(), "in surround Mid/Side is greyed out");
+        w->setAdvancedOpen (true, false);
+        w->tick (1.0 / 30.0);
+        check (w->getPanel().findChildWithID ("sideChain")->getBottom() <= ResonanceEditor::designHeight - 60, "with Advanced open everything still fits above the hint");
+    }
+
+    // No em dashes in anything a window or parameter shows.
+    {
+        Proc n;
+        bool clean = true;
+        for (auto* prm : n.getParameters())
+        {
+            clean = clean && ! hasEmDash (prm->getName (64));
+            for (const auto& text : prm->getAllValueStrings())
+                clean = clean && ! hasEmDash (text);
+        }
+        for (int i = 0; i < n.getNumPrograms(); ++i)
+            clean = clean && ! hasEmDash (n.getProgramName (i));
+        check (clean, "no em dash in any parameter or preset name");
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -1241,6 +1425,7 @@ int main()
     testAllocationsEverythingOn();
 
     testWindow();
+    testWindowNewFeatures();
 
     return finish();
 }

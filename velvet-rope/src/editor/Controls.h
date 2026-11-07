@@ -95,7 +95,7 @@ namespace ui
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ParamToggle)
     };
 
-    /** A two-way choice parameter drawn as two joined buttons, next to its label. */
+    /** A choice parameter drawn as joined buttons, next to its label. */
     class ParamChoice final : public juce::Component,
                               public Hinted
     {
@@ -110,10 +110,12 @@ namespace ui
         int getSelected() const noexcept  { return selected; }
 
         void setForcedHover (bool shouldShow)  { hovered = shouldShow ? 1 : -1; repaint(); }
+        void enablementChanged() override  { repaint(); }
 
     private:
         juce::Rectangle<float> buttonsArea() const;
         int segmentAt (juce::Point<float>) const;
+        juce::Rectangle<float> cellFor (int index) const;
 
         const juce::String label;
         const juce::StringArray choices;

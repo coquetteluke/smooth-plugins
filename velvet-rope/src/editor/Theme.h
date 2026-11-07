@@ -20,6 +20,7 @@ namespace ui
         inline const juce::Colour gold      { 0xffdfb563 };
         inline const juce::Colour goldEdge  { 0xfff0d08f };
         inline const juce::Colour second    { 0xfff6ecdd };   // the second channel, when channels are treated apart
+        inline const juce::Colour listen    { 0xff7fe3cf };   // only ever means "what you hear is not the whole sound": Band Listen
     }
 
     enum class Weight { regular, medium };

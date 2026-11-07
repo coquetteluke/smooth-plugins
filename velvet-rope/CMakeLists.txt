@@ -100,6 +100,14 @@ target_compile_definitions(ProcessorTest PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PER
 target_link_libraries(ProcessorTest PRIVATE SmoothResonanceWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME processor COMMAND ProcessorTest)
 
+# Old sessions keep their sound: nulls against saved 0.4.1 renders and a frozen copy of the 0.4.1 engine.
+juce_add_console_app(NullTest PRODUCT_NAME "NullTest")
+target_sources(NullTest PRIVATE src/ResonanceEngine.cpp src/PluginProcessor.cpp ${SR_WINDOW_SOURCES} tests/legacy/LegacyEngine.cpp tests/NullTest.cpp)
+target_include_directories(NullTest PRIVATE src tests)
+target_compile_definitions(NullTest PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0 BASELINE_DIR="${CMAKE_SOURCE_DIR}/tests/baseline" SPEECH_DIR="${CMAKE_BINARY_DIR}/speech")
+target_link_libraries(NullTest PRIVATE SmoothResonanceWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+add_test(NAME null COMMAND NullTest)
+
 # Renders the window to PNG with real speech running through the real processor. Not a ctest: it writes docs/window.
 juce_add_console_app(RenderWindow PRODUCT_NAME "RenderWindow")
 target_sources(RenderWindow PRIVATE src/ResonanceEngine.cpp src/PluginProcessor.cpp ${SR_WINDOW_SOURCES} tests/RenderWindow.cpp)

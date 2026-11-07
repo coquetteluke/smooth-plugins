@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1, 2026-11-07
+
+Renamed to Tape Chorus, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
 ## 0.3.0
 
 Its own window, in place of the generic one. Dark sea green and pale mint. Two reels with one line per voice between them, showing each read head's real delay moving over time, left and right in two colours, over bars of what is really on the tape. The left reel winds out with the input level and the right with the output. Worn tape shows as gaps in the lines, and Feedback as repeats in the bars. With no audio running it draws what the settings will do, and it stops drawing when nothing moves.

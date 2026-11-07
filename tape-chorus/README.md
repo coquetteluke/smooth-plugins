@@ -1,4 +1,4 @@
-# Smooth Tape Chorus
+# Tape Chorus
 
 A tape style chorus. Your signal goes through a soft tape saturation, then 1 to 8 moving read heads pull separate copies off a delay line, with slow, fast and random tape speed wobble on top. Spread places the copies across the stereo field. Feedback can send them round again. Mix blends the result with the untouched dry signal.
 
@@ -6,7 +6,7 @@ The control set was checked against the public manual of the chorus in UVI Tape 
 
 ## How to load it
 
-Audio Units > Luke Garito > Smooth Tape Chorus. AU code: `aufx STch Luke`. Works mono in to mono out, mono in to stereo out, and stereo in to stereo out. No licence system.
+Audio Units > Luke Garito > Tape Chorus. AU code: `aufx STch Luke`. Works mono in to mono out, mono in to stereo out, and stereo in to stereo out. No licence system.
 
 ## Controls
 

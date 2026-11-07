@@ -4,11 +4,11 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "" FORCE)
 
 # ---- edit these for each plug-in ----
 set(SP_TARGET  SmoothTapeChorus)
-set(SP_NAME    "Smooth Tape Chorus")
+set(SP_NAME    "Tape Chorus")
 set(SP_CODE    STch)
 set(SP_BUNDLE  "com.lukegarito.smoothtapechorus")
 set(SP_DESC    "Tape style chorus with 1 to 8 voices, feedback, wow, flutter and saturation")
-set(SP_VERSION 0.3.0)
+set(SP_VERSION 0.3.1)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice

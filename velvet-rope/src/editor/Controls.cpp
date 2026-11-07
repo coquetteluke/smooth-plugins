@@ -7,57 +7,23 @@ namespace ui
         constexpr float arcStart = juce::MathConstants<float>::pi * 1.25f;
         constexpr float arcEnd   = juce::MathConstants<float>::pi * 2.75f;
 
-        void drawDialBody (juce::Graphics& g, juce::Point<float> centre, float radius, float proportion, juce::Colour accent, bool lit, float arcWidth, float pointerLength)
+        void drawRing (juce::Graphics& g, juce::Point<float> centre, float radius, float proportion, juce::Colour accent, bool lit, float thickness)
         {
-            const float bodyRadius = radius - arcWidth - 3.5f;
+            const juce::PathStrokeType stroke (thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+            const float r = radius - thickness * 0.5f;
 
-            // A soft shadow, then a glazed cabochon lit from above.
-            for (int i = 3; i > 0; --i)
-            {
-                const float grow = (float) i * 1.4f;
-                g.setColour (juce::Colours::black.withAlpha (0.10f));
-                g.fillEllipse (centre.x - bodyRadius - grow, centre.y - bodyRadius - grow + 2.0f, (bodyRadius + grow) * 2.0f, (bodyRadius + grow) * 2.0f);
-            }
-
-            juce::ColourGradient body (tone::raised, centre.x - bodyRadius * 0.4f, centre.y - bodyRadius,
-                                       tone::well, centre.x + bodyRadius * 0.4f, centre.y + bodyRadius, false);
-            body.addColour (0.55, tone::lapisDark);
-            g.setGradientFill (body);
-            g.fillEllipse (centre.x - bodyRadius, centre.y - bodyRadius, bodyRadius * 2.0f, bodyRadius * 2.0f);
-
-            g.setColour (tone::bone.withAlpha (0.14f));
-            juce::Path rim;
-            rim.addCentredArc (centre.x, centre.y, bodyRadius - 0.5f, bodyRadius - 0.5f, 0.0f, -1.1f, 1.1f, true);
-            g.strokePath (rim, juce::PathStrokeType (1.0f));
-
-            // The track and the value arc.
             juce::Path track;
-            track.addCentredArc (centre.x, centre.y, radius - arcWidth * 0.5f, radius - arcWidth * 0.5f, 0.0f, arcStart, arcEnd, true);
-            g.setColour (juce::Colours::black.withAlpha (0.32f));
-            g.strokePath (track, juce::PathStrokeType (arcWidth, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            track.addCentredArc (centre.x, centre.y, r, r, 0.0f, arcStart, arcEnd, true);
+            g.setColour (tone::text.withAlpha (lit ? 0.17f : 0.10f));
+            g.strokePath (track, stroke);
 
-            const float angle = arcStart + proportion * (arcEnd - arcStart);
-
-            if (proportion > 0.001f)
+            if (proportion > 0.002f)
             {
                 juce::Path value;
-                value.addCentredArc (centre.x, centre.y, radius - arcWidth * 0.5f, radius - arcWidth * 0.5f, 0.0f, arcStart, angle, true);
-
-                if (lit)
-                {
-                    g.setColour (accent.withAlpha (0.25f));
-                    g.strokePath (value, juce::PathStrokeType (arcWidth + 3.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-                }
-
-                g.setColour (accent);
-                g.strokePath (value, juce::PathStrokeType (arcWidth, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                value.addCentredArc (centre.x, centre.y, r, r, 0.0f, arcStart, arcStart + proportion * (arcEnd - arcStart), true);
+                g.setColour (accent.withAlpha (lit ? 1.0f : 0.88f));
+                g.strokePath (value, stroke);
             }
-
-            // The pointer.
-            const auto inner = centre.getPointOnCircumference (bodyRadius - pointerLength, angle);
-            const auto outer = centre.getPointOnCircumference (bodyRadius - 2.0f, angle);
-            g.setColour (lit ? accent.brighter (0.3f) : accent);
-            g.drawLine ({ inner, outer }, 2.2f);
         }
     }
 
@@ -85,7 +51,7 @@ namespace ui
         attachment = std::make_unique<juce::SliderParameterAttachment> (param, *this);
         setDoubleClickReturnValue (true, param.convertFrom0to1 (param.getDefaultValue()));
 
-        typeBox.setFont (font (Weight::semibold, 20.0f));
+        typeBox.setFont (font (Weight::medium, 15.0f));
         typeBox.setJustificationType (juce::Justification::centred);
         typeBox.setEditable (false, false, true);
         typeBox.onTextChange = [this] { applyTyped (typeBox.getText()); };
@@ -101,7 +67,7 @@ namespace ui
     void ParamSlider::enablementChanged()
     {
         juce::Slider::enablementChanged();
-        setAlpha (isEnabled() ? 1.0f : 0.42f);
+        repaint();
     }
 
     int ParamSlider::dragPixels() const noexcept
@@ -142,10 +108,10 @@ namespace ui
 
         switch (kind)
         {
-            case Kind::bigDial:   return b.withSizeKeepingCentre (96, 56);
-            case Kind::dial:      return b.withTrimmedLeft (getHeight() + 2).removeFromBottom (getHeight() / 2 + 6);
-            case Kind::row:       return b.removeFromRight (60);
-            case Kind::footerRow: return b.removeFromRight (82);
+            case Kind::bigDial:   return b.withSizeKeepingCentre (96, 60);
+            case Kind::dial:      return b.withTrimmedLeft (getHeight() + 6).removeFromBottom (getHeight() / 2 + 4);
+            case Kind::row:       return b.removeFromRight (64);
+            case Kind::footerRow: return b.removeFromRight (72);
             case Kind::field:     return b;
         }
 
@@ -183,7 +149,7 @@ namespace ui
 
     void ParamSlider::startTyping()
     {
-        const auto area = valueArea().withSizeKeepingCentre (juce::jmin (valueArea().getWidth(), 96), juce::jmin (valueArea().getHeight(), 30));
+        const auto area = valueArea().withSizeKeepingCentre (juce::jmin (valueArea().getWidth(), 88), juce::jmin (valueArea().getHeight(), 26));
         typeBox.setBounds (area);
         typeBox.setText (valueText(), juce::dontSendNotification);
         typeBox.setVisible (true);
@@ -212,14 +178,14 @@ namespace ui
 
     void ParamSlider::paint (juce::Graphics& g)
     {
-        const bool lit = isMouseOverOrDragging() || forcedHover;
+        const bool lit = isEnabled() && (isMouseOverOrDragging() || forcedHover);
 
         switch (kind)
         {
             case Kind::bigDial:   paintBigDial (g, lit); break;
             case Kind::dial:      paintDial (g, lit); break;
-            case Kind::row:       paintRow (g, lit, 96.0f, 60.0f, 16.5f, 17.0f); break;
-            case Kind::footerRow: paintRow (g, lit, 44.0f, 82.0f, 19.0f, 24.0f); break;
+            case Kind::row:       paintRow (g, lit, 84.0f, 64.0f, 13.0f, 13.0f); break;
+            case Kind::footerRow: paintRow (g, lit, 40.0f, 72.0f, 14.0f, 18.0f); break;
             case Kind::field:     paintField (g, lit); break;
         }
     }
@@ -231,18 +197,21 @@ namespace ui
         const auto centre = b.getCentre();
         const float proportion = (float) valueToProportionOfLength (getValue());
 
-        drawDialBody (g, centre, radius, proportion, accent, lit, 5.0f, 10.0f);
+        drawRing (g, centre, radius, proportion, accent, lit, 3.0f);
 
-        // Value in the middle of the dial, large enough to read across the room.
+        // The number in the middle, its unit under it, and the name in the ring's open bottom.
+        const float scale = radius / 84.0f;
         const auto text = valueText();
-        const auto number = text.upToFirstOccurrenceOf (" ", false, false);
-        const auto suffix = text.fromFirstOccurrenceOf (" ", false, false);
-        g.setColour (tone::bone);
-        g.setFont (font (Weight::regular, 42.0f));
-        g.drawText (number, juce::Rectangle<float> (centre.x - 60.0f, centre.y - 28.0f, 120.0f, 44.0f), juce::Justification::centred, false);
-        g.setColour (tone::boneSoft);
-        g.setFont (font (Weight::regular, 17.0f));
-        g.drawText (suffix, juce::Rectangle<float> (centre.x - 40.0f, centre.y + 14.0f, 80.0f, 20.0f), juce::Justification::centred, false);
+        g.setColour (tone::text);
+        g.setFont (font (Weight::regular, 48.0f * scale));
+        g.drawText (text.upToFirstOccurrenceOf (" ", false, false),
+                    juce::Rectangle<float> (centre.x - 76.0f * scale, centre.y - 38.0f * scale, 152.0f * scale, 62.0f * scale), juce::Justification::centred, false);
+        g.setColour (tone::muted);
+        g.setFont (font (Weight::regular, 13.0f));
+        g.drawText (text.fromFirstOccurrenceOf (" ", false, false),
+                    juce::Rectangle<float> (centre.x - 40.0f, centre.y + 20.0f * scale, 80.0f, 18.0f), juce::Justification::centred, false);
+        g.setColour (lit ? tone::text : tone::muted);
+        g.drawText (label, juce::Rectangle<float> (centre.x - 40.0f, b.getBottom() - 22.0f, 80.0f, 18.0f), juce::Justification::centred, false);
     }
 
     void ParamSlider::paintDial (juce::Graphics& g, bool lit)
@@ -250,32 +219,33 @@ namespace ui
         const auto b = getLocalBounds().toFloat();
         const float diameter = b.getHeight();
         const float proportion = (float) valueToProportionOfLength (getValue());
-        drawDialBody (g, { diameter * 0.5f, b.getCentreY() }, diameter * 0.5f, proportion, accent, lit, 3.5f, 9.0f);
+        drawRing (g, { diameter * 0.5f, b.getCentreY() }, diameter * 0.5f, proportion, accent, lit, 2.5f);
 
-        const auto text = b.withTrimmedLeft (diameter + 10.0f);
-        g.setColour (lit ? tone::bone : tone::boneSoft);
-        g.setFont (font (Weight::regular, 17.5f));
-        g.drawText (label, text.withTrimmedTop (b.getHeight() * 0.5f - 23.0f).withHeight (20.0f), juce::Justification::centredLeft, false);
-        g.setColour (tone::bone);
-        g.setFont (font (Weight::semibold, 22.0f));
-        g.drawText (valueText(), text.withTrimmedTop (b.getHeight() * 0.5f - 3.0f).withHeight (26.0f), juce::Justification::centredLeft, false);
+        const auto text = b.withTrimmedLeft (diameter + 12.0f);
+        g.setColour (lit ? tone::text : tone::muted);
+        g.setFont (font (Weight::regular, 13.0f));
+        g.drawText (label, text.withY (b.getCentreY() - 21.0f).withHeight (18.0f), juce::Justification::centredLeft, false);
+        g.setColour (tone::text);
+        g.setFont (font (Weight::medium, 17.0f));
+        g.drawText (valueText(), text.withY (b.getCentreY() - 2.0f).withHeight (24.0f), juce::Justification::centredLeft, false);
     }
 
     void ParamSlider::paintRow (juce::Graphics& g, bool lit, float labelWidth, float valueWidth, float labelSize, float valueSize)
     {
         auto b = getLocalBounds().toFloat();
+        const float strength = isEnabled() ? 1.0f : 0.4f;
 
-        g.setColour (lit ? tone::bone : tone::boneSoft);
+        g.setColour ((lit ? tone::text : tone::muted).withMultipliedAlpha (strength));
         g.setFont (font (Weight::regular, labelSize));
         g.drawText (label, b.removeFromLeft (labelWidth), juce::Justification::centredLeft, false);
 
-        g.setColour (tone::bone);
-        g.setFont (font (Weight::semibold, valueSize));
+        g.setColour (tone::text.withMultipliedAlpha (strength));
+        g.setFont (font (valueSize > 15.0f ? Weight::medium : Weight::regular, valueSize));
         g.drawText (valueText(), b.removeFromRight (valueWidth), juce::Justification::centredRight, false);
 
-        auto track = b.withSizeKeepingCentre (b.getWidth() - 6.0f, 3.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.38f));
-        g.fillRoundedRectangle (track, 1.5f);
+        auto track = b.withSizeKeepingCentre (b.getWidth() - 12.0f, 2.0f);
+        g.setColour (tone::text.withAlpha ((lit ? 0.2f : 0.13f) * strength));
+        g.fillRoundedRectangle (track, 1.0f);
 
         const float proportion = (float) valueToProportionOfLength (getValue());
         const float x = track.getX() + track.getWidth() * proportion;
@@ -283,38 +253,25 @@ namespace ui
         // Fill grows from the middle for a control whose rest position is the middle.
         const float rest = (float) valueToProportionOfLength (param.convertFrom0to1 (param.getDefaultValue()));
         const float origin = track.getX() + track.getWidth() * (getMinimum() < 0.0 && getMaximum() > 0.0 ? rest : 0.0f);
-        g.setColour (accent.withAlpha (lit ? 1.0f : 0.88f));
-        g.fillRoundedRectangle (juce::Rectangle<float> (juce::jmin (origin, x), track.getY(), std::abs (x - origin), track.getHeight()), 1.5f);
+        g.setColour (accent.withAlpha (0.8f * strength));
+        g.fillRoundedRectangle (juce::Rectangle<float> (juce::jmin (origin, x), track.getY(), std::abs (x - origin), track.getHeight()), 1.0f);
 
-        if (lit)
-        {
-            g.setColour (accent.withAlpha (0.2f));
-            g.fillEllipse (x - 11.0f, track.getCentreY() - 11.0f, 22.0f, 22.0f);
-        }
-
-        g.setColour (juce::Colours::black.withAlpha (0.35f));
-        g.fillEllipse (x - 7.5f, track.getCentreY() - 6.5f, 15.0f, 15.0f);
-        g.setColour (accent);
-        g.fillEllipse (x - 6.5f, track.getCentreY() - 6.5f, 13.0f, 13.0f);
+        const float thumb = lit ? 6.0f : 5.0f;
+        g.setColour (accent.withMultipliedAlpha (strength));
+        g.fillEllipse (x - thumb, track.getCentreY() - thumb, thumb * 2.0f, thumb * 2.0f);
     }
 
     void ParamSlider::paintField (juce::Graphics& g, bool lit)
     {
-        auto b = getLocalBounds().toFloat();
+        auto text = getLocalBounds().toFloat().reduced (0.0f, 6.0f);
 
-        if (lit)
-        {
-            g.setColour (tone::bone.withAlpha (0.07f));
-            g.fillRoundedRectangle (b.reduced (0.0f, 2.0f), 6.0f);
-        }
-
-        auto text = b.reduced (10.0f, 6.0f);
-        g.setColour (lit ? tone::bone : tone::boneSoft);
-        g.setFont (font (Weight::regular, 16.5f));
-        g.drawText (label, text.removeFromTop (20.0f), juce::Justification::centredLeft, false);
-        g.setColour (tone::bone);
-        g.setFont (font (Weight::semibold, 23.0f));
-        g.drawText (valueText(), text.removeFromTop (26.0f), juce::Justification::centredLeft, false);
+        g.setColour (lit ? tone::text : tone::muted);
+        g.setFont (font (Weight::regular, 13.0f));
+        const auto side = rightAligned ? juce::Justification::centredRight : juce::Justification::centredLeft;
+        g.drawText (label, text.removeFromTop (18.0f), side, false);
+        g.setColour (tone::text);
+        g.setFont (font (Weight::medium, 17.0f));
+        g.drawText (valueText(), text.removeFromTop (24.0f), side, false);
     }
 
     // ----------------------------------------------------------------------------------------------------------
@@ -330,27 +287,15 @@ namespace ui
 
     void ParamToggle::paintButton (juce::Graphics& g, bool isOver, bool isDown)
     {
-        const auto b = getLocalBounds().toFloat().reduced (0.5f);
+        const auto b = getLocalBounds().toFloat();
         const bool on = getToggleState();
         const bool lit = isOver || isDown || forcedHover;
 
-        if (on)
-        {
-            g.setColour (onColour);
-            g.fillRoundedRectangle (b, 6.0f);
-            g.setColour (tone::well);
-        }
-        else
-        {
-            g.setColour (juce::Colours::black.withAlpha (lit ? 0.14f : 0.26f));
-            g.fillRoundedRectangle (b, 6.0f);
-            g.setColour (tone::bone.withAlpha (lit ? 0.65f : 0.30f));
-            g.drawRoundedRectangle (b, 6.0f, 1.0f);
-            g.setColour (lit ? tone::bone : tone::boneSoft);
-        }
-
-        g.setFont (font (Weight::semibold, 18.0f));
-        g.drawText (getButtonText(), getLocalBounds(), juce::Justification::centred, false);
+        g.setColour (on ? onColour : tone::text.withAlpha (lit ? 0.11f : 0.06f));
+        g.fillRoundedRectangle (b, 7.0f);
+        g.setColour (on ? tone::well : (lit ? tone::text : tone::muted));
+        g.setFont (font (Weight::medium, 13.0f));
+        g.drawText (getButtonText(), b, juce::Justification::centred, false);
     }
 
     // ----------------------------------------------------------------------------------------------------------
@@ -368,7 +313,7 @@ namespace ui
 
     juce::Rectangle<float> ParamChoice::buttonsArea() const
     {
-        return getLocalBounds().toFloat().withTrimmedLeft (96.0f).withSizeKeepingCentre ((float) getWidth() - 96.0f, 28.0f);
+        return getLocalBounds().toFloat().withTrimmedLeft (84.0f).withSizeKeepingCentre ((float) getWidth() - 84.0f, 28.0f);
     }
 
     int ParamChoice::segmentAt (juce::Point<float> p) const
@@ -409,13 +354,13 @@ namespace ui
     void ParamChoice::paint (juce::Graphics& g)
     {
         auto b = getLocalBounds().toFloat();
-        g.setColour (hovered >= 0 ? tone::bone : tone::boneSoft);
-        g.setFont (font (Weight::regular, 16.5f));
-        g.drawText (label, b.removeFromLeft (96.0f), juce::Justification::centredLeft, false);
+        g.setColour (hovered >= 0 ? tone::text : tone::muted);
+        g.setFont (font (Weight::regular, 13.0f));
+        g.drawText (label, b.removeFromLeft (84.0f), juce::Justification::centredLeft, false);
 
         const auto area = buttonsArea();
-        g.setColour (juce::Colours::black.withAlpha (0.28f));
-        g.fillRoundedRectangle (area, 6.0f);
+        g.setColour (tone::text.withAlpha (0.06f));
+        g.fillRoundedRectangle (area, 7.0f);
 
         const float segment = area.getWidth() / (float) choices.size();
 
@@ -425,17 +370,12 @@ namespace ui
 
             if (i == selected)
             {
-                g.setColour (tone::bone);
-                g.fillRoundedRectangle (cell.reduced (2.0f), 4.5f);
-            }
-            else if (i == hovered)
-            {
-                g.setColour (tone::bone.withAlpha (0.12f));
-                g.fillRoundedRectangle (cell.reduced (2.0f), 4.5f);
+                g.setColour (tone::text.withAlpha (0.14f));
+                g.fillRoundedRectangle (cell.reduced (2.0f), 5.5f);
             }
 
-            g.setColour (i == selected ? tone::well : tone::boneSoft);
-            g.setFont (font (Weight::semibold, 16.5f));
+            g.setColour (i == selected || i == hovered ? tone::text : tone::muted);
+            g.setFont (font (Weight::medium, 13.0f));
             g.drawText (choices[i], cell, juce::Justification::centred, false);
         }
     }

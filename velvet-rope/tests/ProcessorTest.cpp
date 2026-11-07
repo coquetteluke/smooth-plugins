@@ -965,6 +965,82 @@ static void testWindow()
         check (missing == 0, "every changeable parameter has a control in the window, of " + std::to_string (total), missing, "missing");
     }
 
+    // Advanced: closed by default, and everything in it is one click away and keeps working while closed.
+    {
+        Proc p;
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto* window = dynamic_cast<Editor*> (editor.get());
+        auto& panel = window->getPanel();
+        const auto visible = [&panel] (const char* id) { auto* c = panel.findChildWithID (id); return c != nullptr && c->isVisible(); };
+
+        check (! window->isAdvancedOpen(), "Advanced starts closed");
+        check (visible ("depth") && visible ("sharpness") && visible ("selectivity") && visible ("attack") && visible ("release") && visible ("mode"), "Depth, Sharpness, Selectivity, Attack, Release and Mode show with Advanced closed");
+        check (! visible ("stereoFocus") && ! visible ("sideChain"), "the rest is tucked away with Advanced closed");
+
+        auto* hiddenFocus = dynamic_cast<ParamSlider*> (panel.findChildWithID ("stereoFocus"));
+        setParam (p, "stereoFocus", 40.0f);
+        check (std::abs (hiddenFocus->getValue() - 40.0) < 0.01, "automation still moves a control while it is tucked away", hiddenFocus->getValue(), "%");
+        setParam (p, "stereoFocus", 0.0f);
+
+        // Threshold comes out next to Mode in Hard mode, Advanced open or not.
+        setParam (p, "mode", 1.0f);
+        window->tick (1.0 / 60.0);
+        check (visible ("hardThreshold") && panel.findChildWithID ("hardThreshold")->isEnabled(), "in Hard mode, Threshold shows next to Mode");
+        setParam (p, "mode", 0.0f);
+        window->tick (1.0 / 60.0);
+
+        window->setAdvancedOpen (true, false);
+        int unreachable = 0;
+
+        for (int band = 0; band < 3; ++band)
+        {
+            window->getGraph().setSelectedBand (band);
+
+            for (auto* prm : p.getParameters())
+            {
+                auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (prm);
+
+                if (ranged == nullptr || dynamic_cast<ReadingParameter*> (prm) != nullptr)
+                    continue;
+
+                const auto id = ranged->getParameterID();
+                const bool otherBand = id.startsWith ("band") && ! id.startsWith ("band" + juce::String (band + 1));
+
+                if (otherBand)
+                    continue;
+
+                auto* c = panel.findChildWithID (id);
+
+                if (c == nullptr || ! c->isVisible() || ! panel.getLocalBounds().contains (c->getBounds()))
+                {
+                    ++unreachable;
+                    std::printf ("      cannot reach %s\n", id.toRawUTF8());
+                }
+            }
+        }
+
+        check (unreachable == 0, "with Advanced open and each dot selected, every control is on screen", unreachable, "out of reach");
+
+        int overlaps = 0;
+        const char* column[] = { "depth", "sharpness", "attack", "mode", "hardThreshold", "advanced", "stereoMode", "link", "stereoFocus", "sharpnessTilt", "attackTilt", "releaseTilt", "wetTrim", "sideChain" };
+
+        for (size_t i = 0; i + 1 < std::size (column); ++i)
+            if (panel.findChildWithID (column[i])->getBottom() > panel.findChildWithID (column[i + 1])->getY())
+                ++overlaps;
+
+        check (overlaps == 0 && panel.findChildWithID ("sideChain")->getBottom() <= ResonanceEditor::designHeight - 60, "the open side panel fits, with nothing overlapping", overlaps);
+
+        juce::MemoryBlock saved;
+        p.getStateInformation (saved);
+        Proc reopened;
+        reopened.setStateInformation (saved.getData(), (int) saved.getSize());
+        std::unique_ptr<juce::AudioProcessorEditor> second (reopened.createEditor());
+        check (dynamic_cast<Editor*> (second.get())->isAdvancedOpen() && second->getChildComponent (0)->findChildWithID ("stereoFocus")->isVisible(), "whether Advanced is open is saved with the session");
+
+        window->setAdvancedOpen (false, false);
+        check (! visible ("stereoFocus"), "Advanced closes again");
+    }
+
     // Automation moves the window, and the window moves automation with begin and end of gesture.
     {
         Proc p;

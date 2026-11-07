@@ -109,6 +109,9 @@ public:
     static constexpr int defaultWindowWidth = 1160, minWindowWidth = 870, maxWindowWidth = 1856;
     std::atomic<int> windowWidth { defaultWindowWidth };
 
+    /** Whether the window's Advanced section is open. Saved with the session. Not a sound setting. */
+    std::atomic<bool> advancedOpen { false };
+
     ReadingParameter* maxReduction = nullptr;
     ReadingParameter* maxReductionFreq = nullptr;
 

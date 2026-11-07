@@ -2,41 +2,38 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
-// The window's look: lapis glaze with gold repairs. Gold always and only means "what is being taken out",
-// so anything that is not reduction (or the controls that decide it) stays bone or blue.
+// The window's look. A calm near-flat base with colour kept for the graph. Gold only ever means "what is being taken out",
+// or the control that decides it. Controls are neutral. Things are separated by space, not by lines.
 namespace ui
 {
     namespace tone
     {
-        inline const juce::Colour bone        { 0xfff4eedd };
-        inline const juce::Colour boneSoft    { 0xffc9d0ea };   // labels
-        inline const juce::Colour boneFaint   { 0xff98a5d6 };   // scales and quiet text
-        inline const juce::Colour lapis       { 0xff15216a };   // glaze, mid
-        inline const juce::Colour lapisDark   { 0xff0f1953 };   // glaze, dark
-        inline const juce::Colour lapisLight  { 0xff1e2f8c };   // glaze, light runs
-        inline const juce::Colour raised      { 0xff2c43a8 };   // lit edge of a dial, hovered menu row
-        inline const juce::Colour well        { 0xff060b2a };   // the graph's background
-        inline const juce::Colour voiceTop    { 0xffc4cffa };   // the voice where it is loud
-        inline const juce::Colour cobalt      { 0xff3a5ce6 };   // the voice's body
-        inline const juce::Colour voiceLow    { 0xff14226c };   // the voice at the floor
-        inline const juce::Colour gold        { 0xfff4c34f };
-        inline const juce::Colour goldHot     { 0xfffff2c6 };
-        inline const juce::Colour copper      { 0xfff0935f };   // the second channel, when channels are treated apart
+        inline const juce::Colour base      { 0xff0f1218 };   // the window
+        inline const juce::Colour well      { 0xff0a0c12 };   // the graph
+        inline const juce::Colour text      { 0xffe9ecf2 };
+        inline const juce::Colour muted     { 0xff969dae };   // labels
+        inline const juce::Colour faint     { 0xff6e7588 };   // scales
+        inline const juce::Colour voiceTop  { 0xff8ea6ff };   // the voice where it is loud
+        inline const juce::Colour cobalt    { 0xff3a5ce6 };   // the voice's body
+        inline const juce::Colour voiceLow  { 0xff131d52 };   // the voice at the floor
+        inline const juce::Colour voiceEdge { 0xffb4c4ff };
+        inline const juce::Colour gold      { 0xffdfb563 };
+        inline const juce::Colour goldEdge  { 0xfff0d08f };
+        inline const juce::Colour second    { 0xfff6ecdd };   // the second channel, when channels are treated apart
     }
 
-    enum class Weight { regular, semibold, bold };
+    enum class Weight { regular, medium };
 
-    /** Fonts and the glaze texture, shared between open windows and freed with the last one. */
+    /** The embedded fonts, shared between open windows and freed with the last one. */
     struct Assets
     {
         Assets();
 
-        juce::Typeface::Ptr regular, semibold, bold;
-        juce::Image glaze;
-        juce::Path flecks;
+        juce::Typeface::Ptr regular, medium;
     };
 
-    juce::Font font (Weight, float height);
+    /** Size is the type size in pixels, not JUCE's taller line height. Large type gets a little tighter. */
+    juce::Font font (Weight, float size);
 
     /** A control that can explain itself in the hint line. */
     struct Hinted

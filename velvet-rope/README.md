@@ -8,24 +8,25 @@ Audio Units > Luke Garito > Smooth Resonance. AU code `aufx SmRs Luke`. Mono and
 
 ## The window
 
-Concept: a lapis glazed instrument repaired in gold. Your voice is a mountain of blue light standing on the floor of the graph, and whatever is being turned down pours from the ceiling and shaves off the voice in gold. Gold only ever means "what is being taken out".
+A calm, near-flat dark window with the colour kept for the graph. Your voice is a body of blue light standing on the floor of the graph, and whatever is being turned down hangs from the ceiling and comes off the voice in soft gold. Gold only ever means "what is being taken out".
 
-- **Graph:** frequency across, 20 Hz to 20 kHz. The bright edge of the voice is the sound after treatment. The gold scale on the right is reduction in dB, after Mix. The blue tilt of 4.5 dB an octave is for display only.
+- **Graph:** frequency across, 20 Hz to 20 kHz. The edge of the voice is the sound after treatment. The scale on the right is reduction in dB, after Mix. The tilt of 4.5 dB an octave is for display only. When Link is low, a thin pale line shows the second channel's cut.
 - **Dots 1, 2, 3:** the sensitivity curve. Drag a dot to move it. Up treats more there, down protects it. Scroll on a dot, or hold Command and drag, for width. Hold Shift for a finer drag. Double-click to reset.
 - **Low and High lines:** drag to set the range. Nothing outside them is touched.
 - **Strip under the graph:** Low, High, and the values of the selected dot.
-- **Side panel:** Depth, Sharpness, Selectivity, Attack, Release, Mode, Threshold, Stereo, Link, Focus, the three tilts, Wet trim, Side chain.
+- **Side panel:** Depth, Sharpness, Selectivity, Attack, Release and Mode are always there. Threshold comes out under Mode in Hard mode.
+- **Advanced:** click it to open Threshold, Stereo, Link, Focus, the three tilts, Wet trim and Side chain. Closed, it says how many of them are changed from their defaults, and they keep working. Whether it is open is saved with the session.
 - **Footer:** Bypass, Delta, Mix, Gain, and a one-line hint for whatever is under the mouse.
 - **Every control:** drag it, double-click to reset it, click its value to type one (`3k` works for a frequency), hold Shift when you start a drag for a finer one.
 - **Size:** drag the bottom right corner, 870 to 1856 points wide, always the same shape. The size is saved with the session.
 
-Every control is a real parameter with its old ID, name and range, so automation moves the window and the window moves them, with begin and end of gesture. The window keeps no sound settings of its own. Its graph data comes from the lock free `readGraph`, so it cannot block the audio thread.
+Every control is a real parameter with its old ID, name and range, shown or not, so automation moves the window and the window moves them, with begin and end of gesture. The window keeps no sound settings of its own. Its graph data comes from the lock free `readGraph`, so it cannot block the audio thread.
 
-Pictures are in `docs/window/`, made by `build/RenderWindow_artefacts/Release/RenderWindow`, which runs real speech from macOS `say` with resonant boosts through the real processor and renders the real window to PNG with no host. `RenderWindow --live` opens a real window with all but one column of pixels off the screen, and measures frames a second and CPU.
+Pictures are in `docs/window-v2/`, with the first design kept in `docs/window/` for comparison. They are made by `build/RenderWindow_artefacts/Release/RenderWindow`, which runs real speech from macOS `say` with resonant boosts through the real processor and renders the real window to PNG with no host. `RenderWindow --live` opens a real window with all but one column of pixels off the screen, and measures frames a second and CPU.
 
-Measured on the 16 GB MacBook with other builds running: 60 frames a second, and about 27% of one core while the window is open with audio playing. That is the drawing and the screen's share together. With nothing moving it does not redraw. Closed, it costs nothing.
+Measured on the 16 GB MacBook's 2x screen with nothing else building: 45 frames a second, and about 17% of one core while the window is open with audio playing, down from 27%. That is the drawing and the screen's share together. With nothing moving it does not redraw. Closed, it costs nothing.
 
-The window's font is Source Sans Pro by Adobe, under the SIL Open Font License. See `assets/fonts/OFL.txt`.
+The window's font is Inter, under the SIL Open Font License. See `assets/fonts/OFL.txt`.
 
 ## Try first on a harsh vocal
 

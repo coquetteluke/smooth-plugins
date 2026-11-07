@@ -19,7 +19,7 @@ namespace ui
         enum class Unit { db, signedDb, percent, signedPercent, ms, hz, octaves };
 
         ParamSlider (Apvts& state, const juce::String& paramId, const juce::String& labelText, const juce::String& hintText,
-                     Kind kindToUse, Unit unitToUse, juce::Colour accentColour = tone::bone);
+                     Kind kindToUse, Unit unitToUse, juce::Colour accentColour = tone::text);
 
         ~ParamSlider() override;
 
@@ -31,6 +31,9 @@ namespace ui
 
         /** Draws as if the mouse were over it. For the offline renders, where there is no mouse. */
         void setForcedHover (bool shouldShow)  { forcedHover = shouldShow; repaint(); }
+
+        /** A value field that sits flush with a right edge. */
+        void setRightAligned (bool shouldBe)  { rightAligned = shouldBe; repaint(); }
 
         juce::String valueText() const;
 
@@ -66,7 +69,7 @@ namespace ui
         const Kind kind;
         const Unit unit;
         const juce::Colour accent;
-        bool forcedHover = false;
+        bool forcedHover = false, rightAligned = false;
         TypeBox typeBox;
         std::unique_ptr<juce::SliderParameterAttachment> attachment;
 

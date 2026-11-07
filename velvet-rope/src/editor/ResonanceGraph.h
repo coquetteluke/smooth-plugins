@@ -49,6 +49,10 @@ namespace ui
         /** Times the graph has been drawn. For measuring the real frame rate. */
         int getPaintCount() const noexcept  { return paintCount; }
 
+        /** Where the axes go, so that the static labels around the graph line up. */
+        float xForHz (float hz) const noexcept;
+        float yForReductionLine (float db) const noexcept;
+
     private:
         static constexpr int numPoints = smoothres::GraphFrame::numPoints;
         static constexpr int numDense = numPoints * 2 - 1;
@@ -59,12 +63,12 @@ namespace ui
 
         struct BandParams { juce::RangedAudioParameter* freq, * sens, * width; };
 
-        float xForHz (float hz) const noexcept;
         float hzForX (float x) const noexcept;
         float yForSensitivity (float db) const noexcept;
         float sensitivityForY (float y) const noexcept;
         float yForLevel (float db) const noexcept;
         float yForReduction (float db) const noexcept;
+        int denseIndexForX (float x) const noexcept;
 
         void buildTargets();
         Grab grabAt (juce::Point<float>) const;
@@ -72,22 +76,25 @@ namespace ui
         void endGesture();
         juce::String tagFor (Grab) const;
 
-        void drawVoice (juce::Graphics&);
+        void refreshVoicePicture (float scale, float lowX, float highX);
+        void drawVoice (juce::Graphics&, float lowX, float highX);
         void drawGrid (juce::Graphics&);
         void drawGold (juce::Graphics&);
-        void drawSensitivity (juce::Graphics&);
+        void drawSensitivity (juce::Graphics&, float lowX, float highX);
         void drawHandles (juce::Graphics&);
         void drawOverlays (juce::Graphics&);
         void drawTag (juce::Graphics&, juce::Point<float> anchor, const juce::String&, juce::Colour text);
 
-        // JUCE strokes a path by building a new one with round joins, which is far too slow for 60 frames a second on a
-        // Retina canvas, so lines are drawn as ribbons built here in one pass. These paths keep their memory between frames.
+        // JUCE strokes a path by building a new one with round joins, which is too slow for every frame of a Retina canvas,
+        // so lines are ribbons built here in one pass, and only over the part of the graph that needs each colour.
+        // These paths keep their memory between frames.
         void buildRibbon (const float* ys, const float* xs, int count, float halfWidth);
+        void fillRangedRibbon (juce::Graphics&, const float* ys, const float* xs, int count, int lowIndex, int highIndex, float halfWidth, juce::Colour inside, juce::Colour outside);
         void upsample (const std::array<float, numPoints>& from, std::array<float, numDense>& to) const;
 
         SmoothResonanceProcessor& processor;
         BandParams bands[numBands];
-        juce::RangedAudioParameter* lowParam, * highParam, * depthParam, * mixParam, * deltaParam, * bypassParam, * keyParam;
+        juce::RangedAudioParameter* lowParam, * highParam, * depthParam, * mixParam, * deltaParam, * bypassParam;
 
         smoothres::GraphFrame frame;
 
@@ -102,9 +109,11 @@ namespace ui
         std::array<float, numPoints> yLevel {}, yAfter {}, yCut[2] {};
         std::array<float, numDense> denseX {}, yVoice {}, yShaved {}, yGold[2] {}, normalX {}, normalY {};
         std::array<float, numSensSteps> sensX {}, sensY {};
-        juce::Path ribbon, shape;
-        juce::Image voiceImage;
-        float voiceScale = 0.0f, voiceLowX = -1.0f, voiceHighX = -1.0f, voiceDelta = -1.0f;
+        juce::Path ribbon, shape, corners;
+
+        // The voice's colours as one finished picture. Only redrawn when Low, High, Delta or the size changes.
+        juce::Image voicePicture;
+        float pictureScale = 0.0f, pictureLowX = -1.0f, pictureHighX = -1.0f, pictureDelta = -1.0f;
 
         double staleSeconds = 10.0;
         float bypassShown = 0.0f, deltaShown = 0.0f, hintShown = 1.0f, peakDb = 0.0f;

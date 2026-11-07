@@ -175,11 +175,20 @@ PASS  preset Hard Whistle Catcher: finite, not silent, Max Reduction within its 
 PASS  preset Side Chain Carve: finite, not silent, Max Reduction within its Depth = 6.000 dB
 PASS  no allocation with side chain, bands and tilts all moving = 0.000 
 PASS  the window opens, draws and closes 40 times with no audio = 40.000 
-PASS  audio kept running while the window opened and closed 12 times = 29896.000 blocks
+PASS  audio kept running while the window opened and closed 12 times = 27364.000 blocks
 PASS  the graph's reduction follows the live audio (limit 3 dB shown on a 12 dB cut)
 PASS  with no audio and nothing moving, the graph does not repaint
 PASS  automation moving a dot repaints with no audio running
 PASS  every changeable parameter has a control in the window, of 31 = 0.000 missing
+PASS  Advanced starts closed
+PASS  Depth, Sharpness, Selectivity, Attack, Release and Mode show with Advanced closed
+PASS  the rest is tucked away with Advanced closed
+PASS  automation still moves a control while it is tucked away = 40.000 %
+PASS  in Hard mode, Threshold shows next to Mode
+PASS  with Advanced open and each dot selected, every control is on screen = 0.000 out of reach
+PASS  the open side panel fits, with nothing overlapping = 0.000 
+PASS  whether Advanced is open is saved with the session
+PASS  Advanced closes again
 PASS  automation moves the Depth dial = 17.000 dB
 PASS  automation moves the Low value
 PASS  dragging a dial sends one begin and one end of gesture = 2.000 
@@ -194,8 +203,8 @@ PASS  automation moves the Delta switch
 PASS  the Mode buttons set the parameter as one gesture
 PASS  automation moves the Mode buttons
 PASS  dragging a dot sends begin and end of gesture on Frequency and Sensitivity
-PASS  dragging a dot right raises its frequency = 4890.900 Hz
-PASS  dragging a dot up raises its sensitivity = 5.735 dB
+PASS  dragging a dot right raises its frequency = 5062.800 Hz
+PASS  dragging a dot up raises its sensitivity = 5.755 dB
 PASS  after automation moves a dot, the mouse finds it at its new place
 PASS  double-click returns a dot to its default = 3000.000 Hz
 PASS  closing the window during a drag still ends the gesture = 1.000 
@@ -366,7 +375,7 @@ PASS  60 s run: level change -1.651 dB early, -1.620 dB late
 PASS  48 kHz: 0 allocations while processing
 PASS  48 kHz stereo with moving controls: 1.57% of one core (64x faster than real time, limit 5%)
 PASS  96 kHz: 0 allocations while processing
-PASS  96 kHz stereo with moving controls: 3.21% of one core (31x faster than real time, limit 5%)
+PASS  96 kHz stereo with moving controls: 3.22% of one core (31x faster than real time, limit 5%)
 
 89 passed, 0 failed
 

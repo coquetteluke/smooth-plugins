@@ -9,14 +9,14 @@ namespace ui
         constexpr float loHz = 20.0f, hiHz = 20000.0f;
         constexpr float sensReach = 0.30f;        // +12 dB of sensitivity sits this fraction of the height above the middle
         constexpr float cutFullScale = 0.64f;     // 24 dB of reduction reaches this fraction of the height down from the ceiling
-        constexpr float ceilingOffset = 5.0f;     // at rest the gold line hides just above the ceiling
+        constexpr float ceilingOffset = 2.0f;     // at rest the gold line hides just above the ceiling
         constexpr float levelFloor = -96.0f, levelTop = 10.0f;
         constexpr float tiltDbPerOctave = 4.5f;   // display only
+        constexpr float cornerRadius = 10.0f;
 
         const juce::String bandNames[] = { "1", "2", "3" };
 
         constexpr float gridHz[] = { 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f };
-        const char* const gridText[] = { "50", "100", "200", "500", "1k", "2k", "5k", "10k" };
 
         float glide (float current, float target, float riseTau, float fallTau, float dt) noexcept
         {
@@ -76,7 +76,6 @@ namespace ui
         mixParam = s.getParameter ("mix");
         deltaParam = s.getParameter ("delta");
         bypassParam = s.getParameter ("bypass");
-        keyParam = s.getParameter ("sideChain");
 
         const float octaves = std::log2 (hiHz / loHz);
 
@@ -97,6 +96,23 @@ namespace ui
 
     void ResonanceGraph::resized()
     {
+        // The graph is opaque, so its rounded corners are small pieces of window colour painted over it.
+        const auto w = (float) getWidth(), h = (float) getHeight();
+        const float r = cornerRadius;
+        corners.clear();
+
+        const auto addCorner = [this, r] (float x, float y, float dx, float dy)
+        {
+            corners.startNewSubPath (x, y);
+            corners.lineTo (x + dx * r, y);
+            corners.quadraticTo (x, y, x, y + dy * r);
+            corners.closeSubPath();
+        };
+
+        addCorner (0.0f, 0.0f, 1.0f, 1.0f);
+        addCorner (w, 0.0f, -1.0f, 1.0f);
+        addCorner (0.0f, h, 1.0f, -1.0f);
+        addCorner (w, h, -1.0f, -1.0f);
     }
 
     float ResonanceGraph::xForHz (float hz) const noexcept
@@ -127,6 +143,16 @@ namespace ui
     float ResonanceGraph::yForReduction (float db) const noexcept
     {
         return (float) getHeight() * cutFullScale * db / 24.0f - ceilingOffset;
+    }
+
+    float ResonanceGraph::yForReductionLine (float db) const noexcept
+    {
+        return std::round (yForReduction (db) + ceilingOffset);
+    }
+
+    int ResonanceGraph::denseIndexForX (float x) const noexcept
+    {
+        return juce::jlimit (0, numDense - 1, juce::roundToInt (x / (float) juce::jmax (1, getWidth()) * (float) (numDense + 1)) - 1);
     }
 
     void ResonanceGraph::buildTargets()
@@ -272,6 +298,23 @@ namespace ui
         ribbon.closeSubPath();
     }
 
+    void ResonanceGraph::fillRangedRibbon (juce::Graphics& g, const float* ys, const float* xs, int count, int lowIndex, int highIndex, float halfWidth, juce::Colour inside, juce::Colour outside)
+    {
+        const auto segment = [&] (int from, int to, juce::Colour colour)
+        {
+            if (to - from >= 1)
+            {
+                buildRibbon (ys + from, xs + from, to - from + 1, halfWidth);
+                g.setColour (colour);
+                g.fillPath (ribbon);
+            }
+        };
+
+        segment (0, lowIndex, outside);
+        segment (highIndex, count - 1, outside);
+        segment (lowIndex, highIndex, inside);
+    }
+
     // ---- drawing ---------------------------------------------------------------------------------------------
 
     void ResonanceGraph::paint (juce::Graphics& g)
@@ -295,63 +338,70 @@ namespace ui
         for (int i = 0; i < numDense; ++i)
             denseX[(size_t) i] = w * (float) (i + 1) / (float) (numDense + 1);
 
-        drawVoice (g);
-        drawGrid (g);
+        const float lowX = juce::jlimit (0.0f, w, xForHz (getReal (*lowParam)));
+        const float highX = juce::jlimit (lowX, w, xForHz (getReal (*highParam)));
 
-        drawSensitivity (g);
+        drawVoice (g, lowX, highX);
+        drawGrid (g);
         drawGold (g);
+        drawSensitivity (g, lowX, highX);
         drawHandles (g);
         drawOverlays (g);
+
+        g.setColour (tone::base);
+        g.fillPath (corners);
     }
 
-    void ResonanceGraph::drawVoice (juce::Graphics& g)
+    void ResonanceGraph::refreshVoicePicture (float scale, float lowX, float highX)
     {
         const auto w = (float) getWidth(), h = (float) getHeight();
-        const float lowX = juce::jlimit (0.0f, w, xForHz (getReal (*lowParam))), highX = juce::jlimit (lowX, w, xForHz (getReal (*highParam)));
+        const int pixelsWide = juce::jmax (1, juce::roundToInt (w * scale)), pixelsHigh = juce::jmax (1, juce::roundToInt (h * scale));
+        const bool wrongSize = voicePicture.getWidth() != pixelsWide || voicePicture.getHeight() != pixelsHigh;
 
-        // The voice is a mountain of light standing on the floor: deep at the base, pale where it is loud. It is dimmer
-        // outside Low and High, where the sound is left alone.
-        // Painted inside out to stay fast: the finished colours go down as one opaque picture, then everything above the
-        // voice is covered with flat well colour. CoreGraphics shades gradients pixel by pixel and blends every alpha fill,
-        // and on a Retina canvas those two were most of the frame. The picture is only redrawn when Low, High, Delta or the
-        // size changes.
-        const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
+        if (! (wrongSize || scale != pictureScale || lowX != pictureLowX || highX != pictureHighX || deltaShown != pictureDelta))
+            return;
 
-        if (voiceImage.isNull() || scale != voiceScale || lowX != voiceLowX || highX != voiceHighX || deltaShown != voiceDelta
-            || voiceImage.getWidth() != juce::roundToInt (w * scale) || voiceImage.getHeight() != juce::roundToInt (h * scale))
+        pictureScale = scale;
+        pictureLowX = lowX;
+        pictureHighX = highX;
+        pictureDelta = deltaShown;
+
+        if (wrongSize)
+            voicePicture = juce::Image (juce::Image::RGB, pixelsWide, pixelsHigh, false);
+
+        juce::Graphics picture (voicePicture);
+        picture.addTransform (juce::AffineTransform::scale (scale));
+
+        constexpr int bandsOfVoice = 240;
+        constexpr float dimOutside = 0.62f;
+
+        for (int band = 0; band < bandsOfVoice; ++band)
         {
-            voiceScale = scale;
-            voiceLowX = lowX;
-            voiceHighX = highX;
-            voiceDelta = deltaShown;
-
-            if (voiceImage.getWidth() != juce::roundToInt (w * scale) || voiceImage.getHeight() != juce::roundToInt (h * scale))
-                voiceImage = juce::Image (juce::Image::RGB, juce::jmax (1, juce::roundToInt (w * scale)), juce::jmax (1, juce::roundToInt (h * scale)), false);
-
-            juce::Graphics picture (voiceImage);
-            picture.addTransform (juce::AffineTransform::scale (scale));
-
-            constexpr int bandsOfVoice = 240;
-            constexpr float dimOutside = 0.56f;
-
-            for (int band = 0; band < bandsOfVoice; ++band)
-            {
-                const float t = ((float) band + 0.5f) / (float) bandsOfVoice;
-                const float top = h * (float) band / (float) bandsOfVoice;
-                const float tall = h / (float) bandsOfVoice + 1.0f;   // each covers the last one's lower edge, so no seams at any size
-                auto colour = t < 0.48f ? tone::voiceTop.interpolatedWith (tone::cobalt, juce::jlimit (0.0f, 1.0f, (t - 0.18f) / 0.30f))
-                                        : tone::cobalt.interpolatedWith (tone::voiceLow, (t - 0.48f) / 0.52f);
-                colour = colour.interpolatedWith (tone::well, 0.74f * deltaShown);
-                picture.setColour (colour);
-                picture.fillRect (juce::Rectangle<float> (lowX, top, highX - lowX, tall));
-                picture.setColour (colour.interpolatedWith (tone::well, dimOutside));
-                picture.fillRect (juce::Rectangle<float> (0.0f, top, lowX, tall));
-                picture.fillRect (juce::Rectangle<float> (highX, top, w - highX, tall));
-            }
+            const float t = ((float) band + 0.5f) / (float) bandsOfVoice;
+            const float top = h * (float) band / (float) bandsOfVoice;
+            const float tall = h / (float) bandsOfVoice + 1.0f;   // each covers the last one's lower edge, so no seams at any size
+            auto colour = t < 0.48f ? tone::voiceTop.interpolatedWith (tone::cobalt, juce::jlimit (0.0f, 1.0f, (t - 0.18f) / 0.30f))
+                                    : tone::cobalt.interpolatedWith (tone::voiceLow, (t - 0.48f) / 0.52f);
+            colour = colour.interpolatedWith (tone::well, 0.76f * deltaShown);
+            picture.setColour (colour);
+            picture.fillRect (juce::Rectangle<float> (lowX, top, highX - lowX, tall));
+            picture.setColour (colour.interpolatedWith (tone::well, dimOutside));
+            picture.fillRect (juce::Rectangle<float> (0.0f, top, lowX, tall));
+            picture.fillRect (juce::Rectangle<float> (highX, top, w - highX, tall));
         }
+    }
 
+    void ResonanceGraph::drawVoice (juce::Graphics& g, float lowX, float highX)
+    {
+        const auto w = (float) getWidth();
+
+        // The voice is a body of light standing on the floor: deep at the base, pale where it is loud, dimmer outside Low
+        // and High, where the sound is left alone. Painted inside out to stay fast: the finished colours go down as one
+        // opaque picture, then everything above the voice is covered with flat well colour.
+        const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
+        refreshVoicePicture (scale, lowX, highX);
         g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
-        g.drawImageTransformed (voiceImage, juce::AffineTransform::scale (1.0f / scale));
+        g.drawImageTransformed (voicePicture, juce::AffineTransform::scale (1.0f / scale));
 
         // Everything above what you hear after treatment.
         shape.clear();
@@ -367,108 +417,117 @@ namespace ui
         g.setColour (tone::well);
         g.fillPath (shape);
 
-        // What was shaved off, in gold, right where it came off the voice.
-        shape.clear();
+        // What was shaved off, in gold, right where it came off the voice. Only where something was.
+        int first = -1, last = -1;
 
         for (int i = 0; i < numDense; ++i)
         {
-            if (i == 0)
-                shape.startNewSubPath (denseX[0], yVoice[0]);
-            else
-                shape.lineTo (denseX[(size_t) i], yVoice[(size_t) i]);
+            if (yShaved[(size_t) i] - yVoice[(size_t) i] > 0.3f)
+            {
+                if (first < 0)
+                    first = i;
+
+                last = i;
+            }
         }
 
-        for (int i = numDense; --i >= 0;)
-            shape.lineTo (denseX[(size_t) i], yShaved[(size_t) i]);
+        if (first >= 0)
+        {
+            first = juce::jmax (0, first - 1);
+            last = juce::jmin (numDense - 1, last + 1);
+            shape.clear();
+            shape.startNewSubPath (denseX[(size_t) first], yVoice[(size_t) first]);
 
-        shape.closeSubPath();
-        const auto gold = tone::gold.interpolatedWith (tone::boneFaint, bypassShown);
-        g.setColour (gold.withAlpha (0.72f - 0.45f * bypassShown));
-        g.fillPath (shape);
+            for (int i = first + 1; i <= last; ++i)
+                shape.lineTo (denseX[(size_t) i], yVoice[(size_t) i]);
 
-        // The bright edge is the sound after treatment.
-        const float presence = 1.0f - 0.72f * deltaShown;
-        buildRibbon (yShaved.data(), denseX.data(), numDense, 0.85f);
-        const juce::Graphics::ScopedSaveState outer (g);
-        g.setColour (tone::bone.withAlpha (0.42f * presence));
-        g.fillPath (ribbon);
-        g.reduceClipRegion (juce::Rectangle<float> (lowX, 0.0f, highX - lowX, h).getSmallestIntegerContainer());
-        g.setColour (tone::bone.withAlpha (presence));
-        g.fillPath (ribbon);
+            for (int i = last + 1; --i >= first;)
+                shape.lineTo (denseX[(size_t) i], yShaved[(size_t) i]);
+
+            shape.closeSubPath();
+            g.setColour (tone::gold.interpolatedWith (tone::faint, bypassShown).withAlpha (0.82f - 0.5f * bypassShown));
+            g.fillPath (shape);
+        }
+
+        // The edge is the sound after treatment.
+        const float presence = 1.0f - 0.7f * deltaShown;
+        fillRangedRibbon (g, yShaved.data(), denseX.data(), numDense, denseIndexForX (lowX), denseIndexForX (highX), 0.6f,
+                          tone::voiceEdge.withAlpha (presence), tone::voiceEdge.withAlpha (0.32f * presence));
     }
 
     void ResonanceGraph::drawGrid (juce::Graphics& g)
     {
         const auto w = (float) getWidth(), h = (float) getHeight();
 
-        for (size_t i = 0; i < std::size (gridHz); ++i)
-        {
-            const float x = std::round (xForHz (gridHz[i]));
-            const bool major = gridHz[i] == 100.0f || gridHz[i] == 1000.0f || gridHz[i] == 10000.0f;
-            g.setColour (tone::bone.withAlpha (major ? 0.11f : 0.055f));
-            g.fillRect (juce::Rectangle<float> (x, 0.0f, 1.0f, h));
-        }
+        g.setColour (tone::text.withAlpha (0.05f));
+
+        for (auto hz : gridHz)
+            g.fillRect (juce::Rectangle<float> (std::round (xForHz (hz)), 0.0f, 1.0f, h));
 
         for (int db = 6; db <= 24; db += 6)
-        {
-            const float y = std::round (yForReduction ((float) db) + ceilingOffset);
-            g.setColour (tone::gold.withAlpha (0.09f));
-            g.fillRect (juce::Rectangle<float> (0.0f, y, w, 1.0f));
-        }
+            g.fillRect (juce::Rectangle<float> (0.0f, yForReductionLine ((float) db), w, 1.0f));
     }
 
     void ResonanceGraph::drawGold (juce::Graphics& g)
     {
-        const auto w = (float) getWidth(), h = (float) getHeight();
-        const float dim = 1.0f - 0.72f * bypassShown;
-        const auto gold = tone::gold.interpolatedWith (tone::boneFaint, bypassShown);
-        const auto hot = tone::goldHot.interpolatedWith (tone::boneSoft, bypassShown);
+        const auto w = (float) getWidth();
+        const float dim = 1.0f - 0.68f * bypassShown;
+        const auto gold = tone::gold.interpolatedWith (tone::faint, bypassShown);
+        const auto edge = tone::goldEdge.interpolatedWith (tone::muted, bypassShown);
 
-        if (slotsApart)
+        // Only the part of the width with a cut in it is drawn, and at rest there is nothing to draw at all.
+        const float atRest = -ceilingOffset + 0.5f;
+
+        for (int slot = 0; slot < (slotsApart ? 2 : 1); ++slot)   // the second channel goes on top, or the gold would hide it
         {
-            buildRibbon (yGold[1].data(), denseX.data(), numDense, 3.0f);
-            g.setColour (tone::copper.withAlpha (0.25f * dim));
-            g.fillPath (ribbon);
-            buildRibbon (yGold[1].data(), denseX.data(), numDense, 1.1f);
-            g.setColour (tone::copper.withAlpha (dim));
+            const auto& ys = yGold[slot];
+            int first = -1, last = -1;
+
+            for (int i = 0; i < numDense; ++i)
+            {
+                if (ys[(size_t) i] > atRest)
+                {
+                    if (first < 0)
+                        first = i;
+
+                    last = i;
+                }
+            }
+
+            if (first < 0)
+                continue;
+
+            first = juce::jmax (0, first - 1);
+            last = juce::jmin (numDense - 1, last + 1);
+
+            if (slot == 1)
+            {
+                buildRibbon (ys.data() + first, denseX.data() + first, last - first + 1, 0.7f);
+                g.setColour (tone::second.withAlpha (dim));
+                g.fillPath (ribbon);
+                continue;
+            }
+
+            shape.clear();
+            shape.startNewSubPath (denseX[(size_t) first], -4.0f);
+
+            for (int i = first; i <= last; ++i)
+                shape.lineTo (denseX[(size_t) i], ys[(size_t) i]);
+
+            shape.lineTo (juce::jmin (w, denseX[(size_t) last]), -4.0f);
+            shape.closeSubPath();
+            g.setColour (gold.withAlpha (0.86f * dim));
+            g.fillPath (shape);
+
+            buildRibbon (ys.data() + first, denseX.data() + first, last - first + 1, 0.7f);
+            g.setColour (edge.withAlpha (dim));
             g.fillPath (ribbon);
         }
-
-        // Gold poured from the ceiling: dark where it starts, bright where it pools.
-        shape.clear();
-        shape.startNewSubPath (-2.0f, -8.0f);
-        shape.lineTo (w + 2.0f, -8.0f);
-        shape.lineTo (w + 2.0f, yGold[0][numDense - 1]);
-
-        for (int i = numDense; --i >= 0;)
-            shape.lineTo (denseX[(size_t) i], yGold[0][(size_t) i]);
-
-        shape.lineTo (-2.0f, yGold[0][0]);
-        shape.closeSubPath();
-
-        g.setColour (gold.withAlpha (0.94f * dim));
-        g.fillPath (shape);
-
-        // Darker where it leaves the ceiling, so the gold looks poured instead of flat. Only where there can be gold: Low
-        // to High, plus the taper just outside them. A real gradient here: alpha bands would show seams, and the area is small.
-        const float shadeDepth = h * 0.20f;
-        const float shadeFrom = juce::jmax (0.0f, xForHz (getReal (*lowParam) * 0.5f)), shadeTo = juce::jmin (w, xForHz (getReal (*highParam) * 2.0f));
-        juce::ColourGradient shade (tone::well.withAlpha (0.56f), 0.0f, 0.0f, tone::well.withAlpha (0.0f), 0.0f, shadeDepth, false);
-        g.setGradientFill (shade);
-        g.fillRect (juce::Rectangle<float> (shadeFrom, 0.0f, juce::jmax (0.0f, shadeTo - shadeFrom), shadeDepth));
-
-        buildRibbon (yGold[0].data(), denseX.data(), numDense, 4.0f);
-        g.setColour (gold.withAlpha (0.20f * dim));
-        g.fillPath (ribbon);
-        buildRibbon (yGold[0].data(), denseX.data(), numDense, 1.0f);
-        g.setColour (hot.withAlpha (dim));
-        g.fillPath (ribbon);
     }
 
-    void ResonanceGraph::drawSensitivity (juce::Graphics& g)
+    void ResonanceGraph::drawSensitivity (juce::Graphics& g, float lowX, float highX)
     {
-        const auto w = (float) getWidth(), h = (float) getHeight();
-        const float zeroY = yForSensitivity (0.0f);
+        const auto w = (float) getWidth();
 
         // The same bell the engine uses, drawn from the parameters so it moves with no audio running.
         float amounts[numBands], centres[numBands], sigmas[numBands];
@@ -479,8 +538,6 @@ namespace ui
             centres[b] = std::log2 (juce::jmax (getReal (*bands[b].freq), 1.0f));
             sigmas[b] = juce::jmax (getReal (*bands[b].width), 0.05f) / 2.3548f;
         }
-
-        shape.clear();
 
         for (int i = 0; i < numSensSteps; ++i)
         {
@@ -498,42 +555,11 @@ namespace ui
 
             sensX[(size_t) i] = x;
             sensY[(size_t) i] = yForSensitivity (juce::jlimit (-15.0f, 15.0f, s));
-
-            if (i == 0)
-                shape.startNewSubPath (x, sensY[0]);
-            else
-                shape.lineTo (x, sensY[(size_t) i]);
         }
-
-        shape.lineTo (w, zeroY);
-        shape.lineTo (0.0f, zeroY);
-        shape.closeSubPath();
-
-        const float lowX = xForHz (getReal (*lowParam)), highX = xForHz (getReal (*highParam));
-
-        g.setColour (tone::bone.withAlpha (0.10f));
-        g.fillPath (shape);
 
         // Bright where it has an effect, faint where Low and High leave the sound alone.
-        buildRibbon (sensY.data(), sensX.data(), numSensSteps, 0.8f);
-        g.setColour (tone::bone.withAlpha (0.34f));
-        g.fillPath (ribbon);
-
-        {
-            juce::Graphics::ScopedSaveState clip (g);
-            g.reduceClipRegion (juce::Rectangle<float> (lowX, 0.0f, juce::jmax (0.0f, highX - lowX), h).getSmallestIntegerContainer());
-            g.setColour (tone::bone);
-            buildRibbon (sensY.data(), sensX.data(), numSensSteps, 1.1f);
-            g.fillPath (ribbon);
-        }
-
-        // "More" and "Less" say which way a dot goes without any jargon.
-        g.setFont (font (Weight::regular, 16.5f));
-        g.setColour (tone::boneSoft);
-        g.drawText ("Treat more", juce::Rectangle<float> (14.0f, yForSensitivity (12.0f) - 10.0f, 100.0f, 20.0f), juce::Justification::centredLeft, false);
-        g.drawText ("Treat less", juce::Rectangle<float> (14.0f, yForSensitivity (-12.0f) - 10.0f, 100.0f, 20.0f), juce::Justification::centredLeft, false);
-        g.setColour (tone::bone.withAlpha (0.16f));
-        g.fillRect (juce::Rectangle<float> (0.0f, std::round (zeroY), w, 1.0f));
+        const auto indexFor = [&] (float x) { return juce::jlimit (0, numSensSteps - 1, juce::roundToInt (x / w * (float) (numSensSteps - 1))); };
+        fillRangedRibbon (g, sensY.data(), sensX.data(), numSensSteps, indexFor (lowX), indexFor (highX), 0.75f, tone::text, tone::text.withAlpha (0.3f));
 
         // The dots.
         for (int b = 0; b < numBands; ++b)
@@ -542,7 +568,7 @@ namespace ui
             const auto c = juce::Point<float> (xForHz (getReal (*bands[b].freq)), yForSensitivity (getReal (*bands[b].sens)));
             const bool isSelected = b == selectedBand;
             const bool lit = hover == grab || drag == grab;
-            const float r = isSelected ? 12.5f : 11.0f;
+            const float r = 10.0f;
 
             if (isSelected)
             {
@@ -550,29 +576,30 @@ namespace ui
                 const float halfWidth = getReal (*bands[b].width) * 0.5f;
                 const float hz = getReal (*bands[b].freq);
                 const float x1 = xForHz (hz * std::pow (2.0f, -halfWidth)), x2 = xForHz (hz * std::pow (2.0f, halfWidth));
-                g.setColour (tone::bone.withAlpha (0.65f));
+                g.setColour (tone::text.withAlpha (0.4f));
                 g.fillRect (juce::Rectangle<float> (x1, c.y - 0.5f, x2 - x1, 1.0f));
-                g.fillRect (juce::Rectangle<float> (x1 - 0.5f, c.y - 6.0f, 1.0f, 12.0f));
-                g.fillRect (juce::Rectangle<float> (x2 - 0.5f, c.y - 6.0f, 1.0f, 12.0f));
+                g.fillRect (juce::Rectangle<float> (x1 - 0.5f, c.y - 4.0f, 1.0f, 8.0f));
+                g.fillRect (juce::Rectangle<float> (x2 - 0.5f, c.y - 4.0f, 1.0f, 8.0f));
             }
 
             if (lit)
             {
-                g.setColour (tone::bone.withAlpha (0.22f));
-                g.fillEllipse (c.x - r - 7.0f, c.y - r - 7.0f, (r + 7.0f) * 2.0f, (r + 7.0f) * 2.0f);
+                g.setColour (tone::text.withAlpha (0.16f));
+                g.fillEllipse (c.x - r - 6.0f, c.y - r - 6.0f, (r + 6.0f) * 2.0f, (r + 6.0f) * 2.0f);
             }
 
-            g.setColour (tone::well.withAlpha (0.55f));
-            g.fillEllipse (c.x - r - 2.0f, c.y - r - 1.0f, (r + 2.0f) * 2.0f, (r + 2.0f) * 2.0f);
-
-            g.setColour (isSelected ? tone::bone : tone::well);
+            g.setColour (isSelected ? tone::text : tone::well);
             g.fillEllipse (c.x - r, c.y - r, r * 2.0f, r * 2.0f);
-            g.setColour (tone::bone);
-            g.drawEllipse (c.x - r, c.y - r, r * 2.0f, r * 2.0f, 1.6f);
 
-            g.setColour (isSelected ? tone::well : tone::bone);
-            g.setFont (font (Weight::semibold, 18.0f));
-            g.drawText (bandNames[b], juce::Rectangle<float> (c.x - r, c.y - r - 0.5f, r * 2.0f, r * 2.0f), juce::Justification::centred, false);
+            if (! isSelected)
+            {
+                g.setColour (tone::text);
+                g.drawEllipse (c.x - r + 0.6f, c.y - r + 0.6f, (r - 0.6f) * 2.0f, (r - 0.6f) * 2.0f, 1.2f);
+            }
+
+            g.setColour (isSelected ? tone::well : tone::text);
+            g.setFont (font (Weight::medium, 12.0f));
+            g.drawText (bandNames[b], juce::Rectangle<float> (c.x - r, c.y - r, r * 2.0f, r * 2.0f), juce::Justification::centred, false);
         }
     }
 
@@ -583,18 +610,13 @@ namespace ui
         const auto drawHandle = [&] (Grab grab, float x, const juce::String& text, bool textOnRight)
         {
             const bool lit = hover == grab || drag == grab;
-            g.setColour (tone::bone.withAlpha (lit ? 0.9f : 0.42f));
-            g.fillRect (juce::Rectangle<float> (x - 0.75f, 0.0f, 1.5f, h));
+            g.setColour (tone::text.withAlpha (lit ? 0.85f : 0.32f));
+            g.fillRect (juce::Rectangle<float> (x - 0.5f, 0.0f, 1.0f, h));
 
-            const float tabW = 46.0f, tabH = 24.0f;
-            const auto tab = juce::Rectangle<float> (textOnRight ? x : x - tabW, h - 66.0f, tabW, tabH);
-            juce::Path shape;
-            shape.addRoundedRectangle (tab.getX(), tab.getY(), tab.getWidth(), tab.getHeight(), 6.0f, 6.0f, ! textOnRight, textOnRight, ! textOnRight, textOnRight);
-            g.setColour (lit ? tone::bone : tone::bone.withAlpha (0.86f));
-            g.fillPath (shape);
-            g.setColour (tone::well);
-            g.setFont (font (Weight::semibold, 16.0f));
-            g.drawText (text, tab, juce::Justification::centred, false);
+            const auto box = juce::Rectangle<float> (textOnRight ? x + 6.0f : x - 40.0f, h - 26.0f, 34.0f, 18.0f);
+            g.setColour (tone::text.withAlpha (lit ? 1.0f : 0.8f));
+            g.setFont (font (Weight::medium, 12.0f));
+            g.drawText (text, box, textOnRight ? juce::Justification::centredLeft : juce::Justification::centredRight, false);
         };
 
         drawHandle (Grab::low, xForHz (getReal (*lowParam)), "Low", true);
@@ -603,14 +625,12 @@ namespace ui
 
     void ResonanceGraph::drawTag (juce::Graphics& g, juce::Point<float> anchor, const juce::String& text, juce::Colour textColour)
     {
-        const auto f = font (Weight::semibold, 17.0f);
+        const auto f = font (Weight::medium, 12.5f);
         const float width = juce::GlyphArrangement::getStringWidth (f, text) + 18.0f;
-        auto box = juce::Rectangle<float> (anchor.x - width * 0.5f, anchor.y, width, 26.0f);
+        auto box = juce::Rectangle<float> (anchor.x - width * 0.5f, anchor.y, width, 24.0f);
         box = box.withX (juce::jlimit (6.0f, juce::jmax (6.0f, (float) getWidth() - width - 6.0f), box.getX()));
-        g.setColour (tone::well.withAlpha (0.92f));
+        g.setColour (tone::base.brighter (0.25f));
         g.fillRoundedRectangle (box, 6.0f);
-        g.setColour (tone::bone.withAlpha (0.25f));
-        g.drawRoundedRectangle (box, 6.0f, 1.0f);
         g.setColour (textColour);
         g.setFont (f);
         g.drawText (text, box, juce::Justification::centred, false);
@@ -631,70 +651,43 @@ namespace ui
     {
         const auto w = (float) getWidth(), h = (float) getHeight();
 
-        // The dB scale goes over the gold, so that it can be read against a cut.
-        g.setFont (font (Weight::regular, 16.0f));
-
-        for (int db = 6; db <= 24; db += 6)
-        {
-            const float y = std::round (yForReduction ((float) db) + ceilingOffset);
-            g.setColour (tone::gold.withAlpha (0.78f));
-            g.drawText (db == 24 ? "24 dB" : juce::String (db), juce::Rectangle<float> (w - 64.0f, y - 21.0f, 54.0f, 20.0f), juce::Justification::centredRight, false);
-        }
-
-        // The floor of the graph has the frequencies, on a soft fade so that they read over the voice.
-        juce::ColourGradient floor (tone::well.withAlpha (0.0f), 0.0f, h - 46.0f, tone::well.withAlpha (0.88f), 0.0f, h - 14.0f, false);
-        g.setGradientFill (floor);
-        g.fillRect (juce::Rectangle<float> (0.0f, h - 46.0f, w, 46.0f));
-
-        g.setFont (font (Weight::regular, 16.0f));
-        g.setColour (tone::boneSoft);
-
-        for (size_t i = 0; i < std::size (gridHz); ++i)
-            g.drawText (gridText[i], juce::Rectangle<float> (xForHz (gridHz[i]) - 24.0f, h - 26.0f, 48.0f, 20.0f), juce::Justification::centred, false);
-
         // Hovering Depth draws the limit it sets.
         if (highlight == "depth")
         {
-            const float y = yForReduction (getReal (*depthParam));
+            const float y = yForReductionLine (getReal (*depthParam));
             juce::Path line;
             line.startNewSubPath (0.0f, y);
             line.lineTo (w, y);
-            const float dashes[] = { 7.0f, 6.0f };
+            const float dashes[] = { 4.0f, 4.0f };
             juce::Path dashed;
-            juce::PathStrokeType (1.5f).createDashedStroke (dashed, line, dashes, 2);
-            g.setColour (tone::goldHot);
+            juce::PathStrokeType (1.0f).createDashedStroke (dashed, line, dashes, 2);
+            g.setColour (tone::goldEdge);
             g.fillPath (dashed);
-            g.setColour (tone::goldHot);
-            g.setFont (font (Weight::semibold, 17.0f));
-            g.drawText ("Deepest cut", juce::Rectangle<float> (12.0f, y - 24.0f, 200.0f, 22.0f), juce::Justification::centredLeft, false);
+            g.setFont (font (Weight::regular, 12.5f));
+            g.drawText ("Deepest cut", juce::Rectangle<float> (14.0f, y - 22.0f, 200.0f, 20.0f), juce::Justification::centredLeft, false);
         }
         else if (highlight == "lowFreq" || highlight == "highFreq")
         {
             const float x = xForHz (getReal (highlight == "lowFreq" ? *lowParam : *highParam));
-            g.setColour (tone::bone.withAlpha (0.22f));
-            g.fillRect (juce::Rectangle<float> (x - 4.0f, 0.0f, 8.0f, h));
+            g.setColour (tone::text.withAlpha (0.8f));
+            g.fillRect (juce::Rectangle<float> (x - 0.5f, 0.0f, 1.0f, h));
         }
 
         // What the sound is doing now, when it is not the normal treated sound.
-        const auto banner = [&] (const juce::String& text, juce::Colour fill, float alpha)
+        const auto status = [&] (const juce::String& text, juce::Colour colour, float alpha)
         {
             if (alpha < 0.01f)
                 return;
 
-            const auto f = font (Weight::semibold, 18.0f);
-            const float width = juce::GlyphArrangement::getStringWidth (f, text) + 26.0f;
-            const auto box = juce::Rectangle<float> (14.0f, 14.0f, width, 32.0f);
-            g.setColour (fill.withAlpha (alpha));
-            g.fillRoundedRectangle (box, 6.0f);
-            g.setColour (tone::well.withAlpha (alpha));
-            g.setFont (f);
-            g.drawText (text, box, juce::Justification::centred, false);
+            g.setColour (colour.withAlpha (alpha));
+            g.setFont (font (Weight::medium, 13.0f));
+            g.drawText (text, juce::Rectangle<float> (16.0f, 12.0f, 400.0f, 20.0f), juce::Justification::centredLeft, false);
         };
 
         if (bypassShown > 0.01f)
-            banner ("Bypassed: you hear the untouched sound", tone::bone, bypassShown);
+            status ("Bypassed: you hear the untouched sound", tone::text, bypassShown);
         else
-            banner ("Delta on: you hear only what is being taken out", tone::gold, deltaShown);
+            status ("Delta: you hear only what is being taken out", tone::goldEdge, deltaShown);
 
         // An empty graph says what to do.
         if (hintShown > 0.01f && drag == Grab::none)
@@ -708,9 +701,9 @@ namespace ui
                 if (gaps[i][1] - gaps[i][0] > gaps[widest][1] - gaps[widest][0])
                     widest = i;
 
-            g.setColour (tone::boneSoft.withAlpha (hintShown));
-            g.setFont (font (Weight::regular, 22.0f));
-            g.drawText ("Play something to see it here", juce::Rectangle<float> (gaps[widest][0], h * 0.72f, gaps[widest][1] - gaps[widest][0], 36.0f), juce::Justification::centred, false);
+            g.setColour (tone::muted.withAlpha (hintShown));
+            g.setFont (font (Weight::regular, 15.0f));
+            g.drawText ("Play something to see it here", juce::Rectangle<float> (gaps[widest][0], h * 0.72f, gaps[widest][1] - gaps[widest][0], 30.0f), juce::Justification::centred, false);
         }
 
         // A dot or handle being touched says where it is. Elsewhere, the mouse reads the frequency under it.
@@ -720,13 +713,13 @@ namespace ui
         {
             const bool isBand = active != Grab::low && active != Grab::high;
             const int b = isBand ? (int) active - (int) Grab::band1 : 0;
-            const auto anchor = isBand ? juce::Point<float> (xForHz (getReal (*bands[b].freq)), yForSensitivity (getReal (*bands[b].sens)) + 22.0f)
-                                       : juce::Point<float> (xForHz (getReal (active == Grab::low ? *lowParam : *highParam)), h - 100.0f);
-            drawTag (g, anchor, tagFor (active), tone::bone);
+            const auto anchor = isBand ? juce::Point<float> (xForHz (getReal (*bands[b].freq)), yForSensitivity (getReal (*bands[b].sens)) + 20.0f)
+                                       : juce::Point<float> (xForHz (getReal (active == Grab::low ? *lowParam : *highParam)), h - 62.0f);
+            drawTag (g, anchor, tagFor (active), tone::text);
         }
         else if (mouseInside)
         {
-            drawTag (g, { mousePos.x, h - 60.0f }, hertzText (hzForX (mousePos.x)), tone::boneSoft);
+            drawTag (g, { mousePos.x, h - 34.0f }, hertzText (hzForX (mousePos.x)), tone::muted);
         }
     }
 

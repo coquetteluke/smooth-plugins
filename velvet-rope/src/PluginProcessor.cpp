@@ -6,6 +6,7 @@
 namespace
 {
     const juce::Identifier windowWidthAttribute { "windowWidth" };
+    const juce::Identifier advancedOpenAttribute { "advancedOpen" };
 
     // These IDs are saved in sessions and automation. Never rename them.
     using Layout = juce::AudioProcessorValueTreeState::ParameterLayout;
@@ -305,6 +306,7 @@ void SmoothResonanceProcessor::getStateInformation (juce::MemoryBlock& destinati
     if (const auto xml = parameters.copyState().createXml())
     {
         xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
+        xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, destination);
     }
 }
@@ -315,12 +317,15 @@ void SmoothResonanceProcessor::setStateInformation (const void* data, int size)
     {
         if (xml->hasTagName (parameters.state.getType()))
         {
-            // Older sessions have no window size. A damaged one goes back in range. The size is not a parameter, so it
-            // stays out of the value tree.
+            // Older sessions have no window state. A damaged size goes back in range. Neither is a parameter, so they stay
+            // out of the value tree.
             if (xml->hasAttribute (windowWidthAttribute))
                 windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
 
+            advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+
             xml->removeAttribute (windowWidthAttribute);
+            xml->removeAttribute (advancedOpenAttribute);
             applySafeState (parameters, *xml);
         }
     }

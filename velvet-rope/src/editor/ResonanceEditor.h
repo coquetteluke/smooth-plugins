@@ -5,8 +5,8 @@
 #include "ResonanceGraph.h"
 
 /** The window. Everything is laid out once at 1160 by 760 and scaled as a whole, so type, spacing and curves stay in
-    proportion at any size. Every control is a real parameter. The only thing the window adds to a session is its size,
-    which the processor saves. */
+    proportion at any size. Every control is a real parameter. The window adds two things to a session: its size, and whether
+    the Advanced section is open. The processor saves both. */
 class ResonanceEditor final : public juce::AudioProcessorEditor
 {
 public:
@@ -24,6 +24,10 @@ public:
     /** For the offline renders, which have no mouse. Lights the control with this ID as if it were hovered. */
     void previewHover (const juce::String& paramId);
 
+    /** Opens or closes the Advanced section. Without animation it is there straight away. */
+    void setAdvancedOpen (bool shouldBeOpen, bool animate);
+    bool isAdvancedOpen() const noexcept;
+
     ui::ResonanceGraph& getGraph() noexcept  { return panel.graph; }
     juce::Component& getPanel() noexcept     { return panel; }
 
@@ -31,6 +35,7 @@ private:
     class PresetBox;
     class PeakReading;
     class BandPicker;
+    class AdvancedHeader;
 
     struct Panel final : public juce::Component
     {
@@ -46,6 +51,8 @@ private:
         void showHint (const juce::String&);
         void hintFromComponent (juce::Component*);
         void showBand (int);
+        void layoutSide();
+        int countAdvancedChanges() const;
 
         ResonanceEditor& owner;
         SmoothResonanceProcessor& processor;
@@ -56,6 +63,7 @@ private:
         std::unique_ptr<PresetBox> presets;
         std::unique_ptr<PeakReading> reading;
         std::unique_ptr<BandPicker> bandPicker;
+        std::unique_ptr<AdvancedHeader> advancedHeader;
 
         ui::ParamSlider depth, sharpness, selectivity, attack, release;
         ui::ParamChoice mode;
@@ -68,8 +76,9 @@ private:
         ui::ParamToggle bypass, delta;
         ui::ParamSlider mix, outputGain;
 
-        juce::String hintText;
         juce::Label hintLine;
+        float advancedAmount = 0.0f;   // 0 closed, 1 open
+        bool thresholdShown = false;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Panel)
     };
@@ -79,7 +88,8 @@ private:
     SmoothResonanceProcessor& processorRef;
     ui::LookAndFeel lookAndFeel;
     Panel panel;
-    double lastFrameTime = 0.0;
+    double lastFrameTime = 0.0, frameBudget = 0.0, sinceDrawn = 0.0;
+    int changesCountdown = 0;
     bool constructed = false;
     std::unique_ptr<juce::VBlankAttachment> vblank;
 

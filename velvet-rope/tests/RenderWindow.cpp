@@ -140,7 +140,7 @@ struct Session
     }
 
     /** Runs audio up to the given frame of the speech, ticking the display as the screen would. */
-    void play (const std::vector<float>& voice, int startFrame, int endFrame)
+    void play (const std::vector<float>& voice, int startFrame, int endFrame, const std::vector<float>* rightVoice = nullptr)
     {
         for (int frame = startFrame; frame < endFrame; ++frame)
         {
@@ -155,7 +155,8 @@ struct Session
                     for (int i = 0; i < n; ++i)
                     {
                         const size_t at = begin + (size_t) done + (size_t) i;
-                        buffer.setSample (ch, i, at < voice.size() ? voice[at] : 0.0f);
+                        const auto& source = (ch == 1 && rightVoice != nullptr) ? *rightVoice : voice;
+                        buffer.setSample (ch, i, at < source.size() ? source[at] : 0.0f);
                     }
 
                 processor.processBlock (buffer, midi);
@@ -246,8 +247,9 @@ static int runLive()
         if (withWindow)
         {
             auto* peer = s.editor->getPeer();
-            std::printf ("real window: %.1f frames a second, screen scale %.1f, peer %s\n", (double) paints / seconds,
-                         peer != nullptr ? peer->getPlatformScaleFactor() : 0.0, peer != nullptr ? "open" : "none");
+            const auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+            std::printf ("real window: %.1f frames a second, screen %.0fx, peer %s\n", (double) paints / seconds,
+                         display != nullptr ? display->scale : 0.0, peer != nullptr ? "open" : "none");
             s.editor->removeFromDesktop();
         }
 
@@ -272,7 +274,7 @@ int main (int argc, char** argv)
         return runLive();
 
     const bool cpuOnly = argc > 1 && juce::String (argv[1]) == "--cpu";
-    const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 && ! cpuOnly ? argv[1] : "docs/window");
+    const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 && ! cpuOnly ? argv[1] : "docs/window-v2");
     folder.createDirectory();
 
     auto voice = loadVoice();
@@ -385,6 +387,43 @@ int main (int argc, char** argv)
 
         s.saveBoth (folder, "dot-dragged-value-typed");
         graph.mouseUp (event (to));
+    }
+
+    // State 6: Advanced open, in Hard mode with a preset that changes a few things.
+    if (! cpuOnly)
+    {
+        Session s;
+        setUpActive (s.processor);
+        setParam (s.processor, "mode", 1.0f);
+        setParam (s.processor, "stereoMode", 1.0f);
+        setParam (s.processor, "stereoFocus", 30.0f);
+        s.editor->setAdvancedOpen (true, false);
+        s.play (voice, 0, bestFrame + 1);
+        s.saveBoth (folder, "advanced-open");
+    }
+
+    // State 7: Advanced closed with changes inside it, which the closed header reports.
+    if (! cpuOnly)
+    {
+        Session s;
+        setUpActive (s.processor);
+        setParam (s.processor, "stereoFocus", 30.0f);
+        setParam (s.processor, "sharpnessTilt", -20.0f);
+        s.play (voice, 0, 30);
+        s.saveBoth (folder, "advanced-closed-with-changes");
+    }
+
+    // State 8: left and right treated apart. The right channel has an extra resonance the left does not, and Link is off.
+    if (! cpuOnly)
+    {
+        auto rightVoice = voice;
+        addResonance (rightVoice, 5600.0, 7.0, 12.0);
+        Session s;
+        setUpActive (s.processor);
+        setParam (s.processor, "link", 0.0f);
+        s.editor->setAdvancedOpen (true, false);
+        s.play (voice, 0, bestFrame + 1, &rightVoice);
+        s.saveBoth (folder, "channels-apart");
     }
 
     // The smallest size the window can be.

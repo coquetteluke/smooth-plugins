@@ -237,7 +237,6 @@ void ResonanceEngine::reset() noexcept
     hopCounter = 0;
     graphCounter = 0;
     keyChannelsNow = 0;
-    keyConnected = false;
     snapNextParams = true;
     maxReductionDb.store (0.0f, std::memory_order_relaxed);
     maxReductionHz.store (0.0f, std::memory_order_relaxed);
@@ -280,7 +279,6 @@ void ResonanceEngine::process (float* const* channels, int numChannels, int numS
 
     const int chans = std::min (numChannels, numCh);
     const int keyChans = key != nullptr ? juce::jlimit (0, (int) maxChannels, numKeyChannels) : 0;
-    keyConnected = keyChans > 0;
     keyChannelsNow = keyChans;
 
     const float mixTarget = params.mix, deltaTarget = params.delta ? 1.0f : 0.0f, bypassTarget = params.bypass ? 1.0f : 0.0f;

@@ -1,0 +1,488 @@
+Smooth Resonance test results, 2026-11-06
+
+===== ProcessorTest: the real processor, every control, generic checks
+PASS  parameter names are clear, unique, no em dash
+INFO  parameter count = 33.000 
+PASS  factory presets = 8.000 
+PASS  preset names are not empty, no em dash
+PASS  presets change the state
+PASS  state save and restore
+PASS  damaged state value 'nan' gives finite output
+PASS  damaged state value 'nan' leaves controls in range
+PASS  damaged state value 'inf' gives finite output
+PASS  damaged state value 'inf' leaves controls in range
+PASS  damaged state value '-inf' gives finite output
+PASS  damaged state value '-inf' leaves controls in range
+PASS  damaged state value '-1e30' gives finite output
+PASS  damaged state value '-1e30' leaves controls in range
+PASS  damaged state value '1e30' gives finite output
+PASS  damaged state value '1e30' leaves controls in range
+PASS  damaged state value '-1' gives finite output
+PASS  damaged state value '-1' leaves controls in range
+PASS  damaged state value 'garbage' gives finite output
+PASS  damaged state value 'garbage' leaves controls in range
+PASS  sweeps finished, mono
+PASS  sweeps finished, stereo
+PASS  no NaN after silence
+PASS  no denormals decaying into silence = 0.000 samples
+PASS  recovers after NaN, inf and huge input, peak in the last second = 0.250 
+INFO  click test baseline step = 0.004 
+PASS  no click when Depth jumps, biggest step = 0.004 
+PASS  no click when Sharpness jumps, biggest step = 0.004 
+PASS  no click when Selectivity jumps, biggest step = 0.004 
+PASS  no click when Attack jumps, biggest step = 0.004 
+PASS  no click when Release jumps, biggest step = 0.004 
+PASS  no click when Low Frequency jumps, biggest step = 0.004 
+PASS  no click when High Frequency jumps, biggest step = 0.004 
+PASS  no click when Mix jumps, biggest step = 0.004 
+PASS  no click when Output Gain jumps, biggest step = 0.057 
+PASS  no click when Delta jumps, biggest step = 0.004 
+PASS  no click when Stereo Mode jumps, biggest step = 0.004 
+PASS  no click when Bypass jumps, biggest step = 0.004 
+PASS  no click when Mode jumps, biggest step = 0.004 
+PASS  no click when Hard Threshold jumps, biggest step = 0.004 
+PASS  no click when Stereo Link jumps, biggest step = 0.004 
+PASS  no click when Stereo Focus jumps, biggest step = 0.004 
+PASS  no click when Band 1 Frequency jumps, biggest step = 0.004 
+PASS  no click when Band 1 Sensitivity jumps, biggest step = 0.004 
+PASS  no click when Band 1 Width jumps, biggest step = 0.004 
+PASS  no click when Band 2 Frequency jumps, biggest step = 0.004 
+PASS  no click when Band 2 Sensitivity jumps, biggest step = 0.004 
+PASS  no click when Band 2 Width jumps, biggest step = 0.004 
+PASS  no click when Band 3 Frequency jumps, biggest step = 0.004 
+PASS  no click when Band 3 Sensitivity jumps, biggest step = 0.004 
+PASS  no click when Band 3 Width jumps, biggest step = 0.004 
+PASS  no click when Sharpness Tilt jumps, biggest step = 0.004 
+PASS  no click when Attack Tilt jumps, biggest step = 0.004 
+PASS  no click when Release Tilt jumps, biggest step = 0.004 
+PASS  no click when Wet Trim jumps, biggest step = 0.057 
+PASS  no click when Side Chain jumps, biggest step = 0.004 
+PASS  no click when Side Chain Listen jumps, biggest step = 0.004 
+PASS  every control has the right ID, name, range and default, and is automatable = 31.000 
+PASS  parameter count is the controls plus 2 readings = 33.000 
+PASS  Bypass is the host's bypass parameter
+PASS  Depth shows a real value string
+PASS  Mode shows Soft by default
+PASS  Depth reads back 12.0 after being set
+PASS  44100 Hz 1 ch: reported latency, measured on and bypassed all agree = 2048.000 samples
+PASS  44100 Hz 2 ch: reported latency, measured on and bypassed all agree = 2048.000 samples
+PASS  48000 Hz 1 ch: reported latency, measured on and bypassed all agree = 2048.000 samples
+PASS  48000 Hz 2 ch: reported latency, measured on and bypassed all agree = 2048.000 samples
+PASS  88200 Hz 1 ch: reported latency, measured on and bypassed all agree = 4096.000 samples
+PASS  88200 Hz 2 ch: reported latency, measured on and bypassed all agree = 4096.000 samples
+PASS  96000 Hz 1 ch: reported latency, measured on and bypassed all agree = 4096.000 samples
+PASS  96000 Hz 2 ch: reported latency, measured on and bypassed all agree = 4096.000 samples
+PASS  processBlockBypassed keeps the 2048 sample delay = 1.000 
+PASS  mono and stereo accepted with no key
+PASS  mono and stereo keys accepted on both
+PASS  surround refused
+PASS  still works after being prepared three times = -12.000 dB
+PASS  44100 Hz: tone in range, Depth 12 (limit 0.5) = -12.000 dB
+PASS  44100 Hz: Low Frequency 4 kHz leaves a 2.5 kHz tone alone (limit 0.1) = 0.000 dB
+PASS  44100 Hz: Band Sensitivity -12 centred on the tone leaves it alone (limit 0.2) = -0.067 dB
+PASS  44100 Hz: Attack 60 ms: 90% reached (48 kHz measures about 145 ms) = 159.546 ms
+PASS  88200 Hz: tone in range, Depth 12 (limit 0.5) = -12.000 dB
+PASS  88200 Hz: Low Frequency 4 kHz leaves a 2.5 kHz tone alone (limit 0.1) = 0.000 dB
+PASS  88200 Hz: Band Sensitivity -12 centred on the tone leaves it alone (limit 0.2) = -0.067 dB
+PASS  88200 Hz: Attack 60 ms: 90% reached (48 kHz measures about 145 ms) = 160.272 ms
+PASS  96000 Hz: tone in range, Depth 12 (limit 0.5) = -12.000 dB
+PASS  96000 Hz: Low Frequency 4 kHz leaves a 2.5 kHz tone alone (limit 0.1) = 0.000 dB
+PASS  96000 Hz: Band Sensitivity -12 centred on the tone leaves it alone (limit 0.2) = -0.076 dB
+PASS  96000 Hz: Attack 60 ms: 90% reached (48 kHz measures about 145 ms) = 156.667 ms
+PASS  Soft: same peak 40 dB apart differs by (limit 0.5) = -0.000 dB
+PASS  Soft: tone 40 dB over noise, Depth 24 = -23.990 dB
+PASS  Hard: 12 dB over Hard Threshold (goal -12, limit 1) = -11.409 dB
+PASS  Hard: 6 dB over Hard Threshold (goal -6, limit 1) = -5.425 dB
+PASS  Hard: 6 dB under Hard Threshold leaves it alone (limit 0.2) = 0.000 dB
+PASS  Hard Threshold moved to the tone's level: almost none (limit 1.5) = -0.268 dB
+PASS  Hard: Depth still caps it, 36 dB over with Depth 10 (limit 0.5) = -10.000 dB
+PASS  Hard, Selectivity 0: noise over the threshold is turned down = -3.058 dB
+PASS  Hard, Selectivity 100: the same noise stands out nowhere, left alone (limit 0.3) = 0.000 dB
+PASS  Stereo Link 100: right follows left's reduction = -12.000 dB
+PASS  Stereo Link 0: right keeps its own (limit 1.5) = 0.000 dB
+PASS  Stereo Link 50: right sits between = -6.000 dB
+PASS  Stereo Focus -100: all on left, right untouched (limit 0.5) = 0.000 dB
+PASS  Stereo Focus +100: all on right, left untouched (limit 0.2) = 0.000 dB
+PASS  Stereo Focus -50 halves right's reduction, Depth 12 (limit 1.5 from -6) = -6.000 dB
+PASS  Mid/Side, Focus +100 (all on side): a mono tone is left alone (limit 0.2) = 0.000 dB
+PASS  band1 Sensitivity 0: tone turned down = -23.955 dB
+PASS  band1 Sensitivity -12: treatment off at its centre (limit 0.2) = -0.137 dB
+PASS  band1 Sensitivity -6: between = -12.043 dB
+PASS  band2 Sensitivity 0: tone turned down = -24.000 dB
+PASS  band2 Sensitivity -12: treatment off at its centre (limit 0.2) = -0.136 dB
+PASS  band2 Sensitivity -6: between = -12.068 dB
+PASS  band3 Sensitivity 0: tone turned down = -24.000 dB
+PASS  band3 Sensitivity -12: treatment off at its centre (limit 0.2) = -0.095 dB
+PASS  band3 Sensitivity -6: between = -12.047 dB
+PASS  Band 2 Sensitivity +12 at Selectivity 100 treats more than 0: difference = -6.379 dB
+PASS  Band Width 0.2 oct, one octave away: tone still treated = -24.000 dB
+PASS  Band Width 4 oct, one octave away: the band reaches it, difference = 19.934 dB
+INFO  Attack 60 ms at 6 kHz, 90% reached, Tilt +100 = 561.333 ms
+INFO  Attack 60 ms at 6 kHz, 90% reached, Tilt 0 = 145.333 ms
+INFO  Attack 60 ms at 6 kHz, 90% reached, Tilt -100 = 44.000 ms
+PASS  Attack Tilt: +100 slower in the highs, -100 faster, ratio = 12.758 
+PASS  Attack Tilt: the other way round in the lows, ratio = 9.533 
+INFO  Release 200 ms at 6 kHz, back to 10%, Tilt +100 = 2065.333 ms
+INFO  Release 200 ms at 6 kHz, back to 10%, Tilt 0 = 684.000 ms
+INFO  Release 200 ms at 6 kHz, back to 10%, Tilt -100 = 337.333 ms
+PASS  Release Tilt: +100 slower in the highs, -100 faster, ratio = 6.123 
+INFO  Notch at 6 kHz in octaves, Sharpness Tilt 0 = 0.195 oct
+PASS  Sharpness Tilt: +100 narrower in the highs, -100 wider, ratio = 7.500 
+PASS  Wet Trim -6 at Mix 100 (limit 0.02) = -6.000 dB
+PASS  Wet Trim +6 at Mix 100 (limit 0.02) = 6.000 dB
+PASS  Wet Trim does nothing at Mix 0 (limit 0.001) = 0.000 dB
+PASS  Wet Trim -6 at Mix 50 lands on the 50/50 blend (limit 0.05 from the sum) = -0.000 dB
+PASS  Output / gain + Delta adds to the input with Wet Trim, Mix and Output Gain moved (limit -100 dBFS) = -150.515 dBFS
+PASS  side chain bus accepted, key channels = 1.000 
+PASS  Side Chain on: noise is carved at the key's 3 kHz tone = -12.000 dB
+PASS  Side Chain on: noise away from it is left alone (limit 0.2) = 0.000 dB
+PASS  side chain bus accepted, key channels = 2.000 
+PASS  Side Chain on: noise is carved at the key's 3 kHz tone = -12.000 dB
+PASS  Side Chain on: noise away from it is left alone (limit 0.2) = 0.000 dB
+PASS  Side Chain off: a connected key is ignored (limit 0.2) = 0.000 dB
+PASS  Side Chain on, no key connected: treats the signal itself = -12.000 dB
+PASS  Side Chain Listen outputs the key, lined up with the main signal (limit -100 dBFS) = -150.515 dBFS
+PASS  mono main input with a stereo key accepted
+PASS  mono main with a key: carved at the key's tone = -12.000 dB
+PASS  Hard Side Chain, Depth 6: carves about 6 dB at the key = -6.000 dB
+PASS  readings never send parameter changes to the host = 0.000 
+PASS  Max Reduction reads the Depth (limit 0.2) = 12.000 dB
+PASS  Max Reduction Frequency finds a 2500 Hz peak (limit 200) = 2437.500 Hz
+PASS  Max Reduction shows a real value string
+PASS  writing to a reading is ignored
+PASS  graph frames arrive
+PASS  graph frame says stereo, no key
+PASS  graph sequence counted up = 187.000 
+PASS  graph axis runs 20 Hz to 20 kHz
+PASS  graph input spectrum peaks at the tone (limit 100 Hz) = 2470.739 Hz
+PASS  graph input spectrum reads the tone's level (limit 1 dB) = -12.629 dB
+PASS  graph output spectrum reads it after the cut (limit 1 dB) = -24.629 dB
+PASS  graph gain curve is deepest at the tone (limit 400 Hz) = 2404.961 Hz
+PASS  graph gain curve depth (limit 0.3) = 12.000 dB
+PASS  graph sensitivity curve marks what is outside Low and High = 119.000 
+PASS  graph sensitivity curve shows a +6 band at its centre (limit 0.3) = 5.990 dB
+PASS  graph reader thread while audio runs: reads with 0 bad values = 937.000 
+PASS  at least 4 presets = 8.000 
+PASS  preset names are all different
+PASS  first preset is the default settings
+PASS  preset Gentle Vocal Polish: finite, not silent, Max Reduction within its Depth = 6.000 dB
+PASS  preset Harsh Lead Vocal: finite, not silent, Max Reduction within its Depth = 12.000 dB
+PASS  preset Vocal Stack Smoother: finite, not silent, Max Reduction within its Depth = 9.000 dB
+PASS  preset Wide Stack Mid Side: finite, not silent, Max Reduction within its Depth = 8.000 dB
+PASS  preset Sibilance Soother: finite, not silent, Max Reduction within its Depth = 10.000 dB
+PASS  preset Boxy Low Mids: finite, not silent, Max Reduction within its Depth = 8.000 dB
+PASS  preset Hard Whistle Catcher: finite, not silent, Max Reduction within its Depth = 14.000 dB
+PASS  preset Side Chain Carve: finite, not silent, Max Reduction within its Depth = 6.000 dB
+PASS  no allocation with side chain, bands and tilts all moving = 0.000 
+PASS  the generic window with reading rows opens = 480.000 px high
+RESULT PASS  0 failures
+
+===== DspTest: synthetic signals through the DSP
+Smooth Resonance DSP test, 48 kHz unless noted
+
+== With nothing to do, the audio passes through untouched
+PASS  Depth 0: peak error -132.5 dBFS on noise at -12 dB (limit -100)
+PASS  Bypass: peak error -300.0 dBFS (limit -140)
+PASS  Mix 0: peak error -300.0 dBFS (limit -140)
+
+== Latency: an impulse comes out exactly where the plug-in says
+PASS   44100 Hz, block  64: reported 2048 samples (46.4 ms), measured 2048, peak height 1.000
+PASS   44100 Hz, block 777: reported 2048 samples (46.4 ms), measured 2048, peak height 1.000
+PASS   48000 Hz, block  64: reported 2048 samples (42.7 ms), measured 2048, peak height 1.000
+PASS   48000 Hz, block 777: reported 2048 samples (42.7 ms), measured 2048, peak height 1.000
+PASS   88200 Hz, block  64: reported 4096 samples (46.4 ms), measured 4096, peak height 1.000
+PASS   88200 Hz, block 777: reported 4096 samples (46.4 ms), measured 4096, peak height 1.000
+PASS   96000 Hz, block  64: reported 4096 samples (42.7 ms), measured 4096, peak height 1.000
+PASS   96000 Hz, block 777: reported 4096 samples (42.7 ms), measured 4096, peak height 1.000
+PASS  192000 Hz, block  64: reported 8192 samples (42.7 ms), measured 8192, peak height 1.000
+PASS  192000 Hz, block 777: reported 8192 samples (42.7 ms), measured 8192, peak height 1.000
+PASS  Bypass keeps the same 2048 sample delay
+
+== The block size does not change the result
+PASS  block    1 vs 512: difference -300.0 dBFS (limit -120)
+PASS  block   37 vs 512: difference -300.0 dBFS (limit -120)
+PASS  block   64 vs 512: difference -300.0 dBFS (limit -120)
+PASS  block 1024 vs 512: difference -300.0 dBFS (limit -120)
+PASS  block 4096 vs 512: difference -300.0 dBFS (limit -120)
+
+== Test tone plus resonant peak: white noise with +18 dB, Q 8 at 3200 Hz, and a 220 Hz tone
+INFO  Input: peak band 3000-3400 Hz is 13.7 dB above the 1500-2500 Hz band density
+PASS  Depth  3.0: peak -3.0 dB (goal -1.8 or more), below peak +0.00 dB, above peak +0.00 dB, tone +0.000 dB
+PASS  Depth  6.0: peak -6.0 dB (goal -3.6 or more), below peak +0.00 dB, above peak +0.00 dB, tone +0.000 dB
+PASS  Depth 12.0: peak -11.6 dB (goal -7.2 or more), below peak +0.00 dB, above peak +0.00 dB, tone +0.000 dB
+PASS  Depth 24.0: peak -14.2 dB (goal -8.0 or more), below peak +0.00 dB, above peak +0.00 dB, tone +0.000 dB
+
+== Steady tone over quiet noise: 2500 Hz at -12 dBFS, noise at -50 dB
+PASS  Depth  3.0: tone -3.00 dB (goal within 1.5 dB of -3.0)
+PASS  Depth  6.0: tone -6.00 dB (goal within 1.5 dB of -6.0)
+PASS  Depth 12.0: tone -12.00 dB (goal within 1.5 dB of -12.0)
+PASS  Depth 24.0: tone -24.00 dB (goal within 1.5 dB of -24.0)
+
+== Flat noise should barely change
+PASS  white, Depth  6.0: overall +0.000 dB (limit 0.25), worst 3rd octave in range -0.000 dB (limit 0.5)
+PASS  white, Depth 12.0: overall +0.000 dB (limit 0.25), worst 3rd octave in range -0.000 dB (limit 0.5)
+PASS  white, Depth 24.0: overall +0.000 dB (limit 0.25), worst 3rd octave in range -0.000 dB (limit 0.5)
+INFO  white, Depth 24, Sharpness 100%, Selectivity   0%: overall -0.24 dB, worst 3rd octave -0.93 dB
+INFO  white, Depth 24, Sharpness   0%, Selectivity   0%: overall -0.69 dB, worst 3rd octave -1.85 dB
+INFO  white, Depth 24, Sharpness 100%, Selectivity  50%: overall +0.00 dB, worst 3rd octave +0.00 dB
+INFO  white, Depth 24, Sharpness   0%, Selectivity  50%: overall -0.00 dB, worst 3rd octave -0.00 dB
+PASS  pink , Depth  6.0: overall +0.000 dB (limit 0.25), worst 3rd octave in range -0.000 dB (limit 0.5)
+PASS  pink , Depth 12.0: overall +0.000 dB (limit 0.25), worst 3rd octave in range -0.000 dB (limit 0.5)
+PASS  pink , Depth 24.0: overall +0.000 dB (limit 0.25), worst 3rd octave in range -0.000 dB (limit 0.5)
+INFO  pink , Depth 24, Sharpness 100%, Selectivity   0%: overall -0.14 dB, worst 3rd octave -0.79 dB
+INFO  pink , Depth 24, Sharpness   0%, Selectivity   0%: overall -0.38 dB, worst 3rd octave -1.78 dB
+INFO  pink , Depth 24, Sharpness 100%, Selectivity  50%: overall +0.00 dB, worst 3rd octave +0.00 dB
+INFO  pink , Depth 24, Sharpness   0%, Selectivity  50%: overall -0.00 dB, worst 3rd octave -0.00 dB
+
+== Synthetic vowel: ordinary harmonics should be left alone, an added resonance should not. Not a real voice
+PASS  F0 110 Hz, Depth 12. Clean vowel: overall -0.01 dB, worst 3rd octave -0.57 dB (limit 2.0, 2600 Hz formant stands 11.2 dB tall). +15 dB at 3100 Hz: peak -5.8 dB (goal -5.0), below -0.00 dB, above +0.00 dB
+PASS  F0 165 Hz, Depth 12. Clean vowel: overall -0.02 dB, worst 3rd octave -0.91 dB (limit 2.0, 2600 Hz formant stands 11.5 dB tall). +15 dB at 3100 Hz: peak -5.8 dB (goal -5.0), below -0.01 dB, above +0.00 dB
+PASS  F0 220 Hz, Depth 12. Clean vowel: overall -0.03 dB, worst 3rd octave -1.29 dB (limit 2.9, 2600 Hz formant stands 11.6 dB tall). +15 dB at 3100 Hz: peak -6.5 dB (goal -5.0), below -0.07 dB, above +0.00 dB
+PASS  F0 330 Hz, Depth 12. Clean vowel: overall -0.02 dB, worst 3rd octave -1.80 dB (limit 2.6, 2600 Hz formant stands 10.3 dB tall). +15 dB at 3100 Hz: peak -2.5 dB (goal -2.5), below -0.00 dB, above +0.00 dB
+INFO  F0 440 Hz, Depth 12. Clean vowel: overall -0.21 dB, worst 3rd octave -0.90 dB (limit 2.1, 2600 Hz formant stands 8.4 dB tall). +15 dB at 3100 Hz: peak -6.6 dB (goal -2.5), below -0.21 dB, above +0.00 dB
+INFO  F0 660 Hz, Depth 12. Clean vowel: overall -0.00 dB, worst 3rd octave +0.00 dB (limit 3.5, 2600 Hz formant stands 13.8 dB tall). +15 dB at 3100 Hz: peak +0.0 dB (goal -2.5), below -0.00 dB, above +0.00 dB
+
+== Low Frequency and High Frequency limit the range
+PASS  2500 Hz tone, range 1000-12000 Hz: -12.00 dB (should be turned down)
+PASS  2500 Hz tone, Low Frequency 4000 Hz: +0.000 dB (should be untouched)
+PASS  2500 Hz tone, High Frequency 1500 Hz: +0.000 dB (should be untouched)
+PASS  Low above High: +0.000 dB (does nothing)
+
+== Selectivity: higher treats less
+INFO  +12 dB resonance on noise, Selectivity   0%: peak -10.01 dB
+INFO  +12 dB resonance on noise, Selectivity  25%: peak -9.69 dB
+INFO  +12 dB resonance on noise, Selectivity  50%: peak -4.78 dB
+INFO  +12 dB resonance on noise, Selectivity  75%: peak -0.87 dB
+INFO  +12 dB resonance on noise, Selectivity 100%: peak -0.00 dB
+PASS  Reduction shrinks steadily as Selectivity rises
+
+== Sharpness: higher makes a narrower notch
+INFO  Sharpness   0%: notch on a 2500 Hz tone is 1078 Hz wide at half its depth, 12.0 dB deep
+INFO  Sharpness  50%: notch on a 2500 Hz tone is 422 Hz wide at half its depth, 12.0 dB deep
+INFO  Sharpness 100%: notch on a 2500 Hz tone is 258 Hz wide at half its depth, 12.0 dB deep
+PASS  Notch gets narrower as Sharpness rises
+
+== Attack and Release set the timing
+INFO  Attack   5 ms: 90% reduction reached 37 ms after the tone starts; Release  50 ms: back to 10% 304 ms after it stops
+INFO  Attack 100 ms: 90% reduction reached 251 ms after the tone starts; Release 500 ms: back to 10% 1339 ms after it stops
+PASS  Longer times respond measurably slower
+
+== Mix and Output Gain
+PASS  Mix 50%, Depth 12: tone -4.07 dB (a 50/50 blend works out to -4.07 dB)
+PASS  Output Gain -12 dB: level -12.000 dB
+PASS  Output Gain +6 dB: level +6.000 dB
+
+== Depth 0 to 24 is measured reduction, not a percentage
+INFO  Depth  0.0: tone +0.00 dB
+INFO  Depth  3.0: tone -3.00 dB
+INFO  Depth  6.0: tone -6.00 dB
+INFO  Depth 12.0: tone -12.00 dB
+INFO  Depth 18.0: tone -18.00 dB
+INFO  Depth 24.0: tone -24.00 dB
+PASS  More Depth always means at least as much reduction
+
+== Delta plus the output adds back up to the input
+PASS  Stereo, Depth 12            : peak error -156.5 dBFS (limit -100); Delta level -37.6 dB RMS
+PASS  Stereo, Depth 24            : peak error -156.5 dBFS (limit -100); Delta level -37.6 dB RMS
+PASS  Mid/Side, Depth 12          : peak error -156.5 dBFS (limit -100); Delta level -37.6 dB RMS
+PASS  Stereo, Depth 12, Mix 50%   : peak error -150.5 dBFS (limit -100); Delta level -43.6 dB RMS
+PASS  Mid/Side, Depth 12, Gain +6 : peak error -144.5 dBFS (limit -100); Delta level -37.6 dB RMS
+PASS  Depth 0 with Delta on: output peak -141.0 dBFS (should be silent)
+
+== Stereo modes
+PASS  Stereo  : a mono source stays mono, L minus R peaks at -300.0 dBFS
+PASS  Mid/Side: a mono source stays mono, L minus R peaks at -300.0 dBFS
+PASS  Mid/Side, tone only in the sides: sides -12.0 dB, mid noise at the same frequency +0.00 dB
+PASS  Stereo, same input: both turn down together, sides -12.0 dB, mid -12.0 dB
+
+== Warble: the gain should hold still on a steady resonance
+PASS  At the peak on noise: mean reduction 11.8 dB, wobble 0.32 dB RMS (limit 1.5), biggest step per frame 0.68 dB
+PASS  Across frequency: mean step between neighbouring bins 0.295 dB (limit 0.5)
+
+== Noise on its own should not set off stray notches
+PASS  White noise, Depth 24: 0.00% of bins ever past 1 dB of reduction (limit 2%), largest seen 0.0 dB
+
+== Clicks: every control thrown instantly, repeatedly, on a tone being treated
+INFO  Baseline with nothing moving: -48.0 dBFS on this measure
+PASS  Depth 12 <-> 0           -47.2 dBFS (limit -46, about the size of a -60 dB step)
+PASS  Depth 12 <-> 24          -48.2 dBFS (limit -46, about the size of a -60 dB step)
+PASS  Sharpness 0 <-> 100      -48.0 dBFS (limit -46, about the size of a -60 dB step)
+PASS  Selectivity 0 <-> 100    -48.1 dBFS (limit -46, about the size of a -60 dB step)
+PASS  Attack 1 <-> 200         -48.0 dBFS (limit -46, about the size of a -60 dB step)
+PASS  Release 10 <-> 1000      -48.0 dBFS (limit -46, about the size of a -60 dB step)
+PASS  Low 1000 <-> 8000        -46.6 dBFS (limit -46, about the size of a -60 dB step)
+PASS  High 12000 <-> 500       -46.6 dBFS (limit -46, about the size of a -60 dB step)
+PASS  Mix 100 <-> 0            -46.6 dBFS (limit -46, about the size of a -60 dB step)
+PASS  Output Gain 0 <-> -12    -48.0 dBFS (limit -46, about the size of a -60 dB step)
+PASS  Delta off <-> on         -48.0 dBFS (limit -46, about the size of a -60 dB step)
+PASS  Stereo Mode              -48.0 dBFS (limit -46, about the size of a -60 dB step)
+PASS  Bypass off <-> on        -46.6 dBFS (limit -46, about the size of a -60 dB step)
+
+== Stability: harsh input and constant random automation
+PASS  silence           : no NaN or Inf, peak in 0.000, peak out 0.000
+PASS  DC at full scale  : no NaN or Inf, peak in 1.000, peak out 1.000
+PASS  full scale noise  : no NaN or Inf, peak in 2.426, peak out 2.426
+PASS  full scale square : no NaN or Inf, peak in 1.000, peak out 1.000
+PASS  impulse train     : no NaN or Inf, peak in 1.000, peak out 1.000
+PASS  full scale sweep  : no NaN or Inf, peak in 1.000, peak out 1.002
+PASS  very quiet noise  : no NaN or Inf, peak in 0.000, peak out 0.000
+PASS  Random automation on every parameter: no NaN or Inf, peak out 1.209
+PASS  NaN and Inf in the input: no NaN or Inf out, audio recovers (-22.3 dB RMS afterwards)
+PASS  Silence after sound: 0 denormal samples, output peak 0.0e+00
+PASS  60 s run: level change -1.651 dB early, -1.620 dB late
+
+== Real-time safety and CPU
+PASS  48 kHz: 0 allocations while processing
+PASS  48 kHz stereo with moving controls: 1.59% of one core (63x faster than real time, limit 5%)
+PASS  96 kHz: 0 allocations while processing
+PASS  96 kHz stereo with moving controls: 3.27% of one core (31x faster than real time, limit 5%)
+
+89 passed, 0 failed
+
+===== SpeechTest: real speech from macOS say, with resonant boosts at known frequencies
+
+== Real speech rendered by macOS say, 48 kHz, normalised to -18 dB RMS on the loud half
+PASS  Samantha  rendered, 22.7 s
+INFO  Samantha  level by band: 200-1k 47.0, 1k-3k 37.8, 3k-6k 31.4, 6k-10k 33.7, 10k-20k 12.8 dB
+PASS  Daniel    rendered, 23.8 s
+INFO  Daniel    level by band: 200-1k 49.2, 1k-3k 38.6, 3k-6k 35.0, 6k-10k 32.5, 10k-20k 17.9 dB
+PASS  Karen     rendered, 23.1 s
+INFO  Karen     level by band: 200-1k 47.8, 1k-3k 34.1, 3k-6k 35.0, 6k-10k 35.7, 10k-20k 16.5 dB
+PASS  Moira     rendered, 24.2 s
+INFO  Moira     level by band: 200-1k 48.8, 1k-3k 38.2, 3k-6k 33.1, 6k-10k 34.2, 10k-20k 13.0 dB
+
+== Clean voice, no boost, default settings (Depth 6): it should be left mostly alone
+PASS  Samantha  overall -0.06 dB (limit 1), worst 3rd octave 1-8.5 kHz -1.71 dB (limit 2.5), Delta 24.9 dB below the voice (limit 18), crest factor +0.06 dB (limit 1)
+INFO  Samantha  8.5-11 kHz, where this voice has its codec peak and band edge: -4.09 dB
+PASS  Daniel    overall -0.12 dB (limit 1), worst 3rd octave 1-8.5 kHz -2.27 dB (limit 2.5), Delta 22.2 dB below the voice (limit 18), crest factor +0.00 dB (limit 1)
+INFO  Daniel    8.5-11 kHz, where this voice has its codec peak and band edge: -5.45 dB
+PASS  Karen     overall -0.08 dB (limit 1), worst 3rd octave 1-8.5 kHz -1.21 dB (limit 2.5), Delta 23.3 dB below the voice (limit 18), crest factor +0.07 dB (limit 1)
+INFO  Karen     8.5-11 kHz, where this voice has its codec peak and band edge: -4.73 dB
+PASS  Moira     overall -0.09 dB (limit 1), worst 3rd octave 1-8.5 kHz -2.26 dB (limit 2.5), Delta 24.1 dB below the voice (limit 18), crest factor -0.04 dB (limit 1)
+INFO  Moira     8.5-11 kHz, where this voice has its codec peak and band edge: -1.83 dB
+
+== Clean voice, no boost, Depth 12
+PASS  Samantha  overall -0.07 dB (limit 1), worst 3rd octave 1-8.5 kHz -1.98 dB (limit 3.5), Delta 22.9 dB below the voice (limit 18), crest factor +0.07 dB (limit 1)
+INFO  Samantha  8.5-11 kHz, where this voice has its codec peak and band edge: -5.47 dB
+PASS  Daniel    overall -0.14 dB (limit 1), worst 3rd octave 1-8.5 kHz -2.40 dB (limit 3.5), Delta 20.1 dB below the voice (limit 18), crest factor +0.01 dB (limit 1)
+INFO  Daniel    8.5-11 kHz, where this voice has its codec peak and band edge: -9.40 dB
+PASS  Karen     overall -0.09 dB (limit 1), worst 3rd octave 1-8.5 kHz -1.24 dB (limit 3.5), Delta 21.0 dB below the voice (limit 18), crest factor +0.08 dB (limit 1)
+INFO  Karen     8.5-11 kHz, where this voice has its codec peak and band edge: -6.99 dB
+PASS  Moira     overall -0.10 dB (limit 1), worst 3rd octave 1-8.5 kHz -2.77 dB (limit 3.5), Delta 22.4 dB below the voice (limit 18), crest factor -0.04 dB (limit 1)
+INFO  Moira     8.5-11 kHz, where this voice has its codec peak and band edge: -2.04 dB
+
+== Boost added at a known frequency, Q 6, Depth 12. Numbers are mean of 4 voices unless marked
+PASS  + 9 dB at 1250 Hz, in band +7.1: removed 4.0 (no goal, 40% is 2.8), least voice 0.3; left +3.1 (limit 6), most +5.8 (limit 9), deepest +0.7 (limit -3); spread elsewhere +0.17 (limit 1.5); colour error 0.82 to 1.00 dB
+PASS  + 9 dB at 2000 Hz, in band +7.3: removed 3.2 (no goal, 40% is 2.9), least voice 1.7; left +4.1 (limit 6), most +5.3 (limit 9), deepest +3.1 (limit -3); spread elsewhere +0.29 (limit 1.5); colour error 0.79 to 0.86 dB
+PASS  + 9 dB at 3150 Hz, in band +7.3: removed 5.8 (no goal, 40% is 2.9), least voice 1.4; left +1.5 (limit 6), most +5.0 (limit 9), deepest -2.1 (limit -3); spread elsewhere +0.14 (limit 1.5); colour error 0.83 to 0.69 dB
+PASS  + 9 dB at 4500 Hz, in band +6.9: removed 2.4 (no goal, 40% is 2.8), least voice 0.5; left +4.5 (limit 6), most +6.4 (limit 9), deepest -0.1 (limit -3); spread elsewhere +0.25 (limit 1.5); colour error 0.72 to 0.81 dB
+PASS  + 9 dB at 6300 Hz, in band +6.7: removed 2.8 (no goal, 40% is 2.7), least voice 0.5; left +3.9 (limit 6), most +6.0 (limit 9), deepest +2.7 (limit -3); spread elsewhere +0.02 (limit 1.5); colour error 0.68 to 0.71 dB
+PASS  +12 dB at 1250 Hz, in band +9.5: removed 5.2 (goal 3.8), least voice 0.9; left +4.3 (limit 6), most +7.4 (limit 9), deepest +1.9 (limit -3); spread elsewhere +0.29 (limit 1.5); colour error 1.14 to 1.19 dB
+PASS  +12 dB at 2000 Hz, in band +9.7: removed 4.8 (goal 3.9), least voice 2.7; left +4.9 (limit 6), most +6.6 (limit 9), deepest +3.8 (limit -3); spread elsewhere +0.43 (limit 1.5); colour error 1.10 to 0.99 dB
+PASS  +12 dB at 3150 Hz, in band +9.7: removed 7.6 (goal 3.9), least voice 1.9; left +2.1 (limit 6), most +6.7 (limit 9), deepest -1.0 (limit -3); spread elsewhere +0.20 (limit 1.5); colour error 1.14 to 0.77 dB
+PASS  +12 dB at 4500 Hz, in band +9.2: removed 3.8 (goal 3.7), least voice 1.6; left +5.4 (limit 6), most +7.6 (limit 9), deepest +1.1 (limit -3); spread elsewhere +0.37 (limit 1.5); colour error 1.03 to 0.91 dB
+PASS  +12 dB at 6300 Hz, in band +9.0: removed 5.2 (goal 3.6), least voice 1.6; left +3.8 (limit 6), most +7.2 (limit 9), deepest +2.1 (limit -3); spread elsewhere +0.03 (limit 1.5); colour error 0.95 to 0.69 dB
+PASS  +15 dB at 1250 Hz, in band +11.9: removed 6.5 (goal 4.8), least voice 1.8; left +5.5 (limit 6), most +8.6 (limit 9), deepest +3.4 (limit -3); spread elsewhere +0.60 (limit 1.5); colour error 1.49 to 1.38 dB
+PASS  +15 dB at 2000 Hz, in band +12.1: removed 6.4 (goal 4.9), least voice 4.0; left +5.8 (limit 6), most +7.7 (limit 9), deepest +4.7 (limit -3); spread elsewhere +0.55 (limit 1.5); colour error 1.44 to 1.19 dB
+PASS  +15 dB at 3150 Hz, in band +12.1: removed 8.8 (goal 4.9), least voice 2.9; left +3.3 (limit 6), most +7.9 (limit 9), deepest +0.9 (limit -3); spread elsewhere +0.24 (limit 1.5); colour error 1.49 to 0.93 dB
+PASS  +15 dB at 4500 Hz, in band +11.6: removed 6.0 (goal 4.6), least voice 4.3; left +5.6 (limit 6), most +7.4 (limit 9), deepest +2.5 (limit -3); spread elsewhere +0.54 (limit 1.5); colour error 1.39 to 1.00 dB
+PASS  +15 dB at 6300 Hz, in band +11.3: removed 7.6 (goal 4.5), least voice 2.8; left +3.6 (limit 6), most +8.3 (limit 9), deepest +1.8 (limit -3); spread elsewhere +0.04 (limit 1.5); colour error 1.24 to 0.74 dB
+
+== Harsh Lead Vocal settings: Depth 12, Selectivity 50, Attack 10, Release 100, 1.2 to 10 kHz, Band 2 at 3.2 kHz +2 dB, 1.5 oct
+PASS  +12 dB at 2000 Hz, in band +9.7: removed 6.2 (goal 3.9), left +3.5 (limit 6), spread elsewhere +0.87 (limit 1.5), colour error 1.10 to 1.04 dB
+PASS  +12 dB at 3150 Hz, in band +9.7: removed 9.1 (goal 3.9), left +0.6 (limit 6), spread elsewhere +0.28 (limit 1.5), colour error 1.14 to 0.76 dB
+PASS  +12 dB at 4500 Hz, in band +9.2: removed 5.5 (goal 3.7), left +3.7 (limit 6), spread elsewhere +0.38 (limit 1.5), colour error 1.03 to 0.86 dB
+INFO  Samantha  clean, these settings: overall -0.09 dB, worst 3rd octave 1-8.5 kHz -2.73 dB
+INFO  Daniel    clean, these settings: overall -0.18 dB, worst 3rd octave 1-8.5 kHz -3.97 dB
+INFO  Karen     clean, these settings: overall -0.12 dB, worst 3rd octave 1-8.5 kHz -3.06 dB
+INFO  Moira     clean, these settings: overall -0.13 dB, worst 3rd octave 1-8.5 kHz -3.90 dB
+
+== Stack: all four voices together in stereo with a shared +12 dB resonance at 3150 Hz, Depth 12
+PASS  Stereo  : boost +9.9 dB in band, removed 8.6 dB (goal 3), spread elsewhere +0.06 dB (limit 1.5), same stack with no boost moves -0.61 dB overall
+PASS  Mid/Side: boost +9.9 dB in band, removed 7.3 dB (goal 3), spread elsewhere +0.08 dB (limit 1.5), same stack with no boost moves -0.48 dB overall
+
+== Hard mode on speech, Depth 12, Hard Threshold -36: level decides, so quiet speech is left alone
+PASS  Samantha  +12 at 3150 Hz: removed 6.4 dB (goal 3). Clean voice overall -0.22 dB, 20 dB quieter +0.00 dB
+PASS  Daniel    +12 at 3150 Hz: removed 9.7 dB (goal 3). Clean voice overall -0.30 dB, 20 dB quieter +0.00 dB
+PASS  Karen     +12 at 3150 Hz: removed 9.0 dB (goal 3). Clean voice overall -0.22 dB, 20 dB quieter +0.00 dB
+PASS  Moira     +12 at 3150 Hz: removed 6.2 dB (goal 3). Clean voice overall -0.25 dB, 20 dB quieter +0.00 dB
+
+== Gain movement on real speech, with +12 dB at 3150 Hz
+PASS  Samantha  mean gain change per 5.3 ms frame where active: 0.159 dB (limit 0.5)
+PASS  Daniel    mean gain change per 5.3 ms frame where active: 0.158 dB (limit 0.5)
+PASS  Karen     mean gain change per 5.3 ms frame where active: 0.166 dB (limit 0.5)
+PASS  Moira     mean gain change per 5.3 ms frame where active: 0.140 dB (limit 0.5)
+
+40 passed, 0 failed
+
+===== HostCheck in this repo: the installed AU through AudioToolbox, measured
+PASS  reported latency = 2048.000 samples
+PASS  parameters found by name = 33.000 
+PASS  tone over noise, Depth 6 through the real AU = -6.000 dB
+PASS  Max Reduction reading through the AU, just after the signal ends = 6.000 dB
+PASS  tone over noise, Depth 12 through the real AU = -12.000 dB
+PASS  Max Reduction reading through the AU, just after the signal ends = 12.000 dB
+PASS  tone over noise, Depth 24 through the real AU = -24.000 dB
+PASS  Max Reduction reading through the AU, just after the signal ends = 24.000 dB
+PASS  Delta plays what is removed: tone at = -2.513 dB
+PASS  kAudioUnitProperty_BypassEffect accepted = 0.000 
+PASS  bypassed: audio identical after the same 2048 sample delay, largest difference = 0.000 
+PASS  latency unchanged by Bypass = 2048.000 samples
+PASS  Side Chain on: main carved by a tone in the key, Depth 12 = -12.001 dB
+RESULT PASS  0 failures
+
+===== Shared HostCheck: aufx SmRs Luke
+Name: Luke Garito: Smooth Resonance
+Latency: 2048 samples at 48 kHz (42.67 ms)
+Parameters (33):
+  Mix                              0.00 to       1.00 default       1.00 
+  Stereo Link                      0.00 to       1.00 default       1.00 
+  Mode                             0.00 to       1.00 default       0.00 
+  Delta                            0.00 to       1.00 default       0.00 
+  Depth                            0.00 to       1.00 default       0.25 
+  Band 1 Frequency                 0.00 to       1.00 default       0.37 
+  Band 1 Sensitivity               0.00 to       1.00 default       0.50 
+  Band 2 Frequency                 0.00 to       1.00 default       0.65 
+  Band 2 Sensitivity               0.00 to       1.00 default       0.50 
+  Band 3 Frequency                 0.00 to       1.00 default       0.79 
+  Band 3 Sensitivity               0.00 to       1.00 default       0.50 
+  Attack Tilt                      0.00 to       1.00 default       0.50 
+  Release Tilt                     0.00 to       1.00 default       0.50 
+  Selectivity                      0.00 to       1.00 default       0.50 
+  Side Chain                       0.00 to       1.00 default       0.00 
+  Max Reduction Frequency          0.00 to       1.00 default       0.00 (read only)
+  Low Frequency                    0.00 to       1.00 default       0.50 
+  High Frequency                   0.00 to       1.00 default       0.89 
+  Sharpness                        0.00 to       1.00 default       0.50 
+  Sharpness Tilt                   0.00 to       1.00 default       0.50 
+  Max Reduction                    0.00 to       1.00 default       1.00 (read only)
+  Hard Threshold                   0.00 to       1.00 default       0.55 
+  Stereo Mode                      0.00 to       1.00 default       0.00 
+  Attack                           0.00 to       1.00 default       0.46 
+  Bypass                           0.00 to       1.00 default       0.00 
+  Output Gain                      0.00 to       1.00 default       0.50 
+  Release                          0.00 to       1.00 default       0.50 
+  Wet Trim                         0.00 to       1.00 default       0.50 
+  Band 1 Width                     0.00 to       1.00 default       0.50 
+  Band 2 Width                     0.00 to       1.00 default       0.50 
+  Band 3 Width                     0.00 to       1.00 default       0.50 
+  Stereo Focus                     0.00 to       1.00 default       0.50 
+  Side Chain Listen                0.00 to       1.00 default       0.00 
+Factory presets (8):
+  0 Gentle Vocal Polish
+  1 Harsh Lead Vocal
+  2 Vocal Stack Smoother
+  3 Wide Stack Mid Side
+  4 Sibilance Soother
+  5 Boxy Low Mids
+  6 Hard Whistle Catcher
+  7 Side Chain Carve
+Rendered 3 s: output -15.1 dBFS RMS, peak 0.250, non-finite samples 0
+Bypass property: accepted
+shared HostCheck exit code 0
+
+===== auval -v aufx SmRs Luke, last lines
+* * PASS
+--------------------------------------------------
+AU VALIDATION SUCCEEDED.
+--------------------------------------------------

@@ -162,7 +162,6 @@ private:
     std::vector<float> inputRing[maxChannels], outputRing[maxChannels], spectrum[maxChannels];
     std::vector<float> keyRing[maxChannels], keySpectrum[maxChannels];
     int keyChannelsNow = 0;
-    bool keyConnected = false;
 
     Slot slots[maxChannels];
 

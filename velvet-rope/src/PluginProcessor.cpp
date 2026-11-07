@@ -21,9 +21,10 @@ namespace
                                                                                                  .withStringFromValueFunction (format));
     }
 
-    juce::NormalisableRange<float> skewed (float low, float high, float centre)
+    // The small step also makes a value read back exactly as it was set, which AU hosts and auval check.
+    juce::NormalisableRange<float> skewed (float low, float high, float centre, float step)
     {
-        juce::NormalisableRange<float> range (low, high);
+        juce::NormalisableRange<float> range (low, high, step);
         range.setSkewForCentre (centre);
         return range;
     }
@@ -36,10 +37,10 @@ namespace
         layout.add (makeFloat ("depth", "Depth", { 0.0f, 24.0f }, defaults.depthDb, "dB", oneDecimal));
         layout.add (makeFloat ("sharpness", "Sharpness", { 0.0f, 100.0f }, defaults.sharpness * 100.0f, "%", wholeNumber));
         layout.add (makeFloat ("selectivity", "Selectivity", { 0.0f, 100.0f }, defaults.selectivity * 100.0f, "%", wholeNumber));
-        layout.add (makeFloat ("attack", "Attack", skewed (1.0f, 200.0f, 20.0f), defaults.attackMs, "ms", oneDecimal));
-        layout.add (makeFloat ("release", "Release", skewed (10.0f, 1000.0f, 120.0f), defaults.releaseMs, "ms", wholeNumber));
-        layout.add (makeFloat ("lowFreq", "Low Frequency", skewed (20.0f, 20000.0f, 1000.0f), defaults.lowHz, "Hz", wholeNumber));
-        layout.add (makeFloat ("highFreq", "High Frequency", skewed (20.0f, 20000.0f, 1000.0f), defaults.highHz, "Hz", wholeNumber));
+        layout.add (makeFloat ("attack", "Attack", skewed (1.0f, 200.0f, 20.0f, 0.01f), defaults.attackMs, "ms", oneDecimal));
+        layout.add (makeFloat ("release", "Release", skewed (10.0f, 1000.0f, 120.0f, 0.1f), defaults.releaseMs, "ms", wholeNumber));
+        layout.add (makeFloat ("lowFreq", "Low Frequency", skewed (20.0f, 20000.0f, 1000.0f, 0.1f), defaults.lowHz, "Hz", wholeNumber));
+        layout.add (makeFloat ("highFreq", "High Frequency", skewed (20.0f, 20000.0f, 1000.0f, 0.1f), defaults.highHz, "Hz", wholeNumber));
         layout.add (makeFloat ("mix", "Mix", { 0.0f, 100.0f }, defaults.mix * 100.0f, "%", wholeNumber));
         layout.add (makeFloat ("outputGain", "Output Gain", { -24.0f, 24.0f }, defaults.outputDb, "dB", oneDecimal));
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "delta", 1 }, "Delta", false));
@@ -55,9 +56,9 @@ namespace
         for (int b = 0; b < smoothres::Params::numBands; ++b)
         {
             const auto number = juce::String (b + 1);
-            layout.add (makeFloat ("band" + number + "Freq", "Band " + number + " Frequency", skewed (20.0f, 20000.0f, 1000.0f), defaults.bands[b].hz, "Hz", wholeNumber));
+            layout.add (makeFloat ("band" + number + "Freq", "Band " + number + " Frequency", skewed (20.0f, 20000.0f, 1000.0f, 0.1f), defaults.bands[b].hz, "Hz", wholeNumber));
             layout.add (makeFloat ("band" + number + "Sens", "Band " + number + " Sensitivity", { -12.0f, 12.0f }, defaults.bands[b].sensitivityDb, "dB", oneDecimal));
-            layout.add (makeFloat ("band" + number + "Width", "Band " + number + " Width", skewed (0.1f, 4.0f, 1.0f), defaults.bands[b].widthOctaves, "oct", twoDecimals));
+            layout.add (makeFloat ("band" + number + "Width", "Band " + number + " Width", skewed (0.1f, 4.0f, 1.0f, 0.01f), defaults.bands[b].widthOctaves, "oct", twoDecimals));
         }
 
         layout.add (makeFloat ("sharpnessTilt", "Sharpness Tilt", { -100.0f, 100.0f }, 0.0f, "%", wholeNumber));
@@ -87,7 +88,7 @@ namespace
     constexpr Preset presets[] = {
         //                         Depth Sharp  Sel  Atk  Rel    Low    High   Mix  Mode  Hard  M/S  SC   bands
         { "Gentle Vocal Polish",    6.0f, 50.0f, 50.0f, 15.0f, 120.0f, 1000.0f, 12000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, flat2, flat3 } },
-        { "Harsh Lead Vocal",      12.0f, 50.0f, 45.0f, 10.0f, 100.0f, 1200.0f, 10000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, { 3200.0f, 4.0f, 1.5f }, flat3 } },
+        { "Harsh Lead Vocal",      12.0f, 50.0f, 50.0f, 10.0f, 100.0f, 1200.0f, 10000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, { 3200.0f, 2.0f, 1.5f }, flat3 } },
         { "Vocal Stack Smoother",   9.0f, 35.0f, 40.0f, 25.0f, 200.0f,  800.0f, 14000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, flat2, flat3 } },
         { "Wide Stack Mid Side",    8.0f, 40.0f, 45.0f, 20.0f, 180.0f,  800.0f, 14000.0f, 100.0f, 0, -36.0f, 1, 0, { flat1, flat2, flat3 } },
         { "Sibilance Soother",     10.0f, 30.0f, 35.0f,  5.0f,  70.0f, 4500.0f, 14000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, flat2, { 7000.0f, 3.0f, 1.0f } } },

@@ -262,6 +262,34 @@ int main()
                    gain, f, boost, removed, enoughBoost ? "goal " : "no goal, 40% is ", 0.4 * boost, leastRemoved, left, mostLeft, deepest, worstSpread, mean.colourBefore / c, mean.colourAfter / c);
         }
 
+    // The settings the first preset for a harsh vocal uses, Harsh Lead Vocal. Limits as for the boost table above.
+    section ("Harsh Lead Vocal settings: Depth 12, Selectivity 50, Attack 10, Release 100, 1.2 to 10 kHz, Band 2 at 3.2 kHz +2 dB, 1.5 oct");
+    {
+        Params lead; lead.depthDb = 12.0f; lead.attackMs = 10.0f; lead.releaseMs = 100.0f; lead.lowHz = 1200.0f; lead.highHz = 10000.0f;
+        lead.bands[1] = { 3200.0f, 2.0f, 1.5f };
+        for (double f : { 2000.0, 3150.0, 4500.0 })
+        {
+            Numbers mean;
+            double worstSpread = 0.0;
+            for (const auto& v : voices)
+            {
+                const auto n = measureBoost (speech[v], f, 6.0, 12.0, lead);
+                mean.boost += n.boost; mean.removed += n.removed; mean.residual += n.residual; mean.colourBefore += n.colourBefore; mean.colourAfter += n.colourAfter;
+                if (std::abs (n.spread) > std::abs (worstSpread)) worstSpread = n.spread;
+            }
+            const double c = (double) voices.size();
+            check (mean.removed / c >= 0.4 * mean.boost / c && mean.residual / c <= 6.0 && std::abs (worstSpread) <= 1.5,
+                   "+12 dB at %4.0f Hz, in band %+.1f: removed %.1f (goal %.1f), left %+.1f (limit 6), spread elsewhere %+.2f (limit 1.5), colour error %.2f to %.2f dB",
+                   f, mean.boost / c, mean.removed / c, 0.4 * mean.boost / c, mean.residual / c, worstSpread, mean.colourBefore / c, mean.colourAfter / c);
+        }
+        for (const auto& v : voices)
+        {
+            const auto out = render (mono (speech[v]), lead)[0];
+            const auto before = spectrumOf (speech[v], kRate, 0.2), after = spectrumOf (out, kRate, 0.2);
+            info ("%-9s clean, these settings: overall %+.2f dB, worst 3rd octave 1-8.5 kHz %+.2f dB", v.c_str(), rmsDb (out, 9600) - rmsDb (speech[v], 9600), worstThirdOctave (before, after, 1000, 8500));
+        }
+    }
+
     section ("Stack: all four voices together in stereo with a shared +12 dB resonance at 3150 Hz, Depth 12");
     {
         const size_t n = std::min ({ speech["Samantha"].size(), speech["Daniel"].size(), speech["Karen"].size(), speech["Moira"].size() });

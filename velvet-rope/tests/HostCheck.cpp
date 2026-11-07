@@ -121,6 +121,7 @@ struct Unit
         return true;
     }
 
+    // JUCE exposes every parameter to the host as 0 to 1, so these values are normalised.
     void set (const std::string& name, float value) const
     {
         if (ids.count (name) == 0) { std::printf ("FAIL  no parameter called %s\n", name.c_str()); ++failures; return; }
@@ -224,15 +225,15 @@ int main()
 
     for (float depth : { 6.0f, 12.0f, 24.0f })
     {
-        unit.set ("Depth", depth);
+        unit.set ("Depth", depth / 24.0f);
         const auto out = unit.render();
         const double change = level (out) - level (input);
         check (std::abs (change + depth) < 0.5, "tone over noise, Depth " + std::to_string ((int) depth) + " through the real AU", change, "dB");
+        const double reading = (1.0 - unit.get ("Max Reduction")) * 24.0;
+        check (reading > depth * 0.5 && reading <= depth + 0.1, "Max Reduction reading through the AU, just after the signal ends", reading, "dB");
     }
 
-    check (std::abs (unit.get ("Max Reduction Frequency") - 2500.0f) < 300.0f || unit.get ("Max Reduction") > 0.0f, "Max Reduction reading is live", unit.get ("Max Reduction"), "");
-
-    unit.set ("Depth", 12.0f);
+    unit.set ("Depth", 0.5f);
     unit.set ("Delta", 1.0f);
     {
         const auto out = unit.render();
@@ -273,8 +274,7 @@ int main()
 
     keyed.source.main = toneOverNoise (4.0, 3000.0, 0.01, 0.0001, 2);
     keyed.source.key  = toneOverNoise (4.0, 3000.0, 0.25, 0.001, 3);
-    keyed.set ("Depth", 12.0f);
-    keyed.set ("Selectivity", 50.0f);
+    keyed.set ("Depth", 0.5f);
     const auto mainLevel = [&] (const std::vector<float>& x) { return toneDb (x, 96000, 180000, 3000.0); };
 
     keyed.set ("Side Chain", 1.0f);

@@ -191,6 +191,58 @@ static void testLatencyAndLayouts()
     }
 }
 
+// ---- sample rates ----
+static void testRates()
+{
+    for (double rate : { 44100.0, 88200.0, 96000.0 })
+    {
+        const auto tag = std::to_string ((int) rate) + " Hz: ";
+        const auto x = mixOf ({ toneVec (4.0, 2500.0, -12.0, rate), noiseVec (4.0, -50.0, 95, rate) });
+        const auto change = [&] (float low, float high, float focusHz = 0.0f)
+        {
+            Proc p;
+            prepare (p, 1, rate, 256);
+            setParam (p, "depth", 12.0f);
+            setParam (p, "lowFreq", low);
+            setParam (p, "highFreq", high);
+            if (focusHz > 0.0f)
+            {
+                setParam (p, "band2Freq", focusHz);
+                setParam (p, "band2Sens", -12.0f);
+                setParam (p, "band2Width", 1.0f);
+            }
+            const auto out = run (p, x, x);
+            return levelAt (out[0], 2500.0, 2.0, rate) - levelAt (x, 2500.0, 2.0, rate);
+        };
+        check (std::abs (change (1000.0f, 12000.0f) + 12.0) < 0.5, tag + "tone in range, Depth 12 (limit 0.5)", change (1000.0f, 12000.0f), "dB");
+        check (std::abs (change (4000.0f, 12000.0f)) < 0.1, tag + "Low Frequency 4 kHz leaves a 2.5 kHz tone alone (limit 0.1)", change (4000.0f, 12000.0f), "dB");
+        check (std::abs (change (1000.0f, 12000.0f, 2500.0f)) < 0.2, tag + "Band Sensitivity -12 centred on the tone leaves it alone (limit 0.2)", change (1000.0f, 12000.0f, 2500.0f), "dB");
+
+        // Attack in milliseconds does not depend on the rate.
+        Proc p;
+        prepare (p, 1, rate, 64);
+        setParam (p, "depth", 12.0f);
+        setParam (p, "attack", 60.0f);
+        juce::AudioBuffer<float> buf (1, 64);
+        juce::MidiBuffer midi;
+        const auto tone = toneVec (3.0, 2500.0, -12.0, rate);
+        const auto bedNoise = noiseVec (3.0, -60.0, 96, rate);
+        double rise = -1.0;
+        for (size_t pos = 0; pos + 64 <= tone.size(); pos += 64)
+        {
+            for (int i = 0; i < 64; ++i)
+            {
+                const auto at = pos + (size_t) i;
+                buf.setSample (0, i, bedNoise[at] + ((double) at >= rate ? tone[at] : 0.0f));
+            }
+            p.processBlock (buf, midi);
+            if (rise < 0.0 && (double) pos >= rate && p.maxReduction->getReading() >= 10.8f)
+                rise = ((double) pos - rate) / rate * 1000.0;
+        }
+        check (rise > 110.0 && rise < 190.0, tag + "Attack 60 ms: 90% reached (48 kHz measures about 145 ms)", rise, "ms");
+    }
+}
+
 // ---- Soft and Hard ----
 static void testModes()
 {
@@ -571,6 +623,25 @@ static void testSideChain()
         check (toDb (worst) < -100.0, "Side Chain Listen outputs the key, lined up with the main signal (limit -100 dBFS)", toDb (worst), "dBFS");
     }
 
+    // A mono main input with a key.
+    {
+        Proc p;
+        p.releaseResources();
+        auto l = p.getBusesLayout();
+        l.inputBuses.getReference (0) = juce::AudioChannelSet::mono();
+        l.outputBuses.getReference (0) = juce::AudioChannelSet::mono();
+        l.inputBuses.getReference (1) = juce::AudioChannelSet::stereo();
+        check (p.setBusesLayout (l), "mono main input with a stereo key accepted");
+        p.setRateAndBufferSizeDetails (48000.0, 256);
+        p.prepareToPlay (48000.0, 256);
+        setParam (p, "depth", 12.0f);
+        setParam (p, "sideChain", 1.0f);
+        const std::vector<std::vector<float>> keyNow (2, key[0]);
+        const auto out = run (p, bed, bed, &keyNow);
+        const double atTone = bandLevel (out[0], 2950.0, 3050.0) - bandLevel (bed, 2950.0, 3050.0);
+        check (atTone < -8.0, "mono main with a key: carved at the key's tone", atTone, "dB");
+    }
+
     // Hard mode through the key: carve by level.
     {
         Proc p;
@@ -763,6 +834,7 @@ int main()
 
     testParameters();
     testLatencyAndLayouts();
+    testRates();
     testModes();
     testStereoControls();
     testBands();

@@ -1,0 +1,207 @@
+PASS  parameter names are clear, unique, no em dash
+INFO  parameter count = 10.000 
+PASS  factory presets = 7.000 
+PASS  preset names are not empty, no em dash
+PASS  presets change the state
+PASS  state save and restore
+PASS  damaged state value 'nan' gives finite output
+PASS  damaged state value 'nan' leaves controls in range
+PASS  damaged state value 'inf' gives finite output
+PASS  damaged state value 'inf' leaves controls in range
+PASS  damaged state value '-inf' gives finite output
+PASS  damaged state value '-inf' leaves controls in range
+PASS  damaged state value '-1e30' gives finite output
+PASS  damaged state value '-1e30' leaves controls in range
+PASS  damaged state value '1e30' gives finite output
+PASS  damaged state value '1e30' leaves controls in range
+PASS  damaged state value '-1' gives finite output
+PASS  damaged state value '-1' leaves controls in range
+PASS  damaged state value 'garbage' gives finite output
+PASS  damaged state value 'garbage' leaves controls in range
+PASS  sweeps finished, mono
+PASS  sweeps finished, stereo
+PASS  no NaN after silence
+PASS  no denormals decaying into silence = 0.000 samples
+PASS  recovers after NaN, inf and huge input, peak in the last second = 0.290 
+INFO  click test baseline step = 0.004 
+PASS  no click when Rate jumps, biggest step = 0.005 
+PASS  no click when Tempo Sync jumps, biggest step = 0.004 
+PASS  no click when Sync Division jumps, biggest step = 0.004 
+PASS  no click when Depth jumps, biggest step = 0.004 
+PASS  no click when Feedback jumps, biggest step = 0.008 
+PASS  no click when Saturation jumps, biggest step = 0.004 
+PASS  no click when Tone jumps, biggest step = 0.004 
+PASS  no click when Spread jumps, biggest step = 0.004 
+PASS  no click when Mix jumps, biggest step = 0.004 
+PASS  no click when Bypass jumps, biggest step = 0.004 
+PASS  Mix 0 dry delay at 44100 Hz, reported 303, measured = 303.000 samples
+PASS  bypassed dry delay at 44100 Hz, reported 303, measured = 303.000 samples
+PASS  latency in time at 44100 Hz = 6.871 ms
+PASS  Mix 0 dry delay at 48000 Hz, reported 324, measured = 324.000 samples
+PASS  bypassed dry delay at 48000 Hz, reported 324, measured = 324.000 samples
+PASS  latency in time at 48000 Hz = 6.750 ms
+PASS  Mix 0 dry delay at 88200 Hz, reported 535, measured = 535.000 samples
+PASS  bypassed dry delay at 88200 Hz, reported 535, measured = 535.000 samples
+PASS  latency in time at 88200 Hz = 6.066 ms
+PASS  Mix 0 dry delay at 96000 Hz, reported 577, measured = 577.000 samples
+PASS  bypassed dry delay at 96000 Hz, reported 577, measured = 577.000 samples
+PASS  latency in time at 96000 Hz = 6.010 ms
+PASS  latency follows a second prepare = 324.000 samples
+PASS  wet after dry, latest = 2.999 ms
+PASS  wet before dry, earliest (negative is through zero) = -3.001 ms
+PASS  rising zero crossings of the wet to dry delay = 2.000 
+PASS  inverted wet cancels dry at the crossing = -41.757 dB
+PASS  away from the crossing the signal returns = -1.927 dB
+INFO  frames measured, wet after dry = 488.000 
+PASS  first notch against measured delay, median error, wet after dry = 0.706 %
+PASS  first notch against measured delay, worst error, wet after dry = 5.700 %
+INFO  frames measured, wet before dry = 481.000 
+PASS  first notch against measured delay, median error, wet before dry = 0.771 %
+PASS  first notch against measured delay, worst error, wet before dry = 6.855 %
+PASS  lowest first notch in the sweep = 95.170 Hz
+PASS  highest first notch in the sweep = 1734.072 Hz
+INFO  delay in the frame closest to the crossing = 0.003 ms
+PASS  flat at the crossing, worst deviation = 0.181 dB
+PASS  Rate 0.25 Hz measures = 0.250 Hz
+PASS  Rate 1.00 Hz measures = 1.000 Hz
+PASS  Rate 5.00 Hz measures = 4.998 Hz
+PASS  Rate 1 Hz at 96 kHz measures = 1.000 Hz
+PASS  Rate 1 Hz at 44.1 kHz measures = 1.000 Hz
+PASS  synced 1/4 at 100 BPM, expected 1.666 Hz, measures = 1.667 Hz
+PASS  synced 1/8 dotted at 140 BPM, expected 3.111 Hz, measures = 3.113 Hz
+PASS  synced 1 bar at 90 BPM, expected 0.375 Hz, measures = 0.375 Hz
+PASS  synced 1/4 triplet at 120 BPM, expected 3.000 Hz, measures = 2.998 Hz
+PASS  synced 1 bar with no playhead falls back to 120 BPM = 0.500 Hz
+PASS  synced 1/4 with a playhead that gives no tempo = 1.999 Hz
+PASS  sweep locks to the host bar position, rms error = 0.028 ms
+PASS  transport jump makes no click, biggest step = 0.004 
+PASS  same output with a playhead at 120 BPM or none, free = -240.000 dB
+PASS  same output with a playhead at 120 BPM or none, synced = -156.794 dB
+PASS  Depth 0.50 ms at 48000 Hz, sweep range = 1.000 ms
+PASS  Depth 1.00 ms at 48000 Hz, sweep range = 2.000 ms
+PASS  Depth 2.50 ms at 48000 Hz, sweep range = 4.999 ms
+PASS  Depth 5.00 ms at 48000 Hz, sweep range = 9.998 ms
+PASS  Depth 0.50 ms at 96000 Hz, sweep range = 1.000 ms
+PASS  Depth 1.00 ms at 96000 Hz, sweep range = 2.000 ms
+PASS  Depth 2.50 ms at 96000 Hz, sweep range = 4.999 ms
+PASS  Depth 5.00 ms at 96000 Hz, sweep range = 10.197 ms
+PASS  Depth 0.50 ms at 44100 Hz, sweep range = 0.999 ms
+PASS  Depth 1.00 ms at 44100 Hz, sweep range = 1.998 ms
+PASS  Depth 2.50 ms at 44100 Hz, sweep range = 4.995 ms
+PASS  Depth 5.00 ms at 44100 Hz, sweep range = 9.994 ms
+PASS  Depth 0 sits at zero delay = 0.000 ms
+PASS  Feedback + 30% lifts the comb peaks, Mix 100, wet after dry = 4.113 dB above median
+PASS  Feedback + 60% lifts the comb peaks, Mix 100, wet after dry = 9.811 dB above median
+PASS  Feedback + 90% lifts the comb peaks, Mix 100, wet after dry = 21.449 dB above median
+PASS  Feedback + 90% peak height, Mix 100, wet after dry = 21.449 dB
+PASS  Feedback + 90% peak positions against the loop length, worst error, wet after dry = 0.729 %
+PASS  Feedback + 30% lifts the comb peaks, Mix 50, wet after dry = 6.672 dB above median
+PASS  Feedback + 60% lifts the comb peaks, Mix 50, wet after dry = 10.956 dB above median
+PASS  Feedback + 90% lifts the comb peaks, Mix 50, wet after dry = 15.206 dB above median
+PASS  Feedback + 90% peak height, Mix 50, wet after dry = 15.206 dB
+PASS  Feedback - 30% lifts the comb peaks, Mix 100, wet after dry = 3.687 dB above median
+PASS  Feedback - 60% lifts the comb peaks, Mix 100, wet after dry = 9.328 dB above median
+PASS  Feedback - 90% lifts the comb peaks, Mix 100, wet after dry = 21.151 dB above median
+PASS  Feedback - 90% peak height, Mix 100, wet after dry = 21.151 dB
+PASS  Feedback - 90% peak positions against the loop length, worst error, wet after dry = 3.066 %
+PASS  Feedback - 30% lifts the comb peaks, Mix 50, wet after dry = 6.182 dB above median
+PASS  Feedback - 60% lifts the comb peaks, Mix 50, wet after dry = 10.386 dB above median
+PASS  Feedback - 90% lifts the comb peaks, Mix 50, wet after dry = 15.160 dB above median
+PASS  Feedback - 90% peak height, Mix 50, wet after dry = 15.160 dB
+PASS  Feedback + 30% lifts the comb peaks, Mix 100, wet before dry = 3.658 dB above median
+PASS  Feedback + 60% lifts the comb peaks, Mix 100, wet before dry = 9.272 dB above median
+PASS  Feedback + 90% lifts the comb peaks, Mix 100, wet before dry = 21.207 dB above median
+PASS  Feedback + 90% peak height, Mix 100, wet before dry = 21.207 dB
+PASS  Feedback + 90% peak positions against the loop length, worst error, wet before dry = 0.977 %
+PASS  Feedback + 30% lifts the comb peaks, Mix 50, wet before dry = 3.878 dB above median
+PASS  Feedback + 60% lifts the comb peaks, Mix 50, wet before dry = 6.204 dB above median
+PASS  Feedback + 90% lifts the comb peaks, Mix 50, wet before dry = 11.591 dB above median
+PASS  Feedback + 90% peak height, Mix 50, wet before dry = 11.591 dB
+PASS  Feedback - 30% lifts the comb peaks, Mix 100, wet before dry = 3.635 dB above median
+PASS  Feedback - 60% lifts the comb peaks, Mix 100, wet before dry = 9.153 dB above median
+PASS  Feedback - 90% lifts the comb peaks, Mix 100, wet before dry = 20.736 dB above median
+PASS  Feedback - 90% peak height, Mix 100, wet before dry = 20.736 dB
+PASS  Feedback - 90% peak positions against the loop length, worst error, wet before dry = 3.804 %
+PASS  Feedback - 30% lifts the comb peaks, Mix 50, wet before dry = 3.751 dB above median
+PASS  Feedback - 60% lifts the comb peaks, Mix 50, wet before dry = 6.042 dB above median
+PASS  Feedback - 90% lifts the comb peaks, Mix 50, wet before dry = 11.207 dB above median
+PASS  Feedback - 90% peak height, Mix 50, wet before dry = 11.207 dB
+PASS  bounded: Feedback 95, Saturation 0, Rate 0.10, noise, peak = 3.162 dBFS
+PASS  rings out: Feedback 95, Saturation 0, Rate 0.10, noise = -240.000 dBFS
+PASS  bounded: Feedback 95, Saturation 0, Rate 0.10, sine, peak = 3.368 dBFS
+PASS  rings out: Feedback 95, Saturation 0, Rate 0.10, sine = -240.000 dBFS
+PASS  bounded: Feedback 95, Saturation 0, Rate 10.0, noise, peak = 2.903 dBFS
+PASS  rings out: Feedback 95, Saturation 0, Rate 10.0, noise = -240.000 dBFS
+PASS  bounded: Feedback 95, Saturation 0, Rate 10.0, sine, peak = 1.491 dBFS
+PASS  rings out: Feedback 95, Saturation 0, Rate 10.0, sine = -240.000 dBFS
+PASS  bounded: Feedback 95, Saturation 100, Rate 0.10, noise, peak = -10.966 dBFS
+PASS  rings out: Feedback 95, Saturation 100, Rate 0.10, noise = -240.000 dBFS
+PASS  bounded: Feedback 95, Saturation 100, Rate 0.10, sine, peak = -14.251 dBFS
+PASS  rings out: Feedback 95, Saturation 100, Rate 0.10, sine = -240.000 dBFS
+PASS  bounded: Feedback 95, Saturation 100, Rate 10.0, noise, peak = -10.330 dBFS
+PASS  rings out: Feedback 95, Saturation 100, Rate 10.0, noise = -240.000 dBFS
+PASS  bounded: Feedback 95, Saturation 100, Rate 10.0, sine, peak = -14.251 dBFS
+PASS  rings out: Feedback 95, Saturation 100, Rate 10.0, sine = -240.000 dBFS
+PASS  bounded: Feedback -95, Saturation 0, Rate 0.10, noise, peak = 2.783 dBFS
+PASS  rings out: Feedback -95, Saturation 0, Rate 0.10, noise = -240.000 dBFS
+PASS  bounded: Feedback -95, Saturation 0, Rate 0.10, sine, peak = 3.369 dBFS
+PASS  rings out: Feedback -95, Saturation 0, Rate 0.10, sine = -240.000 dBFS
+PASS  bounded: Feedback -95, Saturation 0, Rate 10.0, noise, peak = 3.127 dBFS
+PASS  rings out: Feedback -95, Saturation 0, Rate 10.0, noise = -240.000 dBFS
+PASS  bounded: Feedback -95, Saturation 0, Rate 10.0, sine, peak = 2.394 dBFS
+PASS  rings out: Feedback -95, Saturation 0, Rate 10.0, sine = -240.000 dBFS
+PASS  bounded: Feedback -95, Saturation 100, Rate 0.10, noise, peak = -10.876 dBFS
+PASS  rings out: Feedback -95, Saturation 100, Rate 0.10, noise = -240.000 dBFS
+PASS  bounded: Feedback -95, Saturation 100, Rate 0.10, sine, peak = -14.251 dBFS
+PASS  rings out: Feedback -95, Saturation 100, Rate 0.10, sine = -240.000 dBFS
+PASS  bounded: Feedback -95, Saturation 100, Rate 10.0, noise, peak = -10.240 dBFS
+PASS  rings out: Feedback -95, Saturation 100, Rate 10.0, noise = -240.000 dBFS
+PASS  bounded: Feedback -95, Saturation 100, Rate 10.0, sine, peak = -14.250 dBFS
+PASS  rings out: Feedback -95, Saturation 100, Rate 10.0, sine = -240.000 dBFS
+PASS  THD at Saturation 0%, 1 kHz at -12 dBFS = 0.000 %
+PASS  THD at Saturation 25%, 1 kHz at -12 dBFS = 0.525 %
+PASS  THD at Saturation 50%, 1 kHz at -12 dBFS = 2.288 %
+PASS  THD at Saturation 75%, 1 kHz at -12 dBFS = 5.773 %
+PASS  THD at Saturation 100%, 1 kHz at -12 dBFS = 11.772 %
+PASS  THD at full Saturation is plainly audible = 11.772 %
+PASS  full Saturation keeps -18 dBFS level = 0.325 dB
+PASS  largest inharmonic product at full Saturation, 7.3 kHz = -77.843 dB
+PASS  Tone -12 dB at 12 kHz = -11.814 dB
+PASS  Tone -6 dB at 12 kHz = -5.925 dB
+PASS  Tone +12 dB at 12 kHz = 11.814 dB
+PASS  Tone -12 dB at 200 Hz = -0.000 dB
+PASS  Tone +12 dB at 200 Hz = 0.000 dB
+PASS  Tone 0 is flat at 12 kHz = -0.003 dB
+PASS  Spread 0 degrees, right against left sweep = 0.000 deg
+PASS  Spread 0 leaves left and right identical = -240.000 dB
+PASS  Spread 45 degrees, right against left sweep = 44.996 deg
+PASS  Spread 90 degrees, right against left sweep = 89.998 deg
+PASS  Spread 135 degrees, right against left sweep = 135.003 deg
+PASS  Spread 180 degrees, right against left sweep = 180.004 deg
+PASS  Mix 25% against a straight blend of dry and wet = -145.258 dB
+PASS  Mix 50% against a straight blend of dry and wet = -147.242 dB
+PASS  Mix 75% against a straight blend of dry and wet = -145.080 dB
+PASS  Mix 0 level at 100 Hz = -0.002 dB
+PASS  Mix 0 nulls against the delayed input at 100 Hz = -74.629 dB
+PASS  Mix 0 level at 1000 Hz = -0.000 dB
+PASS  Mix 0 nulls against the delayed input at 1000 Hz = -85.576 dB
+PASS  Mix 0 level at 10000 Hz = -0.002 dB
+PASS  Mix 0 nulls against the delayed input at 10000 Hz = -74.183 dB
+PASS  Mix 0 level at 18000 Hz = -0.002 dB
+PASS  Mix 0 nulls against the delayed input at 18000 Hz = -73.161 dB
+PASS  Bypass against Mix 0 = -240.000 dB
+PASS  host bypass call against Mix 0 = -240.000 dB
+PASS  default settings, level against input = -3.252 dB
+PASS  block size 64 against 1024 = -240.000 dB
+PASS  second prepare matches a fresh start = -240.000 dB
+PASS  host block longer than prepared = -240.000 dB
+PASS  mono layout gives one channel
+PASS  mono against the left of stereo = -240.000 dB
+PASS  preset 'Slow Zero Crossing', level against input = -3.584 dB
+PASS  preset 'Wide Vocal Sweep', level against input = -2.809 dB
+PASS  preset 'Takeoff Roar', level against input = -4.003 dB
+PASS  preset 'Hollow Inverted', level against input = -4.383 dB
+PASS  preset 'One Bar Swirl', level against input = -2.839 dB
+PASS  preset 'Dark Tape Haze', level against input = -4.138 dB
+PASS  preset 'Quarter Note Wobble', level against input = -2.961 dB
+RESULT PASS  0 failures

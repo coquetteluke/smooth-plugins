@@ -1,6 +1,6 @@
 PASS  parameter names are clear, unique, no em dash
-INFO  parameter count = 5.000 
-PASS  factory presets = 7.000 
+INFO  parameter count = 13.000 
+PASS  factory presets = 14.000 
 PASS  preset names are not empty, no em dash
 PASS  presets change the state
 PASS  state save and restore
@@ -29,6 +29,10 @@ PASS  no click when Attack jumps, biggest step = 0.004
 PASS  no click when Sustain jumps, biggest step = 0.004 
 PASS  no click when Mix jumps, biggest step = 0.004 
 PASS  no click when Bypass jumps, biggest step = 0.004 
+PASS  no click when Gain jumps, biggest step = 0.057 
+PASS  no click when Impact jumps, biggest step = 0.020 
+PASS  no click when Ceiling jumps, biggest step = 0.004 
+PASS  no click when Ceiling On jumps, biggest step = 0.004 
 PASS  Attack 9 dB, 1 kHz decaying burst: first 3 ms change = 8.973 dB
 PASS  Attack 9 dB, 1 kHz decaying burst: tail change = 0.000 dB
 PASS  Attack -9 dB, 1 kHz decaying burst: first 3 ms change = -8.973 dB
@@ -169,4 +173,110 @@ PASS  state with NaN in Attack: Attack back at default, the rest kept = 0.000 dB
 PASS  state with a huge Attack: clamped to the top of its range = 15.000 dB
 PASS  cut off or foreign state: controls unchanged = 7.000 dB
 PASS  NaN and infinity in the input: none in the output = 0.000 samples
+PASS  Gain -12 dB at neutral: level change = -12.000 dB
+PASS  Gain 6 dB at neutral: level change = 6.000 dB
+PASS  Gain 12 dB at neutral: level change = 12.000 dB
+PASS  Gain 24 dB at neutral: level change = 24.000 dB
+PASS  Attack +9 with Gain +12: first 3 ms, against no Gain = 0.000 dB
+PASS  Sustain +9 with Gain +12: tail, against no Gain = 0.000 dB
+PASS  Gain +18 into Impact 50 on a -30 dBFS tone: level rise = 11.571 dB
+PASS  Mix 0 with Gain +6: difference from the delayed input raised 6 dB = -142.966 dB
+PASS  Bypass with Gain, Impact and Ceiling on: difference from the delayed input = -211.947 dB
+PASS  Impact 25: 24 dB level gap shrinks by = 3.808 dB
+PASS  Impact 25: 24 dB level gap shrinks by (at least 2 dB more than the step before) = 3.808 dB
+PASS  Impact 50: 24 dB level gap shrinks by = 9.796 dB
+PASS  Impact 50: 24 dB level gap shrinks by (at least 2 dB more than the step before) = 5.988 dB
+PASS  Impact 75: 24 dB level gap shrinks by = 16.113 dB
+PASS  Impact 75: 24 dB level gap shrinks by (at least 2 dB more than the step before) = 6.317 dB
+PASS  Impact 100: 24 dB level gap shrinks by = 18.298 dB
+PASS  Impact 100: 24 dB level gap shrinks by (at least 2 dB more than the step before) = 2.185 dB
+PASS  Impact 25, -24 dBFS tone: level rise = 6.000 dB
+PASS  Impact 50, -24 dBFS tone: level rise = 12.000 dB
+PASS  Impact 100, -24 dBFS tone: level rise = 14.000 dB
+PASS  Impact 100, -40 dBFS tone: level rise = 24.000 dB
+PASS  Impact 100, -6 dBFS tone: level rise = -1.000 dB
+INFO  speech shaped signal: input level spread = 18.070 dB
+PASS  Impact 50, speech shaped signal: level spread shrinks by = 5.539 dB
+PASS  Impact 100, speech shaped signal: level spread shrinks by = 9.634 dB
+PASS  Impact 100, steady 65 Hz: everything other than level = -228.990 dB
+PASS  Impact 100, steady 100 Hz: everything other than level = -228.990 dB
+PASS  Impact 100, steady 1000 Hz: everything other than level = -228.990 dB
+PASS  Impact 100, jump from -30 to -6 dBFS: gain 25 ms later, against settled = 0.091 dB
+PASS  Impact 100: recovery after a 50 ms peak = 184.000 ms
+PASS  Impact 100: recovery after a 1.5 s hold = 948.000 ms
+PASS  Impact 100, noise at -80 dBFS: level lift = 0.000 dB
+PASS  Mix 0 with Impact 80: difference from the delayed input = -214.251 dB
+PASS  Mix 50 with Impact 80, against the average of Mix 0 and Mix 100 = -141.561 dB
+PASS  Impact 50: gap shrink, spread across sample rates = 0.000 dB
+PASS  Ceiling -1 dBFS, noise hits, all boosts on: peak over the ceiling = -0.798 dB
+PASS  Ceiling -1 dBFS, 300 Hz hits, all boosts on: peak over the ceiling = -2.475 dB
+PASS  Ceiling -6 dBFS, noise hits, all boosts on: peak over the ceiling = -0.798 dB
+PASS  Ceiling -6 dBFS, 300 Hz hits, all boosts on: peak over the ceiling = -2.475 dB
+PASS  Ceiling -12 dBFS, noise hits, all boosts on: peak over the ceiling = -0.798 dB
+PASS  Ceiling -12 dBFS, 300 Hz hits, all boosts on: peak over the ceiling = -2.475 dB
+PASS  Ceiling -24 dBFS, noise hits, all boosts on: peak over the ceiling = -0.798 dB
+PASS  Ceiling -24 dBFS, 300 Hz hits, all boosts on: peak over the ceiling = -2.475 dB
+PASS  Ceiling -6 dBFS at 44100 Hz: peak over the ceiling = -0.634 dB
+PASS  Ceiling -6 dBFS at 96000 Hz: peak over the ceiling = -0.511 dB
+PASS  Ceiling -12 dBFS, lone spike at an onset with Attack +15: peak over the ceiling = 0.000 dB
+PASS  Ceiling -6 dBFS on a -12 dBFS tone: difference from the delayed input = -224.990 dB
+PASS  Ceiling -12 dBFS, steady 60 Hz at -6 dBFS: peak against the ceiling = -0.000 dB
+PASS  Ceiling -12 dBFS, steady 60 Hz at -6 dBFS: everything other than level = -224.990 dB
+PASS  Ceiling -12 dBFS, steady 100 Hz at -6 dBFS: peak against the ceiling = -0.000 dB
+PASS  Ceiling -12 dBFS, steady 100 Hz at -6 dBFS: everything other than level = -224.990 dB
+PASS  Ceiling -12 dBFS, steady 1000 Hz at -6 dBFS: peak against the ceiling = -0.000 dB
+PASS  Ceiling -12 dBFS, steady 1000 Hz at -6 dBFS: everything other than level = -224.990 dB
+PASS  Ceiling -12 dBFS, hard onset, Attack 0 dB: largest gain move in one sample = 0.002 dB
+PASS  Ceiling -12 dBFS, hard onset, Attack 12 dB: largest gain move in one sample = 0.358 dB
+PASS  Ceiling -12 dBFS: gain back within 1 dB after a hit = 165.000 ms
+PASS  Ceiling On off, Ceiling -24 dBFS: difference from the delayed input = -223.988 dB
+PASS  Gain, Impact and Ceiling on: impulse delay equals the same latency at 44100 Hz = 88.000 samples
+PASS  Gain, Impact and Ceiling on: impulse delay equals the same latency at 48000 Hz = 96.000 samples
+PASS  Gain, Impact and Ceiling on: impulse delay equals the same latency at 96000 Hz = 192.000 samples
+PASS  stereo with Gain, Impact and Ceiling on: left to right balance, biggest move = 0.000 dB
+PASS  stereo with Gain, Impact and Ceiling on: silence on one side stays silent = 0.000 
+PASS  Gain, Impact and Ceiling on, block size 1 against 512: difference = -218.209 dB
+PASS  Gain, Impact and Ceiling on, block size 32 against 512: difference = -218.209 dB
+PASS  Gain, Impact and Ceiling on, block size 777 against 512: difference = -218.209 dB
+PASS  Gain, Impact and Ceiling on, block size 4096 against 512: difference = -218.209 dB
+PASS  mono against stereo with identical channels: difference = -218.209 dB
+PASS  Input Level with a -12 dBFS tone and Gain +6: reads before Gain = -12.000 dBFS
+PASS  Output Level with a -12 dBFS tone and Gain +6: reads after everything = -6.000 dBFS
+PASS  readings write no automation during audio = 0.000 changes
+PASS  Impact Reduction, Impact 50 with a -6 dBFS tone = -10.700 dB
+PASS  Ceiling Reduction with Ceiling On off = 0.000 dB
+PASS  Ceiling Reduction, Ceiling -12 dBFS with a -6 dBFS tone = -6.000 dB
+PASS  Output Level sits on the ceiling = -12.000 dBFS
+PASS  Input Level after 3 s of silence = -60.000 dBFS
+PASS  Input Level ignores a write from a host = -60.000 dBFS
+PASS  readings are not saved in state
+PASS  preset Neutral against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  preset Vocal Forward against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  preset Soft Consonants against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  preset Dry And Close against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  preset Longer Tails against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  preset Drum Snap against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  preset Parallel Weight against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  state saved by 0.1.0 with the Vocal Forward values: largest 10 ms level difference = 0.000 dB
+PASS  preset Even Lead: Ceiling On
+PASS  preset Even Lead: peak over its ceiling on hot material = -3.762 dB
+PASS  preset Even Lead: level change on a -30 dBFS tone = 9.600 dB
+PASS  preset Rap Upfront: Ceiling On
+PASS  preset Rap Upfront: peak over its ceiling on hot material = -3.864 dB
+PASS  preset Rap Upfront: level change on a -30 dBFS tone = 13.199 dB
+PASS  preset Quiet Take Lift: Ceiling On
+PASS  preset Quiet Take Lift: peak over its ceiling on hot material = -0.066 dB
+PASS  preset Quiet Take Lift: level change on a -30 dBFS tone = 20.281 dB
+PASS  preset Spoken Word: Ceiling On
+PASS  preset Spoken Word: peak over its ceiling on hot material = -1.956 dB
+PASS  preset Spoken Word: level change on a -30 dBFS tone = 10.800 dB
+PASS  preset Full Level Hook: Ceiling On
+PASS  preset Full Level Hook: peak over its ceiling on hot material = -4.406 dB
+PASS  preset Full Level Hook: level change on a -30 dBFS tone = 16.799 dB
+PASS  preset Parallel Impact: Ceiling On
+PASS  preset Parallel Impact: peak over its ceiling on hot material = -6.357 dB
+PASS  preset Parallel Impact: level change on a -30 dBFS tone = 14.034 dB
+PASS  preset Ceiling Only: Ceiling On
+PASS  preset Ceiling Only: peak over its ceiling on hot material = -7.063 dB
+PASS  preset Ceiling Only: level change on a -30 dBFS tone = 0.000 dB
 RESULT PASS  0 failures

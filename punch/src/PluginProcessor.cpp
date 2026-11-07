@@ -3,7 +3,8 @@
 
 namespace
 {
-    struct Preset { const char* name; float punch; float attack; float sustain; float mix; };
+    struct Preset { const char* name; float punch; float attack; float sustain; float mix; float gain = 0.0f; float impact = 0.0f; float ceiling = -1.0f; bool ceilingOn = false; };
+    // Order matters: a host may have saved a preset by its number. Add new ones at the end.
     constexpr Preset presets[] = {
         { "Neutral",          0.0f,   0.0f,  0.0f, 100.0f },
         { "Vocal Forward",   30.0f,   2.5f,  0.0f, 100.0f },
@@ -12,9 +13,20 @@ namespace
         { "Longer Tails",    15.0f,   0.0f,  6.0f, 100.0f },
         { "Drum Snap",       25.0f,   8.0f, -3.0f, 100.0f },
         { "Parallel Weight", 85.0f,   0.0f,  3.0f,  40.0f },
+        { "Even Lead",        0.0f,   1.5f,  0.0f, 100.0f,  0.0f, 40.0f, -1.0f, true },
+        { "Rap Upfront",     20.0f,   3.0f, -2.0f, 100.0f,  0.0f, 55.0f, -1.0f, true },
+        { "Quiet Take Lift",  0.0f,   0.0f,  0.0f, 100.0f, 12.0f, 35.0f, -3.0f, true },
+        { "Spoken Word",      0.0f,   0.0f, -3.0f, 100.0f,  0.0f, 45.0f, -3.0f, true },
+        { "Full Level Hook", 15.0f,   2.0f,  0.0f, 100.0f,  0.0f, 70.0f, -0.5f, true },
+        { "Parallel Impact",  0.0f,   0.0f,  0.0f,  50.0f,  0.0f, 90.0f, -1.0f, true },
+        { "Ceiling Only",     0.0f,   0.0f,  0.0f, 100.0f,  0.0f,  0.0f, -1.0f, true },
     };
 
     constexpr float smoothSeconds = 0.02f;
+    constexpr float meterFallSeconds = 0.3f;
+    constexpr float outputSafety = 16.0f; // +24 dBFS. Only an absurd pile of boosts gets here, and nothing past it is ever useful.
+
+    float linearToDb (float x) { return 8.685889638f * std::log (juce::jmax (x, 1.0e-6f)); }
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout()
@@ -31,6 +43,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "mix", 1 }, "Mix", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f,
                                                        AudioParameterFloatAttributes().withLabel ("%")));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "bypass", 1 }, "Bypass", false));
+    // Added in 0.2.0. All of them at default leave the sound exactly as 0.1.0 had it.
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "gain", 1 }, "Gain", NormalisableRange<float> (-12.0f, 24.0f, 0.1f), 0.0f,
+                                                       AudioParameterFloatAttributes().withLabel ("dB")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "impact", 1 }, "Impact", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f,
+                                                       AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "ceiling", 1 }, "Ceiling", NormalisableRange<float> (-24.0f, 0.0f, 0.1f), -1.0f,
+                                                       AudioParameterFloatAttributes().withLabel ("dBFS")));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "ceilingOn", 1 }, "Ceiling On", false));
     return layout;
 }
 
@@ -43,7 +63,21 @@ PluginProcessor::PluginProcessor()
     attack = apvts.getRawParameterValue ("attack");
     sustain = apvts.getRawParameterValue ("sustain");
     mix = apvts.getRawParameterValue ("mix");
+    gain = apvts.getRawParameterValue ("gain");
+    impact = apvts.getRawParameterValue ("impact");
+    ceiling = apvts.getRawParameterValue ("ceiling");
+    ceilingOn = apvts.getRawParameterValue ("ceilingOn");
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
+
+    using Category = juce::AudioProcessorParameter::Category;
+    inputLevel = new ReadingParameter ("inputLevel", "Input Level", -60.0f, 24.0f, -60.0f, Category::inputMeter);
+    outputLevel = new ReadingParameter ("outputLevel", "Output Level", -60.0f, 24.0f, -60.0f, Category::outputMeter);
+    impactReduction = new ReadingParameter ("impactReduction", "Impact Reduction", -60.0f, 0.0f, 0.0f, Category::compressorLimiterGainReductionMeter);
+    ceilingReduction = new ReadingParameter ("ceilingReduction", "Ceiling Reduction", -60.0f, 0.0f, 0.0f, Category::compressorLimiterGainReductionMeter);
+    addParameter (inputLevel);
+    addParameter (outputLevel);
+    addParameter (impactReduction);
+    addParameter (ceilingReduction);
 }
 
 bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -58,12 +92,18 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     for (auto& d : delay)
         d.assign ((size_t) delaySamples, 0.0f);
     engine.prepare (sampleRate);
+    limiter.prepare (delaySamples, sampleRate);
+    meterFall = (float) std::exp (-1.0 / (meterFallSeconds * sampleRate));
 
     punchSmoothed.reset (sampleRate, smoothSeconds);
     attackSmoothed.reset (sampleRate, smoothSeconds);
     sustainSmoothed.reset (sampleRate, smoothSeconds);
     mixSmoothed.reset (sampleRate, smoothSeconds);
     onSmoothed.reset (sampleRate, smoothSeconds);
+    gainSmoothed.reset (sampleRate, smoothSeconds);
+    impactSmoothed.reset (sampleRate, smoothSeconds);
+    ceilingSmoothed.reset (sampleRate, smoothSeconds);
+    ceilingOnSmoothed.reset (sampleRate, smoothSeconds);
 
     reset();
     setLatencySamples (delaySamples); // the same whether bypassed or not
@@ -79,7 +119,17 @@ void PluginProcessor::reset()
     sustainSmoothed.setCurrentAndTargetValue (sustain->load());
     mixSmoothed.setCurrentAndTargetValue (mix->load() * 0.01f);
     onSmoothed.setCurrentAndTargetValue (bypass->get() ? 0.0f : 1.0f);
+    gainSmoothed.setCurrentAndTargetValue (gain->load());
+    impactSmoothed.setCurrentAndTargetValue (impact->load() * 0.01f);
+    ceilingSmoothed.setCurrentAndTargetValue (ceiling->load());
+    ceilingOnSmoothed.setCurrentAndTargetValue (ceilingOn->load() > 0.5f ? 1.0f : 0.0f);
     engine.reset (punch->load() * 0.01f);
+    limiter.reset();
+    inputPeak = outputPeak = impactPeakDb = ceilingPeakDb = 0.0f;
+    inputLevel->setDb (-60.0f);
+    outputLevel->setDb (-60.0f);
+    impactReduction->setDb (0.0f);
+    ceilingReduction->setDb (0.0f);
 }
 
 void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
@@ -94,6 +144,10 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
     sustainSmoothed.setTargetValue (sustain->load());
     mixSmoothed.setTargetValue (mix->load() * 0.01f);
     onSmoothed.setTargetValue (forceBypass || bypass->get() ? 0.0f : 1.0f);
+    gainSmoothed.setTargetValue (gain->load());
+    impactSmoothed.setTargetValue (impact->load() * 0.01f);
+    ceilingSmoothed.setTargetValue (ceiling->load());
+    ceilingOnSmoothed.setTargetValue (ceilingOn->load() > 0.5f ? 1.0f : 0.0f);
 
     const int numCh = juce::jmin (2, buffer.getNumChannels(), getTotalNumOutputChannels());
     if (numCh <= 0)
@@ -106,24 +160,53 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
     for (int i = 0; i < buffer.getNumSamples(); ++i)
     {
         const float rect = ch1 != nullptr ? juce::jmax (std::abs (ch0[i]), std::abs (ch1[i])) : std::abs (ch0[i]);
+        const float inGain = PunchEngine::dbToGain (gainSmoothed.getNextValue());
         // The detector keeps running in bypass, so coming back is seamless.
-        const float gainDb = engine.process (rect, attackSmoothed.getNextValue(), sustainSmoothed.getNextValue(), punchSmoothed.getNextValue());
-        const float m = mixSmoothed.getNextValue() * onSmoothed.getNextValue();
+        const float gainDb = engine.process (rect * inGain, attackSmoothed.getNextValue(), sustainSmoothed.getNextValue(), punchSmoothed.getNextValue(), impactSmoothed.getNextValue());
+        const float on = onSmoothed.getNextValue();
+        const float m = mixSmoothed.getNextValue() * on;
         // Wet and dry are the same delayed sample, so they can't comb: Mix only scales how much of the gain change is used.
         const float blended = gainDb == 0.0f ? 1.0f : 1.0f + m * (PunchEngine::dbToGain (gainDb) - 1.0f);
+        // Gain is a level control in front of everything, so it moves dry and wet alike. Bypass takes it out too.
+        const float total = blended * (1.0f + on * (inGain - 1.0f));
 
-        const float out0 = d0[writePos];
+        float out0 = d0[writePos] * total;
         d0[writePos] = ch0[i];
-        ch0[i] = out0 * blended;
+        float out1 = 0.0f;
         if (ch1 != nullptr)
         {
-            const float out1 = d1[writePos];
+            out1 = d1[writePos] * total;
             d1[writePos] = ch1[i];
-            ch1[i] = out1 * blended;
         }
+
+        // The sample going into the delay comes out delaySamples from now, so its level at today's gain is a look ahead for the ceiling.
+        const float ceilingLinear = PunchEngine::dbToGain (ceilingSmoothed.getNextValue());
+        float limit = limiter.process (rect * total, ceilingLinear);
+        // That look ahead can't see a gain rise still on its way, so the last step is exact: nothing past the ceiling, ever.
+        const float loudest = juce::jmax (std::abs (out0), std::abs (out1)) * limit;
+        if (loudest > ceilingLinear)
+            limit *= ceilingLinear / loudest;
+        const float applied = 1.0f + ceilingOnSmoothed.getNextValue() * on * (limit - 1.0f);
+
+        out0 = juce::jlimit (-outputSafety, outputSafety, out0 * applied);
+        out1 = juce::jlimit (-outputSafety, outputSafety, out1 * applied);
+        ch0[i] = out0;
+        if (ch1 != nullptr)
+            ch1[i] = out1;
+
+        inputPeak = juce::jmax (rect, inputPeak * meterFall);
+        outputPeak = juce::jmax (std::abs (out0), std::abs (out1), outputPeak * meterFall);
+        impactPeakDb = juce::jmax (engine.impactReductionNowDb() * m, impactPeakDb * meterFall);
+        ceilingPeakDb = juce::jmax (-linearToDb (applied), ceilingPeakDb * meterFall);
+
         if (++writePos >= delaySamples)
             writePos = 0;
     }
+
+    inputLevel->setDb (linearToDb (inputPeak));
+    outputLevel->setDb (linearToDb (outputPeak));
+    impactReduction->setDb (-impactPeakDb);
+    ceilingReduction->setDb (-ceilingPeakDb);
 }
 
 void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -157,6 +240,10 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("attack", presets[i].attack);
     set ("sustain", presets[i].sustain);
     set ("mix", presets[i].mix);
+    set ("gain", presets[i].gain);
+    set ("impact", presets[i].impact);
+    set ("ceiling", presets[i].ceiling);
+    set ("ceilingOn", presets[i].ceilingOn ? 1.0f : 0.0f);
 }
 
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)

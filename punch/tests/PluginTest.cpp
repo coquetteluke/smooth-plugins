@@ -4,12 +4,13 @@
 #include "TestKit.h"
 #include "PluginProcessor.h"
 #include <juce_dsp/juce_dsp.h>
+#include "GoldenV010.h"
 
 using namespace testkit;
 
 namespace
 {
-    struct Settings { float punch = 0, attack = 0, sustain = 0, mix = 100; };
+    struct Settings { float punch = 0, attack = 0, sustain = 0, mix = 100, gain = 0, impact = 0, ceiling = -1, ceilingOn = 0; };
 
     void setParam (PluginProcessor& p, const char* id, float v)
     {
@@ -23,6 +24,10 @@ namespace
         setParam (p, "attack", s.attack);
         setParam (p, "sustain", s.sustain);
         setParam (p, "mix", s.mix);
+        setParam (p, "gain", s.gain);
+        setParam (p, "impact", s.impact);
+        setParam (p, "ceiling", s.ceiling);
+        setParam (p, "ceilingOn", s.ceilingOn);
     }
 
     // A fresh plug-in with these settings. Returns output channel 0, and the latency through `latency`.
@@ -570,11 +575,586 @@ static void testDamagedStateAndInput()
     }
 }
 
+// ---- Added in 0.2.0. Every limit below was written before the first run of the new code. ----
+
+namespace
+{
+    Settings impactOnly (float amount) { Settings s; s.impact = amount; return s; }
+    Settings withCeiling (float db) { Settings s; s.ceiling = db; s.ceilingOn = 1.0f; return s; }
+
+    std::vector<float> tone (double sr, double seconds, double freq, double db)
+    {
+        std::vector<float> x ((size_t) (sr * seconds));
+        sine (x.data(), (int) x.size(), freq, sr, juce::Decibels::decibelsToGain (db));
+        return x;
+    }
+
+    // The largest absolute sample of the output, all channels.
+    double outputPeak (const std::vector<float>& in, const Settings& s, double sr = 48000.0, int block = 512)
+    {
+        PluginProcessor p;
+        apply (p, s);
+        prepare (p, 2, sr, block);
+        auto out = render (p, in, block);
+        return juce::jmax (peak (out.getReadPointer (0), out.getNumSamples()), peak (out.getReadPointer (1), out.getNumSamples()));
+    }
+
+    // Level of everything other than a plain gain change, relative to the input, once settled.
+    double beyondLevelDb (const std::vector<float>& in, const std::vector<float>& out, int lat, int from, int len)
+    {
+        const double change = windowRmsDb (out, from + lat, len) - windowRmsDb (in, from, len);
+        std::vector<float> scaled (in);
+        const float g = (float) juce::Decibels::decibelsToGain (change);
+        for (auto& v : scaled) v *= g;
+        return nullDb (out, scaled, lat, from, len, rms (in.data() + from, len) * g);
+    }
+
+    // Loud and quiet stretches of one tone, 1.5 s each, repeated.
+    std::vector<float> twoLevels (double sr, double loudDb, double quietDb, double freq = 1000.0)
+    {
+        const int stretch = (int) (sr * 1.5), n = stretch * 4;
+        std::vector<float> x ((size_t) n);
+        const double loud = juce::Decibels::decibelsToGain (loudDb), quiet = juce::Decibels::decibelsToGain (quietDb);
+        for (int i = 0; i < n; ++i)
+            x[(size_t) i] = (float) (((i / stretch) % 2 == 0 ? loud : quiet) * std::sin (juce::MathConstants<double>::twoPi * freq * i / sr));
+        return x;
+    }
+
+    // How much the level gap between the loud and quiet stretches shrinks, in the settled last 0.5 s of the last two stretches.
+    double gapShrink (double sr, const Settings& s, double loudDb = -6.0, double quietDb = -30.0)
+    {
+        const auto in = twoLevels (sr, loudDb, quietDb);
+        int lat = 0;
+        const auto out = process (in, s, sr, 512, &lat);
+        const int stretch = (int) (sr * 1.5), len = (int) (sr * 0.5);
+        const double loud = windowRmsDb (out, stretch * 2 + stretch - len + lat, len), quiet = windowRmsDb (out, stretch * 3 + stretch - len, len - lat);
+        return (loudDb - quietDb) - (loud - quiet);
+    }
+
+    // Something shaped like speech, with no claim that it sounds like a voice: noise and a low tone, syllables at 5 per second, phrases at different levels with gaps.
+    std::vector<float> speechShaped (double sr, double seconds)
+    {
+        const int n = (int) (sr * seconds);
+        std::vector<float> x ((size_t) n);
+        std::mt19937 g (21); std::uniform_real_distribution<float> d (-1.0f, 1.0f);
+        const double phrases[] = { -8.0, -20.0, -13.0, -26.0, -10.0, -17.0 };
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = i / sr;
+            const int phrase = (int) (t / 0.8);
+            const double inPhrase = t - phrase * 0.8;
+            const double phraseLevel = inPhrase < 0.65 ? juce::Decibels::decibelsToGain (phrases[phrase % 6]) : 0.0;
+            const double syllable = std::pow (std::abs (std::sin (juce::MathConstants<double>::pi * 5.0 * t)), 2.0);
+            x[(size_t) i] = (float) (phraseLevel * (0.2 + 0.8 * syllable) * (0.8 * std::sin (juce::MathConstants<double>::twoPi * 180.0 * t) + 0.2 * d (g)));
+        }
+        return x;
+    }
+
+    // Spread between loud and quiet moments: 90th minus 10th percentile of 100 ms RMS, across the moments with sound in them.
+    double levelSpreadDb (const float* x, int n, double sr)
+    {
+        const int w = (int) (sr * 0.1);
+        std::vector<double> levels;
+        for (int i = 0; i + w <= n; i += w / 2)
+        {
+            const double db = toDb (rms (x + i, w));
+            if (db > -60.0) levels.push_back (db);
+        }
+        std::sort (levels.begin(), levels.end());
+        return levels[(size_t) (levels.size() * 9 / 10)] - levels[levels.size() / 10];
+    }
+
+    float readingFromText (juce::AudioProcessorParameter& prm) { return prm.getText (prm.getValue(), 32).getFloatValue(); }
+}
+
+// Gain: exactly what it says at neutral. Attack, Sustain and Punch don't care, since they ignore level. Impact does, on purpose.
+static void testGain()
+{
+    const double sr = 48000.0;
+    const auto in = tone (sr, 1.0, 1000.0, -24.0);
+    for (float g : { -12.0f, 6.0f, 12.0f, 24.0f })
+    {
+        Settings s; s.gain = g;
+        int lat = 0;
+        const auto out = process (in, s, sr, 512, &lat);
+        const double change = windowRmsDb (out, 24000 + lat, 12000) - windowRmsDb (in, 24000, 12000);
+        check (std::abs (change - g) <= 0.05, "Gain " + std::to_string ((int) g) + " dB at neutral: level change", change, "dB");
+    }
+    // The shaper is level independent: within 0.1 dB of the same setting without Gain.
+    const auto b = burst (sr, 0.05);
+    Settings a0; a0.attack = 9.0f;
+    Settings a12 = a0; a12.gain = 12.0f;
+    const auto m0 = measure (b, a0), m12 = measure (b, a12);
+    check (std::abs ((m12.start - 12.0) - m0.start) <= 0.1, "Attack +9 with Gain +12: first 3 ms, against no Gain", (m12.start - 12.0) - m0.start, "dB");
+    Settings s0; s0.sustain = 9.0f;
+    Settings s12 = s0; s12.gain = 12.0f;
+    const auto ms0 = measure (b, s0), ms12 = measure (b, s12);
+    check (std::abs ((ms12.tail - 12.0) - ms0.tail) <= 0.1, "Sustain +9 with Gain +12: tail, against no Gain", (ms12.tail - 12.0) - ms0.tail, "dB");
+
+    // Gain drives Impact. Impact 50 on a -30 dBFS tone, which alone is below its threshold: +18 dB of Gain gives at least 8 and at most 14 dB more out.
+    const auto quiet = tone (sr, 3.0, 1000.0, -30.0);
+    Settings i0 = impactOnly (50.0f);
+    Settings i18 = i0; i18.gain = 18.0f;
+    int lat = 0;
+    const auto o0 = process (quiet, i0, sr, 512, &lat);
+    const auto o18 = process (quiet, i18, sr, 512);
+    const double rise = windowRmsDb (o18, 96000, 24000) - windowRmsDb (o0, 96000, 24000);
+    check (rise >= 8.0 && rise <= 14.0, "Gain +18 into Impact 50 on a -30 dBFS tone: level rise", rise, "dB");
+
+    // Mix blends the dynamics only, so Mix 0 still carries Gain. Bypass takes Gain out.
+    const auto loudIn = burst (sr, 0.25);
+    Settings mix0; mix0.gain = 6.0f; mix0.mix = 0.0f;
+    const auto o = process (loudIn, mix0, sr, 512, &lat);
+    std::vector<float> doubled (loudIn);
+    const float g6 = (float) juce::Decibels::decibelsToGain (6.0);
+    for (auto& v : doubled) v *= g6;
+    const int len = (int) loudIn.size() - lat;
+    const double mixNull = nullDb (o, doubled, lat, 0, len, rms (doubled.data(), len));
+    check (mixNull <= -100.0, "Mix 0 with Gain +6: difference from the delayed input raised 6 dB", mixNull, "dB");
+    PluginProcessor p;
+    Settings by; by.gain = 12.0f; by.impact = 70.0f; by.ceiling = -12.0f; by.ceilingOn = 1.0f;
+    apply (p, by);
+    setParam (p, "bypass", 1.0f);
+    prepare (p, 2, sr, 512);
+    auto bo = render (p, loudIn, 512);
+    std::vector<float> bypassed (bo.getReadPointer (0), bo.getReadPointer (0) + bo.getNumSamples());
+    const double byNull = nullDb (bypassed, loudIn, lat, 0, len, rms (loudIn.data(), len));
+    check (byNull <= -120.0, "Bypass with Gain, Impact and Ceiling on: difference from the delayed input", byNull, "dB");
+}
+
+// Impact: evens levels out and raises them. Limits follow from the curve, less some room for knee and release.
+static void testImpact()
+{
+    const double sr = 48000.0;
+    // A 24 dB gap between loud and quiet stretches shrinks by at least 3, 8 and 14 dB at 25, 50 and 100, and at least 2 dB more at each step.
+    double last = 0.0;
+    for (const auto& [amount, need] : std::initializer_list<std::pair<float, double>> { { 25.0f, 3.0 }, { 50.0f, 8.0 }, { 75.0f, 10.0 }, { 100.0f, 14.0 } })
+    {
+        const double shrink = gapShrink (sr, impactOnly (amount));
+        const std::string tag = "Impact " + std::to_string ((int) amount) + ": 24 dB level gap shrinks by";
+        check (shrink >= need, tag, shrink, "dB");
+        check (shrink >= last + 2.0, tag + " (at least 2 dB more than the step before)", shrink - last, "dB");
+        last = shrink;
+    }
+    // Raises the level: on a steady -24 dBFS tone at least 3, 6 and 8 dB at 25, 50 and 100. On -40 dBFS, under every threshold, at least 15 at 100.
+    for (const auto& [amount, need] : std::initializer_list<std::pair<float, double>> { { 25.0f, 3.0 }, { 50.0f, 6.0 }, { 100.0f, 8.0 } })
+    {
+        const auto in = tone (sr, 3.0, 1000.0, -24.0);
+        int lat = 0;
+        const auto out = process (in, impactOnly (amount), sr, 512, &lat);
+        const double change = windowRmsDb (out, 96000 + lat, 24000) - windowRmsDb (in, 96000, 24000);
+        check (change >= need, "Impact " + std::to_string ((int) amount) + ", -24 dBFS tone: level rise", change, "dB");
+    }
+    {
+        const auto in = tone (sr, 3.0, 1000.0, -40.0);
+        int lat = 0;
+        const auto out = process (in, impactOnly (100.0f), sr, 512, &lat);
+        const double change = windowRmsDb (out, 96000 + lat, 24000) - windowRmsDb (in, 96000, 24000);
+        check (change >= 15.0, "Impact 100, -40 dBFS tone: level rise", change, "dB");
+    }
+    // A loud level stays in hand: under 6 dB of rise at the top of the control on a -6 dBFS tone.
+    {
+        const auto in = tone (sr, 3.0, 1000.0, -6.0);
+        int lat = 0;
+        const auto out = process (in, impactOnly (100.0f), sr, 512, &lat);
+        const double change = windowRmsDb (out, 96000 + lat, 24000) - windowRmsDb (in, 96000, 24000);
+        check (change <= 6.0, "Impact 100, -6 dBFS tone: level rise", change, "dB");
+    }
+    // Speech shaped signal: loud to quiet spread shrinks by at least 4 dB at 50 and 6 dB at 100.
+    {
+        const auto in = speechShaped (sr, 10.0);
+        const int skip = (int) (sr * 2);
+        const int len = (int) in.size() - skip - 200;
+        const double spreadIn = levelSpreadDb (in.data() + skip, len, sr);
+        info ("speech shaped signal: input level spread", spreadIn, "dB");
+        for (const auto& [amount, need] : std::initializer_list<std::pair<float, double>> { { 50.0f, 4.0 }, { 100.0f, 6.0 } })
+        {
+            int lat = 0;
+            const auto out = process (in, impactOnly (amount), sr, 512, &lat);
+            const double shrink = spreadIn - levelSpreadDb (out.data() + skip + lat, len, sr);
+            check (shrink >= need, "Impact " + std::to_string ((int) amount) + ", speech shaped signal: level spread shrinks by", shrink, "dB");
+        }
+    }
+    // Steady low tones stay clean at the top of the control: everything other than level under -50 dB.
+    for (double f : { 65.0, 100.0, 1000.0 })
+    {
+        const auto in = tone (sr, 3.0, f, -12.0);
+        int lat = 0;
+        const auto out = process (in, impactOnly (100.0f), sr, 512, &lat);
+        const double beyond = beyondLevelDb (in, out, lat, 96000, 24000);
+        check (beyond <= -50.0, "Impact 100, steady " + std::to_string ((int) f) + " Hz: everything other than level", beyond, "dB");
+    }
+    // Speed. A jump from -30 to -6 dBFS: the gain is within 3 dB of settled by 25 ms.
+    const auto gainDbAt = [] (const std::vector<float>& in, const std::vector<float>& out, int lat, int at, int len)
+    {
+        return windowRmsDb (out, at + lat, len) - windowRmsDb (in, at, len);
+    };
+    {
+        const int onset = (int) (sr * 2);
+        std::vector<float> in ((size_t) (sr * 4));
+        for (int i = 0; i < (int) in.size(); ++i)
+            in[(size_t) i] = (float) (juce::Decibels::decibelsToGain (i < onset ? -30.0 : -6.0) * std::sin (juce::MathConstants<double>::twoPi * 1000.0 * i / sr));
+        int lat = 0;
+        const auto out = process (in, impactOnly (100.0f), sr, 512, &lat);
+        const double settled = gainDbAt (in, out, lat, onset + (int) sr, 24000);
+        const double at25 = gainDbAt (in, out, lat, onset + (int) (sr * 0.025), 48);
+        check (std::abs (at25 - settled) <= 3.0, "Impact 100, jump from -30 to -6 dBFS: gain 25 ms later, against settled", at25 - settled, "dB");
+    }
+    // Program dependent release. Back within 3 dB of the quiet level's gain: at most 300 ms after a 50 ms peak, and at least twice as long after a 1.5 s hold.
+    {
+        const auto recovery = [&] (double holdSeconds)
+        {
+            const int settle = (int) (sr * 3), peakLen = (int) (sr * holdSeconds), n = settle + peakLen + (int) (sr * 4);
+            std::vector<float> in ((size_t) n);
+            for (int i = 0; i < n; ++i)
+                in[(size_t) i] = (float) (juce::Decibels::decibelsToGain (i >= settle && i < settle + peakLen ? -6.0 : -30.0) * std::sin (juce::MathConstants<double>::twoPi * 1000.0 * i / sr));
+            int lat = 0;
+            const auto out = process (in, impactOnly (100.0f), sr, 512, &lat);
+            const double target = windowRmsDb (out, n - (int) (sr * 0.5) - lat, 24000) - windowRmsDb (in, n - (int) (sr * 0.5) - lat, 24000);
+            const int end = settle + peakLen, w = 48;
+            for (int i = end; i + w + lat < n; i += w)
+                if (windowRmsDb (out, i + lat, w) - windowRmsDb (in, i, w) >= target - 3.0)
+                    return (i - end) / sr * 1000.0;
+            return 1.0e6;
+        };
+        const double afterShort = recovery (0.05), afterLong = recovery (1.5);
+        check (afterShort <= 300.0, "Impact 100: recovery after a 50 ms peak", afterShort, "ms");
+        check (afterLong >= 2.0 * afterShort, "Impact 100: recovery after a 1.5 s hold", afterLong, "ms");
+    }
+    // Near silence isn't lifted: noise at -80 dBFS rises at most 3 dB at the top of the control.
+    {
+        std::vector<float> in ((size_t) (sr * 3));
+        noise (in.data(), (int) in.size(), 1.0e-4, 9);
+        int lat = 0;
+        const auto out = process (in, impactOnly (100.0f), sr, 512, &lat);
+        const double change = windowRmsDb (out, 96000 + lat, 24000) - windowRmsDb (in, 96000, 24000);
+        check (change <= 3.0, "Impact 100, noise at -80 dBFS: level lift", change, "dB");
+    }
+    // Mix: 0 with Impact on nulls, and 50 is the average of 0 and 100, so there is still no comb.
+    {
+        const auto in = speechShaped (sr, 4.0);
+        Settings s = impactOnly (80.0f);
+        int lat = 0;
+        s.mix = 100.0f; const auto wet = process (in, s, sr, 512, &lat);
+        s.mix = 0.0f; const auto dry = process (in, s, sr, 512);
+        s.mix = 50.0f; const auto half = process (in, s, sr, 512);
+        const int from = (int) sr, len = (int) (sr * 2);
+        const double ref = rms (in.data() + from, len);
+        const double d0 = nullDb (dry, in, lat, from, len, ref);
+        check (d0 <= -120.0, "Mix 0 with Impact 80: difference from the delayed input", d0, "dB");
+        std::vector<float> avg (in.size());
+        for (size_t i = 0; i < avg.size(); ++i) avg[i] = 0.5f * (wet[i] + dry[i]);
+        const double blend = nullDb (half, avg, 0, from, len, ref);
+        check (blend <= -80.0, "Mix 50 with Impact 80, against the average of Mix 0 and Mix 100", blend, "dB");
+    }
+    // Sample rates: the same within 0.5 dB.
+    {
+        double lo = 1e9, hi = -1e9;
+        for (double rate : { 44100.0, 48000.0, 96000.0 })
+        {
+            const double v = gapShrink (rate, impactOnly (50.0f));
+            lo = std::min (lo, v); hi = std::max (hi, v);
+        }
+        check (hi - lo <= 0.5, "Impact 50: gap shrink, spread across sample rates", hi - lo, "dB");
+    }
+}
+
+// Ceiling: nothing past it, nothing changed under it.
+static void testCeiling()
+{
+    const double sr = 48000.0;
+    // Hot material with every boost on: peak at most 0.01 dB over the ceiling. Includes sudden onsets the look ahead can't fully see.
+    {
+        const auto hot = burstTrain (sr, 0.7, 3.0, Tone::noise);
+        const auto sineHits = burstTrain (sr, 0.7, 3.0, Tone::sine);
+        for (float db : { -1.0f, -6.0f, -12.0f, -24.0f })
+            for (const auto* in : { &hot, &sineHits })
+            {
+                Settings s { 20.0f, 12.0f, 3.0f, 100.0f, 12.0f, 70.0f, db, 1.0f };
+                const double over = toDb (outputPeak (*in, s)) - db;
+                check (over <= 0.01, std::string ("Ceiling ") + std::to_string ((int) db) + " dBFS, " + (in == &hot ? "noise" : "300 Hz") + " hits, all boosts on: peak over the ceiling", over, "dB");
+            }
+        for (double rate : { 44100.0, 96000.0 })
+        {
+            Settings s { 20.0f, 12.0f, 3.0f, 100.0f, 12.0f, 70.0f, -6.0f, 1.0f };
+            const auto in = burstTrain (rate, 0.7, 3.0, Tone::noise);
+            const double over = toDb (outputPeak (in, s, rate)) + 6.0;
+            check (over <= 0.01, "Ceiling -6 dBFS at " + std::to_string ((int) rate) + " Hz: peak over the ceiling", over, "dB");
+        }
+    }
+    // A lone spike at an onset. The look ahead reads it at the gain before Attack's boost arrives, so this is the case only the exact last step can hold.
+    // At most 0.01 dB over. Without that last step this fails, which is the point of the test.
+    {
+        std::vector<float> in ((size_t) sr, 0.0f);
+        in[4800] = 0.2f;
+        for (int i = 4801; i < 4801 + 240; ++i) in[(size_t) i] = 0.02f;
+        Settings s = withCeiling (-12.0f); s.attack = 15.0f;
+        const double over = toDb (outputPeak (in, s)) + 12.0;
+        check (over <= 0.01, "Ceiling -12 dBFS, lone spike at an onset with Attack +15: peak over the ceiling", over, "dB");
+    }
+    // Under the ceiling nothing happens at all.
+    {
+        const auto in = tone (sr, 1.0, 1000.0, -12.0);
+        int lat = 0;
+        const auto out = process (in, withCeiling (-6.0f), sr, 512, &lat);
+        const int len = (int) in.size() - lat;
+        const double d = nullDb (out, in, lat, 0, len, rms (in.data(), len));
+        check (d <= -100.0, "Ceiling -6 dBFS on a -12 dBFS tone: difference from the delayed input", d, "dB");
+    }
+    // A steady tone 6 dB over: lands on the ceiling within 0.2 dB, and stays clean. Under -50 dB other than level, -40 dB at 60 Hz, near the end of what the hold covers.
+    for (const auto& [f, limit] : std::initializer_list<std::pair<double, double>> { { 60.0, -40.0 }, { 100.0, -50.0 }, { 1000.0, -50.0 } })
+    {
+        const auto in = tone (sr, 2.0, f, -6.0);
+        int lat = 0;
+        const auto out = process (in, withCeiling (-12.0f), sr, 512, &lat);
+        const double pk = toDb (peak (out.data() + 48000, 24000));
+        check (std::abs (pk + 12.0) <= 0.2, "Ceiling -12 dBFS, steady " + std::to_string ((int) f) + " Hz at -6 dBFS: peak against the ceiling", pk + 12.0, "dB");
+        const double beyond = beyondLevelDb (in, out, lat, 48000, 24000);
+        check (beyond <= limit, "Ceiling -12 dBFS, steady " + std::to_string ((int) f) + " Hz at -6 dBFS: everything other than level", beyond, "dB");
+    }
+    // Gain never jumps much at a hard onset: at most 1 dB per sample alone, at most 3 dB per sample with Attack +12, where the look ahead can't see the boost in time.
+    for (const auto& [attackDb, limit] : std::initializer_list<std::pair<float, double>> { { 0.0f, 1.0 }, { 12.0f, 3.0 } })
+    {
+        const auto in = burst (sr, 1.0);
+        Settings s = withCeiling (-12.0f); s.attack = attackDb;
+        int lat = 0;
+        const auto out = process (in, s, sr, 512, &lat);
+        double worst = 0, prev = 0; bool have = false;
+        for (int i = 0; i + lat < (int) in.size(); ++i)
+        {
+            if (std::abs (in[(size_t) i]) < 0.01f) { have = false; continue; }
+            const double g = toDb (std::abs (out[(size_t) (i + lat)] / in[(size_t) i]));
+            if (have) worst = std::max (worst, std::abs (g - prev));
+            prev = g; have = true;
+        }
+        check (worst <= limit, "Ceiling -12 dBFS, hard onset, Attack " + std::to_string ((int) attackDb) + " dB: largest gain move in one sample", worst, "dB");
+    }
+    // Lets go: after a hit 12 dB over, gain is back within 1 dB by 250 ms.
+    {
+        const int hitEnd = (int) (sr * 0.5), n = (int) (sr * 1.5);
+        std::vector<float> in ((size_t) n);
+        for (int i = 0; i < n; ++i)
+            in[(size_t) i] = (float) (juce::Decibels::decibelsToGain (i < hitEnd ? 0.0 : -24.0) * std::sin (juce::MathConstants<double>::twoPi * 1000.0 * i / sr));
+        int lat = 0;
+        const auto out = process (in, withCeiling (-12.0f), sr, 512, &lat);
+        double back = 1.0e6;
+        for (int i = hitEnd; i + 48 + lat < n; i += 48)
+            if (windowRmsDb (out, i + lat, 48) - windowRmsDb (in, i, 48) >= -1.0) { back = (i - hitEnd) / sr * 1000.0; break; }
+        check (back <= 250.0, "Ceiling -12 dBFS: gain back within 1 dB after a hit", back, "ms");
+    }
+    // Ceiling On off: the ceiling value does nothing.
+    {
+        const auto in = burst (sr, 1.0);
+        Settings s; s.ceiling = -24.0f; s.ceilingOn = 0.0f;
+        int lat = 0;
+        const auto out = process (in, s, sr, 512, &lat);
+        const int len = (int) in.size() - lat;
+        const double d = nullDb (out, in, lat, 0, len, rms (in.data(), len));
+        check (d <= -120.0, "Ceiling On off, Ceiling -24 dBFS: difference from the delayed input", d, "dB");
+    }
+    // Latency stays what it was with everything on, and an impulse comes out where it says.
+    for (double rate : { 44100.0, 48000.0, 96000.0 })
+    {
+        std::vector<float> in ((size_t) rate / 2, 0.0f);
+        in[100] = 0.25f;
+        Settings s { 0.0f, 0.0f, 0.0f, 0.0f, 12.0f, 80.0f, -1.0f, 1.0f };
+        int lat = 0;
+        const auto out = process (in, s, rate, 128, &lat);
+        int found = -1;
+        for (int i = 0; i < (int) out.size(); ++i) if (std::abs (out[(size_t) i]) > 0.25f) { found = i - 100; break; }
+        check (found == lat && lat == (int) std::lround (rate * 0.002), "Gain, Impact and Ceiling on: impulse delay equals the same latency at " + std::to_string ((int) rate) + " Hz", found, "samples");
+    }
+}
+
+// Stereo stays linked and every block size agrees with all the new parts on.
+static void testNewPartsStereoAndBlocks()
+{
+    const double sr = 48000.0;
+    const auto left = speechShaped (sr, 3.0);
+    Settings s { 20.0f, 3.0f, -2.0f, 100.0f, 6.0f, 60.0f, -6.0f, 1.0f };
+    PluginProcessor p;
+    apply (p, s);
+    prepare (p, 2, sr, 512);
+    juce::AudioBuffer<float> buf (2, 512);
+    juce::MidiBuffer midi;
+    double worst = 0, leak = 0;
+    for (size_t pos = 0; pos + 512 <= left.size(); pos += 512)
+    {
+        for (int i = 0; i < 512; ++i) { buf.setSample (0, i, left[pos + (size_t) i]); buf.setSample (1, i, 0.5f * left[pos + (size_t) i]); }
+        p.processBlock (buf, midi);
+        for (int i = 0; i < 512; ++i)
+            if (std::abs (buf.getSample (0, i)) > 1.0e-3f)
+                worst = std::max (worst, std::abs (toDb (std::abs (buf.getSample (1, i) / buf.getSample (0, i))) + 6.0206));
+    }
+    check (worst <= 0.01, "stereo with Gain, Impact and Ceiling on: left to right balance, biggest move", worst, "dB");
+    PluginProcessor q;
+    apply (q, s);
+    prepare (q, 2, sr, 512);
+    for (size_t pos = 0; pos + 512 <= left.size(); pos += 512)
+    {
+        buf.copyFrom (0, 0, left.data() + pos, 512);
+        buf.clear (1, 0, 512);
+        q.processBlock (buf, midi);
+        leak = std::max (leak, peak (buf.getReadPointer (1), 512));
+    }
+    check (leak == 0.0, "stereo with Gain, Impact and Ceiling on: silence on one side stays silent", leak);
+
+    const auto a = process (left, s, sr, 512);
+    for (int block : { 1, 32, 777, 4096 })
+    {
+        const auto b = process (left, s, sr, block);
+        const double d = nullDb (a, b, 0, 0, (int) left.size(), rms (left.data(), (int) left.size()));
+        check (d <= -100.0, "Gain, Impact and Ceiling on, block size " + std::to_string (block) + " against 512: difference", d, "dB");
+    }
+    // Mono path.
+    PluginProcessor m;
+    apply (m, s);
+    prepare (m, 1, sr, 512);
+    auto mo = render (m, left, 512);
+    std::vector<float> mono (mo.getReadPointer (0), mo.getReadPointer (0) + mo.getNumSamples());
+    const double md = nullDb (a, mono, 0, 0, (int) left.size(), rms (left.data(), (int) left.size()));
+    check (md <= -100.0, "mono against stereo with identical channels: difference", md, "dB");
+}
+
+// The readings, read the way a host reads them: through the parameter's value string. They never write automation and never land in saved state.
+static void testMeters()
+{
+    const double sr = 48000.0;
+    struct Counter final : juce::AudioProcessorListener
+    {
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override { ++changes; }
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+        int changes = 0;
+    };
+    const auto run = [&] (const Settings& s, double db, PluginProcessor& p)
+    {
+        apply (p, s);
+        prepare (p, 2, sr, 512);
+        render (p, tone (sr, 3.0, 1000.0, db), 512);
+    };
+    {
+        PluginProcessor p;
+        Settings s; s.gain = 6.0f;
+        Counter counter;
+        apply (p, s);
+        prepare (p, 2, sr, 512);
+        p.addListener (&counter);
+        render (p, tone (sr, 3.0, 1000.0, -12.0), 512);
+        p.removeListener (&counter);
+        const float in = readingFromText (*p.inputLevel), out = readingFromText (*p.outputLevel);
+        check (std::abs (in + 12.0f) <= 0.2f, "Input Level with a -12 dBFS tone and Gain +6: reads before Gain", in, "dBFS");
+        check (std::abs (out + 6.0f) <= 0.2f, "Output Level with a -12 dBFS tone and Gain +6: reads after everything", out, "dBFS");
+        check (counter.changes == 0, "readings write no automation during audio", counter.changes, "changes");
+    }
+    {
+        // Curve for -6 dBFS at Impact 50: threshold -21, ratio 3.5, so 10.7 dB. Reading within 1.5 dB.
+        PluginProcessor p;
+        run (impactOnly (50.0f), -6.0, p);
+        const float r = readingFromText (*p.impactReduction);
+        check (std::abs (r + 10.7f) <= 1.5f, "Impact Reduction, Impact 50 with a -6 dBFS tone", r, "dB");
+        check (readingFromText (*p.ceilingReduction) == 0.0f, "Ceiling Reduction with Ceiling On off", readingFromText (*p.ceilingReduction), "dB");
+    }
+    {
+        PluginProcessor p;
+        run (withCeiling (-12.0f), -6.0, p);
+        const float r = readingFromText (*p.ceilingReduction);
+        check (std::abs (r + 6.0f) <= 0.5f, "Ceiling Reduction, Ceiling -12 dBFS with a -6 dBFS tone", r, "dB");
+        const float o = readingFromText (*p.outputLevel);
+        check (std::abs (o + 12.0f) <= 0.2f, "Output Level sits on the ceiling", o, "dBFS");
+    }
+    {
+        // Falls back when the sound stops: under -50 dBFS after 3 s of silence.
+        PluginProcessor p;
+        run (Settings {}, -6.0, p);
+        render (p, std::vector<float> ((size_t) (sr * 3), 0.0f), 512);
+        check (readingFromText (*p.inputLevel) <= -50.0f, "Input Level after 3 s of silence", readingFromText (*p.inputLevel), "dBFS");
+        // Hosts can't set a reading, and it stays out of saved state.
+        p.inputLevel->setValueNotifyingHost (1.0f);
+        check (readingFromText (*p.inputLevel) <= -50.0f, "Input Level ignores a write from a host", readingFromText (*p.inputLevel), "dBFS");
+        juce::MemoryBlock st;
+        p.getStateInformation (st);
+        bool found = false;
+        if (auto xml = juce::AudioProcessor::getXmlFromBinary (st.getData(), (int) st.getSize()))
+            found = xml->toString().contains ("inputLevel") || xml->toString().contains ("impactReduction");
+        check (! found, "readings are not saved in state");
+    }
+}
+
+// Nothing already in Luke's sessions may move. Compares against numbers recorded from the 0.1.0 code before any of this was written.
+static void testSameAsFirstVersion()
+{
+    const double sr = 48000.0;
+    auto in = burstTrain (sr, 0.5, 2.0, Tone::noise, 0.25, 0.08);
+    const auto low = burstTrain (sr, 0.25, 2.0, Tone::sine, 0.33, 0.12, 180.0);
+    for (size_t i = 0; i < in.size(); ++i) in[i] += low[i];
+    for (int preset = 0; preset < 7; ++preset)
+    {
+        PluginProcessor p;
+        p.setCurrentProgram (preset);
+        const juce::String name = p.getProgramName (preset);
+        prepare (p, 2, sr, 512);
+        auto out = render (p, in, 512);
+        double worst = 0.0;
+        for (int w = 0; w < 200; ++w)
+            worst = std::max (worst, std::abs (toDb (rms (out.getReadPointer (0) + w * 480, 480)) - goldenV010[preset][w]));
+        check (worst <= 0.001, "preset " + name.toStdString() + " against version 0.1.0: largest 10 ms level difference", worst, "dB");
+    }
+    // A session saved by 0.1.0 has none of the new values. It loads as it sounded, even over a copy that has them all turned on.
+    {
+        juce::XmlElement xml ("STATE");
+        for (const auto& [id, v] : std::initializer_list<std::pair<const char*, float>> { { "punch", 30.0f }, { "attack", 2.5f }, { "sustain", 0.0f }, { "mix", 100.0f } })
+        {
+            auto* e = xml.createNewChildElement ("PARAM");
+            e->setAttribute ("id", id);
+            e->setAttribute ("value", (double) v);
+        }
+        juce::MemoryBlock b;
+        juce::AudioProcessor::copyXmlToBinary (xml, b);
+        PluginProcessor p;
+        setParam (p, "gain", 12.0f); setParam (p, "impact", 80.0f); setParam (p, "ceilingOn", 1.0f);
+        p.setStateInformation (b.getData(), (int) b.getSize());
+        prepare (p, 2, sr, 512);
+        auto out = render (p, in, 512);
+        double worst = 0.0;
+        for (int w = 0; w < 200; ++w)
+            worst = std::max (worst, std::abs (toDb (rms (out.getReadPointer (0) + w * 480, 480)) - goldenV010[1][w]));
+        check (worst <= 0.001, "state saved by 0.1.0 with the Vocal Forward values: largest 10 ms level difference", worst, "dB");
+    }
+}
+
+// New presets: all hold their ceiling on hot material, and all leave a quiet voice level at least as high as it came in.
+static void testNewPresets()
+{
+    const double sr = 48000.0;
+    const auto hot = speechShaped (sr, 5.0);
+    for (int preset = 7; preset < PluginProcessor().getNumPrograms(); ++preset)
+    {
+        PluginProcessor p;
+        p.setCurrentProgram (preset);
+        const juce::String name = p.getProgramName (preset);
+        const float ceilingDb = p.apvts.getRawParameterValue ("ceiling")->load();
+        check (p.apvts.getRawParameterValue ("ceilingOn")->load() > 0.5f, "preset " + name.toStdString() + ": Ceiling On");
+        prepare (p, 2, sr, 512);
+        auto out = render (p, hot, 512);
+        const double over = toDb (peak (out.getReadPointer (0), out.getNumSamples())) - ceilingDb;
+        check (over <= 0.01, "preset " + name.toStdString() + ": peak over its ceiling on hot material", over, "dB");
+
+        PluginProcessor q;
+        q.setCurrentProgram (preset);
+        prepare (q, 2, sr, 512);
+        const auto quiet = tone (sr, 3.0, 1000.0, -30.0);
+        auto qo = render (q, quiet, 512);
+        const double rise = rmsDb (qo, 0, 96000, 24000) - windowRmsDb (quiet, 96000, 24000);
+        check (rise >= -0.1, "preset " + name.toStdString() + ": level change on a -30 dBFS tone", rise, "dB");
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
     GenericOptions opt;
     opt.minPresets = 4;
+    opt.readOnly = { "inputLevel", "outputLevel", "impactReduction", "ceilingReduction" };
     runGenericChecks ([] { return std::make_unique<PluginProcessor>(); }, opt);
     testAttack();
     testSustain();
@@ -589,5 +1169,12 @@ int main()
     testBlocksAndRestart();
     testGainMotionAndStereo();
     testDamagedStateAndInput();
+    testGain();
+    testImpact();
+    testCeiling();
+    testNewPartsStereoAndBlocks();
+    testMeters();
+    testSameAsFirstVersion();
+    testNewPresets();
     return finish();
 }

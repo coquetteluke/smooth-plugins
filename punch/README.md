@@ -1,10 +1,10 @@
-# Smooth Punch
+# Punch
 
 Makes a vocal hit harder and sit forward. Shapes the start and the tail of a sound, adds fast compression, evens out level and raises it, and holds the result under an output ceiling. Attack and Sustain follow the shape of the sound, not how loud it is, so there is no threshold to set. All the code is written from scratch.
 
 ## How to load it
 
-In your host: Audio Units > Luke Garito > Smooth Punch. AU code `aufx SPun Luke`. Mono and stereo. Latency is 2 ms: 88 samples at 44.1 kHz, 96 at 48 kHz, 192 at 96 kHz, and the same when bypassed.
+In your host: Audio Units > Luke Garito > Punch. AU code `aufx SPun Luke`. Mono and stereo. Latency is 2 ms: 88 samples at 44.1 kHz, 96 at 48 kHz, 192 at 96 kHz, and the same when bypassed.
 
 ## Controls
 
@@ -29,7 +29,7 @@ Not on the panel, fixed by design: 15 ms peak hold for the shaper and 8 ms for P
 
 ## The window
 
-The window is called Punch, and is the name this plug-in will carry after the rename. The build still installs as Smooth Punch.
+The window is called Punch, and is the name this plug-in will carry after the rename. The build still installs as Punch.
 
 - **The big picture is the last hit**, 400 ms of it. White is the sound as it came in. Orange is how it goes out. Dark orange under the white line is what the settings took off. Orange above the white line is what they added.
 - The time scale is stretched at the start, because that is where a hit happens: the first 30 ms take close to half the width.

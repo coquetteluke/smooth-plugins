@@ -4,11 +4,11 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "" FORCE)
 
 # ---- edit these for each plug-in ----
 set(SP_TARGET  SmoothPunch)
-set(SP_NAME    "Smooth Punch")
+set(SP_NAME    "Punch")
 set(SP_CODE    SPun)
 set(SP_BUNDLE  "com.lukegarito.smoothpunch")
 set(SP_DESC    "Vocal impact: transient shaper, compressors and output ceiling")
-set(SP_VERSION 0.3.0)
+set(SP_VERSION 0.3.1)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice

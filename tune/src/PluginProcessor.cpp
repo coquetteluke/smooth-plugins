@@ -43,6 +43,8 @@ namespace
         if (n < 0) return "no note";
         return juce::String (noteNames[n % 12]) + juce::String (n / 12 - 1);
     }
+    const juce::Identifier windowWidthAttribute { "windowWidth" }, windowHeightAttribute { "windowHeight" }, advancedOpenAttribute { "advancedOpen" };
+
     juce::String keyText (float v)
     {
         const int packed = juce::jlimit (0, 12 * numScales - 1, juce::roundToInt (v));
@@ -270,6 +272,14 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, bool forceBypas
     juce::ScopedNoDenormals noDenormals;
     sanitiseInput (buffer);
 
+    // Only read for the window's meters. Audio never sees these.
+    const auto keepPeak = [] (std::atomic<float>& store, float peak) noexcept
+    {
+        if (peak > store.load (std::memory_order_relaxed))
+            store.store (peak, std::memory_order_relaxed);
+    };
+    keepPeak (levelIn, buffer.getMagnitude (0, buffer.getNumSamples()));
+
     const int numCh = juce::jmin (2, getTotalNumOutputChannels(), buffer.getNumChannels());
     const int numSamples = buffer.getNumSamples();
     if (numCh <= 0)
@@ -360,6 +370,8 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, bool forceBypas
     if (getTotalNumOutputChannels() == 2 && numCh == 1 && buffer.getNumChannels() > 1)
         buffer.copyFrom (1, 0, buffer, 0, 0, numSamples);
 
+    keepPeak (levelOut, buffer.getMagnitude (0, numSamples));
+
     // Readings: stored, never sent to the host. Nothing here can write automation.
     const bool voiced = control.voiced;
     offReading->set ((float) juce::jlimit (-100.0, 100.0, corrector.centsOffTarget()));
@@ -411,6 +423,15 @@ const juce::String PluginProcessor::getProgramName (int i)
     return juce::isPositiveAndBelow (i, getNumPrograms()) ? presets[i].name : "";
 }
 
+bool PluginProcessor::isCurrentProgramEdited() const
+{
+    if (! juce::isPositiveAndBelow (currentProgram, (int) std::size (presets)))
+        return false;
+    const auto& preset = presets[currentProgram];
+    const auto differs = [] (const std::atomic<float>* value, float wanted) { return std::abs (value->load (std::memory_order_relaxed) - wanted) > 0.05f; };
+    return differs (retune, preset.retune) || differs (humanize, preset.humanize) || differs (flex, preset.flex) || differs (naturalVibrato, preset.vibrato);
+}
+
 void PluginProcessor::setCurrentProgram (int i)
 {
     if (! juce::isPositiveAndBelow (i, getNumPrograms()))
@@ -430,14 +451,30 @@ void PluginProcessor::setCurrentProgram (int i)
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     if (auto xml = apvts.copyState().createXml())
+    {
+        xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
+        xml->setAttribute (windowHeightAttribute, windowHeight.load (std::memory_order_relaxed));
+        xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, dest);
+    }
 }
 
 void PluginProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
         if (xml->hasTagName (apvts.state.getType()))
+        {
+            // Older sessions have no window state. A damaged size goes back in range. Neither is a parameter, so they stay out of the value tree.
+            if (xml->hasAttribute (windowWidthAttribute))
+                windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
+            if (xml->hasAttribute (windowHeightAttribute))
+                windowHeight.store (juce::jlimit (minWindowHeight, maxWindowHeight, xml->getIntAttribute (windowHeightAttribute, defaultWindowHeight)), std::memory_order_relaxed);
+            advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            xml->removeAttribute (windowWidthAttribute);
+            xml->removeAttribute (windowHeightAttribute);
+            xml->removeAttribute (advancedOpenAttribute);
             applySafeState (apvts, *xml);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PluginProcessor(); }

@@ -28,7 +28,20 @@ Every control is a real AU parameter that a host can find by name.
 | Custom C to Custom B | With Scale on Custom: Tune, Remove (never a target) or Bypass (a target, but left uncorrected). |
 | Bypass | Keeps the same delay. |
 
-Readings, which never write automation: Pitch Off Target (cents, the meter), Detected Pitch, Correction Applied, Target Note, Active Key. They read through the host by name and value string. JUCE's generic rows do not redraw for a value that does not notify the host, so the window has a live strip above the generic rows showing all of them.
+Readings, which never write automation: Pitch Off Target (cents, the meter), Detected Pitch, Correction Applied, Target Note, Active Key. They read through the host by name and value string, and the window shows all of them live.
+
+## The window
+
+Graphite and one colour, lime, which only ever means the corrected voice or the amount of correction. Pictures are in `docs/window/`, rendered from the real window with real `say` material going through the real processor: `build/RenderWindow_artefacts/Release/RenderWindow`.
+
+- **The note** being hit, huge. It turns lime when what comes out is within 8 cents of the note. Sung pitch on the left, correction on the right.
+- **The ruler** is the correction meter, in cents away from that note. The white mark is what was sung, the lime mark is what comes out, and the ticks lit between them are the correction. It gives more room to small amounts, so 25, 50 and 100 cents land on the longer ticks. Transpose is left out of it, and shown in words as "out as".
+- **The trace** is the last few seconds on the same scale, with the note as the middle line. Hard tuning is a flat lime line with white wandering around it. Soft tuning has the lime line following the white one. The shaded band is Flex Amount. Each note gets its name once it has lasted long enough to read.
+- **In and Out** are the two levels at the sides.
+- **Notes**: one cell per note. Click to tune to it or remove it, right-click to bypass it. From any scale but Custom, the first click turns the scale showing into a Custom one, with only that note changed. The note being hit lights up.
+- **Advanced** holds Transpose, Reference A4, Tracking, Throat Length and Formant Preserve. When closed, it says which of them have moved.
+
+Double-click anything to reset it, click a value to type it. Drag the corner to resize. The size and whether Advanced is open are saved with the session, and are not parameters. All 26 controls are the same AU parameters as before, under the same IDs.
 
 ## Presets
 
@@ -42,7 +55,8 @@ Input > pitch tracker (on the left and right mixed) > corrector > grain shifter 
 - `src/PsolaShifter.h`: pitch-synchronous grains centred on those marks, spaced at the wanted output period. One period of window each side. When nothing needs correcting, or the sound is unvoiced, grains read the input at the reported delay and windows sum to exactly 1, so the output is the delayed input. Consonants and breath therefore pass untouched, with no switch to click. Self contained.
 - `src/PitchCorrector.h`: target note, Retune Speed, Flex Amount, Humanize, Natural Vibrato, Transpose, on a 1 ms tick.
 - `src/Scales.h`, `src/KeyFollower.h`: masks, and the key file, read on a background thread.
-- `src/PluginProcessor.cpp`: parameters, latency, bypass, readings. `getReadings()` and `getPitchPoint()` give a later window the pitch graph without touching audio.
+- `src/PluginProcessor.cpp`: parameters, latency, bypass, readings. `getReadings()`, `getPitchPoint()` and `takeLevels()` give the window what it shows without touching audio.
+- `src/TuneEditor.cpp`, `src/window/`: the window. No audio code. Inter is embedded, with its license in `assets/fonts/`.
 
 ## Latency
 
@@ -64,7 +78,9 @@ All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before
 - Artifacts on a corrected sustained tone: -47.5 dB non-harmonic, the same as the input's own -47.5 dB. Pitch steady to 0.002 cents, level to 0.001 dB.
 - Key and Scale masks: all 24 keys, 408 sung notes, all right.
 - Follow Key: 10 kinds of bad file ignored, good file used, last good held, off goes back to manual, thread picks it up by itself.
-- CPU: about 0.5% of one core.
+- CPU: about 0.5% of one core in the test program, 0.7% through the real AU.
+- The window, real window at the screen's 2x, 27 frames a second, speech playing, share of one core on top of audio. Final code, every run: 3.46, 4.36, 4.40, 3.80, 3.45% started with no other build running, though other builds were starting around them (load 3 to 5), and 6.09, 5.87, 4.75% with two other test programs running flat out. Never measured on a truly idle machine. Stops repainting when nothing moves. Run: `build/RenderWindow_artefacts/Release/RenderWindow --live`.
+- Window against audio: the output with the window open, ticking and painting nulls to exact zero against the window closed. Through the installed AU, 1.1.0 is bit identical to 1.0.1 on a sung file at default and a speech file at instant speed (`tests/AuRender.cpp`, then `cmp`). The levels added for the meters only read.
 
 ## What was hard to measure, and what the numbers do not say
 

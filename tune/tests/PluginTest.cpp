@@ -8,9 +8,11 @@
 #include "PluginProcessor.h"
 #include "TuneEditor.h"
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <atomic>
 #include <chrono>
 #include <ctime>
 #include <fstream>
+#include <map>
 #include <thread>
 
 using namespace testkit;
@@ -1379,6 +1381,343 @@ void testBlocksAndState()
     }
 }
 
+// ---- the window ----------------------------------------------------------------------------------------------------
+
+struct ParamWatch final : juce::AudioProcessorParameter::Listener
+{
+    explicit ParamWatch (juce::AudioProcessor& proc) : p (proc)
+    {
+        for (auto* prm : p.getParameters())
+            prm->addListener (this);
+    }
+    ~ParamWatch() override
+    {
+        for (auto* prm : p.getParameters())
+            prm->removeListener (this);
+    }
+    void parameterValueChanged (int, float) override { ++changes; }
+    void parameterGestureChanged (int, bool starting) override { if (starting) ++begins; else ++ends; }
+    void reset() { changes = begins = ends = 0; }
+
+    juce::AudioProcessor& p;
+    std::atomic<int> changes { 0 }, begins { 0 }, ends { 0 };
+};
+
+juce::MouseEvent mouseAt (juce::Component& c, juce::Point<float> at, int clicks = 1, juce::ModifierKeys mods = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier), juce::Point<float> downAt = { -1.0f, -1.0f })
+{
+    const auto now = juce::Time::getCurrentTime();
+    return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c, now,
+                             downAt.x < 0.0f ? at : downAt, now, clicks, downAt.x >= 0.0f);
+}
+
+float realValue (PluginProcessor& p, const char* id) { return p.apvts.getRawParameterValue (id)->load(); }
+
+void paintAt (juce::Component& c, float scale)
+{
+    auto snapshot = c.createComponentSnapshot (c.getLocalBounds(), true, scale);
+    juce::ignoreUnused (snapshot);
+}
+
+void testWindow()
+{
+    using ui::BarSlider;
+    auto holder = make();
+    auto& p = *holder;
+    prepare (p, 2, SR, 256);
+    std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+    auto* w = dynamic_cast<TuneEditor*> (ed.get());
+    check (w != nullptr, "the window is the custom one");
+    if (w == nullptr)
+        return;
+    w->setAdvancedOpen (true);
+
+    // Nothing lost: every parameter a person can change has a control in the window, under its own ID, and keeps its name.
+    int missing = 0, controls = 0;
+    for (auto* prm : p.getParameters())
+    {
+        const auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (prm);
+        if (withId == nullptr || dynamic_cast<ReadingParameter*> (prm) != nullptr)
+            continue;
+        ++controls;
+        if (ed->findChildWithID (withId->paramID) == nullptr)
+        {
+            ++missing;
+            std::printf ("  no control for %s\n", withId->paramID.toRawUTF8());
+        }
+    }
+    check (missing == 0 && controls == 26, "every one of the 26 parameters has a control in the window", (double) controls);
+
+    // The hint line is one line, at the smallest window.
+    {
+        const auto hintFont = ui::font (ui::Weight::regular, 13.0f);
+        const float room = (float) (PluginProcessor::minWindowWidth - 40) * 0.6f;
+        float widest = 0.0f;
+        const std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+        {
+            if (auto* h = dynamic_cast<ui::Hinted*> (&c))
+                widest = juce::jmax (widest, juce::GlyphArrangement::getStringWidth (hintFont, h->hint));
+            for (auto* child : c.getChildren())
+                walk (*child);
+        };
+        walk (*ed);
+        check (widest > 100.0f && widest <= room, "every hint fits on the hint line at the smallest window, widest in points", (double) widest);
+    }
+
+    // A bar moves its parameter, with a gesture, and the parameter moves the bar.
+    auto* humanize = dynamic_cast<BarSlider*> (ed->findChildWithID ("humanize"));
+    auto* retune = dynamic_cast<BarSlider*> (ed->findChildWithID ("retune"));
+    auto* transpose = dynamic_cast<BarSlider*> (ed->findChildWithID ("transpose"));
+    check (humanize != nullptr && retune != nullptr && transpose != nullptr, "the bars are found");
+    if (humanize == nullptr || retune == nullptr || transpose == nullptr)
+        return;
+    {
+        ParamWatch watch (p);
+        setParam (p, "humanize", 30.0f);
+        watch.reset();
+        const float y = (float) humanize->getHeight() - 6.0f;
+        const juce::Point<float> from (50.0f, y), to (50.0f + (float) humanize->getWidth() * 0.25f, y);
+        humanize->mouseDown (mouseAt (*humanize, from));
+        humanize->mouseDrag (mouseAt (*humanize, to, 1, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier), from));
+        humanize->mouseUp (mouseAt (*humanize, to, 1, juce::ModifierKeys(), from));
+        check (realValue (p, "humanize") > 40.0f && realValue (p, "humanize") < 70.0f, "dragging a bar a quarter of its width moves its parameter from where it was", (double) realValue (p, "humanize"));
+        check (watch.begins == 1 && watch.ends == 1 && watch.changes > 0, "a drag is one gesture for automation, begins", (double) watch.begins.load());
+
+        setParam (p, "humanize", 77.0f);
+        check (std::abs (humanize->getValue() - 77.0) < 0.2, "automation moves the bar", humanize->getValue());
+        check (humanize->valueText() == "77%", "the bar shows the value: " + humanize->valueText().toStdString());
+
+        watch.reset();
+        humanize->mouseDoubleClick (mouseAt (*humanize, from, 2));
+        check (std::abs (realValue (p, "humanize") - 30.0f) < 0.05f && watch.begins == 1 && watch.ends == 1, "double-click resets to the default, as one gesture", (double) realValue (p, "humanize"));
+    }
+
+    // Typing a value.
+    {
+        ParamWatch watch (p);
+        retune->applyTyped ("120 ms");
+        check (std::abs (realValue (p, "retune") - 120.0f) < 0.11f && watch.begins == 1 && watch.ends == 1, "typing 120 ms sets 120 ms, as one gesture", (double) realValue (p, "retune"));
+        retune->applyTyped ("nonsense");
+        check (std::abs (realValue (p, "retune") - 120.0f) < 0.11f, "typing a word that means nothing leaves it alone", (double) realValue (p, "retune"));
+        retune->applyTyped ("9999");
+        check (std::abs (realValue (p, "retune") - 400.0f) < 0.11f, "typing too much stops at the top of the range", (double) realValue (p, "retune"));
+        retune->applyTyped ("instant");
+        check (realValue (p, "retune") < 0.05f && retune->valueText() == "Instant", "typing Instant works, and reads Instant", (double) realValue (p, "retune"));
+        transpose->applyTyped (juce::String::fromUTF8 ("\xe2\x88\x92") + "5");
+        check (std::abs (realValue (p, "transpose") + 5.0f) < 0.01f, "the minus sign the window shows can be typed back", (double) realValue (p, "transpose"));
+        setParam (p, "transpose", 0.0f);
+        setParam (p, "retune", 20.0f);
+    }
+
+    // Lists, segments and buttons.
+    {
+        ParamWatch watch (p);
+        auto* key = dynamic_cast<ui::MenuField*> (ed->findChildWithID ("key"));
+        auto* type = dynamic_cast<ui::Segments*> (ed->findChildWithID ("inputType"));
+        auto* byp = dynamic_cast<ui::Pill*> (ed->findChildWithID ("bypass"));
+        check (key != nullptr && type != nullptr && byp != nullptr, "the list, the segments and the button are found");
+        if (key == nullptr || type == nullptr || byp == nullptr)
+            return;
+        key->choose (9);
+        check (juce::roundToInt (realValue (p, "key")) == 9 && watch.begins == 1 && watch.ends == 1, "choosing a key sets it, as one gesture");
+        setParam (p, "key", 4.0f);
+        check (key->getSelected() == 4, "automation moves the list");
+        key->resetToDefault();
+        check (juce::roundToInt (realValue (p, "key")) == 0, "the list resets");
+
+        const auto cell = type->getLocalBounds().toFloat().withTrimmedTop (22.0f);
+        type->mouseDown (mouseAt (*type, { cell.getX() + cell.getWidth() * 0.1f, cell.getCentreY() }));
+        check (juce::roundToInt (realValue (p, "inputType")) == 0, "clicking the first segment picks Soprano");
+        type->mouseDoubleClick (mouseAt (*type, { cell.getCentreX(), cell.getCentreY() }, 2));
+        check (juce::roundToInt (realValue (p, "inputType")) == 1, "double-click puts Input Type back to its default");
+
+        byp->mouseDown (mouseAt (*byp, { 5.0f, 5.0f }));
+        check (realValue (p, "bypass") >= 0.5f && byp->isOn(), "the button turns Bypass on");
+        byp->mouseDoubleClick (mouseAt (*byp, { 5.0f, 5.0f }, 2));
+        check (realValue (p, "bypass") < 0.5f && ! byp->isOn(), "double-click puts Bypass back to off");
+    }
+
+    // The notes.
+    {
+        ParamWatch watch (p);
+        setParam (p, "key", 0.0f);
+        setParam (p, "scale", (float) smoothtune::scaleMajor);
+        watch.reset();
+        w->clickNote (4);   // E, in C Major
+        check (juce::roundToInt (realValue (p, "scale")) == smoothtune::scaleCustom, "clicking a note starts your own scale");
+        const int expected[12] = { 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0 };
+        bool same = true;
+        for (int i = 0; i < 12; ++i)
+            same = same && juce::roundToInt (realValue (p, ("note" + juce::String (i)).toRawUTF8())) == expected[i];
+        check (same, "and it starts from the scale that was showing, with only that note changed");
+        check (watch.begins >= 1 && watch.begins == watch.ends, "every note written has a begin and an end", (double) watch.begins.load());
+        w->clickNote (4);
+        check (juce::roundToInt (realValue (p, "note4")) == 0, "clicking it again puts it back");
+        w->setNoteMode (7, 2);
+        check (juce::roundToInt (realValue (p, "note7")) == 2 && w->noteMode (7) == 2, "the right-click menu's Bypass sets that note to Bypass");
+        setParam (p, "note2", 1.0f);
+        check (w->noteMode (2) == 1, "automation moves the note");
+        auto* cell = ed->findChildWithID ("note7");
+        check (cell != nullptr && cell->getWidth() > 20, "the note has a place on screen");
+        if (cell != nullptr)
+        {
+            cell->mouseDoubleClick (mouseAt (*cell, { 5.0f, 5.0f }, 2));
+            check (juce::roundToInt (realValue (p, "note7")) == 0, "double-click puts the note back to Tune");
+        }
+        setParam (p, "scale", (float) smoothtune::scaleChromatic);
+        for (int i = 0; i < 12; ++i)
+            setParam (p, ("note" + juce::String (i)).toRawUTF8(), 0.0f);
+    }
+
+    // The scale the display shares with the ruler.
+    {
+        const auto at = [] (float c) { return (PitchDisplay::positionForCents (c) - 0.5f) * 80.0f; };
+        check (std::abs (at (0.0f)) < 1.0e-4f && std::abs (at (25.0f) - 15.0f) < 1.0e-3f && std::abs (at (50.0f) - 25.0f) < 1.0e-3f && std::abs (at (100.0f) - 40.0f) < 1.0e-3f && std::abs (at (-50.0f) + 25.0f) < 1.0e-3f,
+               "0, 25, 50 and 100 cents land exactly on ticks of the ruler");
+        check (at (500.0f) == 40.0f && at (-500.0f) == -40.0f, "beyond the ends the mark stays at the end");
+    }
+
+    // Saved state: only the size and Advanced are added, they stay in range, and they stay out of the parameters.
+    {
+        w->setSize (1000, 800);
+        w->setAdvancedOpen (true);
+        juce::MemoryBlock st;
+        p.getStateInformation (st);
+        auto other = make();
+        other->setStateInformation (st.getData(), (int) st.getSize());
+        check (other->windowWidth.load() == 1000 && other->windowHeight.load() == 800 && other->advancedOpen.load(), "the size and Advanced come back with the session", (double) other->windowWidth.load());
+        check (! other->apvts.state.hasProperty ("windowWidth") && ! other->apvts.state.hasProperty ("windowHeight") && ! other->apvts.state.hasProperty ("advancedOpen"), "they stay out of the parameter tree");
+
+        auto xml = juce::AudioProcessor::getXmlFromBinary (st.getData(), (int) st.getSize());
+        xml->setAttribute ("windowWidth", 99999);
+        xml->setAttribute ("windowHeight", "nonsense");
+        juce::MemoryBlock bad;
+        juce::AudioProcessor::copyXmlToBinary (*xml, bad);
+        other->setStateInformation (bad.getData(), (int) bad.getSize());
+        check (other->windowWidth.load() == PluginProcessor::maxWindowWidth && other->windowHeight.load() == PluginProcessor::minWindowHeight, "a damaged size goes back in range", (double) other->windowWidth.load());
+
+        xml->removeAttribute ("windowWidth");
+        xml->removeAttribute ("windowHeight");
+        xml->removeAttribute ("advancedOpen");
+        juce::MemoryBlock old;
+        juce::AudioProcessor::copyXmlToBinary (*xml, old);
+        auto fresh = make();
+        fresh->setStateInformation (old.getData(), (int) old.getSize());
+        check (fresh->windowWidth.load() == PluginProcessor::defaultWindowWidth && ! fresh->advancedOpen.load(), "a session from before the window opens at the default size");
+
+        std::unique_ptr<juce::AudioProcessorEditor> reopened (other->createEditor());
+        check (reopened->getWidth() == PluginProcessor::maxWindowWidth && reopened->getHeight() >= PluginProcessor::minWindowHeight, "a window opens within limits from a damaged size", (double) reopened->getHeight());
+        w->setAdvancedOpen (false);
+    }
+
+    // The window only reads: frames and paints, with a voice going through, move no parameter and start no gesture.
+    {
+        const auto x = voice::synth (voice::steady (220.0 * std::pow (2.0, 30.0 / 1200.0), 1.0, SR), voice::vowelA, SR);
+        ParamWatch watch (p);
+        juce::AudioBuffer<float> buffer (2, 256);
+        juce::MidiBuffer midi;
+        bool moved = false;
+        for (int pos = 0; pos + 256 <= (int) x.size(); pos += 256)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                buffer.copyFrom (ch, 0, x.data() + pos, 256);
+            p.processBlock (buffer, midi);
+            if (pos % 1600 < 256)
+            {
+                moved = w->tick (1.0 / 30.0) || moved;
+                paintAt (*ed, pos % 3200 < 1600 ? 1.0f : 2.0f);
+            }
+        }
+        check (moved, "with a voice going through, the display reports it is moving");
+        check (watch.changes == 0 && watch.begins == 0 && watch.ends == 0, "the window reading and painting writes no parameter and no automation", (double) watch.changes.load());
+
+        float in = 0.0f, out = 0.0f;
+        for (int pos = 0; pos + 256 <= 2560; pos += 256)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                buffer.copyFrom (ch, 0, x.data() + pos + 24000, 256);
+            p.processBlock (buffer, midi);
+        }
+        p.takeLevels (in, out);
+        check (in > 0.05f && out > 0.05f, "the level reads are live", (double) in);
+        p.takeLevels (in, out);
+        check (in == 0.0f && out == 0.0f, "and reading them clears them");
+
+        // With no more audio, the display settles and says so, so the timer can slow down and nothing repaints.
+        bool still = true;
+        for (int i = 0; i < 200; ++i)
+            still = w->tick (1.0 / 30.0);
+        check (! still, "with the host stopped, the display stops moving");
+    }
+
+    // Opening and closing, over and over, with audio running on another thread and with none.
+    {
+        auto q = make();
+        prepare (*q, 2, SR, 256);
+        std::atomic<bool> running { true };
+        const auto x = voice::synth (voice::steady (196.0, 1.0, SR), voice::vowelA, SR);
+        std::thread audio ([&]
+        {
+            juce::AudioBuffer<float> buffer (2, 256);
+            juce::MidiBuffer midi;
+            int pos = 0;
+            while (running.load())
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    buffer.copyFrom (ch, 0, x.data() + pos, 256);
+                pos = (pos + 256) % ((int) x.size() - 256);
+                q->processBlock (buffer, midi);
+            }
+        });
+        int opened = 0;
+        for (int i = 0; i < 30; ++i)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> e (q->createEditor());
+            auto* te = dynamic_cast<TuneEditor*> (e.get());
+            te->tick (1.0 / 30.0);
+            paintAt (*e, i % 2 == 0 ? 2.0f : 1.0f);
+            te->setAdvancedOpen (i % 3 == 0);
+            te->tick (1.0 / 30.0);
+            paintAt (*e, 1.0f);
+            ++opened;
+        }
+        running = false;
+        audio.join();
+        for (int i = 0; i < 30; ++i)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> e (q->createEditor());
+            paintAt (*e, 2.0f);
+            ++opened;
+        }
+        check (opened == 60, "60 windows opened, painted and closed, 30 of them with audio running", (double) opened);
+
+        auto unprepared = make();
+        std::unique_ptr<juce::AudioProcessorEditor> before (unprepared->createEditor());
+        paintAt (*before, 2.0f);
+        check (before->getWidth() > 0, "a window opens and paints before the host has prepared the plug-in");
+    }
+
+    // The null test: the same audio with the window open, ticking and painting is identical to the sample.
+    {
+        const auto x = loadWav ("speech_samantha.wav");
+        auto a = tuner (altoTenor, 30.0f, 20.0f);
+        auto b = tuner (altoTenor, 30.0f, 20.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> open (b->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (open.get());
+        const auto first = render (*a, x, 256);
+        int block = 0;
+        const auto second = render (*b, x, 256, nullptr, [&] (int)
+        {
+            te->tick (1.0 / 30.0);
+            if (++block % 16 == 0)
+                paintAt (*open, 2.0f);
+        });
+        double worst = 0.0;
+        for (int i = 0; i < first.getNumSamples(); ++i)
+            worst = juce::jmax (worst, (double) std::abs (first.getSample (0, i) - second.getSample (0, i)));
+        check (worst == 0.0, "audio with the window open and painting nulls to exact zero against the window closed", worst);
+    }
+}
+
 void testCpu()
 {
     auto p = make();
@@ -1449,6 +1788,7 @@ int main (int argc, char** argv)
     if (want ("added")) testAddedControls();
     if (want ("meter")) testMeter();
     if (want ("blocks")) testBlocksAndState();
+    if (want ("window")) testWindow();
     if (want ("cpu")) testCpu();
     return finish();
 }

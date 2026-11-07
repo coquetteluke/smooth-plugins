@@ -93,6 +93,22 @@ public:
     const PitchPoint& getPitchPoint (long long index) const noexcept { return pitchHistory[(size_t) (index & (pitchHistorySize - 1))]; }
     long long getPitchHistoryCount() const noexcept { return pitchHistoryCount.load (std::memory_order_relaxed); }
 
+    // The highest input and output level since the last call, for the window's two meters. Safe from any thread, never blocks audio.
+    void takeLevels (float& input, float& output) noexcept
+    {
+        input = levelIn.exchange (0.0f, std::memory_order_relaxed);
+        output = levelOut.exchange (0.0f, std::memory_order_relaxed);
+    }
+
+    // True when a setting a preset owns has moved away from the current preset. Asked by the window, not used by audio.
+    bool isCurrentProgramEdited() const;
+
+    // The window's size and whether Advanced is open. Saved with the session, kept in range when loaded, and not parameters.
+    static constexpr int defaultWindowWidth = 900, defaultWindowHeight = 660;
+    static constexpr int minWindowWidth = 840, minWindowHeight = 580, maxWindowWidth = 1600, maxWindowHeight = 1200;
+    std::atomic<int> windowWidth { defaultWindowWidth }, windowHeight { defaultWindowHeight };
+    std::atomic<bool> advancedOpen { false };
+
     // Latency in samples for an Input Type at a sample rate.
     static int latencyFor (int inputType, double sampleRate) noexcept;
 
@@ -140,6 +156,7 @@ private:
     std::atomic<long long> pitchHistoryCount { 0 };
 
     std::atomic<int> voicedNow { 0 };
+    std::atomic<float> levelIn { 0.0f }, levelOut { 0.0f };
     std::atomic<double> preparedRate { 0.0 };
     bool hostLatencyUpdates = true;
     int currentProgram = 0;

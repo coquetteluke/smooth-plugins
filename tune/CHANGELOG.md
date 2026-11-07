@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0, 2026-11-07
+
+The custom window replaces the generic one. Graphite and lime: a huge note, a correction ruler in cents, a short trace on the same scale, In and Out levels, one cell per note, the main controls in view and the rest under Advanced. Every control is the same AU parameter under the same ID. The only new saved items are the window size and whether Advanced is open, kept in range when loaded.
+No DSP change. Adds a read of the input and output peak for the meters. Output is bit identical to 1.0.1 through the installed AU. Adds `tests/RenderWindow.cpp`, `tests/AuRender.cpp`, pictures in `docs/window/` and window tests in `tests/PluginTest.cpp`.
+
 ## 1.0.1, 2026-11-07
 
 Slowed the tracker's mark pull from 1% to 0.2%, which was bending shifted pitch. Worst output pitch error at instant speed: steady notes 3.44 to 1.01 cents, vibrato with breath 4.36 to 1.52 cents. Worst formant move 4.98% to 4.43%.

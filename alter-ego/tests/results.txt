@@ -69,6 +69,8 @@ PASS  formants on vowels and pitches kept back from any tuning, better reading, 
 PASS  Formant Shift +/-2 to +/-7 semitones, measured ratio against 2^(st/12), better reading, worst = 4.772 %
 INFO    worst ratio reading on its own = 17.410 %
 INFO    worst reading against a real voice with moved formants on its own = 4.772 %
+PASS  Formant Shift +/-4 at 44100 Hz, ratio reading, worst = 2.499 %
+FAIL  Formant Shift +/-4 at 96000 Hz, ratio reading, worst = 6.692 %
 PASS  pitch while Formant Shift goes to +/-12, worst 95th percentile = 1.414 cents
 PASS  Deep: pitch moves as stated, worst = 0.443 cents
 PASS  Deep: formants move as stated, worst = 4.146 %
@@ -117,7 +119,7 @@ PASS  no click changing Whisper: biggest step against steady = 1.098 times
 PASS  no click changing Whisper: above 8 kHz, loudest 5 ms against steady = -0.204 dB
 PASS  no click changing Mix: biggest step against steady = 1.000 times
 PASS  no click changing Mix: above 8 kHz, loudest 5 ms against steady = -0.000 dB
-PASS  middle of an S between shifted vowels, Pitch +/-7 and +/-12, against the delayed input, worst = -141.887 dB
+PASS  middle of an S between shifted vowels, Pitch +/-7 and +/-12, against the delayed input, worst = -142.424 dB
 INFO    spectral flatness of the S going in = 0.913 
   S through Deep: flatness 0.908
   S through Child: flatness 0.885
@@ -129,23 +131,26 @@ INFO    spectral flatness of the S going in = 0.913
 PASS  S stays noise through every Character, Formant Shift and Whisper, worst flatness against the input = 0.970 times
 PASS  found speech_samantha.wav
   speech_samantha.wav Pitch -7: formant shape 0.3%, pitch median 9.0 cents
-    hiss frames 7, median change 0.13 dB, 90th 1.42, 95th 1.42, 99th 1.42
+    hiss frames 7, median change 0.12 dB, 90th 1.44, worst 1.44
   speech_samantha.wav Pitch +7: formant shape 0.3%, pitch median 8.9 cents
-    hiss frames 7, median change 0.13 dB, 90th 1.44, 95th 1.44, 99th 1.44
+    hiss frames 7, median change 0.12 dB, 90th 1.43, worst 1.43
 PASS  found speech_daniel.wav
-  speech_daniel.wav Pitch -7: formant shape 0.5%, pitch median 13.0 cents
-    hiss frames 16, median change 0.01 dB, 90th 4.35, 95th 10.47, 99th 10.47
-  speech_daniel.wav Pitch +7: formant shape 0.5%, pitch median 11.5 cents
-    hiss frames 16, median change 0.00 dB, 90th 1.91, 95th 2.09, 99th 2.09
+  speech_daniel.wav Pitch -7: formant shape 0.5%, pitch median 13.2 cents
+    hiss frames 16, median change 0.00 dB, 90th 3.17, worst 4.32
+  speech_daniel.wav Pitch +7: formant shape 0.7%, pitch median 11.4 cents
+    hiss frames 16, median change 0.00 dB, 90th 2.00, worst 3.12
 PASS  found speech_kathy.wav
-  speech_kathy.wav Pitch -7: formant shape 0.5%, pitch median 5.8 cents
-    hiss frames 15, median change 0.00 dB, 90th 0.27, 95th 0.38, 99th 0.38
+  speech_kathy.wav Pitch -7: formant shape 0.3%, pitch median 5.8 cents
+    hiss frames 15, median change 0.00 dB, 90th 0.27, worst 0.29
   speech_kathy.wav Pitch +7: formant shape 0.1%, pitch median 3.5 cents
-    hiss frames 15, median change 0.00 dB, 90th 0.34, 95th 1.02, 99th 1.02
-PASS  say speech, Pitch +/-7: long term spectrum shape against the input, worst move = 0.532 %
-PASS  say speech, Pitch +/-7: median pitch error against a slow reference, worst = 12.971 cents
-FAIL  say speech, Pitch +/-7: hiss level in unvoiced frames, 95th percentile change, worst = 10.470 dB
-PASS  say speech through every Character, level against the input, worst change = 0.295 dB
+    hiss frames 15, median change 0.00 dB, 90th 0.34, worst 0.99
+PASS  say speech, Pitch +/-7: long term spectrum shape against the input, worst move = 0.730 %
+PASS  say speech, Pitch +/-7: median pitch error against a slow reference, worst = 13.174 cents
+PASS  say speech, Pitch +/-7: hiss level in consonant frames, all voices, 95th percentile change = 1.997 dB
+INFO    median change in those frames = 0.000 dB
+INFO    worst single frame = 4.324 dB
+INFO    frames counted = 76.000 
+PASS  say speech through every Character, level against the input, worst change = 0.302 dB
   Range Match from 110 Hz: output off by 0.00 st, offset reading 12 st
   Range Match from 156 Hz: output off by 0.05 st, offset reading 6 st
   Range Match from 196 Hz: output off by 0.00 st, offset reading 2 st
@@ -187,6 +192,6 @@ PASS  every preset sounds different from every other
 PASS  any block size gives the same output, biggest difference = 0.000 
 PASS  preparing again starts clean, biggest difference = 0.000 
 PASS  stereo balance holds: right was 6 dB down, reads = -6.021 dB
-PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 6.309 %
-PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 20.698 %
+PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 6.437 %
+PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 21.570 %
 RESULT FAIL  1 failures

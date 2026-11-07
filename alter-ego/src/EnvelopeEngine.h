@@ -1,9 +1,10 @@
 #pragma once
 // Vocal tract envelope, tracked over time, in two versions: as it is, and as it should be after Formant Shift.
 //
-// A frame every eighth of a window: Hann window, power spectrum, inverse transform to autocorrelation, Levinson recursion to
-// reflection coefficients. The second set comes from the same power spectrum with its frequency axis scaled by the formant
-// ratio, so it is the same vocal tract, longer or shorter. Reflection coefficients stay stable when interpolated.
+// A frame every eighth of a window: Hann window, power spectrum, a memory over frames that is long on held sounds and none on changing
+// ones, then an all-pole fit as reflection coefficients. On a voiced sound with separate harmonics the fit answers to the harmonics
+// alone. The second version comes from the same spectrum with its frequency axis scaled by the formant ratio, so it is the same
+// vocal tract, longer or shorter. Reflection coefficients stay stable when interpolated.
 //
 // The whitening filter (analysis) and the putting-back filter (synthesis) are lattices that use these coefficients. If nothing
 // has been changed between them, they are exact inverses of each other at every sample, whatever the coefficients are.

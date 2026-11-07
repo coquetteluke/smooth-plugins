@@ -1,10 +1,13 @@
 #pragma once
 // The voice changer, one sample at a time:
 //
-//   input > whitening filter > grain shifter > breath > putting-back filter > level match > mix
+//   input > pre-emphasis > whitening filter > grain shifter > breath or Robot pulses > filter put back > de-emphasis > level match > mix
 //
 // The tracker hears the input as it arrives. The whitening filter needs half a window of look ahead, so it runs behind that, which
-// also gives the tracker a head start: the marks grains need are already known, and the total delay stays near 25 ms.
+// also gives the tracker a head start: the marks grains need are already known, and the total delay stays near 24 ms.
+//
+// With nothing asked of it, grains read the excitation at the reported delay and the two filters are exact opposites, so the output
+// is the delayed input to rounding. Unvoiced sound takes that same path whatever Pitch says, so consonants aren't shifted at all.
 //
 // Everything is allocated in prepare(). process() is real time safe. Knows nothing about JUCE or the host.
 #include <algorithm>
@@ -84,6 +87,7 @@ public:
         levelGainRate = 1.0 - std::exp (-1.0 / (0.015 * sr));
         levelRelease = 1.0 - std::exp (-1.0 / (0.003 * sr));
         tilt = std::exp (-2.0 * M_PI * 200.0 / sr);
+        for (auto& f : airFilter) f.highPass (4500.0, sr, 0.707);
         historySize = 1;
         while (historySize < total / tickEvery + 4) historySize *= 2;
         history.assign ((size_t) historySize, 0);
@@ -206,6 +210,14 @@ public:
             {
                 dry[ch] = hasDry ? dryLine[(size_t) ch][(size_t) dryAt] : 0.0f;
                 double e = (double) excitation[ch];
+                // A voice that is part noise (a Z, a breathy note) has a top that is mostly hiss, which grains spread thin or pile up. So on
+                // those sounds the top of the excitation stays as it was at the output's own moment. A clean voice's top is harmonics and
+                // is left to the grains. With nothing shifted the two are the same and this adds nothing.
+                const double top = airFilter[(size_t) ch].process ((double) shifter.dry (ch) - e);
+                if (airFilter[(size_t) ch].bad())
+                    airFilter[(size_t) ch].clear();
+                else
+                    e += (1.0 - current.robot) * airShare * top;
                 breathPower[(size_t) ch] += breathRate * (e * e - breathPower[(size_t) ch]);
                 if (current.robot > 0.0)
                 {
@@ -243,9 +255,11 @@ public:
             }
 
             const double wetAmount = current.mix * current.engaged;
+            // Hiss passes unshifted, so on a sound that is part noise the level match, which answers to the voiced part, is held back from it.
+            const double matched = 1.0 + (levelGain - 1.0) * (1.0 - airShare);
             for (int ch = 0; ch < channels; ++ch)
             {
-                const double out = ((1.0 - wetAmount) * (double) dry[ch] + wetAmount * levelGain * wet[ch]) * (1.0 + current.engaged * (current.outputGain - 1.0));
+                const double out = ((1.0 - wetAmount) * (double) dry[ch] + wetAmount * matched * wet[ch]) * (1.0 + current.engaged * (current.outputGain - 1.0));
                 audio[ch][i] = (float) std::clamp (out, -16.0, 16.0);
             }
             ++input;
@@ -278,6 +292,8 @@ private:
         synthesisGain = 1.0;
         tiltIn.fill (0.0);
         tiltOut.fill (0.0);
+        for (auto& f : airFilter) f.clear();
+        airShare = 0.0;
         lastMono = 0.0f;
     }
 
@@ -429,6 +445,7 @@ private:
         readingOutHz = std::pow (2.0, fromInput + current.robot * (fromRobot - fromInput) + vibrato / 1200.0);
         wantedOutputPeriod = sr / readingOutHz;
         pulseGate += fadeSmooth * ((control.voiced ? 1.0 : 0.0) - pulseGate);
+        airShare += fadeSmooth * (std::clamp (((double) tracker.difference() - 0.05) / 0.15, 0.0, 1.0) - airShare);
         control.noCorrection = std::abs (current.pitch + rangeNow) < 1.0e-3 && current.robot <= 0.0 && current.monster <= 0.0 && std::abs (current.vibrato) <= 0.0;
         control.alternate = 0.10 * current.monster;
         control.gainAlternate = 0.35 * current.monster;
@@ -467,6 +484,8 @@ private:
     uint64_t randomState = 0x9E3779B97F4A7C15ull;
     std::array<double, 2> breathPower {};
     double tilt = 0.97;
+    std::array<Biquad, 2> airFilter;
+    double airShare = 0.0;
     std::array<double, 2> tiltIn {}, tiltOut {};
     float lastMono = 0.0f;
     double breathRate = 0.01, levelRate = 0.001, levelGainRate = 0.001, levelRelease = 0.01, levelIn = 0.0, levelOut = 0.0, levelGain = 1.0;

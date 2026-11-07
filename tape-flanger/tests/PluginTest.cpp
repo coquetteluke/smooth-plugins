@@ -1037,13 +1037,14 @@ static void testManualMode()
             if (pos == openAt / 64 * 64) setParam (*p, "flange", 0.01f);
             if (pos == closeAt / 64 * 64) setParam (*p, "flange", 0.0f);
         });
-        const int latency = p->getLatencySamples(), win = (int) (0.002 * sr);
+        // The fade works at the Mix stage, so it shows on the output when the control moves. The latency does not come into it.
+        const int win = (int) (0.002 * sr);
         const auto nullAfter = [&] (int from, int to, double& depth)
         {
             double best = 1e9; int at = from;
             for (int i = from; i < to - win; i += 24)
             {
-                const double r = rms (out.getReadPointer (0) + i + latency, win);
+                const double r = rms (out.getReadPointer (0) + i, win);
                 if (r < best) { best = r; at = i; }
             }
             depth = toDb (best / 0.1767767);
@@ -1052,13 +1053,15 @@ static void testManualMode()
         const double limit = std::max (0.015, 0.05 * fade * 0.0005);
         double depthIn = 0, depthOut = 0;
         const double tIn = nullAfter (openAt / 64 * 64, closeAt, depthIn) - (openAt / 64 * 64) / sr;
-        const double tOut = nullAfter (closeAt / 64 * 64, n - latency - win, depthOut) - (closeAt / 64 * 64) / sr;
+        const double tOut = nullAfter (closeAt / 64 * 64, n - win, depthOut) - (closeAt / 64 * 64) / sr;
         const double expect = std::max (0.01, fade * 0.001) * 0.5;
         const auto tag = "Fade " + std::to_string ((int) fade) + " ms";
         check (std::abs (tIn - expect) <= limit, tag + ", half way going in", tIn * 1000.0, "ms");
         check (std::abs (tOut - expect) <= limit, tag + ", half way going out", tOut * 1000.0, "ms");
-        // Limit: the dip goes at least 25 dB down, which shows it really is a blend moving from dry to wet.
-        check (depthIn <= -25.0 && depthOut <= -25.0, tag + ", dip going in", depthIn, "dB");
+        // Limit: the dip goes at least 25 dB down, which shows it really is a blend moving from dry to wet. Fade 0 uses the 10 ms
+        // minimum, and a 2 ms reading window over a 10 ms blend can only show about -19 dB, so that case is held to -15 dB.
+        const double dipLimit = fade > 0.0f ? -25.0 : -15.0;
+        check (depthIn <= dipLimit && depthOut <= dipLimit, tag + ", dip going in", depthIn, "dB");
     }
 
     // Flange at 0 means the wet deck is out. Limit: with Delay 3 ms and Mix 100 the output nulls 60 dB against Mix 0.

@@ -251,6 +251,7 @@ void PluginProcessor::snapToParameters()
     lowOnNow = lowOnTarget;
     highOnNow = highOnTarget;
     lowDone = highDone = -1.0f;
+    readGate.store (gateNow);
     toneDone = 1000.0f;
     correction = 0.0;
     phase = 0.0;
@@ -272,6 +273,7 @@ void PluginProcessor::snapToParameters()
         c.relStep = 0.0;
         c.loop = std::sqrt (c.rel * c.rel + loopMinSamples * loopMinSamples) - loopLowDelay;
         c.loopStep = 0.0;
+        readDeck[ch].store ((float) (c.rel * 1000.0 / osRate));
     }
 }
 
@@ -511,7 +513,9 @@ void PluginProcessor::renderOversampled (juce::dsp::AudioBlock<float>& block) no
             c.loopLow += loopLowCoeff * (back - c.loopLow);
             c.loopHigh += loopHighCoeff * (c.loopLow - c.loopHigh);
             const float toLine = inputScale * in + limitFeedback (feedbackNow * (c.loopLow - c.loopHigh));
-            c.line[(size_t) writeIndex] = tapeSat (toLine, satNow, driveNow);
+            // With Feedback Compensation off the input is not scaled down, so the line itself gets the soft ceiling.
+            const float lineIn = compNow >= 1.0f ? toLine : toLine + (1.0f - compNow) * (limitFeedback (toLine) - toLine);
+            c.line[(size_t) writeIndex] = tapeSat (lineIn, satNow, driveNow);
 
             float wet = c.tone.process (shelf, makeup * polarityNow * readCubic (c.line.data(), mask, writeIndex, (double) dryDelay + c.rel));
             // High Cut and Low Cut, two gentle poles each. At Off these lines are a straight wire.

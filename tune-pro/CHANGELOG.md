@@ -11,9 +11,9 @@ Quality work. High Quality numbers, worst case on the test voices, each step mea
 | Narrow the peaks that get put back, 25% | 8.5 dB | 4.98% | 4.0 dB | big shifts flat 2.8 dB |
 | Centre grains on the pulses | 7.6 dB | 4.98% | 4.2 dB | non-harmonic energy needed a slower offset, below |
 | Slower pitch mark slide, from Smooth Harmony | 7.5 dB | 4.56% | 4.2 dB | worst output pitch 2.98 to 0.80 cents |
-| Draw the model through harmonic peaks on high voices | 7.8 dB | 5.6% | 2.0 dB | colour 3.3 to 2.8 dB, level with a slow trim |
+| Draw the model through harmonic peaks on high voices | 7.8 dB | 5.6% | 2.0 dB | colour 3.3 to 2.8 dB, level from a first trim, slowed later |
 | Sharpening set per frequency, 45 to 50% | 6.9 dB | 4.98% | 1.45 dB | |
-| Hold the pulse offset for the whole note, not re-found | 6.8 dB | 4.98% | 1.45 dB | non-harmonic energy -14.7 to -46 dB where it had broken |
+| Hold the pulse offset for the whole note, not re-found | 6.8 dB | 4.98% | 1.45 dB | stopped a repeating jump that had put Low Latency non-harmonic energy at -14.7 dB, now -46 dB |
 | Slower grain reading when shifting down, whitened grains | 6.8 dB | 4.24% | 1.45 dB | |
 
 High Quality also: voicing read 10 ms ahead, so a note is on pitch 98% of the time from 10 to 40 ms against 88% in Low Latency, and an S after a vowel is untouched from its first sample. Through consonants the true input takes over from the filters.

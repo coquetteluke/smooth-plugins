@@ -538,5 +538,5 @@ PASS  preset 'Starved Grit' level against dry = -0.137 dB
 PASS  preset 'Worn Cassette' level against dry = -1.507 dB
 PASS  preset 'Old Radio Voice' level against dry = -4.736 dB
 PASS  preset 'Phone Call' level against dry = -3.665 dB
-PASS  CPU of one stereo instance at 48 kHz, percent of one core = 8.979 %
+PASS  CPU of one stereo instance at 48 kHz, percent of one core = 10.640 %
 RESULT PASS  0 failures

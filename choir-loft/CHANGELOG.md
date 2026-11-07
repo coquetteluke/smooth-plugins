@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1, 2026-11-07
+
+Renamed to Choir Loft, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
 ## 1.3.0
 
 Up to 8 singers, and click to choose who you hear.

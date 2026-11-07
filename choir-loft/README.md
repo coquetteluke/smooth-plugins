@@ -1,8 +1,8 @@
-# Smooth Harmony
+# Choir Loft
 
 Up to eight harmony voices from one lead vocal. Formants stay where they are, so the voices sound like people and not like a sped up tape. Each voice has its own timing, pitch, throat, tone, breath and consonants, so together they aim to sound like separate singers. The Tight preset turns all of that off and sits exactly on the notes.
 
-**Load it:** Audio Units > Luke Garito > Smooth Harmony. AU code `aumf SHrm Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. With mono in, the voices still spread across the stereo field.
+**Load it:** Audio Units > Luke Garito > Choir Loft. AU code `aumf SHrm Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. With mono in, the voices still spread across the stereo field.
 
 Everything here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
 

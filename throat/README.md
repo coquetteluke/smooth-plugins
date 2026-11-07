@@ -1,10 +1,10 @@
-# Smooth Throat
+# Throat
 
 Reshapes the vocal tract of a voice without moving its pitch. It analyses the formants of the voice, then rebuilds them as a tube of a new length and shape would have them. It can also add breath and change how pressed or soft the vocal cords sound. All the code is written from scratch.
 
 ## How to load it
 
-In your host: Audio Units > Luke Garito > Smooth Throat. AU code `aufx SThr Luke`. Mono and stereo. Latency is 1536 samples at 44.1 and 48 kHz (34.8 ms and 32.0 ms) and 3072 samples at 88.2 and 96 kHz (34.8 ms and 32.0 ms), the same when bypassed.
+In your host: Audio Units > Luke Garito > Throat. AU code `aufx SThr Luke`. Mono and stereo. Latency is 1536 samples at 44.1 and 48 kHz (34.8 ms and 32.0 ms) and 3072 samples at 88.2 and 96 kHz (34.8 ms and 32.0 ms), the same when bypassed.
 
 ## The window
 

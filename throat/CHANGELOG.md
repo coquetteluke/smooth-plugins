@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1, 2026-11-07
+
+Renamed to Throat, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
 ## 0.3.0
 
 Its own window. A side view of the vocal tract as one bent tube from the cords to the lips, with the singer's throat in bone and the model in oxide red, both read live from the voice's formants. Five draggable points, a gray realistic range for width and length, Reset, a level meter, F1 to F5 and pitch before and after, the two formant curves, and a quiet latency readout. Sound is unchanged: output nulls bit for bit against 0.2.0 renders on speech, with the window closed, drawing, and being reopened during audio. Sessions from 0.2.0 load as before. The only additions to a saved session are the window's size and whether Advanced is open.

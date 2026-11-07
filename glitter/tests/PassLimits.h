@@ -13,6 +13,16 @@ namespace limits
     constexpr double midiTimingMs = 15.0;           // pitch reaches the new held note this close to the note's place in the audio
     constexpr double midiReleaseCents = 5.0;        // after note off, back to the nearest scale note
 
+    // Tuning controls, same limits as Smooth Tune
+    constexpr double retuneToleranceFraction = 0.20; // measured time constant against Retune Speed
+    constexpr double retuneToleranceMs = 5.0;        // the bigger of the two applies
+    constexpr double vibratoKeptHumanize = 0.70;     // Humanize 100 keeps at least this share of a vibrato
+    constexpr double vibratoFlatHard = 0.10;         // default settings leave at most this much
+    constexpr double referenceCents = 5.0;           // Reference A4 432
+    constexpr double customNoteCents = 10.0;         // Custom scale notes
+    constexpr double trackingChoosyPercent = 20.0;   // Tracking 0 calls a noisy voice pitched at most this share of the time
+    constexpr double trackingRelaxedPercent = 70.0;  // Tracking 100 at least this share
+
     // Modules: on, off and main control
     constexpr double pitchCents = 5.0;              // Octave and Semitones, output against the wanted pitch, 95th percentile
     constexpr double pitchFormantSmallMove = 0.08;  // formants held at +/-5 semitones

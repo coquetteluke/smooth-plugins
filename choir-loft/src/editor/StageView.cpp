@@ -13,6 +13,9 @@ namespace ui
         constexpr float stageFooter = 26.0f;    // Left and Right, under the singers
         constexpr int minSpan = 24;             // semitones shown, at least
 
+        constexpr float dragStartsAfter = 4.0f;  // less movement than this is a click
+        constexpr float offSingerOpacity = 0.26f, offLineOpacity = 0.22f;
+
         const juce::Colour colourFor (int singer)
         {
             return singer == StageView::leadIndex ? tone::text : tone::voice[singer];
@@ -33,9 +36,53 @@ namespace ui
         }
     }
 
+    // Everyone back on. Bright when somebody is off, so there is something to bring back.
+    class StageView::AllButton final : public juce::Component,
+                                       public Hinted
+    {
+    public:
+        explicit AllButton (StageView& s) : stage (s)
+        {
+            hint = "Hear every singer again, the lead too.";
+            setComponentID ("hearAll");
+            setTitle ("Hear all singers");
+            setRepaintsOnMouseActivity (true);
+            setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        }
+
+        void setSomeoneOff (bool shouldBe)
+        {
+            if (someoneOff != shouldBe)
+            {
+                someoneOff = shouldBe;
+                repaint();
+            }
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            const auto b = getLocalBounds().toFloat();
+            const bool lit = isMouseOver();
+            g.setColour (someoneOff ? tone::text.withAlpha (lit ? 1.0f : 0.92f) : tone::text.withAlpha (lit ? 0.11f : 0.07f));
+            g.fillRoundedRectangle (b, 6.0f);
+            g.setColour (someoneOff ? tone::ink : (lit ? tone::text : tone::muted));
+            g.setFont (font (Weight::medium, 12.0f));
+            g.drawText ("All", b, juce::Justification::centred, false);
+        }
+
+        void mouseDown (const juce::MouseEvent&) override  { stage.hearAll(); }
+
+    private:
+        StageView& stage;
+        bool someoneOff = false;
+    };
+
+    juce::Component& StageView::getAllButton()  { return *allButton; }
+
     StageView::StageView (PluginProcessor& p) : processor (p)
     {
         auto& apvts = p.apvts;
+        heard.fill (true);
 
         for (int v = 0; v < PluginProcessor::maxVoices; ++v)
         {
@@ -43,10 +90,11 @@ namespace ui
             levelValue[(size_t) v] = apvts.getRawParameterValue (base + "Level");
             panValue[(size_t) v] = apvts.getRawParameterValue (base + "Pan");
             intervalValue[(size_t) v] = apvts.getRawParameterValue (base + "Interval");
+            onValue[(size_t) v] = apvts.getRawParameterValue (base + "On");
         }
 
         modeValue = apvts.getRawParameterValue ("mode");
-        voicesValue = apvts.getRawParameterValue ("voices");
+        onValue[(size_t) leadIndex] = apvts.getRawParameterValue ("leadOn");
         keyValue = apvts.getRawParameterValue ("key");
         scaleValue = apvts.getRawParameterValue ("scale");
         followValue = apvts.getRawParameterValue ("followKey");
@@ -58,6 +106,8 @@ namespace ui
 
         setOpaque (true);
         setTitle ("Voices on stage");
+        allButton = std::make_unique<AllButton> (*this);
+        addAndMakeVisible (*allButton);
         drawnTo = processor.getPitchHistoryCount();
     }
 
@@ -106,6 +156,23 @@ namespace ui
     void StageView::resized()
     {
         needsRebuild = true;
+        const auto stage = stageArea();
+        allButton->setBounds (stage.getCentreX() - 22, getHeight() - 24, 44, 20);
+    }
+
+    void StageView::hearAll()
+    {
+        for (int i = 0; i < singers; ++i)
+        {
+            auto* on = processor.apvts.getParameter (i == leadIndex ? juce::String ("leadOn") : "voice" + juce::String (i + 1) + "On");
+
+            if (on->getValue() < 0.5f)
+            {
+                on->beginChangeGesture();
+                on->setValueNotifyingHost (1.0f);
+                on->endChangeGesture();
+            }
+        }
     }
 
     void StageView::setHighlight (int singer)
@@ -239,7 +306,7 @@ namespace ui
         std::array<bool, singers> restKnown {};
         restPitches (rest, restKnown);
 
-        const int count_ = juce::jlimit (1, PluginProcessor::maxVoices, juce::roundToInt (voicesValue->load (std::memory_order_relaxed)));
+        const int count_ = processor.voiceCount();
         const auto& latest = processor.getPitchPoint (juce::jmax (0ll, count - 1));
         const float k = (float) (1.0 - std::exp (-dt / (live ? 0.03 : 0.12)));
 
@@ -366,6 +433,25 @@ namespace ui
             bypassed = bypassNow;
             repaint();
         }
+
+        // Who is heard. Their lines dim right away, the whole line, so a line always matches its singer.
+        bool someoneOff = false;
+
+        for (int i = 0; i < singers; ++i)
+        {
+            const bool on = onValue[(size_t) i]->load (std::memory_order_relaxed) >= 0.5f;
+
+            if (on != heard[(size_t) i])
+            {
+                heard[(size_t) i] = on;
+                needsRebuild = true;
+                repaint();
+            }
+
+            someoneOff = someoneOff || ! on;
+        }
+
+        allButton->setSomeoneOff (someoneOff);
 
         updateKey();
         updateSingers (r, dt);
@@ -637,7 +723,7 @@ namespace ui
         for (int series = 0; series < singers; ++series)
         {
             const bool lead = series == leadIndex;
-            g.setColour (colourFor (series));
+            g.setColour (heard[(size_t) series] ? colourFor (series) : colourFor (series).withAlpha (offLineOpacity));
             const float thin = (lead ? 2.0f : 1.5f) * scale, thick = (lead ? 5.0f : 4.0f) * scale;
 
             const auto rawAt = [&] (long long i)
@@ -811,7 +897,7 @@ namespace ui
                 continue;
 
             const auto at = singerPosition (pass);
-            g.setColour (colourFor (pass).withAlpha ((live ? 0.5f : 0.18f) * alpha));
+            g.setColour (colourFor (pass).withAlpha ((live ? 0.5f : 0.18f) * alpha * (heard[(size_t) pass] ? 1.0f : 0.3f)));
             g.fillRect (juce::Rectangle<float> (stageLeft, at.y - 0.5f, juce::jmax (0.0f, at.x - stageLeft), 1.0f));
         }
 
@@ -828,7 +914,7 @@ namespace ui
             const float size = s.spriteSize;
 
             // Loudness, as a flat ring that swells. There is no glow, just a paler disc behind the singer.
-            if (s.loud > 0.0f && ! bypassed)
+            if (s.loud > 0.0f && ! bypassed && heard[(size_t) i])
             {
                 const float grow = size * 0.5f + 2.0f + size * 0.28f * s.loud;
                 g.setColour (colour.withAlpha (0.20f));
@@ -844,7 +930,7 @@ namespace ui
 
             juce::Graphics::ScopedSaveState keep (g);
             g.addTransform (juce::AffineTransform::scale (1.0f / scale));
-            g.setOpacity (alpha * (i == leadIndex ? 1.0f : dim));
+            g.setOpacity (heard[(size_t) i] ? alpha * (i == leadIndex ? 1.0f : dim) : alpha * offSingerOpacity);
             const float half = (size * 0.5f + 1.0f);
             g.drawImageAt (s.sprite, juce::roundToInt ((at.x - half) * scale), juce::roundToInt ((at.y - half) * scale));
         }
@@ -891,9 +977,9 @@ namespace ui
             return;
 
         if (singer == leadIndex)
-            onHint ("The lead, your own voice. Drag left or right to place it. Its size is Lead Level.");
+            onHint ("The lead, your own voice. Click to hear it or not. Drag left or right to place it.");
         else if (singer >= 0)
-            onHint ("Voice " + juce::String (singer + 1) + ". Drag left or right to pan, up or down to change its note. Its size is its Level.");
+            onHint ("Voice " + juce::String (singer + 1) + ". Click to hear it or not. Drag left or right to pan, up or down to change its note.");
         else
             onHint ({});
     }
@@ -914,7 +1000,7 @@ namespace ui
 
     void StageView::mouseExit (const juce::MouseEvent&)
     {
-        if (hovered != -1 && dragging < 0)
+        if (hovered != -1 && pressed < 0)
         {
             hovered = -1;
             repaintStage();
@@ -923,11 +1009,14 @@ namespace ui
 
     void StageView::mouseDown (const juce::MouseEvent& e)
     {
-        dragging = singerAt (e.position);
+        // Nothing changes yet. Letting go here is a click, and moving away is a drag.
+        pressed = singerAt (e.position);
+        pressedAt = e.position;
+    }
 
-        if (dragging < 0)
-            return;
-
+    void StageView::startDrag (int singer)
+    {
+        dragging = singer;
         const int mode = juce::jlimit (0, numModes - 1, (int) modeValue->load (std::memory_order_relaxed));
         dragMovesInterval = dragging != leadIndex && mode != modeMidi && mode != modeChannel;
         panParam (dragging)->beginChangeGesture();
@@ -939,15 +1028,23 @@ namespace ui
             dragInterval = juce::roundToInt (interval->convertFrom0to1 (interval->getValue()));
         }
 
-        dragStartY = e.position.y;
+        dragStartY = pressedAt.y;
         setMouseCursor (juce::MouseCursor::DraggingHandCursor);
         repaintStage();
     }
 
     void StageView::mouseDrag (const juce::MouseEvent& e)
     {
-        if (dragging < 0)
+        if (pressed < 0)
             return;
+
+        if (dragging < 0)
+        {
+            if (e.position.getDistanceFrom (pressedAt) < dragStartsAfter)
+                return;
+
+            startDrag (pressed);
+        }
 
         const auto stage = stageArea().toFloat();
         const float pan = juce::jlimit (-100.0f, 100.0f, (e.position.x - stage.getX() - stageMargin) / (stage.getWidth() - 2.0f * stageMargin) * 200.0f - 100.0f);
@@ -966,37 +1063,27 @@ namespace ui
 
     void StageView::mouseUp (const juce::MouseEvent&)
     {
-        if (dragging < 0)
-            return;
-
-        panParam (dragging)->endChangeGesture();
-
-        if (dragMovesInterval)
-            intervalParam (dragging)->endChangeGesture();
-
-        dragging = -1;
-        setMouseCursor (hovered >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
-        repaintStage();
-    }
-
-    void StageView::mouseDoubleClick (const juce::MouseEvent& e)
-    {
-        const int hit = singerAt (e.position);
-
-        if (hit < 0)
-            return;
-
-        const auto reset = [] (juce::RangedAudioParameter* p)
+        if (dragging >= 0)
         {
-            if (p != nullptr)
-            {
-                p->beginChangeGesture();
-                p->setValueNotifyingHost (p->getDefaultValue());
-                p->endChangeGesture();
-            }
-        };
+            panParam (dragging)->endChangeGesture();
 
-        reset (panParam (hit));
-        reset (intervalParam (hit));
+            if (dragMovesInterval)
+                intervalParam (dragging)->endChangeGesture();
+
+            dragging = -1;
+            setMouseCursor (hovered >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+            repaintStage();
+        }
+        else if (pressed >= 0)
+        {
+            // A click with no movement: hear this singer or not. Quick clicks each count, so a double-click just goes off and back on.
+            auto* on = processor.apvts.getParameter (pressed == leadIndex ? juce::String ("leadOn") : "voice" + juce::String (pressed + 1) + "On");
+            on->beginChangeGesture();
+            on->setValueNotifyingHost (on->getValue() >= 0.5f ? 0.0f : 1.0f);
+            on->endChangeGesture();
+            repaintStage();
+        }
+
+        pressed = -1;
     }
 }

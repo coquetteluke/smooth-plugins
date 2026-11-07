@@ -29,10 +29,14 @@ namespace ui
         void mouseDown (const juce::MouseEvent&) override;
         void mouseDrag (const juce::MouseEvent&) override;
         void mouseUp (const juce::MouseEvent&) override;
-        void mouseDoubleClick (const juce::MouseEvent&) override;
 
         /** Marks a singer, from hovering its strip. -1 for none. */
         void setHighlight (int singer);
+
+        /** Brings every singer back, the lead too. What the All button does. */
+        void hearAll();
+        bool isHeard (int singer) const noexcept  { return heard[(size_t) singer]; }
+        juce::Component& getAllButton();
 
         /** The note a voice is singing now, or would sing, as text. Filled in by advance. */
         const juce::String& noteFor (int singer) const noexcept  { return state[(size_t) singer].label; }
@@ -79,6 +83,7 @@ namespace ui
         void refreshSprite (Singer&, juce::Colour, float scale);
 
         void showHintFor (int singer);
+        void startDrag (int singer);
         void repaintStage();
 
         juce::RangedAudioParameter* panParam (int singer) const;
@@ -89,7 +94,7 @@ namespace ui
 
         std::array<Singer, singers> state;
         std::array<std::atomic<float>*, PluginProcessor::maxVoices> levelValue {}, panValue {}, intervalValue {};
-        std::atomic<float>* modeValue, *voicesValue, *keyValue, *scaleValue, *followValue, *chordRootValue, *chordTypeValue, *leadPanValue, *leadLevelValue, *bypassValue;
+        std::atomic<float>* modeValue, *keyValue, *scaleValue, *followValue, *chordRootValue, *chordTypeValue, *leadPanValue, *leadLevelValue, *bypassValue;
 
         juce::Image background, ring;
         float cachedScale = 0.0f;
@@ -112,8 +117,14 @@ namespace ui
         double sinceVoiced = 1000.0;
         float lastLeadPitch = -1.0f;
 
-        int hovered = -1, highlight = -1, dragging = -1;
+        class AllButton;
+        std::unique_ptr<AllButton> allButton;
+        std::array<bool, singers> heard;
+        std::array<std::atomic<float>*, singers> onValue {};
+
+        int hovered = -1, highlight = -1, pressed = -1, dragging = -1;   // pressed, then dragging once the mouse has really moved
         int dragInterval = 0;
+        juce::Point<float> pressedAt;
         float dragStartY = 0.0f;
         bool dragMovesInterval = false;
         int paintCount = 0;

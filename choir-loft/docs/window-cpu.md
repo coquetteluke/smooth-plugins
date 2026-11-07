@@ -1,5 +1,21 @@
 # Window CPU
 
+## 1.3.0, eight voices
+
+Eight Part Choir, 8 voices and the lead, 24 frames a second, same method as below. Every run, nothing else building at the start:
+
+| Run | Window | Audio thread | Fast cores |
+|---|---|---|---|
+| 1 | 2.3% | 2.9% | 91% |
+| 2 | 2.7% | 3.7% | 74% |
+| 3 | 3.1% | 4.0% | 67% |
+| 4 | 3.2% | 3.9% | 67% |
+| 5 | 3.7% | 5.9% | 44% |
+
+Open with nothing playing: 0.68%, no paints. These are on a mix of fast and slow cores, so a fast core alone reads lower. Audio by `AuBench aumf SHrm Luke`, 3 runs: default 1.2%, down from 1.4% because voices past the count now sleep, and worst preset 2.5%, Eight Part Choir.
+
+## 1.2.0
+
 Real window at 2x, one column of pixels on screen, Full Stack on `say` sung material on a real time audio thread, message thread timed in the same run. `build/RenderWindow_artefacts/Release/RenderWindow --live 5`.
 
 Final build, 24 frames a second, every run, share of one core for the window's thread, with the audio thread and fast core share:

@@ -23,6 +23,7 @@ namespace
 {
 constexpr double SR = 48000.0;
 constexpr int soprano = 0, altoTenor = 1, lowMale = 2, wideRange = 3;
+constexpr int tightPreset = 10;   // presets above it never move, the ones added later come after it
 
 std::unique_ptr<PluginProcessor> make (const juce::String& keyFile = "/nonexistent/smooth-harmony-test.json")
 {
@@ -1942,7 +1943,7 @@ void testRealMaterial()
             for (int asTight = 0; asTight < 2; ++asTight)
             {
                 auto p = make();
-                if (asTight == 1) p->setCurrentProgram (p->getNumPrograms() - 1);
+                if (asTight == 1) p->setCurrentProgram (tightPreset);
                 setParam (*p, "inputType", (float) wideRange);
                 prepare (*p, 1, SR, 256);
                 const auto out = mono (render (*p, in, 256));
@@ -2029,10 +2030,10 @@ void testHuman()
     }
 
     // Tight keeps the 1.0.0 limits.
-    const auto asTight = [] (PluginProcessor& p) { p.setCurrentProgram (p.getNumPrograms() - 1); };
+    const auto asTight = [] (PluginProcessor& p) { p.setCurrentProgram (tightPreset); };
     {
         auto p = make();
-        check (p->getProgramName (p->getNumPrograms() - 1) == "Tight", "the last preset is Tight");
+        check (p->getProgramName (tightPreset) == "Tight", "preset 10 is Tight");
         human::Numbers t;
         human::pitchHumanity (t, "Tight: ", asTight);
         check (t.values["Tight: body of a note, distance from target, 95th percentile"] <= limits::voicePitchCents, "Tight: voices on target, 95th percentile", t.values["Tight: body of a note, distance from target, 95th percentile"], "cents");
@@ -2122,12 +2123,15 @@ void testHuman()
 
 // A fingerprint of the output on one preset: every sample of real sung material, both channels, bit for bit.
 // With a window, it is open from the start and draws after every block, on this thread.
-std::uint64_t outputFingerprintOf (int preset, bool withWindow)
+// allFour: all four first voices singing. Otherwise the preset's own count. Preset -1 is the settings as first opened.
+std::uint64_t outputFingerprintOf (int preset, bool withWindow, bool allFour = true)
 {
     const auto input = human::loadCorpus ("sung_goodnews", 9.0);
     auto p = make();
-    p->setCurrentProgram (preset);
-    setParam (*p, "voices", 4.0f);
+    if (preset >= 0)
+        p->setCurrentProgram (preset);
+    if (allFour)
+        setParam (*p, "voices", 4.0f);
     prepare (*p, 2, SR, 256);
     std::unique_ptr<juce::AudioProcessorEditor> window (withWindow ? p->createEditor() : nullptr);
     auto* harmonyWindow = dynamic_cast<HarmonyEditor*> (window.get());
@@ -2167,13 +2171,14 @@ std::uint64_t outputFingerprintWithWindow (int preset) { return outputFingerprin
 
 using ui::StageView;
 #include "WindowTests.h"
+#include "EightVoiceTests.h"
 
 // Before and after files for ears. The before files come from the 1.0.0 source, see README.
 void demo()
 {
     const auto dir = juce::File::getCurrentWorkingDirectory().getChildFile ("demo");
     auto p = make();
-    human::renderDemos (dir, "after_1.1", p->getNumPrograms() - 1, "tight");
+    human::renderDemos (dir, "after_1.1", tightPreset, "tight");
     std::printf ("demo files in %s\n", dir.getFullPathName().toRawUTF8());
 }
 } // namespace
@@ -2190,6 +2195,8 @@ int main (int argc, char** argv)
     {
         for (const int preset : { 0, 3, 4, 7, 10 })
             std::printf ("%d %lluull\n", preset, (unsigned long long) outputFingerprint (preset));
+        for (int preset = -1; preset <= 10; ++preset)
+            std::printf ("{ %d, %lluull },\n", preset, (unsigned long long) outputFingerprintOf (preset, false, false));
         return 0;
     }
 
@@ -2198,7 +2205,7 @@ int main (int argc, char** argv)
         GenericOptions opt;
         opt.sendMidiNote = true;
         opt.minPresets = 8;
-        opt.readOnly = { "detectedPitch", "leadNote", "voice1Note", "voice2Note", "voice3Note", "voice4Note", "voicesSounding", "activeKey" };
+        opt.readOnly = { "detectedPitch", "leadNote", "voice1Note", "voice2Note", "voice3Note", "voice4Note", "voice5Note", "voice6Note", "voice7Note", "voice8Note", "voicesSounding", "activeKey" };
         runGenericChecks ([] { return make(); }, opt);
     }
     if (want ("scale")) testScaleLogic();
@@ -2219,5 +2226,6 @@ int main (int argc, char** argv)
     if (want ("cpu")) testCpu();
     if (want ("humanchecks")) testHuman();
     if (want ("window")) testWindow();
+    if (want ("eight")) testEightVoices();
     return finish();
 }

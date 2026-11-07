@@ -1,6 +1,6 @@
 # Smooth Harmony
 
-Up to four harmony voices from one lead vocal. Formants stay where they are, so the voices sound like people and not like a sped up tape. Each voice has its own timing, pitch, throat, tone, breath and consonants, so together they aim to sound like separate singers. The Tight preset turns all of that off and sits exactly on the notes.
+Up to eight harmony voices from one lead vocal. Formants stay where they are, so the voices sound like people and not like a sped up tape. Each voice has its own timing, pitch, throat, tone, breath and consonants, so together they aim to sound like separate singers. The Tight preset turns all of that off and sits exactly on the notes.
 
 **Load it:** Audio Units > Luke Garito > Smooth Harmony. AU code `aumf SHrm Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. With mono in, the voices still spread across the stereo field.
 
@@ -22,6 +22,8 @@ Every control is a real AU parameter that a host can find by name.
 | Key, Scale | Used by Scale Interval. Chromatic, Major, Minor, Harmonic Minor, Melodic Minor, Major Pentatonic, Minor Pentatonic, Blues, Dorian, Mixolydian. |
 | Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key, on a background thread. Missing, broken, stale (over 10 minutes old), future dated or low confidence (under 0.5) data is ignored: the last good key holds, and with none it uses Key and Scale. |
 | Voices | 1 to 4. Voices fade in and out. |
+| More Voices | 0 to 4, added to Voices: Voices 4 and More Voices 4 is eight singers. Two controls because a host stores automation of Voices as a position in its range, and widening that range would have moved old automation. The window shows them as one row, 1 to 8. |
+| Voice N On, Lead On | Whether you hear that singer. Off fades over 15 ms, and it stops using CPU while its note logic keeps going, so it comes back on the right note. Voices 1 to 8. |
 | Voice N Interval | -24 to +24 semitones. Its value string says both: `+4 st (3rd up)`. Fixed Interval uses the semitones. Scale Interval uses the name, so +3 and +4 both mean a third, and the scale decides its size. |
 | Voice N Level | -60 (Off) to +6 dB. |
 | Voice N Pan | Constant power, centre at unity. Full left is +3 dB left, nothing right. |
@@ -47,7 +49,7 @@ Every control is a real AU parameter that a host can find by name.
 | Reference A4 | 415 to 466 Hz. |
 | Bypass | Keeps the same delay. |
 
-Readings, which never write automation: Detected Pitch, Lead Note, Voice 1 to 4 Note, Voices Sounding, Active Key. The window draws from them live. Hosts read them by name.
+Readings, which never write automation: Detected Pitch, Lead Note, Voice 1 to 8 Note, Voices Sounding, Active Key. An off singer reads no note and does not count as sounding. The window draws from them live. Hosts read them by name.
 
 ## The window
 
@@ -61,9 +63,11 @@ The top half shows what each voice sings and where it sits. On the left, each vo
 - **The thickness of a line** is how loud that moment was.
 - **With nothing playing,** singers show where they would sit, so you can set up the voices before you sing.
 
-Drag a singer: left and right pans it, up and down changes its interval. In the MIDI modes MIDI decides the note, so a drag only pans. Double-click a singer to reset it.
+**Click a singer to hear it or not,** on the stage or by its name on its card, so you can hear any 1, 2, 3 or more together. The lead works the same way, so you can hear only harmonies. Off singers and their lines dim. All, under the stage, brings everyone back.
 
-Below the display, each voice has its note, its interval in words, Level, Pan, Drift and Tone. Under those are Humanize, Vibrato, Lead, Harmony and Mix. Advanced holds Throat, Vibrato Rate, Glide, Follow Lead, Breath, Consonants, Scatter, Lead Pan, Voice range, Tracking and Reference A4. When Advanced opens, the display gets shorter instead of the window getting bigger.
+Drag a singer: left and right pans it, up and down changes its interval. In the MIDI modes MIDI decides the note, so a drag only pans. A click with no movement switches, a drag moves. Two quick clicks are off and on again, so a double-click on a singer does not reset it. Double-click its controls for that.
+
+Below the display, each voice has a card with its note, its interval in words, Level, Pan, Drift and Tone. Up to 4 voices there are 4 wide cards, with the spare ones dimmed. Above that there is a card per singer in narrower columns, so all of them stay in view. Under those are Humanize, Vibrato, Lead, Harmony and Mix. Advanced holds Throat, Vibrato Rate, Glide, Follow Lead, Breath, Consonants, Scatter, Lead Pan, Voice range, Tracking and Reference A4. When Advanced opens, the display gets shorter instead of the window getting bigger.
 
 The Mode row says In Key where the parameter is called Scale Interval, and Fixed where it is Fixed Interval. Key and Scale swap with Chord and Type in Chord Tones mode, and Follow Key swaps with Chord Hold in the MIDI modes. Whichever pair is not by the display is in Advanced, so every control always has a place.
 
@@ -73,7 +77,7 @@ Every control is a real parameter with the same ID, name and range as before. Do
 
 The display reads a pitch and level history and never touches the sound. Two small additions feed it: the audio thread keeps the loudest sample of the lead and of each voice over each 5 ms and stores it in lock-free history. The `window` tests compare a bit for bit fingerprint of the output on 5 presets against the 1.1.0 source, with no window and with the window open and drawing. All are identical.
 
-CPU, real window at 2x on this Mac, Full Stack on sung material, 24 frames a second: 1.7 to 4.4% of one core over 10 runs, about 1% open with nothing playing. Every run is in `docs/window-cpu.md`. `tests/AuViewCheck.mm` opens the installed window through the system 80 times, with and without audio.
+CPU, real window at 2x on this Mac: every run is in `docs/window-cpu.md`. `tests/AuViewCheck.mm` opens the installed window through the system 80 times, with and without audio.
 
 ## Modes
 
@@ -85,13 +89,19 @@ CPU, real window at 2x on this Mac, Full Stack on sung material, 24 frames a sec
 
 ## Presets
 
-Pop Thirds And Fifths, Third Above, Third Below, Full Stack, Gang Unison, Wide Octaves, Power Fifths, MIDI Choir, MIDI Chords Only (lead off), Chord Tones Pad, Tight. Presets never change Key, Scale, Follow Key or Input Type.
+Pop Thirds And Fifths, Third Above, Third Below, Full Stack, Gang Unison, Wide Octaves, Power Fifths, MIDI Choir, MIDI Chords Only (lead off), Chord Tones Pad, Tight. Six Part Stack, Eight Part Choir, MIDI Eight Part Choir. Presets never change Key, Scale, Follow Key or Input Type. They all put every singer back on.
 
 Tight is exact tuning: no Drift, Humanize, Vibrato, Tone, Breath or Scatter, Throat 100, Follow Lead 0, Consonants 35. It meets the 1.0.0 limits. It is not a bit for bit copy of 1.0.0, because the vowel end fix below applies everywhere. For the 1.0.0 default sound itself, set Drift 25, Humanize 20, Vibrato 10, Throat 100, 96, 104, 92, Glide 20, Follow Lead 25, Consonants 35, Tone, Breath and Scatter 0.
 
+## Level with many voices
+
+Voices add level and there is no limiter. Up to 4 voices nothing changes. Above 4, the voices together turn down so 8 stay about as loud as 4, which is what unrelated voices add up to: -1.0 dB at 5, -1.8 at 6, -2.4 at 7, -3.0 at 8. Voices 5 to 8 also start 3 dB lower than the first four, at -9 dB, and the new presets turn the lead down a little.
+
+On a vocal peaking at -6 dBFS, measured output peaks: two voices at defaults 0.64, Voices set to 8 at defaults 0.80, Six Part Stack 0.55, Eight Part Choir 0.48, MIDI Eight Part Choir 0.59. A vocal peaking near full scale can still pass 0 dBFS, as it could before. Turning singers off does not turn the rest up.
+
 ## Signal flow
 
-Input > clean bad samples > history > pitch tracker (on left and right mixed) > note logic on a 1 ms tick > four grain voices reading the shared mono history, each with its own consonant path > per voice all-pass, level match, Tone, Breath, fade, Level, Pan > summed with the delay matched lead > Mix > Bypass > output.
+Input > clean bad samples > history > pitch tracker (on left and right mixed) > note logic on a 1 ms tick > up to eight grain voices reading the shared mono history, each with its own consonant path > per voice all-pass, level match, Tone, Breath, fade, Level, Pan > summed with the delay matched lead > Mix > Bypass > output.
 
 - `src/PitchTracker.h`: from Smooth Tune. One change: marks slide much more slowly towards the loudest part of each period, because that slide bent shifted pitch by up to 8.6 cents.
 - `src/VoiceShifter.h`: pitch-synchronous grains, one input period of window each side of a mark, spaced at the wanted output period. Timing lag comes from choosing an older period, so it cannot bend pitch. Unvoiced sound is read straight at one held offset, so it is the input at a lag, with no grain spacing on it. A slight reading speed change cancels the formant drag at large shifts. With Humanize above 0, a grain reads between two neighbouring periods instead of repeating or dropping whole ones, and where it reads is nudged at random per grain, so the high end stops repeating exactly while pitch stays put.

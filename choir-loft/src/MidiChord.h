@@ -15,7 +15,7 @@ namespace smoothharmony
 class MidiChord
 {
 public:
-    static constexpr int maxVoices = 4, maxNotes = 32;
+    static constexpr int maxVoices = 8, maxNotes = 32;
 
     MidiChord() { clearAll(); }
 
@@ -99,11 +99,19 @@ public:
         std::array<int, maxVoices> chosen {};
         const int k = chooseNotes (voices, chosen);
 
-        // Every way of giving k notes to the voices. At most 24 of them, and only on a change.
+        // Every way of giving k notes to the voices, and only on a change. Up to four voices that is at most 24 ways.
+        // More voices have too many ways to try on the audio thread, 40320 at eight, so those work it out by sets of voices: at most 2048 steps, same rule, same answer.
         std::array<int, maxVoices> best {}, trial {};
         best.fill (-1);
-        int bestCost = 1 << 30;
-        search (chosen, k, voices, 0, 0, 0, trial, best, bestCost);
+        if (voices <= 4)
+        {
+            int bestCost = 1 << 30;
+            search (chosen, k, voices, 0, 0, 0, trial, best, bestCost);
+        }
+        else
+        {
+            assignBySets (chosen, k, voices, best);
+        }
 
         for (int v = 0; v < maxVoices; ++v)
         {
@@ -223,6 +231,47 @@ private:
         return k;
     }
 
+    int moveCost (int note, int v) const noexcept
+    {
+        const int was = lastNote[(size_t) v];
+        return was < 0 ? 12 : std::abs (note - was);
+    }
+
+    // The cheapest way to give the rest of the notes to the voices not yet used, for every set of used voices. Then walk it from the lowest note, taking the
+    // first voice that keeps to the cheapest total, which is the choice the search below makes on a tie.
+    void assignBySets (const std::array<int, maxVoices>& chosen, int k, int voices, std::array<int, maxVoices>& best) const noexcept
+    {
+        if (k == 0)
+            return;
+        std::array<int, 1 << maxVoices> rest {};
+        const int sets = 1 << voices;
+        for (int used = sets - 1; used >= 0; --used)
+        {
+            int index = 0;
+            for (int v = 0; v < voices; ++v)
+                index += (used >> v) & 1;
+            if (index >= k)
+            {
+                rest[(size_t) used] = 0;
+                continue;
+            }
+            int cheapest = 1 << 30;
+            for (int v = 0; v < voices; ++v)
+                if (! ((used >> v) & 1))
+                    cheapest = std::min (cheapest, moveCost (chosen[(size_t) index], v) + rest[(size_t) (used | (1 << v))]);
+            rest[(size_t) used] = cheapest;
+        }
+        int used = 0;
+        for (int index = 0; index < k; ++index)
+            for (int v = 0; v < voices; ++v)
+                if (! ((used >> v) & 1) && moveCost (chosen[(size_t) index], v) + rest[(size_t) (used | (1 << v))] == rest[(size_t) used])
+                {
+                    best[(size_t) v] = chosen[(size_t) index];
+                    used |= 1 << v;
+                    break;
+                }
+    }
+
     void search (const std::array<int, maxVoices>& chosen, int k, int voices, int index, int usedVoices, int cost,
                  std::array<int, maxVoices>& trial, std::array<int, maxVoices>& best, int& bestCost) const noexcept
     {
@@ -239,10 +288,9 @@ private:
         for (int v = 0; v < voices; ++v)
         {
             if ((usedVoices >> v) & 1) continue;
-            const int was = lastNote[(size_t) v];
             // A voice that has never sung costs a fixed amount to wake. All equal on a fresh chord, which fills the voices from the first, lowest
             // note first. On a change it is more than a usual step, so voices already singing move rather than a new one taking over.
-            const int move = was < 0 ? 12 : std::abs (chosen[(size_t) index] - was);
+            const int move = moveCost (chosen[(size_t) index], v);
             trial[(size_t) v] = chosen[(size_t) index];
             search (chosen, k, voices, index + 1, usedVoices | (1 << v), cost + move, trial, best, bestCost);
         }

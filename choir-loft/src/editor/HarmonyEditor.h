@@ -39,11 +39,10 @@ private:
     public:
         VoiceStrip (PluginProcessor&, int index);
 
-        void paint (juce::Graphics&) override;
         void resized() override;
-        void mouseDown (const juce::MouseEvent&) override;
-        void setSinging (const juce::String& note, bool isLive, bool isOn, int mode);
+        void setSinging (const juce::String& note, bool isLive, bool isOn, bool isCompact);
 
+        ui::SingerSwitch head;
         ui::IntervalField interval;
         ui::BarSlider level, pan, drift, tone;
 
@@ -51,8 +50,7 @@ private:
         PluginProcessor& processor;
         const int voice;
         const juce::Colour colour;
-        juce::String noteShown;
-        bool liveShown = false, onShown = true;
+        bool onShown = true, compactShown = false;
     };
 
     struct Panel final : public juce::Component
@@ -79,7 +77,9 @@ private:
         std::unique_ptr<PresetBox> presets;
         std::unique_ptr<AdvancedHeader> advancedHeader;
 
-        ui::Segments voicesCount, modePicker;
+        ui::VoicePicker voicesCount;
+        ui::Segments modePicker;
+        ui::SingerSwitch leadSwitch;
         ui::PillToggle bypass;
         ui::ChoiceField keyField, scaleField, chordRootField, chordTypeField, inputType;
         ui::PillToggle followKey, chordHold;
@@ -94,7 +94,7 @@ private:
 
         juce::Label hintLine;
         float advancedAmount = 0.0f;   // 0 closed, 1 open
-        int modeShown = -1;
+        int modeShown = -1, cardsShown = 4;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Panel)
     };

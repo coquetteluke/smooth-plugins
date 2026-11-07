@@ -16,10 +16,14 @@ namespace ui
         inline const juce::Colour faint  { 0xff8c7a90 };   // scales
         inline const juce::Colour ink    { 0xff1a0c1e };   // type on a coloured singer
 
-        inline const juce::Colour voice[4] = { juce::Colour (0xffff7fa0),    // rose
+        inline const juce::Colour voice[8] = { juce::Colour (0xffff7fa0),    // rose
                                                juce::Colour (0xffffba70),    // apricot
                                                juce::Colour (0xffc8a2ff),    // orchid
-                                               juce::Colour (0xff76dcc7) };  // sea glass
+                                               juce::Colour (0xff76dcc7),    // sea glass
+                                               juce::Colour (0xff7cc0ff),    // sky
+                                               juce::Colour (0xffb9e36c),    // lime
+                                               juce::Colour (0xfff6e27f),    // butter
+                                               juce::Colour (0xffee8fe4) };  // magenta
     }
 
     enum class Weight { regular, medium };

@@ -8,6 +8,12 @@ struct Fingerprint { int preset; std::uint64_t sum; };
 constexpr Fingerprint before11[] = { { 0, 12819405965456412613ull }, { 3, 10956679219727345505ull }, { 4, 7588531360145783692ull },
                                      { 7, 10480141954853775759ull }, { 10, 17408058606749435550ull } };
 
+// From 1.2.0 before voices 5 to 8 existed, at commit b7db582, each at its own voice count. -1 is the settings as first opened.
+constexpr Fingerprint before12[] = {
+    { -1, 14299031040907950147ull }, { 0, 11022625518125669870ull }, { 1, 8815588865538701058ull }, { 2, 5890609036138441008ull },
+    { 3, 10956679219727345505ull }, { 4, 7588531360145783692ull }, { 5, 6466102523420279802ull }, { 6, 9696839667077025709ull },
+    { 7, 10480141954853775759ull }, { 8, 7431532097480106654ull }, { 9, 4447638139727080309ull }, { 10, 13149107942618835037ull } };
+
 inline void collectIds (juce::Component& c, std::set<juce::String>& ids)
 {
     if (c.getComponentID().isNotEmpty())
@@ -53,9 +59,14 @@ inline juce::MouseEvent mouseAt (juce::Component& c, juce::Point<float> at, int 
 void testWindow()
 {
     using namespace windowtests;
-    const juce::StringArray readings { "detectedPitch", "leadNote", "voice1Note", "voice2Note", "voice3Note", "voice4Note", "voicesSounding", "activeKey" };
+    const juce::StringArray readings { "detectedPitch", "leadNote", "voice1Note", "voice2Note", "voice3Note", "voice4Note", "voice5Note", "voice6Note", "voice7Note", "voice8Note",
+                                       "voicesSounding", "activeKey" };
 
     // The sound, bit for bit, against the build from before the window, with the window open and drawing all the way through.
+    for (const auto& f : before12)
+        check (outputFingerprintOf (f.preset, false, false) == f.sum,
+               "null test: bit for bit the same as 1.2.0, " + (f.preset < 0 ? std::string ("first opened") : "preset " + std::to_string (f.preset)));
+
     for (const auto& f : before11)
     {
         check (outputFingerprint (f.preset) == f.sum, "null test: output identical to 1.1.0, preset " + std::to_string (f.preset));
@@ -74,7 +85,7 @@ void testWindow()
         int missing = 0;
         for (auto* prm : p->getParameters())
             if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (prm))
-                if (! readings.contains (withId->paramID) && ids.count (withId->paramID) == 0)
+                if (! readings.contains (withId->paramID) && withId->paramID != "moreVoices" && ids.count (withId->paramID) == 0)
                 {
                     ++missing;
                     std::printf ("  no control for %s\n", withId->paramID.toRawUTF8());
@@ -82,8 +93,11 @@ void testWindow()
         check (missing == 0, "every parameter has a control in the window", (double) missing, "missing");
 
         int notParameters = 0;
+        setParam (*p, "moreVoices", 4.0f);
+        setParam (*p, "voices", 4.0f);
+        e->tick (1.0 / 30.0);
         for (const auto& id : ids)
-            if (id != "presets" && id != "advanced" && p->apvts.getParameter (id) == nullptr)
+            if (id != "presets" && id != "advanced" && id != "hearAll" && p->apvts.getParameter (id) == nullptr)
                 ++notParameters;
         check (notParameters == 0, "no control exists only in the window", (double) notParameters, "window only");
     }
@@ -212,9 +226,111 @@ void testWindow()
         setParam (*p, "mode", (float) modeScale);
         for (int i = 0; i < 40; ++i)
             e->tick (1.0 / 30.0);
-        stage.mouseDoubleClick (mouseAt (stage, stage.singerPosition (0), 2));
-        check (std::abs (panP->getValue() - panP->getDefaultValue()) < 0.001f && std::abs (intervalP->getValue() - intervalP->getDefaultValue()) < 0.001f,
-               "double-clicking a singer resets its pan and interval");
+
+        // A click with no movement switches the singer, and only that. A drag moves it, and only that.
+        {
+            auto* on = p->apvts.getParameter ("voice1On");
+            GestureCount onWatch, panWatch2, intervalWatch2;
+            on->addListener (&onWatch);
+            panP->addListener (&panWatch2);
+            intervalP->addListener (&intervalWatch2);
+            const auto at = stage.singerPosition (0);
+
+            stage.mouseDown (mouseAt (stage, at));
+            stage.mouseUp (mouseAt (stage, at));
+            check (on->getValue() < 0.5f, "a click on a singer turns it off");
+            check (onWatch.begins == 1 && onWatch.ends == 1, "as one gesture on its own parameter", (double) onWatch.begins, "gestures");
+            check (panWatch2.changes == 0 && intervalWatch2.changes == 0 && panWatch2.begins == 0, "and it moves nothing");
+            e->tick (1.0 / 30.0);
+            check (! stage.isHeard (0), "the stage shows that singer as off");
+
+            stage.mouseDown (mouseAt (stage, at));
+            stage.mouseDrag (mouseAt (stage, at + juce::Point<float> (2.0f, 1.0f)));
+            stage.mouseUp (mouseAt (stage, at + juce::Point<float> (2.0f, 1.0f)));
+            check (on->getValue() >= 0.5f, "a click with a tiny wobble still counts as a click, and turns it back on");
+            check (panWatch2.changes == 0 && intervalWatch2.changes == 0, "and still moves nothing");
+
+            onWatch.begins = onWatch.ends = onWatch.changes = 0;
+            stage.mouseDown (mouseAt (stage, at));
+            stage.mouseDrag (mouseAt (stage, at + juce::Point<float> (40.0f, 0.0f)));
+            stage.mouseUp (mouseAt (stage, at + juce::Point<float> (40.0f, 0.0f)));
+            check (onWatch.changes == 0 && on->getValue() >= 0.5f, "a drag moves the singer and leaves it on");
+            check (panWatch2.changes > 0 && panWatch2.begins == 1 && panWatch2.ends == 1, "and it is one gesture on pan");
+
+            // Off singers can be dragged too, and stay off.
+            for (int i = 0; i < 40; ++i)
+                e->tick (1.0 / 30.0);
+            const auto moved = stage.singerPosition (0);
+            stage.mouseDown (mouseAt (stage, moved));
+            stage.mouseUp (mouseAt (stage, moved));
+            check (on->getValue() < 0.5f, "off again");
+            const float panBefore = panP->getValue();
+            stage.mouseDown (mouseAt (stage, moved));
+            stage.mouseDrag (mouseAt (stage, moved + juce::Point<float> (-30.0f, 0.0f)));
+            stage.mouseUp (mouseAt (stage, moved + juce::Point<float> (-30.0f, 0.0f)));
+            check (on->getValue() < 0.5f && panP->getValue() != panBefore, "dragging an off singer moves it and it stays off");
+
+            on->removeListener (&onWatch);
+            panP->removeListener (&panWatch2);
+            intervalP->removeListener (&intervalWatch2);
+        }
+
+        // Its card does the same, and All brings everyone back, the lead too.
+        {
+            auto* head = findById<ui::SingerSwitch> (*e, "voice2On");
+            auto* on2 = p->apvts.getParameter ("voice2On");
+            head->mouseDown (mouseAt (*head, { 10.0f, 10.0f }));
+            check (on2->getValue() < 0.5f, "a click on a voice's name turns it off");
+            head->mouseDown (mouseAt (*head, { 10.0f, 10.0f }));
+            check (on2->getValue() >= 0.5f, "and on");
+
+            // The lead, on the stage and by its switch
+            for (int i = 0; i < 40; ++i)
+                e->tick (1.0 / 30.0);
+            auto* leadOn = p->apvts.getParameter ("leadOn");
+            const auto leadAt = stage.singerPosition (StageView::leadIndex);
+            stage.mouseDown (mouseAt (stage, leadAt));
+            stage.mouseUp (mouseAt (stage, leadAt));
+            check (leadOn->getValue() < 0.5f, "a click on the lead turns it off, leaving only harmonies");
+            on2->setValueNotifyingHost (0.0f);
+            auto* v8 = p->apvts.getParameter ("voice8On");
+            v8->setValueNotifyingHost (0.0f);
+            auto* all = findById<juce::Component> (*e, "hearAll");
+            check (all != nullptr, "there is an All button");
+            all->mouseDown (mouseAt (*all, { 5.0f, 5.0f }));
+            bool everyone = leadOn->getValue() >= 0.5f;
+            for (int v = 0; v < 8; ++v)
+                everyone = everyone && p->apvts.getParameter (vid (v, "On"))->getValue() >= 0.5f;
+            check (everyone, "All brings everyone back");
+            e->tick (1.0 / 30.0);
+            findById<ui::SingerSwitch> (*e, "leadOn")->mouseDown (mouseAt (*e, { 5.0f, 5.0f }));
+            check (leadOn->getValue() < 0.5f, "the lead's own switch works too");
+            leadOn->setValueNotifyingHost (1.0f);
+        }
+
+        // Voices 1 to 8 as one control, over two parameters
+        {
+            auto* picker = findById<ui::VoicePicker> (*e, "voices");
+            picker->choose (8);
+            check (p->voiceCount() == 8 && juce::roundToInt (p->apvts.getRawParameterValue ("voices")->load()) == 4 && juce::roundToInt (p->apvts.getRawParameterValue ("moreVoices")->load()) == 4, "choosing 8 sets Voices 4 and More Voices 4");
+            e->tick (1.0 / 30.0);
+            int shownCards = 0;
+            for (int v = 0; v < 8; ++v)
+                if (auto* c = findById<ui::SingerSwitch> (*e, "voice" + juce::String (v + 1) + "On"))
+                    if (c->isShowing() || c->getParentComponent()->isVisible())
+                        ++shownCards;
+            check (shownCards == 8, "8 voices shows 8 cards", shownCards);
+            picker->choose (3);
+            check (p->voiceCount() == 3 && juce::roundToInt (p->apvts.getRawParameterValue ("moreVoices")->load()) == 0, "choosing 3 takes More Voices back to 0");
+            e->tick (1.0 / 30.0);
+            shownCards = 0;
+            for (int v = 0; v < 8; ++v)
+                if (findById<ui::SingerSwitch> (*e, "voice" + juce::String (v + 1) + "On")->getParentComponent()->isVisible())
+                    ++shownCards;
+            check (shownCards == 4, "up to 4 voices keeps 4 cards", shownCards);
+            findById<ui::SingerSwitch> (*e, "voice4On")->mouseDown (mouseAt (*e, { 5.0f, 5.0f }));
+            check (p->voiceCount() == 4 && p->apvts.getParameter ("voice4On")->getValue() >= 0.5f, "a click on a spare card adds it, and does not switch it");
+        }
 
         check (e->getWidth() == PluginProcessor::defaultWindowWidth, "the window opens at its default size", (double) e->getWidth(), "wide");
     }

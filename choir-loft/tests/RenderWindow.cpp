@@ -157,7 +157,7 @@ static int runLive (int runs)
     for (int run = 0; run < runs; ++run)
     {
         Session s;
-        s.processor.setCurrentProgram (3);   // Full Stack: four voices, the most to draw
+        s.processor.setCurrentProgram (12);   // Eight Part Choir: eight voices, the most to draw
 
         std::atomic<bool> running { true };
         std::atomic<thread_t> audioThread { 0 };
@@ -283,6 +283,51 @@ int main (int argc, char** argv)
         s.processor.setCurrentProgram (3);   // Full Stack
         s.play (sung, 0, sungEnd);
         s.saveBoth (folder, "four-voices");
+    }
+
+    // Eight voices, the most there can be.
+    {
+        Session s;
+        s.processor.setCurrentProgram (12);   // Eight Part Choir
+        s.play (sung, 0, sungEnd);
+        s.saveBoth (folder, "eight-voices");
+    }
+
+    // Choosing who to hear: part way through, three singers and the lead go off. Their lines and singers dim.
+    {
+        Session s;
+        s.processor.setCurrentProgram (12);
+        s.play (sung, 0, sungEnd - 60);
+        for (const char* id : { "voice2On", "voice3On", "voice5On", "voice7On", "voice8On", "leadOn" })
+            setParam (s.processor, id, 0.0f);
+        s.play (sung, sungEnd - 60, sungEnd);
+        s.saveBoth (folder, "some-off");
+    }
+
+    // Four voices with two off, on the wider cards.
+    {
+        Session s;
+        s.processor.setCurrentProgram (3);
+        setParam (s.processor, "voice2On", 0.0f);
+        setParam (s.processor, "voice4On", 0.0f);
+        s.play (sung, 0, sungEnd);
+        s.saveBoth (folder, "four-two-off");
+    }
+
+    // Six voices: the cards in between.
+    {
+        Session s;
+        s.processor.setCurrentProgram (11);   // Six Part Stack
+        s.play (sung, 0, sungEnd);
+        s.saveBoth (folder, "six-voices");
+    }
+
+    // Eight voices with Advanced open.
+    {
+        Session s (0, true);
+        s.processor.setCurrentProgram (12);
+        s.play (sung, 0, sungEnd);
+        s.saveBoth (folder, "eight-advanced");
     }
 
     // Spoken material, where the lines break up and wander.

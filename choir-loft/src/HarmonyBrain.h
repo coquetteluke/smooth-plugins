@@ -56,7 +56,7 @@ public:
     // A new note, or a new phrase. direction: +1 going up, -1 going down, 0 starting from nothing.
     void noteEvent (double humanize, int direction) noexcept
     {
-        static constexpr double tendency[4] = { 0.4, -0.8, 0.9, -0.5 };   // where this singer tends to sit, sharp or flat
+        static constexpr double tendency[8] = { 0.4, -0.8, 0.9, -0.5, 0.6, -0.3, -0.9, 0.2 };   // where this singer tends to sit, sharp or flat
         humanizeNow = humanize;
         detune = humanize * (humanizeBiasCents * tendency[voice] + humanizeDetuneCents * nextRandom());
         // In from below, less so when the line is coming down.
@@ -76,7 +76,7 @@ public:
         clock += tick;
         age += tick;
         static constexpr double pitchHz[3] = { 0.19, 0.43, 0.83 }, lagHz[3] = { 0.13, 0.31, 0.67 }, levelHz[3] = { 0.23, 0.53, 1.07 }, weight[3] = { 0.5, 0.3, 0.2 };
-        static constexpr double standsBehindMs[4] = { 2.0, 16.0, 8.0, 26.0 };
+        static constexpr double standsBehindMs[8] = { 2.0, 16.0, 8.0, 26.0, 12.0, 21.0, 5.0, 31.0 };
         const double spread = 1.0 + 0.11 * voice;
         double w = 0.0, l = 0.0, a = 0.0;
         for (int i = 0; i < 3; ++i)
@@ -104,7 +104,7 @@ public:
     double glideStretch() const noexcept { return glideScale; }
     static double vibratoRateScale (int v) noexcept
     {
-        static constexpr double rateScale[4] = { 1.0, 0.96, 1.04, 0.93 };
+        static constexpr double rateScale[8] = { 1.0, 0.96, 1.04, 0.93, 1.02, 0.98, 1.06, 0.95 };
         return rateScale[v];
     }
 
@@ -127,7 +127,7 @@ private:
 class HarmonyBrain
 {
 public:
-    static constexpr int maxVoices = 4;
+    static constexpr int maxVoices = 8;
 
     struct Settings
     {
@@ -243,7 +243,7 @@ public:
             double wanted = 0.0, fine = 0.0;
             bool wantsPitch = inCount && hasLead;
             bool on = inCount;
-            static constexpr double copiesLess[4] = { 0.2, 0.5, 0.35, 0.7 };
+            static constexpr double copiesLess[8] = { 0.2, 0.5, 0.35, 0.7, 0.3, 0.6, 0.45, 0.8 };
             const double follow = std::clamp (s.followLead, 0.0, 1.0) * (1.0 - s.humanize * copiesLess[v]);
 
             switch (s.mode)

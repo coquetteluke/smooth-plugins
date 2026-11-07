@@ -27,8 +27,8 @@ namespace
     {
         const char* name;
         int mode, voices;
-        int interval[4];
-        float level[4], pan[4], drift[4], throat[4], tone[4];
+        int interval[8];
+        float level[8], pan[8], drift[8], throat[8], tone[8];
         float humanize, vibrato, glide, lead, follow, consonantAmount, scatter, breathAmount;
     };
     constexpr Preset presets[] = {
@@ -44,6 +44,16 @@ namespace
         { "Chord Tones Pad",       modeChord, 3, { 4, 7, 12, -5 },     { -7, -7, -9, -9 },   { -50, 50, 0, -80 },  { 32, 32, 32, 32 }, { 97, 106, 91, 111 }, { 20, -35, 40, -55 }, 50, 12, 70, 0, 8, 18, 70, 14 },
         // Exact tuning, no singer character: everything 1.0.0 measured against its limits.
         { "Tight",                 modeScale, 2, { 4, 7, -5, 12 },     { -6, -6, -8, -8 },   { -35, 35, -70, 70 }, { 0, 0, 0, 0 },     { 100, 100, 100, 100 }, { 0, 0, 0, 0 },     0, 0, 20, 0, 0, 35, 0, 0 },
+        // More than four. Presets above this line list four voices and put the rest back to their defaults. These turn the lead and voices down, so a loud vocal has room.
+        { "Six Part Stack",        modeScale, 6, { 4, 7, -5, 12, -8, 9, 0, 0 },
+                                                 { -10, -10, -11, -13, -12, -13, -12, -12 }, { -30, 30, -60, 60, -85, 85, 0, 0 }, { 30, 30, 30, 30, 32, 32, 30, 30 },
+                                                 { 97, 106, 91, 111, 94, 103, 100, 100 }, { 20, -35, 40, -55, -15, 30, 0, 0 }, 55, 12, 40, -2, 8, 16, 75, 14 },
+        { "Eight Part Choir",      modeScale, 8, { 4, 7, -5, 12, -8, 9, -12, 16 },
+                                                 { -11, -11, -12, -14, -13, -14, -14, -16 }, { -25, 25, -50, 50, -75, 75, -95, 95 }, { 34, 34, 34, 34, 36, 36, 36, 36 },
+                                                 { 97, 106, 91, 111, 94, 103, 88, 114 }, { 20, -35, 40, -55, -15, 30, -45, 10 }, 60, 14, 45, -3, 8, 14, 80, 16 },
+        { "MIDI Eight Part Choir", modeMidi,  8, { 4, 7, -5, 12, -8, 9, -12, 16 },
+                                                 { -10, -10, -10, -10, -10, -10, -10, -10 }, { -80, -55, -30, -10, 10, 30, 55, 80 }, { 32, 32, 32, 32, 32, 32, 32, 32 },
+                                                 { 114, 108, 104, 100, 97, 94, 91, 88 }, { -40, -30, -15, -5, 5, 15, 25, 35 }, 55, 15, 50, -4, 8, 14, 75, 14 },
     };
 
     juce::String noteText (float v)
@@ -98,11 +108,20 @@ namespace
 
     juce::String voiceId (int v, const char* what) { return "voice" + juce::String (v + 1) + what; }
 
-    constexpr int defaultInterval[4] = { 4, 7, -5, 12 };
-    constexpr float defaultPan[4] = { -35.0f, 35.0f, -70.0f, 70.0f };
-    constexpr float defaultThroat[4] = { 97.0f, 106.0f, 91.0f, 111.0f };
-    constexpr float defaultTone[4] = { 20.0f, -35.0f, 40.0f, -55.0f };
-    constexpr double allPassHz[4][3] = { { 350.0, 1100.0, 2900.0 }, { 520.0, 1500.0, 3700.0 }, { 430.0, 900.0, 3300.0 }, { 650.0, 1800.0, 2400.0 } };
+    constexpr int defaultInterval[8] = { 4, 7, -5, 12, -8, 9, -12, 16 };
+    constexpr float defaultLevel[8] = { -6.0f, -6.0f, -6.0f, -6.0f, -9.0f, -9.0f, -9.0f, -9.0f };
+    constexpr float defaultPan[8] = { -35.0f, 35.0f, -70.0f, 70.0f, -55.0f, 55.0f, -90.0f, 90.0f };
+    constexpr float defaultDrift = 30.0f;
+    constexpr float defaultThroat[8] = { 97.0f, 106.0f, 91.0f, 111.0f, 94.0f, 103.0f, 88.0f, 114.0f };
+    constexpr float defaultTone[8] = { 20.0f, -35.0f, 40.0f, -55.0f, -15.0f, 30.0f, -45.0f, 10.0f };
+    constexpr double allPassHz[8][3] = { { 350.0, 1100.0, 2900.0 }, { 520.0, 1500.0, 3700.0 }, { 430.0, 900.0, 3300.0 }, { 650.0, 1800.0, 2400.0 },
+                                         { 390.0, 1250.0, 3100.0 }, { 580.0, 1650.0, 3500.0 }, { 470.0, 1000.0, 2600.0 }, { 700.0, 1400.0, 3900.0 } };
+
+    // Above four voices the voices together turn down so eight stay about as loud as four, which is what unrelated voices add up to: -3 dB at eight. Four or fewer: no change.
+    double harmonyTrimFor (int voices) noexcept { return voices <= 4 ? 1.0 : std::sqrt (4.0 / (double) voices); }
+
+    constexpr int firstVoicesCount = 4;   // Voices counts these. More Voices adds the rest.
+    constexpr float hearFadeSeconds = 0.015f;
 }
 
 // One background thread: reads the key file and tells the host when Input Type has changed the latency. Never touches audio.
@@ -167,18 +186,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "key", 1 }, "Key", keys, 0));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "scale", 1 }, "Scale", scales, (int) scaleMajor));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "followKey", 1 }, "Follow Key", false));
-    layout.add (std::make_unique<AudioParameterInt> (ParameterID { "voices", 1 }, "Voices", 1, maxVoices, 2));
-    for (int v = 0; v < maxVoices; ++v)
+    layout.add (std::make_unique<AudioParameterInt> (ParameterID { "voices", 1 }, "Voices", 1, firstVoicesCount, 2));
+    const auto addVoice = [&] (int v)
     {
         const String name = "Voice " + String (v + 1) + " ";
         layout.add (std::make_unique<AudioParameterInt> (ParameterID { voiceId (v, "Interval"), 1 }, name + "Interval", -24, 24, defaultInterval[v],
             AudioParameterIntAttributes().withStringFromValueFunction (intervalText).withValueFromStringFunction (intervalFromText)));
-        layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Level"), 1 }, name + "Level", levelRange, -6.0f, levelAttributes()));
+        layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Level"), 1 }, name + "Level", levelRange, defaultLevel[v], levelAttributes()));
         layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Pan"), 1 }, name + "Pan", panRange, defaultPan[v], panAttributes()));
-        layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Drift"), 1 }, name + "Drift", percent, 30.0f, fixedText (0, "%")));
+        layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Drift"), 1 }, name + "Drift", percent, defaultDrift, fixedText (0, "%")));
         layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Throat"), 1 }, name + "Throat", NormalisableRange<float> (70.0f, 140.0f, 0.1f), defaultThroat[v], fixedText (0, "%")));
         layout.add (std::make_unique<AudioParameterFloat> (ParameterID { voiceId (v, "Tone"), 1 }, name + "Tone", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), defaultTone[v], fixedText (0, "%")));
-    }
+    };
+    for (int v = 0; v < firstVoicesCount; ++v)
+        addVoice (v);
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "humanize", 1 }, "Humanize", percent, 50.0f, fixedText (0, "%")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "vibrato", 1 }, "Vibrato", percent, 10.0f, fixedText (0, "%")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "vibratoRate", 1 }, "Vibrato Rate", NormalisableRange<float> (3.0f, 8.0f, 0.01f), 5.5f, fixedText (2, "Hz")));
@@ -200,6 +221,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "tracking", 1 }, "Tracking", percent, 50.0f, fixedText (0, "%")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "reference", 1 }, "Reference A4", NormalisableRange<float> (415.0f, 466.0f, 0.1f), 440.0f, fixedText (1, "Hz")));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "bypass", 1 }, "Bypass", false));
+
+    // Voices keeps its range of 1 to 4, because a host stores automation of it as a position in that range, and widening it would move old automation.
+    // More Voices adds to it: Voices 4 and More Voices 4 is eight singers. The window shows them as one control.
+    layout.add (std::make_unique<AudioParameterInt> (ParameterID { "moreVoices", 1 }, "More Voices", 0, maxVoices - firstVoicesCount, 0));
+    for (int v = firstVoicesCount; v < maxVoices; ++v)
+        addVoice (v);
+
+    // Which singers you hear. Off fades the singer out and it stops working until it comes back.
+    for (int v = 0; v < maxVoices; ++v)
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { voiceId (v, "On"), 1 }, "Voice " + String (v + 1) + " On", true));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "leadOn", 1 }, "Lead On", true));
     return layout;
 }
 
@@ -214,6 +246,8 @@ PluginProcessor::PluginProcessor (const Options& options)
     scaleParam = apvts.getRawParameterValue ("scale");
     followKey = apvts.getRawParameterValue ("followKey");
     voicesParam = apvts.getRawParameterValue ("voices");
+    moreVoices = apvts.getRawParameterValue ("moreVoices");
+    leadOn = apvts.getRawParameterValue ("leadOn");
     for (int v = 0; v < maxVoices; ++v)
     {
         auto& vp = voiceParams[(size_t) v];
@@ -223,6 +257,7 @@ PluginProcessor::PluginProcessor (const Options& options)
         vp.drift = apvts.getRawParameterValue (voiceId (v, "Drift"));
         vp.throat = apvts.getRawParameterValue (voiceId (v, "Throat"));
         vp.tone = apvts.getRawParameterValue (voiceId (v, "Tone"));
+        vp.on = apvts.getRawParameterValue (voiceId (v, "On"));
     }
     humanize = apvts.getRawParameterValue ("humanize");
     vibrato = apvts.getRawParameterValue ("vibrato");
@@ -319,10 +354,11 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
             voice.tapDelay[(size_t) t] = (int) ((0.0005 + 0.013 * tapRandom.nextDouble()) * sr);
             voice.tapSign[(size_t) t] = tapRandom.nextBool() ? 1.0f : -1.0f;
         }
-        static constexpr double softCorner[4] = { 6500.0, 4800.0, 7500.0, 4000.0 };
+        static constexpr double softCorner[8] = { 6500.0, 4800.0, 7500.0, 4000.0, 5600.0, 7000.0, 4400.0, 6100.0 };
         voice.consonantCorner = 1.0 - std::exp (-2.0 * juce::MathConstants<double>::pi * juce::jmin (softCorner[v], sr * 0.45) / sr);
     }
     mixStep = 1.0 / (0.005 * sr);
+    hearStep = 1.0 / ((double) hearFadeSeconds * sr);
     consonantLowK = 1.0 - std::exp (-2.0 * juce::MathConstants<double>::pi * 500.0 / sr);
     breathEnvK = 1.0 - std::exp (-1.0 / (0.006 * sr));
     breathHighK = 1.0 - std::exp (-2.0 * juce::MathConstants<double>::pi * 2000.0 / sr);
@@ -355,8 +391,11 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     leadR = leadRTarget;
     harmonyGain = harmonyGainTarget;
     mixNow = mixTarget;
+    leadHear = leadHearTarget;
     for (auto& voice : voices)
     {
+        voice.hear = voice.hearTarget;
+        voice.asleep = false;
         voice.level = voice.levelTarget;
         voice.toneNow = voice.toneTarget;
         voice.panL = voice.panLTarget;
@@ -396,7 +435,7 @@ void PluginProcessor::readSettings() noexcept
     activeScaleNow = scale;
 
     settings.mode = juce::jlimit (0, numModes - 1, (int) modeParam->load (std::memory_order_relaxed));
-    settings.voices = juce::jlimit (1, maxVoices, juce::roundToInt (voicesParam->load (std::memory_order_relaxed)));
+    settings.voices = voiceCount();
     settings.scale = scaleMask (root, scale);
     settings.chord = chordMask ((int) chordRoot->load (std::memory_order_relaxed), (int) chordType->load (std::memory_order_relaxed));
     settings.glideMs = glide->load (std::memory_order_relaxed);
@@ -414,6 +453,8 @@ void PluginProcessor::readSettings() noexcept
         settings.interval[(size_t) v] = juce::roundToInt (vp.interval->load (std::memory_order_relaxed));
         settings.drift[(size_t) v] = vp.drift->load (std::memory_order_relaxed) * 0.01;
         voice.levelTarget = levelGain (vp.level->load (std::memory_order_relaxed));
+        voice.hearTarget = vp.on->load (std::memory_order_relaxed) >= 0.5f ? 1.0 : 0.0;
+        voice.inCount = v < settings.voices;
         panGains (vp.pan->load (std::memory_order_relaxed), voice.panLTarget, voice.panRTarget);
         voice.toneTarget = vp.tone->load (std::memory_order_relaxed) * 0.01;
         const double throatPercent = vp.throat->load (std::memory_order_relaxed);
@@ -422,7 +463,8 @@ void PluginProcessor::readSettings() noexcept
 
     leadGainTarget = levelGain (leadLevel->load (std::memory_order_relaxed));
     panGains (leadPan->load (std::memory_order_relaxed), leadLTarget, leadRTarget);
-    harmonyGainTarget = levelGain (harmonyLevel->load (std::memory_order_relaxed));
+    leadHearTarget = leadOn->load (std::memory_order_relaxed) >= 0.5f ? 1.0 : 0.0;
+    harmonyGainTarget = levelGain (harmonyLevel->load (std::memory_order_relaxed)) * harmonyTrimFor (settings.voices);
     mixTarget = mix->load (std::memory_order_relaxed) * 0.01;
     consonantGain = consonants->load (std::memory_order_relaxed) * 0.01;
     scatterNow = consonantScatter->load (std::memory_order_relaxed) * 0.01;
@@ -520,7 +562,7 @@ void PluginProcessor::tick() noexcept
         else if (! sungNow && voice.voicedNow)
         {
             // This voice's own timing and strength for this consonant. Scatter 100 is up to about 50 ms later and as low as about half the level.
-            static constexpr double standsBack[4] = { 0.0, 0.3, 0.12, 0.45 };
+            static constexpr double standsBack[8] = { 0.0, 0.3, 0.12, 0.45, 0.2, 0.38, 0.06, 0.52 };
             voice.consonantDelay = juce::roundToInt ((standsBack[v] + 0.1 + 0.25 * (singer.nextRandom() + 1.0)) * scatterNow * 0.045 * sr);
             voice.consonantLevel = 1.0 - scatterNow * 0.225 * (singer.nextRandom() + 1.0);
             voice.unvoicedFor = 0.0;
@@ -640,10 +682,31 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         leadR += smooth * (leadRTarget - leadR);
         harmonyGain += smooth * (harmonyGainTarget - harmonyGain);
         mixNow += smooth * (mixTarget - mixNow);
+        leadHear += juce::jlimit (-hearStep, hearStep, leadHearTarget - leadHear);
 
         double sumL = 0.0, sumR = 0.0;
         for (auto& voice : voices)
         {
+            // Faded out, or past the voice count with nothing left to fade: this voice does no work at all. Its note logic keeps running, so it comes back on the right note.
+            if ((voice.hear <= 0.0 && voice.hearTarget <= 0.0) || (! voice.inCount && voice.gain <= 0.0 && voice.gainTarget <= 0.0))
+            {
+                voice.asleep = true;
+                continue;
+            }
+
+            // Back from that. Nothing is coming out of it yet, so starting its grains over and catching its smoothing up cannot be heard.
+            if (voice.asleep)
+            {
+                voice.asleep = false;
+                voice.shifter.restart();
+                voice.level = voice.levelTarget;
+                voice.panL = voice.panLTarget;
+                voice.panR = voice.panRTarget;
+                voice.toneNow = voice.toneTarget;
+                if (voice.hear <= 0.0)
+                    voice.gain = voice.gainTarget;
+            }
+
             double y = (double) voice.shifter.step (tracker, voice.control, history);
 
             // Consonants with Scatter: instead of a copy of the lead's, this voice's own version, later and softer.
@@ -716,10 +779,11 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             voice.level += smooth * (voice.levelTarget - voice.level);
             voice.panL += smooth * (voice.panLTarget - voice.panL);
             voice.panR += smooth * (voice.panRTarget - voice.panR);
+            voice.hear += juce::jlimit (-hearStep, hearStep, voice.hearTarget - voice.hear);
 
             if (voice.gain <= 0.0 || voice.level <= 1.0e-7)
                 continue;
-            y *= voice.gain * voice.level;
+            y *= voice.gain * voice.level * voice.hear;
             voice.displayPeak = std::max (voice.displayPeak, std::abs (y));
             if (right == nullptr)
             {
@@ -737,10 +801,10 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         const float dryL = history.delayed (InputHistory::left, latencyNow);
         const float dryR = history.delayed (InputHistory::right, latencyNow);
 
-        leadDisplayPeak = std::max (leadDisplayPeak, std::abs ((double) dryL * leadGain));
+        leadDisplayPeak = std::max (leadDisplayPeak, std::abs ((double) dryL * leadGain * leadHear));
 
-        const double wetL = right != nullptr ? (double) dryL * leadGain * leadL + sumL : (double) dryL * leadGain + sumL;
-        const double wetR = (double) dryR * leadGain * leadR + sumR;
+        const double wetL = right != nullptr ? (double) dryL * leadGain * leadL * leadHear + sumL : (double) dryL * leadGain * leadHear + sumL;
+        const double wetR = (double) dryR * leadGain * leadR * leadHear + sumR;
 
         // Input Type changes the delay, so fade out, jump, fade in, over 2 ms each way.
         if (fading)
@@ -779,7 +843,7 @@ void PluginProcessor::publishReadings() noexcept
     for (int v = 0; v < maxVoices; ++v)
     {
         const auto& wanted = brain.voice (v);
-        const bool on = wanted.on && voices[(size_t) v].level > 0.0;
+        const bool on = wanted.on && voices[(size_t) v].level > 0.0 && voices[(size_t) v].hearTarget > 0.0;
         if (on && leadVoiced) ++sounding;
         voiceReading[(size_t) v]->set (on ? (float) wanted.note : -1.0f);
         gainNow[(size_t) v].store ((float) voices[(size_t) v].gain, std::memory_order_relaxed);
@@ -846,16 +910,21 @@ void PluginProcessor::setCurrentProgram (int i)
     };
     const auto& preset = presets[i];
     set ("mode", (float) preset.mode);
-    set ("voices", (float) preset.voices);
+    set ("voices", (float) juce::jmin (preset.voices, firstVoicesCount));
+    set ("moreVoices", (float) juce::jmax (0, preset.voices - firstVoicesCount));
     for (int v = 0; v < maxVoices; ++v)
     {
-        set (voiceId (v, "Interval"), (float) preset.interval[v]);
-        set (voiceId (v, "Level"), preset.level[v]);
-        set (voiceId (v, "Pan"), preset.pan[v]);
-        set (voiceId (v, "Drift"), preset.drift[v]);
-        set (voiceId (v, "Throat"), preset.throat[v]);
-        set (voiceId (v, "Tone"), preset.tone[v]);
+        // Presets for four voices leave the rest as they were first set.
+        const bool listed = v < firstVoicesCount || preset.voices > firstVoicesCount;
+        set (voiceId (v, "Interval"), listed ? (float) preset.interval[v] : (float) defaultInterval[v]);
+        set (voiceId (v, "Level"), listed ? preset.level[v] : defaultLevel[v]);
+        set (voiceId (v, "Pan"), listed ? preset.pan[v] : defaultPan[v]);
+        set (voiceId (v, "Drift"), listed ? preset.drift[v] : defaultDrift);
+        set (voiceId (v, "Throat"), listed ? preset.throat[v] : defaultThroat[v]);
+        set (voiceId (v, "Tone"), listed ? preset.tone[v] : defaultTone[v]);
+        set (voiceId (v, "On"), 1.0f);
     }
+    set ("leadOn", 1.0f);
     set ("humanize", preset.humanize);
     set ("vibrato", preset.vibrato);
     set ("glide", preset.glide);

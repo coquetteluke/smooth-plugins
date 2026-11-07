@@ -7,8 +7,8 @@ set(SP_TARGET  SmoothHarmony)
 set(SP_NAME    "Smooth Harmony")
 set(SP_CODE    SHrm)
 set(SP_BUNDLE  "com.lukegarito.smoothharmony")
-set(SP_DESC    "Up to four formant preserving harmony voices from one lead vocal")
-set(SP_VERSION 1.2.0)
+set(SP_DESC    "Up to eight formant preserving harmony voices from one lead vocal")
+set(SP_VERSION 1.3.0)
 set(SP_AU_TYPE kAudioUnitType_MusicEffect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN TRUE)                   # TRUE for MusicEffect and MusicDevice

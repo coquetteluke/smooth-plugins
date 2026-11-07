@@ -44,7 +44,7 @@ private:
 class PluginProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater
 {
 public:
-    static constexpr int maxVoices = smoothharmony::HarmonyBrain::maxVoices;
+    static constexpr int maxVoices = smoothharmony::HarmonyBrain::maxVoices;   // 8. Voices stays 1 to 4 and More Voices adds up to 4 on top, see makeLayout
 
     struct Options
     {
@@ -86,6 +86,12 @@ public:
     std::atomic<int> windowWidth { defaultWindowWidth };
     // Whether the window's Advanced section is open. Saved with the session, and not a sound setting.
     std::atomic<bool> advancedOpen { false };
+
+    // How many voices are singing: Voices, plus More Voices on top.
+    int voiceCount() const noexcept
+    {
+        return juce::jlimit (1, maxVoices, juce::roundToInt (voicesParam->load (std::memory_order_relaxed)) + juce::roundToInt (moreVoices->load (std::memory_order_relaxed)));
+    }
 
     // For the window and for tests. Safe from any thread, never blocks audio.
     struct Readings
@@ -167,6 +173,10 @@ private:
         std::uint32_t noiseState = 1;
 
         double displayPeak = 0.0;                // for the window's history only, nothing reads it back into the sound
+
+        // Click to hear: a fade of its own over the voice's output. Once faded out, or past the voice count, the voice stops working until it is needed.
+        double hear = 1.0, hearTarget = 1.0;
+        bool inCount = true, asleep = false;
     };
 
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&, bool forceBypass) noexcept;
@@ -181,8 +191,8 @@ private:
                        *humanize = nullptr, *vibrato = nullptr, *vibratoRate = nullptr, *leadLevel = nullptr, *leadPan = nullptr, *mix = nullptr,
                        *harmonyLevel = nullptr, *glide = nullptr, *followLead = nullptr, *consonants = nullptr, *inputType = nullptr,
                        *tracking = nullptr, *reference = nullptr, *chordRoot = nullptr, *chordType = nullptr, *chordHold = nullptr,
-                       *breath = nullptr, *consonantScatter = nullptr;
-    struct VoiceParams { std::atomic<float>* interval = nullptr, *level = nullptr, *pan = nullptr, *drift = nullptr, *throat = nullptr, *tone = nullptr; };
+                       *breath = nullptr, *consonantScatter = nullptr, *moreVoices = nullptr, *leadOn = nullptr;
+    struct VoiceParams { std::atomic<float>* interval = nullptr, *level = nullptr, *pan = nullptr, *drift = nullptr, *throat = nullptr, *tone = nullptr, *on = nullptr; };
     std::array<VoiceParams, maxVoices> voiceParams {};
     juce::AudioParameterBool* bypass = nullptr;
     ReadingParameter* hzReading = nullptr, *leadReading = nullptr, *keyReading = nullptr, *soundingReading = nullptr;
@@ -211,6 +221,7 @@ private:
     double sr = 48000.0, smoothing = 0.001, consonantGain = 0.35, envelopeStep = 0.001, matchPower = 0.001, matchGain = 0.001;
     double scatterNow = 0.0, breathNow = 0.0, breathEnvK = 0.01, breathHighK = 0.2, breathLowK = 0.6, toneK = 0.2, mixStep = 0.01, consonantLowK = 0.05;
     double leadDisplayPeak = 0.0;
+    double leadHear = 1.0, leadHearTarget = 1.0, hearStep = 0.001;
     double leadGain = 1.0, leadGainTarget = 1.0, leadL = 1.0, leadR = 1.0, leadLTarget = 1.0, leadRTarget = 1.0;
     double harmonyGain = 1.0, harmonyGainTarget = 1.0, mixNow = 1.0, mixTarget = 1.0;
     std::array<double, maxVoices> throatRate {}, driftNow {};

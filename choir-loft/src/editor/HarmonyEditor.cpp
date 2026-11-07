@@ -25,7 +25,7 @@ namespace
 
     const juce::Colour neutralBar { 0xffd9c9d4 };   // controls that are not one singer's
 
-    const juce::String restingHint = "Drag a singer to move it. Double-click anything to reset it.";
+    const juce::String restingHint = "Click singers to choose who you hear. Drag one to move it.";
 
     int columnWidth() { return (HarmonyEditor::designWidth - 2 * margin - 3 * gap) / 4; }
     int columnX (int column) { return margin + column * (columnWidth() + gap); }
@@ -196,7 +196,8 @@ private:
 // ---- one voice --------------------------------------------------------------------------------------------------
 
 HarmonyEditor::VoiceStrip::VoiceStrip (PluginProcessor& p, int index)
-    : interval (p.apvts, "voice" + juce::String (index + 1) + "Interval", index, tone::voice[index]),
+    : head (p.apvts, "voice" + juce::String (index + 1) + "On", "Voice " + juce::String (index + 1), "Click to hear this voice or not.", tone::voice[index]),
+      interval (p.apvts, "voice" + juce::String (index + 1) + "Interval", index, tone::voice[index]),
       level (p.apvts, "voice" + juce::String (index + 1) + "Level", "Level", "How loud this voice is. All the way down turns it off.", tone::voice[index]),
       pan (p.apvts, "voice" + juce::String (index + 1) + "Pan", "Pan", "Where this voice sits, left to right. You can also drag it on the stage.", tone::voice[index]),
       drift (p.apvts, "voice" + juce::String (index + 1) + "Drift", "Drift", "How much this voice slowly wanders in pitch, timing and level. Higher sounds looser.", tone::voice[index]),
@@ -207,17 +208,35 @@ HarmonyEditor::VoiceStrip::VoiceStrip (PluginProcessor& p, int index)
 {
     tone.setSigned (true);
     setTitle ("Voice " + juce::String (index + 1));
+    addAndMakeVisible (head);
     addAndMakeVisible (interval);
     addAndMakeVisible (level);
     addAndMakeVisible (pan);
     addAndMakeVisible (drift);
     addAndMakeVisible (tone);
+
+    // A voice past the count comes in with a click on its name, and only after that does a click switch it.
+    head.onClickFirst = [this]
+    {
+        if (onShown)
+            return false;
+
+        auto* more = processor.apvts.getParameter ("moreVoices");
+        auto* count = processor.apvts.getParameter ("voices");
+        count->beginChangeGesture();
+        more->beginChangeGesture();
+        count->setValueNotifyingHost (count->convertTo0to1 ((float) juce::jmin (voice + 1, 4)));
+        more->setValueNotifyingHost (more->convertTo0to1 ((float) juce::jmax (0, voice + 1 - 4)));
+        count->endChangeGesture();
+        more->endChangeGesture();
+        return true;
+    };
 }
 
 void HarmonyEditor::VoiceStrip::resized()
 {
     auto b = getLocalBounds();
-    b.removeFromTop (30);
+    head.setBounds (b.removeFromTop (30));
     interval.setBounds (b.removeFromTop (46));
     b.removeFromTop (6);
 
@@ -228,57 +247,28 @@ void HarmonyEditor::VoiceStrip::resized()
     }
 }
 
-void HarmonyEditor::VoiceStrip::setSinging (const juce::String& note, bool isLive, bool isOn, int)
+void HarmonyEditor::VoiceStrip::setSinging (const juce::String& note, bool isLive, bool isOn, bool isCompact)
 {
-    if (note != noteShown || isLive != liveShown)
-    {
-        noteShown = note;
-        liveShown = isLive;
-        repaint (getLocalBounds().removeFromTop (30));
-    }
+    const bool heard = head.isHeard();
+    const float size = isCompact ? 17.0f : 20.0f;
 
-    if (isOn != onShown)
-    {
-        onShown = isOn;
-        setAlpha (isOn ? 1.0f : 0.42f);
-        repaint();
-    }
-}
+    if (! isOn)
+        head.setRight ("Click to add", tone::muted, 13.0f);
+    else if (! heard)
+        head.setRight ("Off", tone::muted, 14.0f);
+    else
+        head.setRight (note, isLive ? colour : colour.withAlpha (0.8f), size);
 
-void HarmonyEditor::VoiceStrip::paint (juce::Graphics& g)
-{
-    auto head = getLocalBounds().removeFromTop (30).toFloat();
+    head.setCompact (isCompact);
+    interval.setCompact (isCompact);
 
-    g.setColour (colour);
-    g.fillEllipse (head.getX(), head.getCentreY() - 5.0f, 10.0f, 10.0f);
+    const float alpha = ! isOn ? 0.42f : (heard ? 1.0f : 0.5f);
 
-    g.setColour (tone::text);
-    g.setFont (font (Weight::medium, 14.0f));
-    g.drawText ("Voice " + juce::String (voice + 1), head.withTrimmedLeft (18.0f), juce::Justification::centredLeft, false);
+    if (getAlpha() != alpha)
+        setAlpha (alpha);
 
-    if (! onShown)
-    {
-        g.setColour (tone::muted);
-        g.setFont (font (Weight::regular, 13.0f));
-        g.drawText ("Click to add", head, juce::Justification::centredRight, false);
-        return;
-    }
-
-    g.setColour (liveShown ? colour : colour.withAlpha (0.8f));
-    g.setFont (font (Weight::medium, 20.0f));
-    g.drawText (noteShown, head, juce::Justification::centredRight, false);
-}
-
-void HarmonyEditor::VoiceStrip::mouseDown (const juce::MouseEvent& e)
-{
-    // A voice past the count comes in with a click on its name.
-    if (! onShown && e.y < 30)
-    {
-        auto* count = processor.apvts.getParameter ("voices");
-        count->beginChangeGesture();
-        count->setValueNotifyingHost (count->convertTo0to1 ((float) (voice + 1)));
-        count->endChangeGesture();
-    }
+    onShown = isOn;
+    compactShown = isCompact;
 }
 
 // ---- the panel --------------------------------------------------------------------------------------------------
@@ -287,8 +277,9 @@ HarmonyEditor::Panel::Panel (HarmonyEditor& e, PluginProcessor& p)
     : owner (e),
       processor (p),
       stage (p),
-      voicesCount (p.apvts, "voices", { "1", "2", "3", "4" }, 1, "How many voices sing with the lead."),
+      voicesCount (p.apvts, "How many voices sing with the lead. Above 4, the voices turn down together so it stays about as loud."),
       modePicker (p.apvts, "mode", { "In Key", "MIDI Chord", "Fixed", "Chord Tones", "MIDI Channel" }, 0, "Where the voices get their notes."),
+      leadSwitch (p.apvts, "leadOn", "", "Click to hear the lead or not. With it off you hear only the harmonies.", tone::text),
       bypass (p.apvts, "bypass", "Bypass", "Hear your vocal with nothing done to it. The timing stays the same."),
       keyField (p.apvts, "key", "Key", "The key of your song. Voices stay on its notes in In Key mode."),
       scaleField (p.apvts, "scale", "Scale", "The scale of your song. Rows on the display show its notes."),
@@ -318,6 +309,7 @@ HarmonyEditor::Panel::Panel (HarmonyEditor& e, PluginProcessor& p)
     addAndMakeVisible (stage);
     addAndMakeVisible (*presets);
     addAndMakeVisible (voicesCount);
+    addAndMakeVisible (leadSwitch);
     addAndMakeVisible (modePicker);
     addAndMakeVisible (bypass);
     addAndMakeVisible (*advancedHeader);
@@ -332,7 +324,7 @@ HarmonyEditor::Panel::Panel (HarmonyEditor& e, PluginProcessor& p)
     {
         strips[v] = std::make_unique<VoiceStrip> (p, v);
         addAndMakeVisible (*strips[v]);
-        throat[v] = std::make_unique<BarSlider> (p.apvts, "voice" + juce::String (v + 1) + "Throat", "Voice " + juce::String (v + 1) + " Throat",
+        throat[v] = std::make_unique<BarSlider> (p.apvts, "voice" + juce::String (v + 1) + "Throat", "Voice " + juce::String (v + 1),
                                                  "Above 100 sounds like a longer throat. Spreading the voices apart helps them sound like different people.", tone::voice[v]);
         addChildComponent (*throat[v]);
     }
@@ -441,7 +433,7 @@ void HarmonyEditor::Panel::resized()
 
     presets->setBounds (margin + 134, rowOneY, 270, rowOneHeight);
     bypass.setBounds (right - 84, rowOneY, 84, rowOneHeight);
-    voicesCount.setBounds (right - 84 - 16 - 148, rowOneY, 148, rowOneHeight);
+    voicesCount.setBounds (right - 84 - 16 - 232, rowOneY, 232, rowOneHeight);
 
     modePicker.setBounds (margin, rowTwoY, 468, rowTwoHeight);
 
@@ -449,8 +441,17 @@ void HarmonyEditor::Panel::resized()
 
     const int stripsY = stage.getBottom() + 16;
 
+    // Four cards up to four voices, with the spare ones dimmed. Above that, one card for each singer, in narrower columns, so all of them stay in view.
+    cardsShown = juce::jmax (4, processor.voiceCount());
+    const int cardGap = cardsShown > 4 ? 14 : gap;
+    const float cardWidth = (float) (designWidth - 2 * margin - (cardsShown - 1) * cardGap) / (float) cardsShown;
+
     for (int v = 0; v < PluginProcessor::maxVoices; ++v)
-        strips[v]->setBounds (columnX (v), stripsY, columnWidth(), stripHeight);
+    {
+        const int x = margin + juce::roundToInt ((float) v * (cardWidth + (float) cardGap));
+        strips[v]->setBounds (x, stripsY, juce::roundToInt (cardWidth), stripHeight);
+        strips[v]->setVisible (v < cardsShown);
+    }
 
     // Advanced, between the voices and the row of overall controls
     const int advancedTop = stripsY + stripHeight + 12 + advancedTitle;
@@ -464,8 +465,21 @@ void HarmonyEditor::Panel::resized()
         c.setAlpha (advancedAmount);
     };
 
+    // Throat: one column of four, or two side by side when there are eight to show.
     for (int v = 0; v < PluginProcessor::maxVoices; ++v)
-        place (*throat[v], 0, v);
+    {
+        place (*throat[v], 0, v % 4);
+
+        if (cardsShown > 4)
+        {
+            const int half = (columnWidth() - 12) / 2;
+            throat[v]->setBounds (columnX (0) + (v >= 4 ? half + 12 : 0), throat[v]->getY(), half, barHeight);
+        }
+        else
+        {
+            throat[v]->setVisible (open && v < 4);
+        }
+    }
 
     place (vibratoRate, 1, 0);
     place (glide, 1, 1);
@@ -488,6 +502,14 @@ void HarmonyEditor::Panel::resized()
     for (auto* c : { (juce::Component*) &humanize, (juce::Component*) &vibrato, (juce::Component*) &leadLevel, (juce::Component*) &harmonyLevel, (juce::Component*) &mix })
     {
         c->setBounds (x, globalY, fifth, globalHeight);
+
+        // The lead's own switch, the same dot a voice has, just ahead of its level.
+        if (c == &leadLevel)
+        {
+            leadSwitch.setBounds (x, globalY, 16, globalHeight - 10);
+            c->setBounds (x + 18, globalY, fifth - 18, globalHeight);
+        }
+
         x += fifth + 12;
     }
 
@@ -527,7 +549,7 @@ int HarmonyEditor::Panel::voiceUnder (juce::Component* c) const
             if (c == strips[v].get() || c == throat[v].get())
                 return v;
 
-        if (c == &leadPan || c == &leadLevel)
+        if (c == &leadPan || c == &leadLevel || c == &leadSwitch)
             return StageView::leadIndex;
     }
 
@@ -654,10 +676,19 @@ void HarmonyEditor::tick (double dtSeconds)
         panel.repaint();
     }
 
-    const int count = panel.voicesCount.getSelectedValue();
+    const int count = processorRef.voiceCount();
 
-    for (int v = 0; v < PluginProcessor::maxVoices; ++v)
-        panel.strips[v]->setSinging (panel.stage.noteFor (v), panel.stage.isLive(), v < count, mode);
+    if (juce::jmax (4, count) != panel.cardsShown)
+    {
+        panel.resized();
+        panel.repaint();
+    }
+
+    for (int v = 0; v < panel.cardsShown; ++v)
+        panel.strips[v]->setSinging (panel.stage.noteFor (v), panel.stage.isLive(), v < count, panel.cardsShown > 4);
+
+    // The lead's dim follows its dot.
+    panel.leadLevel.setAlpha (panel.stage.isHeard (StageView::leadIndex) ? 1.0f : 0.5f);
 
     // With Follow Key on and a key to follow, the fields say what is really in use.
     const bool following = processorRef.apvts.getRawParameterValue ("followKey")->load (std::memory_order_relaxed) >= 0.5f && processorRef.getPitchHistoryCount() > 0;
@@ -698,6 +729,9 @@ void HarmonyEditor::previewHover (const juce::String& paramId)
     {
         if (auto* c = panel.strips[v]->findChildWithID (paramId))
         {
+            if (! panel.strips[v]->isVisible())
+                continue;
+
             if (auto* slider = dynamic_cast<BarSlider*> (c))
                 slider->setForcedHover (true);
             else if (auto* field = dynamic_cast<IntervalField*> (c))

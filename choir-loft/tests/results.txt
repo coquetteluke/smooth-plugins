@@ -1,6 +1,6 @@
 PASS  parameter names are clear, unique, no em dash
-INFO  parameter count = 56.000 
-PASS  factory presets = 11.000 
+INFO  parameter count = 94.000 
+PASS  factory presets = 14.000 
 PASS  preset names are not empty, no em dash
 PASS  presets change the state
 PASS  state save and restore
@@ -28,15 +28,15 @@ PASS  no click when Mode jumps, biggest step = 0.008
 PASS  no click when Key jumps, biggest step = 0.008 
 PASS  no click when Scale jumps, biggest step = 0.008 
 PASS  no click when Follow Key jumps, biggest step = 0.008 
-PASS  no click when Voices jumps, biggest step = 0.011 
-PASS  no click when Voice 1 Interval jumps, biggest step = 0.010 
+PASS  no click when Voices jumps, biggest step = 0.013 
+PASS  no click when Voice 1 Interval jumps, biggest step = 0.011 
 PASS  no click when Voice 1 Level jumps, biggest step = 0.016 
 PASS  no click when Voice 1 Pan jumps, biggest step = 0.009 
 PASS  no click when Voice 1 Drift jumps, biggest step = 0.008 
 PASS  no click when Voice 1 Throat jumps, biggest step = 0.010 
-PASS  no click when Voice 1 Tone jumps, biggest step = 0.009 
+PASS  no click when Voice 1 Tone jumps, biggest step = 0.008 
 PASS  no click when Voice 2 Interval jumps, biggest step = 0.009 
-PASS  no click when Voice 2 Level jumps, biggest step = 0.015 
+PASS  no click when Voice 2 Level jumps, biggest step = 0.014 
 PASS  no click when Voice 2 Pan jumps, biggest step = 0.010 
 PASS  no click when Voice 2 Drift jumps, biggest step = 0.008 
 PASS  no click when Voice 2 Throat jumps, biggest step = 0.010 
@@ -58,7 +58,7 @@ PASS  no click when Vibrato jumps, biggest step = 0.008
 PASS  no click when Vibrato Rate jumps, biggest step = 0.008 
 PASS  no click when Lead Level jumps, biggest step = 0.012 
 PASS  no click when Lead Pan jumps, biggest step = 0.010 
-PASS  no click when Harmony Level jumps, biggest step = 0.022 
+PASS  no click when Harmony Level jumps, biggest step = 0.021 
 PASS  no click when Mix jumps, biggest step = 0.008 
 PASS  no click when Glide jumps, biggest step = 0.008 
 PASS  no click when Follow Lead jumps, biggest step = 0.008 
@@ -68,10 +68,44 @@ PASS  no click when Breath jumps, biggest step = 0.009
 PASS  no click when Chord Root jumps, biggest step = 0.008 
 PASS  no click when Chord Type jumps, biggest step = 0.008 
 PASS  no click when Chord Hold jumps, biggest step = 0.008 
-PASS  no click when Input Type jumps, biggest step = 0.009 
+PASS  no click when Input Type jumps, biggest step = 0.008 
 PASS  no click when Tracking jumps, biggest step = 0.008 
 PASS  no click when Reference A4 jumps, biggest step = 0.008 
 PASS  no click when Bypass jumps, biggest step = 0.008 
+PASS  no click when More Voices jumps, biggest step = 0.010 
+PASS  no click when Voice 5 Interval jumps, biggest step = 0.008 
+PASS  no click when Voice 5 Level jumps, biggest step = 0.008 
+PASS  no click when Voice 5 Pan jumps, biggest step = 0.008 
+PASS  no click when Voice 5 Drift jumps, biggest step = 0.008 
+PASS  no click when Voice 5 Throat jumps, biggest step = 0.008 
+PASS  no click when Voice 5 Tone jumps, biggest step = 0.008 
+PASS  no click when Voice 6 Interval jumps, biggest step = 0.008 
+PASS  no click when Voice 6 Level jumps, biggest step = 0.008 
+PASS  no click when Voice 6 Pan jumps, biggest step = 0.008 
+PASS  no click when Voice 6 Drift jumps, biggest step = 0.008 
+PASS  no click when Voice 6 Throat jumps, biggest step = 0.008 
+PASS  no click when Voice 6 Tone jumps, biggest step = 0.008 
+PASS  no click when Voice 7 Interval jumps, biggest step = 0.008 
+PASS  no click when Voice 7 Level jumps, biggest step = 0.008 
+PASS  no click when Voice 7 Pan jumps, biggest step = 0.008 
+PASS  no click when Voice 7 Drift jumps, biggest step = 0.008 
+PASS  no click when Voice 7 Throat jumps, biggest step = 0.008 
+PASS  no click when Voice 7 Tone jumps, biggest step = 0.008 
+PASS  no click when Voice 8 Interval jumps, biggest step = 0.008 
+PASS  no click when Voice 8 Level jumps, biggest step = 0.008 
+PASS  no click when Voice 8 Pan jumps, biggest step = 0.008 
+PASS  no click when Voice 8 Drift jumps, biggest step = 0.008 
+PASS  no click when Voice 8 Throat jumps, biggest step = 0.008 
+PASS  no click when Voice 8 Tone jumps, biggest step = 0.008 
+PASS  no click when Voice 1 On jumps, biggest step = 0.008 
+PASS  no click when Voice 2 On jumps, biggest step = 0.008 
+PASS  no click when Voice 3 On jumps, biggest step = 0.008 
+PASS  no click when Voice 4 On jumps, biggest step = 0.008 
+PASS  no click when Voice 5 On jumps, biggest step = 0.008 
+PASS  no click when Voice 6 On jumps, biggest step = 0.008 
+PASS  no click when Voice 7 On jumps, biggest step = 0.008 
+PASS  no click when Voice 8 On jumps, biggest step = 0.008 
+PASS  no click when Lead On jumps, biggest step = 0.008 
 PASS  C major: a third above C is E, a major third
 PASS  C major: a third above E is G, a minor third
 PASS  C major: a third above D is F, a minor third
@@ -149,8 +183,8 @@ PASS  no click: MIDI chord changes, Glide 20, biggest step against steady = 1.18
 PASS  no click: MIDI chord changes, Glide 20, second difference against steady = 1.142 times
 PASS  no click: MIDI notes starting and stopping, biggest step against steady = 1.006 times
 PASS  no click: MIDI notes starting and stopping, second difference against steady = 1.026 times
-PASS  no click: Voices jumping between 1 and 4, biggest step against steady = 1.419 times
-PASS  no click: Voices jumping between 1 and 4, second difference against steady = 1.352 times
+PASS  no click: Voices jumping between 1 and 4, biggest step against steady = 1.434 times
+PASS  no click: Voices jumping between 1 and 4, second difference against steady = 1.318 times
 PASS  no click: Interval jumping, biggest step against steady = 0.806 times
 PASS  no click: Interval jumping, second difference against steady = 0.801 times
 PASS  no click: Mode jumping, biggest step against steady = 0.717 times
@@ -236,7 +270,7 @@ PASS  Detected Pitch reads the lead = 220.000 Hz
 PASS  Lead Note reads A3
 PASS  Voice Note readings at defaults, A3 in C major: C4 and E4
 PASS  Voices Sounding reads 2
-PASS  presets = 11.000 
+PASS  presets = 14.000 
 PASS  presets leave Key, Scale, Input Type and Follow Key alone
 PASS  every preset makes sound at a sane level, with no NaN
 PASS  stereo in, lead only: a left only input stays left = -240.000 dB
@@ -300,7 +334,7 @@ PASS  real speech and say singing: fixed fifth, median distance from lead plus t
 PASS  real material: biggest sample step in the voice against the input, worst file = 0.891 times
 PASS  real material, Tight preset: lead with two voices against the lead alone, 99th percentile of 20 ms frames = 3.943 dB
 INFO  real material, defaults: the same, voices running on behind a lead that has stopped = 8.972 dB
-PASS  CPU on one core, 48 kHz stereo, 4 voices, Wide Range, voice at 180 Hz with vibrato (machine busy with other builds) = 1.659 %
+PASS  CPU on one core, 48 kHz stereo, 4 voices, Wide Range, voice at 180 Hz with vibrato (machine busy with other builds) = 1.673 %
 METRIC  note change, how late voices arrive after the lead, average = 42.477 ms
 METRIC  note change, spread between earliest and latest voice, median = 17.000 ms
 METRIC  body of a note, distance from target, median = 3.486 cents
@@ -377,7 +411,7 @@ PASS  defaults: high end is not an exact repeat at +7, period to period = 0.790
 PASS  period blending: energy between harmonics at 7 st, against the lead's own -29.7 dB = -34.063 dB
 PASS  period blending: energy between harmonics at -7 st, against the lead's own -29.7 dB = -29.512 dB
 PASS  period blending: energy between harmonics at 12 st, against the lead's own -29.7 dB = -35.345 dB
-PASS  the last preset is Tight
+PASS  preset 10 is Tight
 METRIC  Tight: note change, how late voices arrive after the lead, average = 16.364 ms
 METRIC  Tight: note change, spread between earliest and latest voice, median = 4.000 ms
 METRIC  Tight: body of a note, distance from target, median = 0.005 cents
@@ -420,6 +454,18 @@ PASS  Consonant Scatter 100 spreads an S at least 10 ms more than 0, 100 reads =
 PASS  Consonant Scatter 0 leaves copies, 100 does not, best lag at 100 = 0.053 
 PASS  a breath through a voice at defaults fades, late against early = -7.488 dB
 PASS  Drift 100: level wander, peak to peak = 2.936 dB
+PASS  null test: bit for bit the same as 1.2.0, first opened
+PASS  null test: bit for bit the same as 1.2.0, preset 0
+PASS  null test: bit for bit the same as 1.2.0, preset 1
+PASS  null test: bit for bit the same as 1.2.0, preset 2
+PASS  null test: bit for bit the same as 1.2.0, preset 3
+PASS  null test: bit for bit the same as 1.2.0, preset 4
+PASS  null test: bit for bit the same as 1.2.0, preset 5
+PASS  null test: bit for bit the same as 1.2.0, preset 6
+PASS  null test: bit for bit the same as 1.2.0, preset 7
+PASS  null test: bit for bit the same as 1.2.0, preset 8
+PASS  null test: bit for bit the same as 1.2.0, preset 9
+PASS  null test: bit for bit the same as 1.2.0, preset 10
 PASS  null test: output identical to 1.1.0, preset 0
 PASS  null test: identical with the window open and drawing, preset 0
 PASS  null test: output identical to 1.1.0, preset 3
@@ -456,7 +502,27 @@ PASS  dragging a singer is one gesture on pan and one on interval
 PASS  dragging up three rows adds three semitones
 PASS  dragging right pans right = 16.000 pan
 PASS  with MIDI deciding the notes, a drag leaves the interval alone
-PASS  double-clicking a singer resets its pan and interval
+PASS  a click on a singer turns it off
+PASS  as one gesture on its own parameter = 1.000 gestures
+PASS  and it moves nothing
+PASS  the stage shows that singer as off
+PASS  a click with a tiny wobble still counts as a click, and turns it back on
+PASS  and still moves nothing
+PASS  a drag moves the singer and leaves it on
+PASS  and it is one gesture on pan
+PASS  off again
+PASS  dragging an off singer moves it and it stays off
+PASS  a click on a voice's name turns it off
+PASS  and on
+PASS  a click on the lead turns it off, leaving only harmonies
+PASS  there is an All button
+PASS  All brings everyone back
+PASS  the lead's own switch works too
+PASS  choosing 8 sets Voices 4 and More Voices 4
+PASS  8 voices shows 8 cards = 8.000 
+PASS  choosing 3 takes More Voices back to 0
+PASS  up to 4 voices keeps 4 cards = 4.000 
+PASS  a click on a spare card adds it, and does not switch it
 PASS  the window opens at its default size = 1200.000 wide
 PASS  a window watching audio writes no automation = 0.000 writes
 PASS  the singers follow a voice that is singing
@@ -464,8 +530,8 @@ PASS  the lead reads the note it is on, A3
 PASS  voice 1 reads the note it sings, C4
 PASS  voice 2 reads the note it sings, E4
 PASS  the window opens and shuts 60 times with no audio
-PASS  the window opens, draws and shuts 60 times with audio running = 16992.000 blocks
-PASS  every preset, key extreme and scale draws = 66.000 pictures
+PASS  the window opens, draws and shuts 60 times with audio running = 20585.000 blocks
+PASS  every preset, key extreme and scale draws = 84.000 pictures
 PASS  window size and Advanced come back with the session
 PASS  and the window opens that way = 1500.000 wide
 PASS  the window keeps its shape
@@ -474,4 +540,145 @@ PASS  and the window's size stays out of the parameter tree
 PASS  a damaged window size goes back in range = 1900.000 wide
 PASS  a session from before the window opens at the default size
 PASS  no em dash in any hint
+PASS  defaults still use two voices = 2.000 
+PASS  Voices keeps its range of 1 to 4, so old automation of it stays right
+PASS  voice 5 has Interval
+PASS  voice 5 has Level
+PASS  voice 5 has Pan
+PASS  voice 5 has Drift
+PASS  voice 5 has Throat
+PASS  voice 5 has Tone
+PASS  voice 5 has On
+PASS  voice 6 has Interval
+PASS  voice 6 has Level
+PASS  voice 6 has Pan
+PASS  voice 6 has Drift
+PASS  voice 6 has Throat
+PASS  voice 6 has Tone
+PASS  voice 6 has On
+PASS  voice 7 has Interval
+PASS  voice 7 has Level
+PASS  voice 7 has Pan
+PASS  voice 7 has Drift
+PASS  voice 7 has Throat
+PASS  voice 7 has Tone
+PASS  voice 7 has On
+PASS  voice 8 has Interval
+PASS  voice 8 has Level
+PASS  voice 8 has Pan
+PASS  voice 8 has Drift
+PASS  voice 8 has Throat
+PASS  voice 8 has Tone
+PASS  voice 8 has On
+PASS  voice 1 starts on
+PASS  voice 2 starts on
+PASS  voice 3 starts on
+PASS  voice 4 starts on
+PASS  voice 5 starts on
+PASS  voice 6 starts on
+PASS  voice 7 starts on
+PASS  voice 8 starts on
+PASS  the lead starts on
+PASS  old presets keep their places
+PASS  preset Pop Thirds And Fifths puts every singer on
+PASS  preset Third Above puts every singer on
+PASS  preset Third Below puts every singer on
+PASS  preset Full Stack puts every singer on
+PASS  preset Gang Unison puts every singer on
+PASS  preset Wide Octaves puts every singer on
+PASS  preset Power Fifths puts every singer on
+PASS  preset MIDI Choir puts every singer on
+PASS  preset MIDI Chords Only puts every singer on
+PASS  preset Chord Tones Pad puts every singer on
+PASS  preset Tight puts every singer on
+PASS  preset Six Part Stack puts every singer on
+PASS  preset Eight Part Choir puts every singer on
+PASS  preset MIDI Eight Part Choir puts every singer on
+PASS  at least 2 presets use more than 4 voices = 3.000 
+PASS  voice 5 pitch, Fixed +7, 95th percentile = 0.028 cents
+PASS  voice 5 pitch, In Key, a 3rd up on C is E = 0.011 cents
+PASS  voice 5 Level -12 dB measures = -12.000 dB
+PASS  voice 5 Pan full left: right against left = -221.996 dB
+PASS  voice 5 Pan full left is 3 dB up = 3.010 dB
+PASS  voice 5 Drift 100: pitch wander over 30 s = 19.143 cents
+PASS  voice 6 pitch, Fixed +7, 95th percentile = 0.028 cents
+PASS  voice 6 pitch, In Key, a 3rd up on C is E = 0.012 cents
+PASS  voice 6 Level -12 dB measures = -12.000 dB
+PASS  voice 6 Pan full left: right against left = -221.995 dB
+PASS  voice 6 Pan full left is 3 dB up = 3.010 dB
+PASS  voice 6 Drift 100: pitch wander over 30 s = 18.329 cents
+PASS  voice 7 pitch, Fixed +7, 95th percentile = 0.030 cents
+PASS  voice 7 pitch, In Key, a 3rd up on C is E = 0.011 cents
+PASS  voice 7 Level -12 dB measures = -12.000 dB
+PASS  voice 7 Pan full left: right against left = -221.997 dB
+PASS  voice 7 Pan full left is 3 dB up = 3.010 dB
+PASS  voice 7 Drift 100: pitch wander over 30 s = 18.512 cents
+PASS  voice 8 pitch, Fixed +7, 95th percentile = 0.028 cents
+PASS  voice 8 pitch, In Key, a 3rd up on C is E = 0.012 cents
+PASS  voice 8 Level -12 dB measures = -12.000 dB
+PASS  voice 8 Pan full left: right against left = -221.995 dB
+PASS  voice 8 Pan full left is 3 dB up = 3.010 dB
+PASS  voice 8 Drift 100: pitch wander over 30 s = 18.787 cents
+PASS  new voices on one interval: correlation at the best lag, worst of 6 pairs = 0.314 
+PASS    and at no lag = 0.127 
+PASS    level rise from adding the second voice (6 dB is a copy, 3 dB unrelated) = 3.382 dB
+PASS  8 notes on 8 voices: lowest note on voice 1, in order
+PASS  8 voices, 2000 random chord changes: no voice crossings = 0.000 
+PASS  8 voices: every note gets a voice = 0.000 
+PASS  8 voices: moving one note moves only that voice = 0.000 
+PASS  8 voices: working out a chord takes well under one block = 2.528 us
+PASS  MIDI Channel: voice 5 takes channel 5, voice 8 takes channel 8
+PASS  voices together at 5 voices turn down by = -0.969 dB
+PASS  voices together at 6 voices turn down by = -1.761 dB
+PASS  voices together at 7 voices turn down by = -2.430 dB
+PASS  voices together at 8 voices turn down by = -3.010 dB
+PASS  8 voices against 4 at one Level, RMS = -0.141 dB
+PASS  preset Six Part Stack, vocal peaking at -6 dBFS: output peak = 0.553 
+PASS  preset Eight Part Choir, vocal peaking at -6 dBFS: output peak = 0.479 
+PASS  preset MIDI Eight Part Choir, vocal peaking at -6 dBFS: output peak = 0.591 
+INFO  defaults with Voices set to 8, vocal peaking at -6 dBFS: output peak, for the report = 0.799 
+INFO  defaults, two voices, same vocal: output peak, for the report = 0.637 
+PASS  no click: voice 1 switching, biggest step against steady = 0.178 times
+PASS  no click: voice 1 switching, second difference against steady = 0.202 times
+PASS  no click: voice 1 switching, against itself steady = 1.014 times
+PASS  no click: voice 2 switching, biggest step against steady = 0.197 times
+PASS  no click: voice 2 switching, second difference against steady = 0.178 times
+PASS  no click: voice 2 switching, against itself steady = 1.013 times
+PASS  no click: voice 3 switching, biggest step against steady = 0.174 times
+PASS  no click: voice 3 switching, second difference against steady = 0.201 times
+PASS  no click: voice 3 switching, against itself steady = 1.011 times
+PASS  no click: voice 4 switching, biggest step against steady = 0.188 times
+PASS  no click: voice 4 switching, second difference against steady = 0.196 times
+PASS  no click: voice 4 switching, against itself steady = 1.015 times
+PASS  no click: voice 5 switching, biggest step against steady = 0.180 times
+PASS  no click: voice 5 switching, second difference against steady = 0.203 times
+PASS  no click: voice 5 switching, against itself steady = 1.015 times
+PASS  no click: voice 6 switching, biggest step against steady = 0.196 times
+PASS  no click: voice 6 switching, second difference against steady = 0.182 times
+PASS  no click: voice 6 switching, against itself steady = 1.013 times
+PASS  no click: voice 7 switching, biggest step against steady = 0.182 times
+PASS  no click: voice 7 switching, second difference against steady = 0.202 times
+PASS  no click: voice 7 switching, against itself steady = 1.010 times
+PASS  no click: voice 8 switching, biggest step against steady = 0.189 times
+PASS  no click: voice 8 switching, second difference against steady = 0.194 times
+PASS  no click: voice 8 switching, against itself steady = 1.010 times
+PASS  no click: half the singers switching at once, biggest step against steady = 0.647 times
+PASS  no click: half the singers switching at once, second difference against steady = 0.676 times
+PASS  no click: the lead switching, biggest step against the input = 0.996 times
+PASS  no click: the voice count jumping between 1 and 8, biggest step against steady = 1.030 times
+PASS  no click: the voice count jumping between 1 and 8, second difference against steady = 1.030 times
+PASS  a voice switching off fades over = 15.625 ms
+PASS  and then there is nothing left of it = -240.000 dB
+PASS  the lead switching off fades over = 17.500 ms
+PASS  and then there is nothing left of it = -240.000 dB
+PASS  singers off against the same singers at Level Off: what is left = -240.000 dBFS
+PASS  and the rest are still singing = -21.180 dB
+PASS  voice 1 coming back: pitch 50 ms later against its note = 0.003 cents
+PASS  voice 7 coming back: pitch 50 ms later against its note = 0.004 cents
+INFO  CPU, one core, eight singers on = 2.734 %
+INFO  CPU, one core, two of eight on = 0.933 %
+PASS  off singers' cost, as a share of what they cost on = 0.122 
+PASS  singer selection and voice count come back with the session
+PASS  a session from before opens with everyone on and its own voice count = 2.000 
+PASS  Voices Sounding counts singers you hear = 6.000 
 RESULT PASS  0 failures

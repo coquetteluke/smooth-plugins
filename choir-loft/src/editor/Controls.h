@@ -78,6 +78,8 @@ namespace ui
 
         void setMode (int);
         void setForcedHover (bool shouldShow)  { forcedHover = shouldShow; repaint(); }
+        /** Smaller type on two lines, for a narrow card. */
+        void setCompact (bool shouldBe)        { if (compact != shouldBe) { compact = shouldBe; repaint(); } }
 
         void step (int direction);
         void startTyping();
@@ -91,7 +93,7 @@ namespace ui
         const int index;
         const juce::Colour accent;
         int mode = 0, hoveredArrow = 0;
-        bool forcedHover = false, onArrow = false;
+        bool forcedHover = false, onArrow = false, compact = false;
         TypeBox typeBox;
         std::unique_ptr<juce::SliderParameterAttachment> attachment;
 
@@ -161,6 +163,65 @@ namespace ui
         juce::ParameterAttachment attachment;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Segments)
+    };
+
+    /** A singer's name with its dot, as a switch: click to hear it or not. The dot is filled when it is heard and hollow when it is off.
+        Text on the right says what it sings. The whole row is the switch. */
+    class SingerSwitch final : public juce::Component,
+                               public Hinted
+    {
+    public:
+        SingerSwitch (Apvts&, const juce::String& paramId, const juce::String& labelText, const juce::String& hintText, juce::Colour colourToUse);
+
+        void paint (juce::Graphics&) override;
+        void mouseEnter (const juce::MouseEvent&) override;
+        void mouseExit (const juce::MouseEvent&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+
+        void setRight (const juce::String& text, juce::Colour colour, float size);
+        void setCompact (bool shouldBe)  { if (compact != shouldBe) { compact = shouldBe; repaint(); } }
+        bool isHeard() const noexcept    { return heard; }
+        void toggle();
+
+        /** Takes the click first, for a voice past the count, where a click adds it. Returns true if it did. */
+        std::function<bool()> onClickFirst;
+
+    private:
+        const juce::String label;
+        const juce::Colour colour;
+        juce::String rightText;
+        juce::Colour rightColour;
+        float rightSize = 20.0f;
+        bool heard = true, hovered = false, compact = false;
+        juce::ParameterAttachment attachment;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SingerSwitch)
+    };
+
+    /** How many voices sing, 1 to 8, as one row. Behind it are two parameters: Voices 1 to 4, and More Voices on top. */
+    class VoicePicker final : public juce::Component,
+                              public Hinted
+    {
+    public:
+        VoicePicker (Apvts&, const juce::String& hintText);
+
+        void paint (juce::Graphics&) override;
+        void mouseMove (const juce::MouseEvent&) override;
+        void mouseExit (const juce::MouseEvent&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDoubleClick (const juce::MouseEvent&) override;
+
+        int getCount() const noexcept  { return first + more; }
+        void choose (int count);
+
+    private:
+        int cellAt (juce::Point<float>) const;
+
+        juce::RangedAudioParameter& firstParam, & moreParam;
+        int first = 2, more = 0, hovered = -1;
+        juce::ParameterAttachment firstAttachment, moreAttachment;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VoicePicker)
     };
 
     /** A switch for an on or off parameter. */

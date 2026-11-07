@@ -106,4 +106,14 @@ namespace limits
     constexpr double speechFrameLevelDb = 6.0;        // 99th percentile change in 20 ms frame level, lead plus voices, against the level the lead alone would make with the same gain
     constexpr double speechJumpRatio = 2.5;           // biggest sample step in the voices, against the input
     constexpr double speechMedianCents = 20.0;        // fixed interval on real speech: median distance from lead plus interval
+
+    // More singers and click to hear, set before any of it was measured. New voices use the same limits as the first four, above.
+    constexpr double hearFadeMinMs = 10.0, hearFadeMaxMs = 20.0;   // a singer switching on or off, the brief asks for 10 to 20
+    constexpr double hearOffDb = -120.0;                           // an off singer, once faded
+    constexpr double muteNullDb = -90.0;                           // an off singer against the same singer at Level Off
+    constexpr double comeBackCents = 15.0;                         // a voice coming back, 50 ms later, against where it should be
+    constexpr double trimDb = 0.05;                                // the bus trim at 5 to 8 voices against its formula
+    constexpr double eightAgainstFourDb = 1.5;                     // eight voices at one Level against four at that Level, RMS
+    constexpr double newPresetPeak = 1.0;                          // new presets, input peaking at -6 dBFS: output peak under this
+    constexpr double offVoiceCpuShare = 0.25;                      // CPU of 6 off out of 8, as a share of their cost when on
 }

@@ -240,7 +240,7 @@ namespace ui
 
     int IntervalField::arrowAt (juce::Point<float> p) const
     {
-        if (p.x < (float) getWidth() - 26.0f)
+        if (p.x < (float) getWidth() - (compact ? 18.0f : 26.0f))
             return 0;
 
         return p.y < (float) getHeight() * 0.5f ? 1 : -1;
@@ -373,17 +373,30 @@ namespace ui
             small = semitoneText (semitones);
         }
 
-        auto text = b.withTrimmedRight (30.0f);
-        g.setFont (font (Weight::regular, 27.0f));
-        const float bigWidth = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), big);
-        g.setColour (fromMidi ? tone::muted : tone::text);
-        g.drawText (big, text.removeFromLeft (bigWidth + 2.0f), juce::Justification::centredLeft, false);
+        auto text = b.withTrimmedRight (compact ? 22.0f : 30.0f);
 
-        g.setFont (font (Weight::regular, 13.0f));
-        g.setColour (lit ? tone::text : tone::muted);
-        g.drawText (small, text.withTrimmedLeft (8.0f).withTrimmedTop (5.0f), juce::Justification::centredLeft, false);
+        if (compact)
+        {
+            g.setFont (font (Weight::regular, 17.0f));
+            g.setColour (fromMidi ? tone::muted : tone::text);
+            g.drawText (big, text.removeFromTop (b.getHeight() * 0.56f).withTrimmedTop (2.0f), juce::Justification::bottomLeft, false);
+            g.setFont (font (Weight::regular, 12.0f));
+            g.setColour (lit ? tone::text : tone::muted);
+            g.drawText (small, text, juce::Justification::topLeft, false);
+        }
+        else
+        {
+            g.setFont (font (Weight::regular, 27.0f));
+            const float bigWidth = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), big);
+            g.setColour (fromMidi ? tone::muted : tone::text);
+            g.drawText (big, text.removeFromLeft (bigWidth + 2.0f), juce::Justification::centredLeft, false);
 
-        const float x = b.getRight() - 13.0f;
+            g.setFont (font (Weight::regular, 13.0f));
+            g.setColour (lit ? tone::text : tone::muted);
+            g.drawText (small, text.withTrimmedLeft (8.0f).withTrimmedTop (5.0f), juce::Justification::centredLeft, false);
+        }
+
+        const float x = b.getRight() - (compact ? 8.0f : 13.0f);
         const auto arrowColour = [this, lit, fromMidi] (int which)
         {
             if (hoveredArrow == which)
@@ -574,6 +587,176 @@ namespace ui
             g.setColour (i == selected ? tone::ink : (i == hovered ? tone::text : tone::muted));
             g.setFont (font (Weight::medium, 13.0f));
             g.drawText (labels[i], cell, juce::Justification::centred, false);
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------
+
+    SingerSwitch::SingerSwitch (Apvts& state, const juce::String& paramId, const juce::String& labelText, const juce::String& hintText, juce::Colour colourToUse)
+        : label (labelText),
+          colour (colourToUse),
+          rightColour (colourToUse),
+          attachment (*state.getParameter (paramId), [this] (float v) { heard = v >= 0.5f; repaint(); }, nullptr)
+    {
+        hint = hintText;
+        setComponentID (paramId);
+        setTitle (state.getParameter (paramId)->getName (64));
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        attachment.sendInitialUpdate();
+    }
+
+    void SingerSwitch::setRight (const juce::String& text, juce::Colour newColour, float size)
+    {
+        if (text != rightText || newColour != rightColour || size != rightSize)
+        {
+            rightText = text;
+            rightColour = newColour;
+            rightSize = size;
+            repaint();
+        }
+    }
+
+    void SingerSwitch::toggle()
+    {
+        attachment.setValueAsCompleteGesture (heard ? 0.0f : 1.0f);
+    }
+
+    void SingerSwitch::mouseEnter (const juce::MouseEvent&)  { hovered = true; repaint(); }
+    void SingerSwitch::mouseExit (const juce::MouseEvent&)   { hovered = false; repaint(); }
+
+    void SingerSwitch::mouseDown (const juce::MouseEvent&)
+    {
+        if (onClickFirst == nullptr || ! onClickFirst())
+            toggle();
+    }
+
+    void SingerSwitch::paint (juce::Graphics& g)
+    {
+        const auto b = getLocalBounds().toFloat();
+        const auto dot = juce::Rectangle<float> (b.getX(), b.getCentreY() - 5.0f, 10.0f, 10.0f);
+
+        if (heard)
+        {
+            g.setColour (colour);
+            g.fillEllipse (hovered ? dot.expanded (1.0f) : dot);
+        }
+        else
+        {
+            g.setColour (colour);
+            g.drawEllipse (dot.reduced (0.75f), 1.5f);
+        }
+
+        if (label.isNotEmpty())
+        {
+            g.setColour (tone::text);
+            g.setFont (font (Weight::medium, compact ? 13.0f : 14.0f));
+            g.drawText (label, b.withTrimmedLeft (compact ? 15.0f : 18.0f), juce::Justification::centredLeft, false);
+        }
+
+        if (rightText.isNotEmpty())
+        {
+            g.setColour (rightColour);
+            g.setFont (font (rightSize >= 16.0f ? Weight::medium : Weight::regular, rightSize));
+            g.drawText (rightText, b, juce::Justification::centredRight, false);
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------
+
+    VoicePicker::VoicePicker (Apvts& state, const juce::String& hintText)
+        : firstParam (*state.getParameter ("voices")),
+          moreParam (*state.getParameter ("moreVoices")),
+          firstAttachment (firstParam, [this] (float v) { first = juce::roundToInt (v); repaint(); }, nullptr),
+          moreAttachment (moreParam, [this] (float v) { more = juce::roundToInt (v); repaint(); }, nullptr)
+    {
+        hint = hintText;
+        setComponentID ("voices");
+        setTitle ("Voices");
+        firstAttachment.sendInitialUpdate();
+        moreAttachment.sendInitialUpdate();
+    }
+
+    int VoicePicker::cellAt (juce::Point<float> p) const
+    {
+        if (! getLocalBounds().toFloat().contains (p))
+            return -1;
+
+        return juce::jlimit (0, 7, (int) (p.x / (float) getWidth() * 8.0f));
+    }
+
+    void VoicePicker::choose (int count)
+    {
+        count = juce::jlimit (1, 8, count);
+
+        if (count == getCount() && first + more == count && (count <= 4 ? more == 0 : first == 4))
+            return;
+
+        const float newFirst = (float) juce::jmin (count, 4), newMore = (float) juce::jmax (0, count - 4);
+        firstAttachment.beginGesture();
+        moreAttachment.beginGesture();
+        firstAttachment.setValueAsPartOfGesture (newFirst);
+        moreAttachment.setValueAsPartOfGesture (newMore);
+        firstAttachment.endGesture();
+        moreAttachment.endGesture();
+    }
+
+    void VoicePicker::mouseMove (const juce::MouseEvent& e)
+    {
+        const int now = cellAt (e.position);
+
+        if (now != hovered)
+        {
+            hovered = now;
+            repaint();
+        }
+    }
+
+    void VoicePicker::mouseExit (const juce::MouseEvent&)
+    {
+        hovered = -1;
+        repaint();
+    }
+
+    void VoicePicker::mouseDown (const juce::MouseEvent& e)
+    {
+        const int hit = cellAt (e.position);
+
+        if (hit >= 0)
+            choose (hit + 1);
+    }
+
+    void VoicePicker::mouseDoubleClick (const juce::MouseEvent&)
+    {
+        choose (juce::roundToInt (firstParam.convertFrom0to1 (firstParam.getDefaultValue())));
+    }
+
+    void VoicePicker::paint (juce::Graphics& g)
+    {
+        const auto b = getLocalBounds().toFloat();
+        g.setColour (tone::text.withAlpha (0.055f));
+        g.fillRoundedRectangle (b, corner);
+
+        const int count = juce::jlimit (1, 8, getCount());
+        const float w = b.getWidth() / 8.0f;
+
+        for (int i = 0; i < 8; ++i)
+        {
+            const auto cell = juce::Rectangle<float> ((float) i * w, 0.0f, w, b.getHeight());
+
+            if (i + 1 == count)
+            {
+                g.setColour (tone::text.withAlpha (0.92f));
+                g.fillRoundedRectangle (cell.reduced (2.0f), corner - 2.0f);
+            }
+            else if (i == hovered)
+            {
+                g.setColour (tone::text.withAlpha (0.07f));
+                g.fillRoundedRectangle (cell.reduced (2.0f), corner - 2.0f);
+            }
+
+            g.setColour (i + 1 == count ? tone::ink : (i == hovered ? tone::text : tone::muted));
+            g.setFont (font (Weight::medium, 13.0f));
+            g.drawText (juce::String (i + 1), cell, juce::Justification::centred, false);
         }
     }
 

@@ -2142,6 +2142,210 @@ void testWindow()
         check (blocks.load() > 0, "audio keeps running while the window repaints, blocks", (double) blocks.load());
     }
 
+    // Every control has a real parameter behind it and a place on screen, Advanced open or not.
+    {
+        bool allThere = true;
+        for (auto* id : { "key", "scale", "inputType", "engine", "midiOctave", "followKey", "midiTargets", "classic", "formantPreserve", "bypass",
+                          "retune", "flex", "humanize", "naturalVibrato", "throat", "transpose", "reference", "tracking", "mix", "vibratoAmount", "vibratoRate", "vibratoDelay" })
+            allThere = allThere && te->findControl (id) != nullptr && p->apvts.getParameter (id) != nullptr;
+        check (allThere, "every control in the window is found by its parameter ID");
+    }
+
+    // The window and automation move each other, with gestures.
+    {
+        struct Gestures final : juce::AudioProcessorListener
+        {
+            std::atomic<int> begun { 0 }, ended { 0 };
+            void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+            void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+            void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override { ++begun; }
+            void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int) override { ++ended; }
+        } gestures;
+
+        auto* flexSlider = dynamic_cast<tuneui::ParamSlider*> (te->findControl ("flex"));
+        check (flexSlider != nullptr, "Flex Tune is a slider in the window");
+        if (flexSlider != nullptr)
+        {
+            setParam (*p, "flex", 42.0f);
+            check (std::abs (flexSlider->getValue() - 42.0) < 0.2, "automation moves the window's slider", flexSlider->getValue());
+            flexSlider->setValue (17.0, juce::sendNotificationSync);
+            check (std::abs (p->apvts.getRawParameterValue ("flex")->load() - 17.0f) < 0.2f, "the window's slider moves the parameter", p->apvts.getRawParameterValue ("flex")->load());
+            p->addListener (&gestures);
+            flexSlider->applyTyped ("33");
+            p->removeListener (&gestures);
+            check (std::abs (p->apvts.getRawParameterValue ("flex")->load() - 33.0f) < 0.2f, "a typed value lands on the parameter", p->apvts.getRawParameterValue ("flex")->load());
+            check (gestures.begun.load() == 1 && gestures.ended.load() == 1, "and a typed value is one begin and one end gesture", gestures.begun.load());
+            setParam (*p, "flex", 0.0f);
+        }
+
+        // The real mouse handlers, as a click arrives from the system.
+        const auto mouse = [] (juce::Component& c, juce::Point<float> at, juce::Point<float> from, int clicks, bool dragged)
+        {
+            const auto now = juce::Time::getCurrentTime();
+            return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c, now, from, now, clicks, dragged);
+        };
+        const auto modeOfD = [&] { return juce::roundToInt (p->apvts.getRawParameterValue ("note2")->load()); };
+        const auto dKey = keys.keyBounds (2).getBottomLeft().translated (6.0f, -6.0f);
+        keys.mouseDown (mouse (keys, dKey, dKey, 1, false));
+        check (modeOfD() == smoothtune::noteRemove, "one click on a key removes the note");
+        keys.mouseDown (mouse (keys, dKey, dKey, 2, false));
+        check (modeOfD() == smoothtune::noteTune, "the second click of a double-click puts it back to Tune");
+
+        if (flexSlider != nullptr)
+        {
+            gestures.begun = 0;
+            gestures.ended = 0;
+            p->addListener (&gestures);
+            const auto start = flexSlider->getLocalBounds().getCentre().toFloat();
+            const auto end = start.translated (40.0f, 0.0f);
+            flexSlider->mouseDown (mouse (*flexSlider, start, start, 1, false));
+            flexSlider->mouseDrag (mouse (*flexSlider, end, start, 1, true));
+            flexSlider->mouseUp (mouse (*flexSlider, end, start, 1, true));
+            check (p->apvts.getRawParameterValue ("flex")->load() > 1.0f, "dragging a control moves its parameter", p->apvts.getRawParameterValue ("flex")->load());
+            check (gestures.begun.load() == 1 && gestures.ended.load() == 1, "and a drag is one begin and one end gesture", gestures.begun.load());
+            gestures.begun = 0;
+            gestures.ended = 0;
+            flexSlider->mouseDoubleClick (mouse (*flexSlider, start, start, 2, false));
+            p->removeListener (&gestures);
+            check (std::abs (p->apvts.getRawParameterValue ("flex")->load()) < 0.01f, "double-clicking a control resets it", p->apvts.getRawParameterValue ("flex")->load());
+            check (gestures.begun.load() == 1 && gestures.ended.load() == 1, "and that is one begin and one end gesture too", gestures.begun.load());
+        }
+    }
+
+    // Nothing but size and the open section is added to saved state, it is range checked, and it comes back.
+    {
+        p->windowWidth.store (1000);
+        p->advancedOpen.store (true);
+        juce::MemoryBlock saved;
+        p->getStateInformation (saved);
+        auto other = make();
+        other->setStateInformation (saved.getData(), (int) saved.getSize());
+        check (other->windowWidth.load() == 1000 && other->advancedOpen.load(), "the window size and open section come back", other->windowWidth.load());
+
+        std::unique_ptr<juce::XmlElement> xml (juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize()));
+        const auto plain = p->apvts.copyState().createXml();
+        check (xml != nullptr && xml->getNumAttributes() == plain->getNumAttributes() + 2 && xml->getNumChildElements() == plain->getNumChildElements(), "saved state adds exactly two attributes");
+        check (! other->apvts.copyState().hasProperty ("windowWidth"), "and they stay out of the parameter tree");
+
+        xml->setAttribute ("windowWidth", 99999999);
+        juce::MemoryBlock hostile;
+        juce::AudioProcessor::copyXmlToBinary (*xml, hostile);
+        other->setStateInformation (hostile.getData(), (int) hostile.getSize());
+        check (other->windowWidth.load() == PluginProcessor::maxWindowWidth, "a damaged window size is clamped", other->windowWidth.load());
+        xml->setAttribute ("windowWidth", "nan");
+        juce::AudioProcessor::copyXmlToBinary (*xml, hostile);
+        other->setStateInformation (hostile.getData(), (int) hostile.getSize());
+        check (other->windowWidth.load() >= PluginProcessor::minWindowWidth && other->windowWidth.load() <= PluginProcessor::maxWindowWidth, "so is one that is not a number", other->windowWidth.load());
+        p->windowWidth.store (PluginProcessor::defaultWindowWidth);
+        p->advancedOpen.store (false);
+    }
+
+    // Advanced opens and shuts with the display giving up the room, and every size paints.
+    {
+        const int closedHeight = te->getPitchView().getHeight();
+        te->setAdvancedOpen (true, false);
+        const int openHeight = te->getPitchView().getHeight();
+        check (openHeight < closedHeight && openHeight > 150, "opening Advanced shrinks the display, height", openHeight);
+        juce::Image big (juce::Image::ARGB, ed->getWidth(), ed->getHeight(), true);
+        {
+            juce::Graphics g (big);
+            ed->paintEntireComponent (g, false);
+        }
+        te->setAdvancedOpen (false, false);
+        check (te->getPitchView().getHeight() == closedHeight, "and closing it gives the room back");
+        for (int width : { PluginProcessor::minWindowWidth, 1333, PluginProcessor::maxWindowWidth, PluginProcessor::defaultWindowWidth })
+        {
+            te->setSize (width, juce::roundToInt ((double) width * TuneEditor::designHeight / TuneEditor::designWidth));
+            juce::Image sized (juce::Image::ARGB, ed->getWidth(), ed->getHeight(), true);
+            juce::Graphics g (sized);
+            ed->paintEntireComponent (g, false);
+        }
+        check (te->getWidth() == PluginProcessor::defaultWindowWidth, "it paints at the smallest, largest and in between sizes");
+        p->windowWidth.store (PluginProcessor::defaultWindowWidth);
+    }
+
+    // When nothing new arrives, nothing on screen moves, so there is nothing to draw.
+    {
+        auto& view = te->getPitchView();
+        for (int i = 0; i < 90; ++i)
+            view.advance (1.0 / 30.0);
+        bool stillMoving = false;
+        for (int i = 0; i < 10; ++i)
+            stillMoving = view.advance (1.0 / 30.0) || stillMoving;
+        check (! stillMoving, "with no audio arriving the display asks for no frames");
+    }
+
+    // The window changes nothing in the audio: the same input gives the same samples, with it open and painting or with no window at all.
+    {
+        auto plainOne = tuner (altoTenor, 20.0f, 20.0f, 5.0f);
+        auto withWindow = tuner (altoTenor, 20.0f, 20.0f, 5.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> open (withWindow->createEditor());
+        auto* openEditor = dynamic_cast<TuneEditor*> (open.get());
+        const auto wandering = voice::synth (voice::vibrato (noteHz (57) * 1.01, 1.5, SR, 40.0, 5.5), voice::vowelA, SR);
+        juce::Image frame (juce::Image::ARGB, open->getWidth(), open->getHeight(), true);
+        double worst = 0.0;
+        juce::AudioBuffer<float> a (plainOne->getTotalNumOutputChannels(), 256), b (withWindow->getTotalNumOutputChannels(), 256);
+        juce::MidiBuffer m;
+        for (size_t pos = 0; pos + 256 <= wandering.size(); pos += 256)
+        {
+            for (int ch = 0; ch < a.getNumChannels(); ++ch)
+            {
+                a.copyFrom (ch, 0, wandering.data() + pos, 256);
+                b.copyFrom (ch, 0, wandering.data() + pos, 256);
+            }
+            plainOne->processBlock (a, m);
+            withWindow->processBlock (b, m);
+            openEditor->tick (1.0 / 30.0);
+            if (pos % 2048 == 0)
+            {
+                juce::Graphics g (frame);
+                open->paintEntireComponent (g, false);
+            }
+            for (int ch = 0; ch < a.getNumChannels(); ++ch)
+                for (int i = 0; i < 256; ++i)
+                    worst = juce::jmax (worst, (double) std::abs (a.getSample (ch, i) - b.getSample (ch, i)));
+        }
+        check (worst == 0.0, "null test, window open against no window, largest sample difference", worst);
+    }
+
+    // Opening and closing it over and over, with audio running and with none.
+    {
+        auto q = tuner (altoTenor, 20.0f);
+        for (int i = 0; i < 25; ++i)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> again (q->createEditor());
+            dynamic_cast<TuneEditor&> (*again).tick (1.0 / 30.0);
+        }
+        check (true, "25 opens and closes with no audio");
+
+        std::atomic<bool> stop { false };
+        std::atomic<long> blocks { 0 };
+        std::thread audio ([&]
+        {
+            juce::AudioBuffer<float> buffer (q->getTotalNumOutputChannels(), 256);
+            juce::MidiBuffer m;
+            auto s = voice::synth (voice::steady (225.0, 1.0, SR), voice::vowelA, SR);
+            for (int pos = 0; ! stop.load(); pos = (pos + 256) % ((int) s.size() - 256))
+            {
+                for (int ch = 0; ch < buffer.getNumChannels(); ++ch) buffer.copyFrom (ch, 0, s.data() + pos, 256);
+                q->processBlock (buffer, m);
+                ++blocks;
+            }
+        });
+        for (int i = 0; i < 25; ++i)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> again (q->createEditor());
+            dynamic_cast<TuneEditor&> (*again).tick (1.0 / 30.0);
+            juce::Image shot (juce::Image::ARGB, again->getWidth(), again->getHeight(), true);
+            juce::Graphics g (shot);
+            again->paintEntireComponent (g, false);
+        }
+        stop = true;
+        audio.join();
+        check (blocks.load() > 0, "25 opens and closes with audio running, blocks", (double) blocks.load());
+    }
+
     // Closing it while audio runs leaves nothing behind.
     ed.reset();
     render (*p, x, 256);

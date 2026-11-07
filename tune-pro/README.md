@@ -1,6 +1,6 @@
 # Smooth Tune Pro
 
-Advanced automatic vocal tuning with two engines, MIDI targets, a mode for each note, and a window with a keyboard and a scrolling pitch view.
+Advanced automatic vocal tuning with two engines, MIDI targets, a mode for each note, and a window built around a live piano roll of your pitch above a clickable keyboard.
 
 **Load it:** in an audio effect slot, Audio Units > Luke Garito > Smooth Tune Pro. AU code `aumf STpr Luke`. Mono and stereo. It takes MIDI, but default settings tune with no MIDI at all.
 
@@ -56,7 +56,19 @@ Natural Pop, Transparent Ballad, Light Touch, Keep The Vibrato, Tight Modern, Ha
 
 ## Window
 
-From the top: live readings and latency. The pitch view scrolls 6 seconds of input pitch, corrected pitch and target note. One octave of keys, each showing its mode, with the target note lit live. Then every control. Nothing in it can block audio: it reads atomics on a timer and writes through parameters.
+Ink, coral and white. Coral only ever means what the tuning is doing. The font is Inter, SIL OFL, in `assets/fonts/`. Pictures of every state are in `docs/window/`.
+
+- **Header:** presets, Key, Scale, Follow Key, then the note being hit and a bar showing how far the voice was moved.
+- **Pitch display:** the last 8 seconds on a lane per note. White is your voice, coral is the corrected voice, the filled gap is the correction, and each note being hit is a block in its lane. Notes outside the scale have the darkest lanes. It follows your range by itself, in whole notes.
+- **Keyboard:** click a key to go Tune, Remove, Bypass. Double-click resets. Right-click lists all three. The note being hit lights coral.
+- **Controls:** Retune Speed, Flex Tune, Humanize, Natural Vibrato, Mix, then Bypass, Engine and the delay it adds.
+- **Advanced:** Throat, Transpose, Input Type, Formant Preserve, Tracking, Reference A4, Classic Mode, the added vibrato and MIDI. While closed it says how many are changed.
+
+Drag any control, shift-drag for fine moves, click a value to type one, double-click to reset. A second click straight after opening a menu closes it and resets it. The line at the bottom says what the control under the mouse does. Drag the corner to resize. The size and whether Advanced is open are saved in the session, and nothing else is added.
+
+Nothing in it can block audio: it reads atomics and writes through parameters with begin and end gestures, so automation and the window move each other.
+
+CPU and how it is kept down: see the Measured section. `build/RenderWindow_artefacts/Release/RenderWindow --live [runs] [seconds]` measures it, and with a folder name it draws the PNGs.
 
 ## Signal flow
 
@@ -67,9 +79,12 @@ Input > pitch tracker > corrector > vocal tract model takes the tract out > grai
 - `src/PsolaShifter.h`: from Smooth Tune. Grains now carry the whitened voice and centre on its pulses, below 400 Hz. Classic uses the old plain grains.
 - `src/EnvelopeFilter.h`: new. Linear prediction lattice filters, computed every 2.5 ms. With nothing shifted the pair cancels exactly, so consonants and uncorrected notes pass unharmed. On high voices the model is drawn through the harmonic peaks, because a direct fit locks on to single harmonics. While shifting it narrows the lowest formants, by how far the harmonics there have moved, up to half a spacing.
 - `src/PitchCorrector.h`: target note, Retune Speed, Flex Tune, Humanize, vibrato, MIDI targets, Classic.
-- `src/TuneEditor.cpp`: the window. Separate from the DSP.
+- `src/TuneEditor.cpp` and `src/window/`: the window. Separate from the DSP.
 
 ## Measured
+
+Window, real window at Retina size with speech playing, 30 frames a second, method from `~/smooth-resonance/docs/window-cpu.md`, 5 runs: 11.2%, 9.2%, 4.0%, 4.5%, 3.9% of one core. The work is steady at 3.3% to 3.5% of a fast core in every run. The two high runs are the same work landing on the slow cores: 18% and 49% of their time on fast cores, against 89% to 96% in the others. Stopped with no audio: 1.3%. Audio CPU is unchanged, AuBench 2.7% default and 3.0% worst preset before and after. With the window open and painting, output nulls against no window, largest sample difference 0.
+
 
 All in `tests/results.txt`, on both engines. Limits are in `tests/PassLimits.h`. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`. Before and after numbers for each step are in `CHANGELOG.md`.
 

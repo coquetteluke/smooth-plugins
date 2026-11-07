@@ -1,302 +1,565 @@
 #include "TuneEditor.h"
 
 using namespace smoothtune;
+using namespace tuneui;
+using Kind = ParamSlider::Kind;
 
 namespace
 {
-    const juce::Colour background { 0xff1c1f24 }, panel { 0xff262a31 }, grid { 0xff3a3f48 }, gridStrong { 0xff565d69 }, text { 0xffe8eaee }, dimText { 0xff9aa2ae };
-    const juce::Colour inputColour { 0xffb0b6c0 }, outputColour { 0xff4fd18b }, targetColour { 0xfff2c14e }, removeFill { 0xffd9534f }, bypassFill { 0xffe69a3c };
+    const char* const defaultHint = "Drag a control to change it. Click a value to type one. Double-click resets.";
 
     juce::String noteName (int midi) { return midi < 0 ? juce::String ("no note") : juce::String (noteNames[midi % 12]) + juce::String (midi / 12 - 1); }
 
-    // Key layout across one octave, in white key widths.
-    constexpr bool isBlack[12] = { false, true, false, true, false, false, true, false, true, false, true, false };
-    constexpr float whiteIndex[12] = { 0, 0.68f, 1, 1.68f, 2, 3, 3.68f, 4, 4.68f, 5, 5.68f, 6 };
+    constexpr int margin = 24, keyboardHeight = 88, heroGap = 3, mainHeight = 82, advancedHeight = 156, footerHeight = 32, footerBottom = 16;
 }
 
-// ------------------------------------------------------------------------------------------------------------ pitch
+// ------------------------------------------------------------------------------------------------- the live reading
 
-void PitchView::followPitch (int points) noexcept
+// One line of text kept in a cached image, drawn again only when the words change.
+class TextPlate final : public juce::Component
 {
-    // Keep the middle of what was sung lately on screen. It moves in whole notes, so grid lines stay put between moves.
-    const auto count = processor.getPitchHistoryCount();
-    float lowest = 1000.0f, highest = -1000.0f;
-    for (int k = 0; k < points && k < count; ++k)
+public:
+    TextPlate (float sizeToUse, Weight weightToUse, juce::Colour colourToUse, juce::Justification justificationToUse)
+        : size (sizeToUse), weight (weightToUse), colour (colourToUse), justification (justificationToUse)
     {
-        const float n = processor.getPitchPoint (count - 1 - k).outputNote.load (std::memory_order_relaxed);
-        if (n > 0.0f)
-        {
-            lowest = juce::jmin (lowest, n);
-            highest = juce::jmax (highest, n);
-        }
+        setOpaque (true);
+        setBufferedToImage (true);
+        setInterceptsMouseClicks (false, false);
     }
-    if (highest < lowest)
-        return;
-    if (lowest < lowNote + 2.0f || highest > lowNote + spanNotes - 2.0f)
-        lowNote = std::round (0.5f * (lowest + highest) - 0.5f * spanNotes);
-}
 
-void PitchView::paint (juce::Graphics& g)
-{
-    const auto bounds = getLocalBounds().toFloat();
-    g.setColour (panel);
-    g.fillRoundedRectangle (bounds, 4.0f);
-
-    const int points = (int) (secondsShown * 200.0);
-    followPitch (points);
-
-    const auto area = bounds.reduced (6.0f).withTrimmedLeft (34.0f);
-    const auto yOf = [&] (float note) { return area.getBottom() - (note - lowNote) / spanNotes * area.getHeight(); };
-
-    // Grid: every semitone, stronger on C, labelled where notes are in the current scale.
-    const auto inScale = processor.getInScaleMask();
-    g.setFont (11.0f);
-    for (int n = (int) std::ceil (lowNote); n <= (int) std::floor (lowNote + spanNotes); ++n)
+    void setText (const juce::String& newText)
     {
-        const float y = yOf ((float) n);
-        const int pitchClass = ((n % 12) + 12) % 12;
-        const bool in = (inScale >> pitchClass) & 1;
-        g.setColour (pitchClass == 0 ? gridStrong : grid.withAlpha (in ? 1.0f : 0.45f));
-        g.drawHorizontalLine ((int) y, area.getX(), area.getRight());
-        if (in)
+        if (newText != text)
         {
-            g.setColour (pitchClass == 0 ? text : dimText);
-            g.drawText (noteName (n), juce::Rectangle<float> (bounds.getX() + 4.0f, y - 7.0f, 32.0f, 14.0f), juce::Justification::centredLeft, false);
+            text = newText;
+            repaint();
         }
     }
 
-    const auto count = processor.getPitchHistoryCount();
-    const auto xOf = [&] (int k) { return area.getRight() - (float) k / (float) points * area.getWidth(); };
-
-    // Target note, as a soft band behind the lines.
-    g.setColour (targetColour.withAlpha (0.22f));
-    for (int k = 0; k < points && k < count; ++k)
+    void paint (juce::Graphics& g) override
     {
-        const float t = processor.getPitchPoint (count - 1 - k).targetNote.load (std::memory_order_relaxed);
-        if (t >= 0.0f)
-        {
-            const float y = yOf (t);
-            g.fillRect (xOf (k + 1), y - 2.0f, juce::jmax (1.0f, xOf (k) - xOf (k + 1)), 4.0f);
-        }
-    }
-
-    const auto drawLine = [&] (auto read, juce::Colour colour, float width)
-    {
-        juce::Path path;
-        bool open = false;
-        float previous = 0.0f;
-        for (int k = 0; k < points && k < count; ++k)
-        {
-            const float n = read (processor.getPitchPoint (count - 1 - k));
-            if (n <= 0.0f || n < lowNote - 2.0f || n > lowNote + spanNotes + 2.0f)
-            {
-                open = false;
-                continue;
-            }
-            const float x = xOf (k), y = yOf (n);
-            if (open && std::abs (n - previous) < 5.0f) path.lineTo (x, y);
-            else path.startNewSubPath (x, y);
-            open = true;
-            previous = n;
-        }
+        g.fillAll (tone::ink);
         g.setColour (colour);
-        g.strokePath (path, juce::PathStrokeType (width));
-    };
-    g.saveState();
-    g.reduceClipRegion (area.toNearestInt());
-    drawLine ([] (const PluginProcessor::PitchPoint& p) { return p.inputNote.load (std::memory_order_relaxed); }, inputColour, 1.2f);
-    drawLine ([] (const PluginProcessor::PitchPoint& p) { return p.outputNote.load (std::memory_order_relaxed); }, outputColour, 2.0f);
-    g.restoreState();
+        g.setFont (font (weight, size));
+        g.drawText (text, getLocalBounds(), justification, false);
+    }
 
-    // Legend
-    g.setFont (12.0f);
-    auto legend = juce::Rectangle<float> (area.getX() + 8.0f, area.getY() + 4.0f, 280.0f, 16.0f);
-    const auto entry = [&] (const char* name, juce::Colour c, float width)
+private:
+    const float size;
+    const Weight weight;
+    const juce::Colour colour;
+    const juce::Justification justification;
+    juce::String text;
+};
+
+// The note being hit, large, and how far the voice was moved to get there, as a bar running out from the middle.
+class TuneEditor::Reading final : public juce::Component,
+                                  public Hinted
+{
+public:
+    explicit Reading (PluginProcessor& p) : processor (p)
     {
-        g.setColour (c);
-        g.fillRect (legend.getX(), legend.getCentreY() - 1.0f, 14.0f, 2.5f);
-        g.setColour (text);
-        g.drawText (name, legend.withTrimmedLeft (18.0f).withWidth (width), juce::Justification::centredLeft, false);
-        legend.removeFromLeft (18.0f + width);
-    };
-    entry ("Input", inputColour, 50.0f);
-    entry ("Corrected", outputColour, 72.0f);
-    entry ("Target", targetColour, 50.0f);
-}
+        hint = "The note being hit, and how far your voice was moved to reach it.";
+        setTitle ("Correction");
+        setOpaque (true);
+        addAndMakeVisible (words);
+        addAndMakeVisible (note);
+        words.setText ("No pitch");
+        bypassParam = processor.apvts.getRawParameterValue ("bypass");
+    }
 
-// --------------------------------------------------------------------------------------------------------- keyboard
-
-int KeyboardView::modeOf (int pitchClass) const noexcept
-{
-    return juce::roundToInt (processor.apvts.getRawParameterValue ("note" + juce::String (pitchClass))->load (std::memory_order_relaxed));
-}
-
-juce::Rectangle<float> KeyboardView::keyBounds (int pc) const noexcept
-{
-    const auto area = getLocalBounds().toFloat().reduced (2.0f);
-    const float white = area.getWidth() / 7.0f;
-    if (isBlack[pc])
-        return { area.getX() + whiteIndex[pc] * white, area.getY(), white * 0.64f, area.getHeight() * 0.6f };
-    return { area.getX() + whiteIndex[pc] * white, area.getY(), white, area.getHeight() };
-}
-
-int KeyboardView::noteAt (juce::Point<float> p) const noexcept
-{
-    for (int pc = 0; pc < 12; ++pc)
-        if (isBlack[pc] && keyBounds (pc).contains (p))
-            return pc;
-    for (int pc = 0; pc < 12; ++pc)
-        if (! isBlack[pc] && keyBounds (pc).contains (p))
-            return pc;
-    return -1;
-}
-
-void KeyboardView::cycleNote (int pc)
-{
-    if (! juce::isPositiveAndBelow (pc, 12))
-        return;
-    auto* parameter = processor.apvts.getParameter ("note" + juce::String (pc));
-    const int next = (modeOf (pc) + 1) % 3;
-    parameter->beginChangeGesture();
-    parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) next));
-    parameter->endChangeGesture();
-    repaint();
-}
-
-void KeyboardView::mouseDown (const juce::MouseEvent& e)
-{
-    cycleNote (noteAt (e.position));
-}
-
-void KeyboardView::paint (juce::Graphics& g)
-{
-    const auto r = processor.getReadings();
-    const int targetClass = r.voiced && r.targetNote >= 0 ? r.targetNote % 12 : -1;
-    const auto inScale = processor.getInScaleMask();
-
-    const auto drawKey = [&] (int pc)
+    void resized() override
     {
-        const auto box = keyBounds (pc).reduced (1.0f);
-        const int mode = modeOf (pc);
-        const bool black = isBlack[pc], in = ((inScale >> pc) & 1) != 0;
-        auto fill = black ? juce::Colour (0xff23262c) : juce::Colour (0xffe9ebef);
-        if (mode == noteRemove) fill = removeFill;
-        else if (mode == noteBypass) fill = bypassFill;
-        else if (! in) fill = black ? juce::Colour (0xff17191d) : juce::Colour (0xff8a8f98);
-        g.setColour (fill);
-        g.fillRoundedRectangle (box, 3.0f);
-        g.setColour (juce::Colour (0xff0d0e10));
-        g.drawRoundedRectangle (box, 3.0f, 1.0f);
+        note.setBounds (getLocalBounds().removeFromRight (84));
+        auto column = getLocalBounds().withTrimmedRight (104);
+        words.setBounds (column.removeFromTop (getHeight() / 2 + 2).withTrimmedTop (4));
+    }
 
-        const bool lightKey = ! black && mode == noteTune;
-        const auto ink = lightKey ? juce::Colour (0xff15171a) : juce::Colours::white;
-        g.setColour (ink);
-        g.setFont (juce::Font (juce::FontOptions (13.0f, juce::Font::bold)));
-        auto labelArea = box.withTrimmedTop (juce::jmax (0.0f, box.getHeight() - 38.0f));
-        g.drawText (noteNames[pc], labelArea.removeFromTop (18.0f), juce::Justification::centred, false);
-        g.setFont (11.0f);
-        const char* state = mode == noteRemove ? "Remove" : mode == noteBypass ? "Bypass" : in ? "Tune" : "Off scale";
-        g.drawText (state, labelArea, juce::Justification::centred, false);
+    void advance (double dt)
+    {
+        const auto r = processor.getReadings();
+        const bool bypassed = bypassParam->load (std::memory_order_relaxed) > 0.5f;
+        const float target = r.voiced && ! bypassed ? juce::jlimit (-100.0f, 100.0f, r.correctionCents) : 0.0f;
+        shownCents += (target - shownCents) * (1.0f - std::exp (-(float) dt / 0.035f));
 
-        if (pc == targetClass)
+        const int pixels = juce::roundToInt (shownCents * 1.3f);
+        if (pixels != pixelsDrawn)
         {
-            g.setColour (outputColour);
-            g.drawRoundedRectangle (box.reduced (1.5f), 3.0f, 3.5f);
-            g.fillEllipse (box.getCentreX() - 6.0f, box.getY() + 8.0f, 12.0f, 12.0f);
+            pixelsDrawn = pixels;
+            repaint (barArea().expanded (1.0f, 4.0f).getSmallestIntegerContainer());
         }
-    };
-    for (int pc = 0; pc < 12; ++pc) if (! isBlack[pc]) drawKey (pc);
-    for (int pc = 0; pc < 12; ++pc) if (isBlack[pc]) drawKey (pc);
+
+        const int noteNow = r.voiced && ! bypassed ? r.targetNote : -1;
+        if (noteNow != noteShown)
+        {
+            noteShown = noteNow;
+            note.setText (noteNow >= 0 ? noteName (noteNow) : juce::String());
+        }
+
+        clock += dt;
+        if (clock >= 0.2)
+        {
+            clock = 0.0;
+            const int cents = juce::roundToInt (r.correctionCents);
+            words.setText (bypassed ? juce::String ("Bypassed") : ! r.voiced ? juce::String ("No pitch") : std::abs (cents) < 1 ? juce::String ("On pitch")
+                           : juce::String (cents > 0 ? "Moved up " : "Moved down ") + juce::String (std::abs (cents)) + " cents");
+        }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (tone::ink);
+
+        const auto bar = barArea();
+        g.setColour (tone::white.withAlpha (0.13f));
+        g.fillRect (bar);
+
+        const float mid = bar.getCentreX(), reach = bar.getWidth() * 0.5f * (float) pixelsDrawn / 130.0f;
+        g.setColour (tone::coral);
+        g.fillRect (juce::Rectangle<float> (juce::jmin (mid, mid + reach), bar.getY(), std::abs (reach), bar.getHeight()));
+
+        g.setColour (tone::white);
+        g.fillRect (juce::Rectangle<float> (mid - 1.0f, bar.getY() - 3.0f, 2.0f, bar.getHeight() + 6.0f));
+    }
+
+private:
+    juce::Rectangle<float> barArea() const
+    {
+        const auto column = getLocalBounds().toFloat().withTrimmedRight (104.0f);
+        return column.withY (column.getY() + column.getHeight() * 0.5f + 5.0f).withHeight (6.0f);
+    }
+
+    PluginProcessor& processor;
+    std::atomic<float>* bypassParam = nullptr;
+    TextPlate words { 13.0f, Weight::regular, tone::muted, juce::Justification::centredLeft };
+    TextPlate note { 34.0f, Weight::medium, tone::white, juce::Justification::centredRight };
+    float shownCents = 0.0f;
+    int pixelsDrawn = 0, noteShown = -1;
+    double clock = 1.0;
+};
+
+// ----------------------------------------------------------------------------------------------------- Advanced button
+
+class TuneEditor::AdvancedButton final : public juce::Button,
+                                         public Hinted
+{
+public:
+    AdvancedButton() : juce::Button ("Advanced")
+    {
+        hint = "Voice, tuning, added vibrato and MIDI.";
+        setClickingTogglesState (false);
+    }
+
+    void setState (float openAmount, int changesInside)
+    {
+        if (openAmount != amount || changesInside != changes)
+        {
+            amount = openAmount;
+            changes = changesInside;
+            repaint();
+        }
+    }
+
+    void paintButton (juce::Graphics& g, bool isOver, bool isDown) override
+    {
+        auto b = getLocalBounds().toFloat();
+        const bool lit = isOver || isDown;
+
+        juce::Path chevron;
+        const float cx = b.getRight() - 8.0f, cy = b.getCentreY(), flip = 1.0f - 2.0f * amount;
+        chevron.startNewSubPath (cx - 4.5f, cy - 2.5f * flip);
+        chevron.lineTo (cx, cy + 2.5f * flip);
+        chevron.lineTo (cx + 4.5f, cy - 2.5f * flip);
+        g.setColour (lit ? tone::white : tone::muted);
+        g.strokePath (chevron, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        b.removeFromRight (22.0f);
+
+        g.setColour (lit ? tone::white : tone::muted);
+        g.setFont (font (Weight::medium, 13.5f));
+        g.drawText (changes > 0 && amount < 0.5f ? "Advanced, " + juce::String (changes) + " changed" : juce::String ("Advanced"), b, juce::Justification::centredRight, false);
+    }
+
+private:
+    float amount = 0.0f;
+    int changes = 0;
+};
+
+// ------------------------------------------------------------------------------------------------------------- panel
+
+TuneEditor::Panel::Panel (TuneEditor& e, PluginProcessor& p)
+    : owner (e), processor (p),
+      advancedButton (std::make_unique<AdvancedButton>()),
+      presets (p),
+      key (p.apvts, "key", {}, "The key your song is in."),
+      scale (p.apvts, "scale", {}, "Which notes the voice is pulled to. Chromatic means all of them."),
+      followKey (p.apvts, "followKey", "Follow Key", "Takes the key from the Key plug-in when it has a confident reading.", tone::white, tone::ink),
+      retune (p.apvts, "retune", "Retune Speed", "How fast the voice is pulled to the note. Fast is the hard tuned effect.", Kind::lead),
+      flex (p.apvts, "flex", "Flex Tune", "How far a note may drift before it gets corrected.", Kind::main),
+      humanize (p.apvts, "humanize", "Humanize", "Keeps movement in held notes. The start of a note stays quick.", Kind::main),
+      naturalVibrato (p.apvts, "naturalVibrato", "Natural Vibrato", "The vibrato already in the voice. -100 flattens it, +100 doubles it.", Kind::main),
+      mix (p.apvts, "mix", "Mix", "The tuned voice against the original.", Kind::main),
+      bypass (p.apvts, "bypass", "Bypass", "Turns the tuning off and keeps the same delay.", tone::white, tone::ink),
+      engine (p.apvts, "engine", "Low Latency to sing through it live. High Quality for the final mix."),
+      inputType (p.apvts, "inputType", "Input Type", "The voice's range. A lower range adds more delay."),
+      midiOctave (p.apvts, "midiOctave", "MIDI Octave", "All Octaves: a held note counts in every octave. As Played: that note only."),
+      throat (p.apvts, "throat", "Throat", "The size of the voice, without moving the pitch. 100% is unchanged.", Kind::compact),
+      transpose (p.apvts, "transpose", "Transpose", "Moves the whole voice up or down, after tuning.", Kind::compact),
+      tracking (p.apvts, "tracking", "Tracking", "Which sounds count as pitched. Raise it to tune rough, breathy sound too.", Kind::compact),
+      reference (p.apvts, "reference", "Reference A4", "Where A sits. 440 Hz unless the song was tuned differently.", Kind::compact),
+      vibratoAmount (p.apvts, "vibratoAmount", "Amount", "How wide the added vibrato is. Zero adds none.", Kind::compact),
+      vibratoRate (p.apvts, "vibratoRate", "Rate", "How fast the added vibrato moves.", Kind::compact),
+      vibratoDelay (p.apvts, "vibratoDelay", "Delay", "How long a note holds before the added vibrato starts.", Kind::compact),
+      formantPreserve (p.apvts, "formantPreserve", "Formant Preserve", "On keeps the character of the voice. Off lets it follow the pitch.", tone::white, tone::ink),
+      classic (p.apvts, "classic", "Classic Mode", "The plain fast snap. Ignores Retune Speed, Flex, Humanize and vibrato.", tone::white, tone::ink),
+      midiTargets (p.apvts, "midiTargets", "MIDI Targets", "Held MIDI notes become the targets. With none held, nothing is tuned.", tone::white, tone::ink)
+{
+    setOpaque (true);
+    setBufferedToImage (true);
+    setInterceptsMouseClicks (false, true);
+
+    addAndMakeVisible (*advancedButton);
+    advancedButton->onClick = [this] { owner.setAdvancedOpen (! owner.isAdvancedOpen(), true); };
+
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &presets, &key, &scale, &followKey, &retune, &flex, &humanize, &naturalVibrato, &mix, &bypass, &engine, &latency, &hintLine, &advanced })
+        addAndMakeVisible (c);
+
+    advanced.setInterceptsMouseClicks (false, true);
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &inputType, &throat, &transpose, &formantPreserve, &tracking, &reference, &classic, &vibratoAmount, &vibratoRate, &vibratoDelay, &midiTargets, &midiOctave })
+        advanced.addAndMakeVisible (c);
+
+    latency.setFont (font (Weight::regular, 13.0f));
+    latency.setColour (juce::Label::textColourId, tone::muted);
+    latency.setInterceptsMouseClicks (false, false);
+    hintLine.setFont (font (Weight::regular, 13.0f));
+    hintLine.setColour (juce::Label::textColourId, tone::muted);
+    hintLine.setInterceptsMouseClicks (false, false);
+    hintLine.setText (defaultHint, juce::dontSendNotification);
 }
 
-// ------------------------------------------------------------------------------------------------------------- main
+TuneEditor::Panel::~Panel() = default;
+
+void TuneEditor::Panel::paint (juce::Graphics& g)
+{
+    g.fillAll (tone::ink);
+    g.setColour (tone::white);
+    g.setFont (font (Weight::medium, 24.0f));
+    g.drawText ("Tune Pro", juce::Rectangle<int> (margin, 0, 120, headerHeight), juce::Justification::centredLeft, false);
+}
+
+void TuneEditor::Panel::AdvancedArea::paint (juce::Graphics& g)
+{
+    g.setColour (tone::white);
+    g.setFont (font (Weight::medium, 13.5f));
+    g.drawText ("Voice", voiceTitle, juce::Justification::centredLeft, false);
+    g.drawText ("Tuning", tuningTitle, juce::Justification::centredLeft, false);
+    g.drawText ("Added vibrato", vibratoTitle, juce::Justification::centredLeft, false);
+    g.drawText ("MIDI", midiTitle, juce::Justification::centredLeft, false);
+}
+
+void TuneEditor::Panel::layout (float amount)
+{
+    // Header
+    presets.setBounds (150, 19, 196, 32);
+    key.setBounds (362, 19, 64, 32);
+    scale.setBounds (432, 19, 158, 32);
+    followKey.setBounds (596, 19, 92, 32);
+
+    // From the bottom up. Advanced opens upward and the display gives up the room.
+    const int footerY = designHeight - footerBottom - footerHeight;
+    bypass.setBounds (margin, footerY, 76, footerHeight);
+    engine.setBounds (margin + 88, footerY, 222, footerHeight);
+    latency.setBounds (margin + 316, footerY, 92, footerHeight);
+    hintLine.setBounds (margin + 416, footerY, designWidth - 2 * margin - 416 - 170, footerHeight);
+    advancedButton->setBounds (designWidth - margin - 164, footerY, 164, footerHeight);
+
+    const int openHeight = juce::roundToInt ((float) advancedHeight * amount);
+    const int advancedY = footerY - 16 - openHeight;
+    const int mainBottom = advancedY - juce::roundToInt (16.0f * amount);
+    advanced.setBounds (margin, advancedY, designWidth - 2 * margin, openHeight);
+    advanced.setVisible (openHeight > 0);
+
+    const int mainY = mainBottom - mainHeight;
+    const int gap = 36, leadWidth = 330;
+    const int cell = (designWidth - 2 * margin - leadWidth - 4 * gap) / 4;
+    int x = margin;
+    retune.setBounds (x, mainY, leadWidth, mainHeight);
+    x += leadWidth + gap;
+    for (auto* s : { &flex, &humanize, &naturalVibrato, &mix })
+    {
+        s->setBounds (x, mainY + mainHeight - 64, cell, 62);
+        x += cell + gap;
+    }
+
+    keyboardBottom = mainY - 18;
+    keyboardTop = keyboardBottom - keyboardHeight;
+
+    // Advanced lays itself out at full height and is simply clipped while it opens.
+    const int w = 130, g2 = 20, groupGap = 34, titleH = 22, rowH = 52, rowGap = 12;
+    const int row1 = titleH + 6, row2 = row1 + rowH + rowGap;
+    const auto group = [&] (int gx, juce::Rectangle<int>& title, juce::Component* a, juce::Component* b, juce::Component* c, juce::Component* d)
+    {
+        title = { gx, 0, w * 2, titleH };
+        if (a != nullptr) a->setBounds (gx, row1, w, rowH);
+        if (b != nullptr) b->setBounds (gx + w + g2, row1, w, rowH);
+        if (c != nullptr) c->setBounds (gx, row2, w, rowH);
+        if (d != nullptr) d->setBounds (gx + w + g2, row2, w, rowH);
+    };
+
+    int gx = 0;
+    group (gx, advanced.voiceTitle, &throat, &transpose, &inputType, nullptr);
+    formantPreserve.setBounds (gx + w + g2, row2 + rowH - 34, w, 34);
+    gx += 2 * w + g2 + groupGap;
+    group (gx, advanced.tuningTitle, &tracking, &reference, nullptr, nullptr);
+    classic.setBounds (gx, row2 + rowH - 34, w, 34);
+    gx += 2 * w + g2 + groupGap;
+    group (gx, advanced.vibratoTitle, &vibratoAmount, &vibratoRate, &vibratoDelay, nullptr);
+    gx += 2 * w + g2 + groupGap;
+    advanced.midiTitle = { gx, 0, w, titleH };
+    midiTargets.setBounds (gx, row1 + rowH - 34, w, 34);
+    midiOctave.setBounds (gx, row2, w, rowH);
+}
+
+int TuneEditor::Panel::countChanges() const
+{
+    int changes = 0;
+    for (auto* s : { &throat, &transpose, &tracking, &reference, &vibratoAmount, &vibratoRate, &vibratoDelay })
+        changes += s->isChanged() ? 1 : 0;
+    for (auto* t : { &formantPreserve, &classic, &midiTargets })
+        changes += t->isChanged() ? 1 : 0;
+    for (auto* m : { &inputType, &midiOctave })
+        changes += m->isChanged() ? 1 : 0;
+    return changes;
+}
+
+// ------------------------------------------------------------------------------------------------------------- editor
 
 TuneEditor::TuneEditor (PluginProcessor& p)
-    : juce::AudioProcessorEditor (p), processor (p), pitch (p), keyboard (p)
+    : juce::AudioProcessorEditor (p), processor (p), pitch (p), keyboard (p),
+      panel ((setLookAndFeel (&lookAndFeel), *this), p)
 {
+    setOpaque (true);
+    reading = std::make_unique<Reading> (p);
+    addAndMakeVisible (panel);
     addAndMakeVisible (pitch);
     addAndMakeVisible (keyboard);
+    addAndMakeVisible (*reading);
+    keyboard.onHint = [this] (const juce::String& text) { showHint (text); };
+    addMouseListener (this, true);
 
-    for (auto* id : { "key", "scale", "inputType", "engine", "midiOctave" })
-        addChoice (id);
-    for (auto* id : { "followKey", "midiTargets", "classic", "formantPreserve", "bypass" })
-        addToggle (id);
-    for (auto* id : { "retune", "flex", "humanize", "naturalVibrato", "throat", "transpose",
-                      "reference", "tracking", "mix", "vibratoAmount", "vibratoRate", "vibratoDelay" })
-        addKnob (id);
+    const double ratio = (double) designWidth / (double) designHeight;
+    setResizable (true, true);
+    setResizeLimits (PluginProcessor::minWindowWidth, juce::roundToInt (PluginProcessor::minWindowWidth / ratio),
+                     PluginProcessor::maxWindowWidth, juce::roundToInt (PluginProcessor::maxWindowWidth / ratio));
+    getConstrainer()->setFixedAspectRatio (ratio);
 
-    setSize (980, 760);
-    startTimerHz (30);
+    advancedAmount = isAdvancedOpen() ? 1.0f : 0.0f;
+    const int savedWidth = juce::jlimit (PluginProcessor::minWindowWidth, PluginProcessor::maxWindowWidth, p.windowWidth.load (std::memory_order_relaxed));
+    constructed = true;
+    setSize (savedWidth, juce::roundToInt (savedWidth / ratio));
+    resized();   // the limits above may already have set this size, before the panel was ready
+
+    tick (1.0 / maxFramesPerSecond);
+    startTimerHz (5);
 }
 
-void TuneEditor::addKnob (const char* id)
+TuneEditor::~TuneEditor()
 {
-    auto* k = knobs.add (new Knob());
-    k->slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 78, 18);
-    k->slider.setColour (juce::Slider::rotarySliderFillColourId, outputColour);
-    k->slider.setColour (juce::Slider::thumbColourId, text);
-    k->slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    k->label.setText (processor.apvts.getParameter (id)->getName (32), juce::dontSendNotification);
-    k->label.setJustificationType (juce::Justification::centred);
-    k->label.setFont (juce::Font (juce::FontOptions (13.0f)));
-    k->label.setColour (juce::Label::textColourId, text);
-    addAndMakeVisible (k->slider);
-    addAndMakeVisible (k->label);
-    k->attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, id, k->slider);
+    stopTimer();
+    vblank.reset();
+    removeMouseListener (this);
+    juce::PopupMenu::dismissAllActiveMenus();
+    reading.reset();
+    setLookAndFeel (nullptr);
 }
 
-void TuneEditor::addChoice (const char* id)
+void TuneEditor::paint (juce::Graphics& g)
 {
-    auto* c = choices.add (new Choice());
-    auto* parameter = processor.apvts.getParameter (id);
-    c->box.addItemList (parameter->getAllValueStrings(), 1);
-    c->label.setText (parameter->getName (32), juce::dontSendNotification);
-    c->label.setJustificationType (juce::Justification::centredLeft);
-    c->label.setFont (juce::Font (juce::FontOptions (13.0f)));
-    c->label.setColour (juce::Label::textColourId, text);
-    addAndMakeVisible (c->box);
-    addAndMakeVisible (c->label);
-    c->attachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (processor.apvts, id, c->box);
+    g.fillAll (tone::ink);
 }
 
-void TuneEditor::addToggle (const char* id)
+void TuneEditor::placeInstrument()
 {
-    auto* t = toggles.add (new Toggle());
-    t->button.setButtonText (processor.apvts.getParameter (id)->getName (32));
-    t->button.setColour (juce::ToggleButton::textColourId, text);
-    t->button.setColour (juce::ToggleButton::tickColourId, outputColour);
-    addAndMakeVisible (t->button);
-    t->attachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, id, t->button);
+    const float s = (float) getWidth() / (float) designWidth;
+    const int heroTop = juce::roundToInt ((float) headerHeight * s);
+    const int keysTop = juce::roundToInt ((float) panel.keyboardTop * s);
+    const int keysBottom = juce::roundToInt ((float) panel.keyboardBottom * s);
+
+    pitch.setTypeScale (s);
+    keyboard.setTypeScale (s);
+    pitch.setBounds (0, heroTop, getWidth(), keysTop - heroGap - heroTop);
+    keyboard.setBounds (0, keysTop, getWidth(), keysBottom - keysTop);
 }
 
 void TuneEditor::resized()
 {
-    auto area = getLocalBounds().reduced (10);
-    area.removeFromTop (stripHeight - 6);
-    pitch.setBounds (area.removeFromTop (270));
-    area.removeFromTop (8);
-    keyboard.setBounds (area.removeFromTop (120).withSizeKeepingCentre (juce::jmin (area.getWidth(), 620), 120));
-    area.removeFromTop (8);
+    if (! constructed)
+        return;
 
-    auto left = area.removeFromLeft (250);
-    area.removeFromLeft (10);
-    for (auto* c : choices)
+    panel.setBounds (0, 0, designWidth, designHeight);
+    panel.setTransform (juce::AffineTransform::scale ((float) getWidth() / (float) designWidth));
+    panel.layout (advancedAmount);
+    placeInstrument();
+    reading->setBounds (designWidth - margin - 372, 14, 372, 42);
+    reading->setTransform (juce::AffineTransform::scale ((float) getWidth() / (float) designWidth));
+    processor.windowWidth.store (getWidth(), std::memory_order_relaxed);
+}
+
+void TuneEditor::setAdvancedOpen (bool shouldBeOpen, bool animate)
+{
+    processor.advancedOpen.store (shouldBeOpen, std::memory_order_relaxed);
+
+    if (! animate)
     {
-        auto row = left.removeFromTop (28);
-        c->label.setBounds (row.removeFromLeft (92));
-        c->box.setBounds (row.reduced (0, 2));
+        advancedAmount = shouldBeOpen ? 1.0f : 0.0f;
+        panel.layout (advancedAmount);
+        placeInstrument();
+        panel.advancedButton->setState (advancedAmount, panel.countChanges());
+        panel.repaint();
     }
-    left.removeFromTop (6);
-    for (auto* t : toggles)
-        t->button.setBounds (left.removeFromTop (24));
-
-    const int columns = 6, rows = 2;
-    const int w = area.getWidth() / columns, h = area.getHeight() / rows;
-    for (int i = 0; i < knobs.size(); ++i)
+    else
     {
-        juce::Rectangle<int> box (area.getX() + (i % columns) * w, area.getY() + (i / columns) * h, w, h);
-        knobs[i]->label.setBounds (box.removeFromTop (18));
-        knobs[i]->slider.setBounds (box);
+        stillFor = 0.0;
+        timerCallback();
+    }
+}
+
+void TuneEditor::showHint (const juce::String& text)
+{
+    panel.hintLine.setText (text.isNotEmpty() ? text : juce::String (defaultHint), juce::dontSendNotification);
+}
+
+void TuneEditor::hintFromComponent (juce::Component* c)
+{
+    for (; c != nullptr && c != this; c = c->getParentComponent())
+    {
+        if (c == &keyboard)
+            return;     // it words its own hint, note by note
+        if (auto* hinted = dynamic_cast<Hinted*> (c))
+        {
+            showHint (hinted->hint);
+            return;
+        }
+    }
+    showHint ({});
+}
+
+void TuneEditor::mouseEnter (const juce::MouseEvent& e)
+{
+    hintFromComponent (e.eventComponent);
+}
+
+void TuneEditor::mouseExit (const juce::MouseEvent&)
+{
+    showHint ({});
+}
+
+void TuneEditor::previewHover (const juce::String& paramId)
+{
+    if (auto* c = findControl (paramId))
+    {
+        if (auto* slider = dynamic_cast<ParamSlider*> (c))
+            slider->setForcedHover (true);
+        if (auto* toggle = dynamic_cast<ParamToggle*> (c))
+            toggle->setForcedHover (true);
+        if (auto* hinted = dynamic_cast<Hinted*> (c))
+            showHint (hinted->hint);
+    }
+}
+
+juce::Component* TuneEditor::findControl (const juce::String& id)
+{
+    if (auto* c = panel.findChildWithID (id))
+        return c;
+    return panel.advanced.findChildWithID (id);
+}
+
+int TuneEditor::getNumControls() const noexcept
+{
+    int found = 0;
+    const auto count = [&found] (const juce::Component& holder)
+    {
+        for (auto* c : holder.getChildren())
+            if (dynamic_cast<const ParamSlider*> (c) != nullptr || dynamic_cast<const ParamToggle*> (c) != nullptr
+                || dynamic_cast<const ParamSegments*> (c) != nullptr || dynamic_cast<const ParamMenu*> (c) != nullptr)
+                ++found;
+    };
+    count (panel);
+    count (panel.advanced);
+    return found;
+}
+
+void TuneEditor::tick (double dtSeconds)
+{
+    bool moved = pitch.advance (dtSeconds);
+    keyboard.advance();
+    reading->advance (dtSeconds);
+    panel.presets.refresh();
+
+    // Advanced glides open and shut, in about a fifth of a second.
+    const float target = isAdvancedOpen() ? 1.0f : 0.0f;
+    if (advancedAmount != target)
+    {
+        const float next = advancedAmount + (target - advancedAmount) * (1.0f - std::exp (-(float) dtSeconds / 0.05f));
+        advancedAmount = std::abs (next - target) < 0.01f ? target : next;
+        panel.layout (advancedAmount);
+        placeInstrument();
+        panel.advancedButton->setState (advancedAmount, panel.countChanges());
+        moved = true;
+    }
+
+    // Things that change rarely.
+    if (--slowCountdown <= 0)
+    {
+        slowCountdown = 15;
+        panel.advancedButton->setState (advancedAmount, panel.countChanges());
+        const double rate = processor.getSampleRate();
+        const auto text = rate > 0.0 ? "Adds " + juce::String (processor.getLatencySamples() * 1000.0 / rate, 1) + " ms" : juce::String();
+        panel.latency.setText (text, juce::dontSendNotification);
+    }
+
+    stillFor = moved ? 0.0 : stillFor + dtSeconds;
+}
+
+void TuneEditor::timerCallback()
+{
+    // Nothing has been moving, so look only a few times a second. Move again as soon as there is something to show.
+    tick (0.2);
+
+    if (stillFor < 1.0 && vblank == nullptr)
+    {
+        stopTimer();
+        lastFrameTime = 0.0;
+        frameBudget = 0.0;
+        sinceDrawn = 0.0;
+
+        // At most one frame per cap on any screen rate, spending whole refreshes against a running budget.
+        vblank = std::make_unique<juce::VBlankAttachment> (this, [this] (double timestampSeconds)
+        {
+            const double elapsed = lastFrameTime > 0.0 ? timestampSeconds - lastFrameTime : 1.0 / maxFramesPerSecond;
+            lastFrameTime = timestampSeconds;
+            sinceDrawn += elapsed;
+            frameBudget = juce::jmin (frameBudget + elapsed, 0.05);
+
+            if (frameBudget + 0.001 < 1.0 / maxFramesPerSecond)
+                return;
+
+            frameBudget -= 1.0 / maxFramesPerSecond;
+            const double step = sinceDrawn;
+            sinceDrawn = 0.0;
+            tick (step);
+
+            if (stillFor >= 1.0)
+            {
+                juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<TuneEditor> (this)]
+                {
+                    if (safe != nullptr && safe->stillFor >= 1.0)
+                    {
+                        safe->vblank.reset();
+                        safe->startTimerHz (5);
+                    }
+                });
+            }
+        });
     }
 }
 
@@ -308,21 +571,4 @@ juce::String TuneEditor::readingText() const
         return left + "  |  no pitch";
     return left + "  |  In " + juce::String (r.detectedHz, 1) + " Hz  |  Out " + juce::String (r.outputHz, 1) + " Hz  |  Target " + noteName (r.targetNote)
            + "  |  Correction " + juce::String (juce::roundToInt (r.correctionCents)) + " cents";
-}
-
-void TuneEditor::paint (juce::Graphics& g)
-{
-    g.fillAll (background);
-    auto strip = getLocalBounds().withHeight (stripHeight).reduced (12, 6).toFloat();
-    g.setColour (text);
-    g.setFont (juce::Font (juce::FontOptions (16.0f, juce::Font::bold)));
-    g.drawText ("Smooth Tune Pro", strip.removeFromLeft (150.0f), juce::Justification::centredLeft, false);
-    g.setFont (13.0f);
-    const double latencyMs = processor.getLatencySamples() * 1000.0 / juce::jmax (1.0, processor.getSampleRate());
-    const auto r = processor.getReadings();
-    g.setColour (dimText);
-    g.drawText ((r.activeEngine == TuneEngine::highQuality ? juce::String ("High Quality") : juce::String ("Low Latency")) + ", " + juce::String (latencyMs, 1) + " ms",
-                strip.removeFromRight (170.0f), juce::Justification::centredRight, false);
-    g.setColour (text);
-    g.drawText (readingText(), strip, juce::Justification::centredLeft, true);
 }

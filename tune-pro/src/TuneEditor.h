@@ -2,90 +2,108 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
+#include "window/Theme.h"
+#include "window/Controls.h"
+#include "window/PitchView.h"
+#include "window/KeyboardView.h"
 
-// The window: a scrolling pitch view, a one octave keyboard of note modes, and every control. All of it reads the processor through
-// atomics on a timer and writes only through real parameters, so nothing here can block audio. Plain and legible for now.
-class PitchView final : public juce::Component
+/** The window. The pitch display and the keyboard run edge to edge as one instrument, with the controls under them.
+    The controls are laid out once at design size and scaled as a whole. The display and keyboard sit at whole pixels so the scrolling image never needs resampling.
+    macOS joins every repaint of a frame into one rectangle, so anything that does not move each frame is kept in a cached image. Otherwise it would all be drawn again.
+    All of it reads the processor through atomics and writes only through real parameters, so nothing here can block audio. */
+class TuneEditor final : public juce::AudioProcessorEditor,
+                         private juce::Timer
 {
 public:
-    explicit PitchView (PluginProcessor& p) : processor (p) {}
-    void paint (juce::Graphics&) override;
+    static constexpr int designWidth = 1120, designHeight = 720;
 
-    // Notes shown top and bottom, for tests.
-    float getLowestNote() const noexcept { return lowNote; }
-    float getHighestNote() const noexcept { return lowNote + spanNotes; }
-
-    static constexpr double secondsShown = 6.0;
-
-private:
-    void followPitch (int points) noexcept;
-
-    PluginProcessor& processor;
-    float lowNote = 48.0f;
-    static constexpr float spanNotes = 19.0f;
-};
-
-class KeyboardView final : public juce::Component
-{
-public:
-    explicit KeyboardView (PluginProcessor& p) : processor (p) {}
-    void paint (juce::Graphics&) override;
-    void mouseDown (const juce::MouseEvent&) override;
-
-    // Tune to Remove to Bypass to Tune, through the real parameter.
-    void cycleNote (int pitchClass);
-    int noteAt (juce::Point<float>) const noexcept;
-    juce::Rectangle<float> keyBounds (int pitchClass) const noexcept;
-
-private:
-    int modeOf (int pitchClass) const noexcept;
-    PluginProcessor& processor;
-};
-
-class TuneEditor final : public juce::AudioProcessorEditor, private juce::Timer
-{
-public:
     explicit TuneEditor (PluginProcessor&);
+    ~TuneEditor() override;
+
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseEnter (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
 
-    // What the reading strip shows, for tests.
+    /** One display frame. The screen's refresh drives this normally. The offline renders call it directly. */
+    void tick (double dtSeconds);
+
+    /** Opens or closes Advanced. Without animation it is there straight away. */
+    void setAdvancedOpen (bool shouldBeOpen, bool animate);
+    bool isAdvancedOpen() const noexcept  { return processor.advancedOpen.load (std::memory_order_relaxed); }
+
+    /** For the offline renders, which have no mouse. Lights a control and shows its hint. */
+    void previewHover (const juce::String& paramId);
+
+    // What the reading shows, for tests.
     juce::String readingText() const;
-    KeyboardView& getKeyboard() noexcept { return keyboard; }
-    PitchView& getPitchView() noexcept { return pitch; }
-    int getNumControls() const noexcept { return knobs.size() + choices.size() + toggles.size(); }
+    KeyboardView& getKeyboard() noexcept  { return keyboard; }
+    PitchView& getPitchView() noexcept    { return pitch; }
+    int getNumControls() const noexcept;
+    juce::Component& getPanel() noexcept  { return panel; }
+    juce::Component* findControl (const juce::String& id);
+
+    /** Whether frames are being driven by the screen right now. Off when nothing has moved for a second. */
+    bool isRunningFrames() const noexcept { return vblank != nullptr; }
 
 private:
-    void timerCallback() override { pitch.repaint(); keyboard.repaint(); repaint (0, 0, getWidth(), stripHeight); }
+    class Reading;
+    class AdvancedButton;
 
-    struct Knob
+    struct Panel final : public juce::Component
     {
-        juce::Slider slider { juce::Slider::RotaryVerticalDrag, juce::Slider::TextBoxBelow };
-        juce::Label label;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
-    };
-    struct Choice
-    {
-        juce::ComboBox box;
-        juce::Label label;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
-    };
-    struct Toggle
-    {
-        juce::ToggleButton button;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> attachment;
+        Panel (TuneEditor&, PluginProcessor&);
+        ~Panel() override;
+        void paint (juce::Graphics&) override;
+        void layout (float advancedAmount);
+        int countChanges() const;
+
+        TuneEditor& owner;
+        PluginProcessor& processor;
+        std::unique_ptr<AdvancedButton> advancedButton;
+        tuneui::PresetBox presets;
+        tuneui::ParamMenu key, scale;
+        tuneui::ParamToggle followKey;
+        tuneui::ParamSlider retune, flex, humanize, naturalVibrato, mix;
+        tuneui::ParamToggle bypass;
+        tuneui::ParamSegments engine;
+        juce::Label latency, hintLine;
+
+        struct AdvancedArea final : public juce::Component
+        {
+            void paint (juce::Graphics&) override;
+            juce::Rectangle<int> voiceTitle, tuningTitle, vibratoTitle, midiTitle;
+        } advanced;
+
+        tuneui::ParamMenu inputType, midiOctave;
+        tuneui::ParamSlider throat, transpose, tracking, reference, vibratoAmount, vibratoRate, vibratoDelay;
+        tuneui::ParamToggle formantPreserve, classic, midiTargets;
+
+        int keyboardTop = 0, keyboardBottom = 0;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Panel)
     };
 
-    void addKnob (const char* id);
-    void addChoice (const char* id);
-    void addToggle (const char* id);
+    void timerCallback() override;
+    void placeInstrument();
+    void showHint (const juce::String&);
+    void hintFromComponent (juce::Component*);
 
-    static constexpr int stripHeight = 40;
+    static constexpr double maxFramesPerSecond = 30.0;
+    static constexpr int headerHeight = 70;
 
     PluginProcessor& processor;
+    juce::SharedResourcePointer<tuneui::Assets> assets;   // held for the window's life, so the fonts are loaded once
+    tuneui::LookAndFeel lookAndFeel;
     PitchView pitch;
     KeyboardView keyboard;
-    juce::OwnedArray<Knob> knobs;
-    juce::OwnedArray<Choice> choices;
-    juce::OwnedArray<Toggle> toggles;
+    Panel panel;
+    std::unique_ptr<Reading> reading;
+    float advancedAmount = 0.0f;
+    double lastFrameTime = 0.0, frameBudget = 0.0, sinceDrawn = 0.0, stillFor = 0.0;
+    int slowCountdown = 0;
+    bool constructed = false;
+    std::unique_ptr<juce::VBlankAttachment> vblank;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TuneEditor)
 };

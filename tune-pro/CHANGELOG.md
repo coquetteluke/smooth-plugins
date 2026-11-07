@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0
+
+A new window, in ink, coral and white. No DSP changes. The window with it open and painting nulls against no window at all, largest sample difference 0.
+
+- The hero is an eight second piano roll that runs edge to edge: your voice in white, the corrected voice in coral, the gap between them filled, and each note being hit as a block in its lane.
+- Under it, a full width octave of keys. Click one to go Tune, Remove, Bypass, double-click to reset. The note being hit lights coral. A removed note is gone from the keyboard, with only its name left.
+- Retune Speed leads the controls, with what the setting does in words. Flex Tune, Humanize, Natural Vibrato and Mix sit beside it.
+- A live note and correction bar in the header, presets, key and scale.
+- Everything else is under Advanced: voice, tuning, added vibrato and MIDI. It reports how many of those are changed while closed, and the display gives up the room when it opens.
+- All controls are the same parameters with the same IDs, names and ranges. Window size and whether Advanced is open are the only things added to saved state, both range checked.
+- Added `tests/RenderWindow.cpp`, which draws the real window on real speech to `docs/window/` and measures its CPU, and new window tests in `tests/PluginTest.cpp`.
+
 ## 1.1.0
 
 Quality work. High Quality numbers, worst case on the test voices, each step measured against the one before. Flat means the first formant reads flatter than a real voice.

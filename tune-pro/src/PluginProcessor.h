@@ -98,6 +98,11 @@ public:
     // The note modes in force right now, for the window: bit per pitch class from C.
     std::uint16_t getInScaleMask() const noexcept { return (std::uint16_t) inScaleNow.load (std::memory_order_relaxed); }
 
+    // The window. Its size and whether Advanced is open are the only things it adds to a session.
+    static constexpr int minWindowWidth = 840, defaultWindowWidth = 1120, maxWindowWidth = 1680;
+    std::atomic<int> windowWidth { defaultWindowWidth };
+    std::atomic<bool> advancedOpen { false };
+
     // Tests only: what the worker thread and message thread do.
     void applyPendingLatencyNow() { handleAsyncUpdate(); }
     void pollKeyFileNow();

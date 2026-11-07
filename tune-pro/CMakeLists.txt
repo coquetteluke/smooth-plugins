@@ -8,11 +8,11 @@ set(SP_NAME    "Smooth Tune Pro")
 set(SP_CODE    STpr)
 set(SP_BUNDLE  "com.lukegarito.smoothtunepro")
 set(SP_DESC    "Advanced automatic vocal tuning with two engines, MIDI targets and a pitch window")
-set(SP_VERSION 1.1.0)
+set(SP_VERSION 1.2.0)
 set(SP_AU_TYPE kAudioUnitType_MusicEffect)
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN TRUE)
-set(SP_SOURCES src/PluginProcessor.cpp src/TuneEditor.cpp) # every .cpp except tests
+set(SP_SOURCES src/PluginProcessor.cpp src/TuneEditor.cpp src/window/Theme.cpp src/window/Controls.cpp src/window/PitchView.cpp src/window/KeyboardView.cpp) # every .cpp except tests
 # -------------------------------------
 
 project(${SP_TARGET} VERSION ${SP_VERSION} LANGUAGES C CXX)
@@ -49,6 +49,14 @@ juce_add_plugin(${SP_TARGET}
     IS_MIDI_EFFECT FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE)   # installed only by the InstallAU target below
 
+# The window's font: Inter, SIL OFL, see assets/fonts/OFL.txt.
+juce_add_binary_data(TuneProWindowAssets
+    HEADER_NAME WindowAssets.h
+    NAMESPACE WindowAssets
+    SOURCES
+        assets/fonts/Inter-Regular.otf
+        assets/fonts/Inter-Medium.otf)
+
 target_sources(${SP_TARGET} PRIVATE ${SP_SOURCES})
 
 set(SP_DEFS
@@ -60,7 +68,7 @@ set(SP_DEFS
 
 target_compile_definitions(${SP_TARGET} PUBLIC ${SP_DEFS})
 target_link_libraries(${SP_TARGET}
-    PRIVATE juce::juce_audio_utils juce::juce_dsp
+    PRIVATE TuneProWindowAssets juce::juce_audio_utils juce::juce_dsp
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
 # ---- install: cmake --build build --target InstallAU ----
@@ -79,5 +87,12 @@ juce_add_console_app(PluginTest PRODUCT_NAME "PluginTest")
 target_sources(PluginTest PRIVATE ${SP_SOURCES} tests/PluginTest.cpp)
 target_include_directories(PluginTest PRIVATE src tests)
 target_compile_definitions(PluginTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0 SMOOTH_TUNE_CORPUS="${CMAKE_CURRENT_SOURCE_DIR}/tests/corpus")
-target_link_libraries(PluginTest PRIVATE juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+target_link_libraries(PluginTest PRIVATE TuneProWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME plugin COMMAND PluginTest)
+
+# ---- the real window on real speech, to PNG, and its CPU measured: cmake --build build --target RenderWindow -j 1 ----
+juce_add_console_app(RenderWindow PRODUCT_NAME "RenderWindow")
+target_sources(RenderWindow PRIVATE ${SP_SOURCES} tests/RenderWindow.cpp)
+target_include_directories(RenderWindow PRIVATE src tests)
+target_compile_definitions(RenderWindow PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=1 SPEECH_DIR="${CMAKE_BINARY_DIR}/speech")
+target_link_libraries(RenderWindow PRIVATE TuneProWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)

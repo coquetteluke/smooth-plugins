@@ -143,6 +143,7 @@ public:
     {
         for (auto& b : bands) { b.z1 = b.z2 = b.y1 = b.y2 = 0.0f; b.env = 0.0f; }
         voicedNow = 0.0f; // the level match stays where it was, so coming back on starts near the right level
+        settle = (int) (0.02 * sr); // and it waits for the filters to ring up before it believes the tone's level
     }
 
     void setCarrier (double hz, bool voiced, int waveform) noexcept
@@ -181,10 +182,11 @@ public:
         const float tone = 0.5f * (l + r);
         voicePower += levelCoef * (voice * voice - voicePower);
         tonePower += levelCoef * (tone * tone - tonePower);
+        if (settle > 0) --settle;
         if (++gainPhase >= 32)
         {
             gainPhase = 0;
-            if (voicePower > 1.0e-7f && tonePower > 1.0e-12f)
+            if (settle == 0 && voicePower > 1.0e-7f && tonePower > 1.0e-12f)
                 gain *= std::pow (std::clamp (std::sqrt (voicePower / tonePower), 0.5f, 400.0f) / gain, gainCoef);
         }
         outL = l * gain;
@@ -226,7 +228,7 @@ private:
     std::array<double, 3> phase { 0.0, 0.31, 0.67 };
     std::array<Band, numBands> bands {};
     float attack = 0, release = 0, levelCoef = 0, gainCoef = 0, voicedCoef = 0, voicePower = 0, tonePower = 0, gain = 8, voicedNow = 0, voicedTarget = 0;
-    int wave = saw, gainPhase = 0;
+    int wave = saw, gainPhase = 0, settle = 0;
     Random noise;
 };
 

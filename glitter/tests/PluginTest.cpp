@@ -1538,8 +1538,17 @@ void testSwitching()
     if (! x.empty())
     {
         const double own = maxJump (x.data(), (int) x.size());
+        auto plain = with ({});
+        const auto plainOut = render (*plain, x, 256);
         for (const auto& m : moduleCases())
         {
+            // On say material: the module changes the sound, and nothing goes wrong.
+            auto held = with (m.working);
+            setParam (*held, m.id, 1.0f);
+            prepare (*held, 1, SR, 256);
+            const auto onOut = render (*held, x, 256);
+            const double change = residualDb (plainOut, onOut, 24000);
+            check (change > -30.0 && countNonFinite (onOut) == 0, std::string (m.name) + " on, on a say voice: difference from off", change, "dB");
             auto p = with (m.working);
             auto out = render (*p, x, 256, nullptr, [&p, &m] (int idx) { if (idx % 41 == 20) setParam (*p, m.id, (idx / 41) % 2 == 0 ? 1.0f : 0.0f); });
             const double during = maxJump (out.getReadPointer (0), out.getNumSamples());

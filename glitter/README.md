@@ -1,0 +1,111 @@
+# Smooth Tune FX
+
+A fast creative vocal tuner with effect modules. Hard tuning by default, held MIDI notes can set the pitch, and eleven modules with an On switch each, in a fixed order.
+
+**Load it:** Audio Units > Luke Garito > Smooth Tune FX. AU code `aumf STfx Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. To play it from MIDI, send a track's MIDI to it with the slot's side chain menu.
+
+Measured on synthetic voices, clean tones and macOS `say`, offline. That does not prove it sounds good on a real singer. Nobody has listened to it yet.
+
+## Signal flow
+
+The order is fixed.
+
+1. **Input** > pitch tracker (left and right mixed) > corrector. Key, Scale, Follow Key or held MIDI notes set the target. Retune Speed and Humanize set how it gets there.
+2. **Tune:** a grain shifter (Shifter A) that only ever tunes.
+3. **Pitch, Motion, Throat:** a second grain shifter (Shifter B) that tunes and also shifts. With all three off, the lead is Shifter A alone. Turning one on crossfades to B over 15 ms.
+4. **Harmony and Doubler:** extra grain shifters running in parallel, working from the lead's pitch, mixed with the lead into stereo. They keep 30% of a consonant, so an S does not stack up.
+5. **Vocoder tone:** a synth at the lead's pitch, shaped by the lead's spectrum, added under the voice.
+6. **Distortion**, then **Filter**, then **Ring**, then **Delay**, then **Reverb**.
+7. **Output Gain**, Bypass.
+
+An off module is left out of the signal altogether. All the shifters keep running while off, so turning one on finds it already at the right pitch.
+
+## Controls
+
+Every control is a real AU parameter that a host can find by name.
+
+| Tuning | What it does |
+|---|---|
+| Key, Scale | Root and scale: Chromatic, Major, Minor, Harmonic Minor, Melodic Minor, Major Pentatonic, Minor Pentatonic, Blues, Dorian, Mixolydian, Custom. |
+| Retune Speed | Time constant of the correction, 0 to 400 ms. Default 0 reads Instant: hard tuning. |
+| Humanize | Slows correction on the sustained part of a note, so a vibrato survives while the start of the note stays quick. Default 0. |
+| Input Type | Voice range, which sets the latency: Soprano 150 Hz up, Alto/Tenor 98 Hz up, Low Male 65 to 600 Hz, Wide Range 65 Hz up. |
+| Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key, on a background thread. Missing, broken, stale, future dated or low confidence data is ignored: the last good key holds, and with none it uses Key and Scale. A Custom scale stays. |
+| MIDI Target | Off, As Played, Any Octave. As Played: the nearest held note in the octave it was played, however far away, so one held note sets the pitch. Any Octave: the nearest held pitch class. With no notes held, the scale rules. |
+| Reference A4 | 415 to 466 Hz. |
+| Tracking | Which sounds count as pitched. 0 is choosy, 100 tunes rough sound too. |
+| Custom C to Custom B | With Scale on Custom: Tune, Remove or Bypass. |
+
+| Module | Controls |
+|---|---|
+| Pitch | Pitch On, Pitch Octave (-2 to +2), Pitch Semitones (-12 to +12), Pitch Moves Formants (off holds the voice's character, on gives the chipmunk or monster sound). |
+| Throat | Throat On, Throat Length (60 to 150%. Above 100 lowers the formants). Only voiced sound changes. |
+| Motion | Motion On, Motion Pattern (Trill Up, Trill Down, Octave Up, Octave Down, Arp Up, Arp Down, Stairs, Ostinato), Motion Rate (1/4 to 1/32), Motion Glide (0 to 200 ms). Walks the note through a 16 step pattern, in scale steps, tied to the song position. |
+| Harmony | Harmony On, Harmony Voices (One or Two), Harmony Interval 1 and 2 (-24 to +24), Harmony In Key (moves an interval to the nearest scale note), Harmony Level, Harmony Width. |
+| Doubler | Doubler On, Doubler Level, Doubler Timing (5 to 60 ms, wanders slowly), Doubler Detune (0 to 50 cents, one up, one down), Doubler Width. |
+| Vocoder | Vocoder On, Vocoder Mix (voice stays whole up to 50, tone reaches full at 50, voice gone at 100), Vocoder Octave (-2 to +1), Vocoder Wave (Saw, Square, Super). 16 bands. Follows the output pitch, so it follows MIDI too. |
+| Distortion | Distortion On, Distortion Type (Tube, Clip, Fold), Distortion Drive, Distortion Tone, Distortion Mix. |
+| Filter | Filter On, Filter Type (High Pass, Band Pass, Low Pass), Filter Cutoff, Filter Resonance, Filter Sweep Depth (0 to 4 octaves), Filter Sweep Rate (4 Bars to 1/16). |
+| Ring | Ring On, Ring Frequency (20 Hz to 5 kHz), Ring Mix. |
+| Delay | Delay On, Delay Time (1/32 to 1/1, with dotted and triplet values), Delay Feedback, Delay Tone, Delay Mix, Delay Ping Pong. |
+| Reverb | Reverb On, Reverb Type (Plate, Room, Hall), Reverb Decay, Reverb Pre-Delay, Reverb Mix. |
+
+Also Output Gain and Bypass. Tempo comes from the host, and falls back to 120 BPM with none.
+
+Readings, which never write automation: Pitch Off Target, Detected Pitch, Correction Applied, Target Note, Active Key, MIDI Notes Held. JUCE's generic rows do not redraw for those, so the window has a live strip on top.
+
+## Presets
+
+Hard Tune, Robot Stack, Octave Monster, Chipmunk Hook, Wide Double, Power Harmony, Phone Line, Filter Riser, Dub Throw, Melody Machine, Alien Ring, Synth Voice. They set Retune Speed, Humanize, every module and Output Gain. They leave Key, Scale, Input Type, Follow Key, MIDI Target, Reference and Tracking alone, so they never fight the song.
+
+## Latency
+
+Exact and reported, the same bypassed, and no module has any say in it. At 48 kHz: Soprano 433 samples (9.02 ms), Alto/Tenor 659 (13.73 ms), Low Male and Wide Range 990 (20.62 ms). The lowest note in the range sets it. Changing Input Type fades out, jumps and fades in over 4 ms, then tells the host.
+
+With Distortion on, its anti-aliasing puts the wet signal half a sample later, because of how it averages each sample step. So the direct voice measures 660 samples instead of 659 with all on. The reported number stays 659.
+
+Held MIDI notes and Motion and the Filter sweep are delayed by the same latency, so they line up with the delayed voice.
+
+## Measured
+
+All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before the DSP. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`.
+
+- Tuning at default settings: 2.6 cents worst, 110 Hz to 988 Hz, 95th percentile. 4.4 cents with vibrato and breath. Limit 5.
+- `say` material at default settings: median distance from a note goes from 21 to 27 cents down to 1.5 to 10.2 on speech, and 2.3 to 3.4 on sung and held material.
+- MIDI target: 0.02 cents on a clean voice, 1.2 cents with vibrato and breath. Pitch reaches a new note 6 ms from its place in the delayed audio.
+- Follow Key: 10 kinds of bad file ignored, good file used, last good held, off goes back to manual, the thread picks it up by itself, a held note wins over a followed key.
+- Retune Speed 25, 50, 100, 200 ms measures 22, 48, 97, 197 ms. Humanize 100 keeps 99% of a vibrato, default leaves 1%.
+
+| Module | Off | Main control |
+|---|---|---|
+| Pitch | stays on A3 | Octave and Semitones on the wanted note within 0.02 cents. Formants held within 3.7% at +/-1 octave |
+| Throat | formants stay, 1.00 | Length 130 moves formants by 0.79 (0.77 exact), Length 75 by 1.35 (1.33 exact) |
+| Motion | no steps | Trill on pitch within 0.01 cents, steps land within 6.5 ms |
+| Harmony | -147 dB at the interval | +7 lands on E4 within 0.5 cents, Level -6 measures -6.0 dB on a voice |
+| Doubler | -107 dB at the detune | Detune 30 reads 28.5 and 30 cents, Timing 30 ms reads 30 ms, Level -6 reads -5.9 dB |
+| Vocoder | 88 dB less at the sub | Octave -1 adds a tone at 110 Hz, Mix 100 on pitch within 0.03 cents, level within 0.01 dB of the voice |
+| Distortion | exact null | THD 1.5, 4.2, 10.5, 24.5, 38% across Drive. Non-harmonic at 5.2 kHz: -55 dB |
+| Filter | exact null | -3.02 dB at the cutoff, -24 dB two octaves out, Sweep swings 24 dB and repeats every 1.02 s for a 1 s setting |
+| Ring | exact null | Sidebands equal within 0.00 dB, input gone at Mix 100 |
+| Delay | -240 dB | Quarter note reads 499.98 ms, Feedback 50 falls 6.14 dB a repeat, bounded at Feedback 95 |
+| Reverb | -240 dB | RT60 0.88 to 0.92 s for 1 s, 2.52 to 2.60 s for 3 s (reads a bit short, inside the 20% limit) |
+
+- **Null:** every module off with its controls thrown to the far ends, every module on then off, and all of them on then off, all give a difference of -240 dB, which means exact zero, once the 15 ms fade is done.
+- **No clicks:** biggest sample step while switching stays within 1.5 times the steady step on a low sine. Every control jumping end to end with all modules on stays under 0.30.
+- **Latency:** the measured delay equals the reported one at every rate and Input Type, and does not move with any module.
+- **Same output** with a playhead or none, at any block size, after `prepareToPlay` again, and after saving and loading state.
+- **CPU:** see the last lines of `tests/results.txt`. About 3% of one core with all on, about 2% with all off, on a machine busy with other builds.
+
+## What the numbers do not say
+
+- The tone tests for pitch use clean tones or steady synthetic voices. Real singing is rougher, and hard tuning on real consonants is untested by ear.
+- Grain shifters flatten formant peaks at big shifts: Smooth Tune measured that at small shifts, and it will be stronger at octaves. Positions hold, but it will sound less like the singer. The Throat module uses the same grain reading speed, not a proper formant engine.
+- The level match on Pitch and Harmony (slow, within +/-6 dB) is why those read so exact on a held note. Harmonics landing on formants moved shifted voices by up to 3.4 dB without it. How it behaves on fast phrases needs ears.
+- The vocoder is one filter bank, not models of old machines.
+- Harmony and Level were first read from a clean tone, which turned out to be the wrong tool: a sine loses level when grains move its one peak. Those tests moved to a voice, with the same limit.
+
+## For the later window
+
+`getReadings()`, `getPitchPoint()` and the module switches give it everything without touching audio. A tuner like this usually shows: big Retune and Humanize knobs, a row of module slots with an X/Y pad on the selected one, a preset browser on one side, a keyboard along the bottom lighting up the detected pitch and scale notes, and a Motion view with a small piano roll of the pattern.
+
+`build/PluginTest_artefacts/Release/PluginTest demo` writes every preset on a `say` voice to `build/demo`, for a quick listen outside any host.

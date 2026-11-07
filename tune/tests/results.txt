@@ -195,37 +195,37 @@ PASS  the background thread picks up the file by itself within 0.7 s
 PASS  a large junk file changes nothing
 PASS  a folder at that path changes nothing
 INFO  speech_samantha.wav: 3.8 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  speech_samantha.wav: distance from a note, median, before 21.4 cents, after 5.5 cents, 828 voiced frames
+INFO  speech_samantha.wav: distance from a note, median, before 20.9 cents, after 5.4 cents, 828 voiced frames
 PASS    speech_samantha.wav gives finite output
 INFO  speech_kathy.wav: 4.9 s voiced in both, 1 octave disagreements, 12.2 per minute
-INFO  speech_kathy.wav: distance from a note, median, before 27.0 cents, after 1.5 cents, 997 voiced frames
+INFO  speech_kathy.wav: distance from a note, median, before 26.8 cents, after 1.4 cents, 996 voiced frames
 PASS    speech_kathy.wav gives finite output
 INFO  speech_daniel.wav: 3.4 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  speech_daniel.wav: distance from a note, median, before 27.5 cents, after 9.9 cents, 730 voiced frames
+INFO  speech_daniel.wav: distance from a note, median, before 27.9 cents, after 10.4 cents, 738 voiced frames
 PASS    speech_daniel.wav gives finite output
 INFO  speech_fred.wav: 4.5 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  speech_fred.wav: distance from a note, median, before 23.6 cents, after 2.5 cents, 918 voiced frames
+INFO  speech_fred.wav: distance from a note, median, before 23.7 cents, after 2.4 cents, 918 voiced frames
 PASS    speech_fred.wav gives finite output
 INFO  held_fred.wav: 5.3 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  held_fred.wav: distance from a note, median, before 22.9 cents, after 2.5 cents, 1069 voiced frames
+INFO  held_fred.wav: distance from a note, median, before 23.1 cents, after 2.5 cents, 1068 voiced frames
 PASS    held_fred.wav gives finite output
 INFO  held_kathy.wav: 5.0 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  held_kathy.wav: distance from a note, median, before 26.6 cents, after 2.3 cents, 1015 voiced frames
+INFO  held_kathy.wav: distance from a note, median, before 26.4 cents, after 2.3 cents, 1015 voiced frames
 PASS    held_kathy.wav gives finite output
 INFO  sung_cellos.wav: 7.9 s voiced in both, 1 octave disagreements, 7.6 per minute
-INFO  sung_cellos.wav: distance from a note, median, before 16.9 cents, after 1.5 cents, 1566 voiced frames
+INFO  sung_cellos.wav: distance from a note, median, before 17.0 cents, after 1.6 cents, 1572 voiced frames
 PASS    sung_cellos.wav gives finite output
 INFO  sung_goodnews.wav: 12.9 s voiced in both, 3 octave disagreements, 13.9 per minute
 INFO  sung_goodnews.wav: distance from a note, median, before 6.4 cents, after 0.4 cents, 2656 voiced frames
 PASS    sung_goodnews.wav gives finite output
-INFO  sung_organ.wav: 4.5 s voiced in both, 9 octave disagreements, 119.6 per minute
-INFO  sung_organ.wav: distance from a note, median, before 31.7 cents, after 1.7 cents, 846 voiced frames
+INFO  sung_organ.wav: 4.5 s voiced in both, 10 octave disagreements, 133.3 per minute
+INFO  sung_organ.wav: distance from a note, median, before 31.7 cents, after 1.7 cents, 851 voiced frames
 PASS    sung_organ.wav gives finite output
 PASS  real material at instant speed: 99th percentile change in 20 ms frame level, worst file = 2.776 dB
 PASS  real material at instant speed: biggest sample step against the input's, worst file = 1.000 times
-PASS  real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth = 16.100 per minute
-PASS  real speech at instant speed: worst file's median distance from a note = 9.895 cents
-PASS  say singing and held vowels at instant speed: worst file's median distance from a note = 2.494 cents
+PASS  real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth = 17.258 per minute
+PASS  real speech at instant speed: worst file's median distance from a note = 10.401 cents
+PASS  say singing and held vowels at instant speed: worst file's median distance from a note = 2.466 cents
 PASS  Transpose +7 on A3 gives E4, offset = -0.004 cents
 PASS  Transpose -12 on A4 gives A3, offset = 0.000 cents
 PASS  Reference A4 432 Hz puts A3 at 216 Hz, offset = 0.000 cents
@@ -254,5 +254,5 @@ PASS  hard and natural presets are both there, presets = 8.000
 PASS  preset Hard Tune flattens vibrato, kept = 1.033 %
 PASS  preset Natural Pop keeps more vibrato, kept = 97.561 %
 PASS  presets leave Key, Scale and Input Type alone
-PASS  CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 0.528 %
+PASS  CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 0.457 %
 RESULT PASS  0 failures

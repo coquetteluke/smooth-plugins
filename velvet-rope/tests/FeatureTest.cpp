@@ -440,29 +440,98 @@ static void testQualitySwitching()
         check (toDb (peakOf (after[0], 12000, 24000)) < -120.0, "and silence afterwards stays silent", toDb (peakOf (after[0], 12000, 24000)), "dBFS");
     }
 
-    // The real time rules hold during a switch.
+    // The real time rules hold during a switch. Only processBlock is counted, since a parameter write comes from the host.
     {
         Proc p;
         setParam (p, "depth", 12.0f);
         prepareLayout (p, Set::stereo());
         const auto x = plus (tone (120000, 3000.0, -14.0), noise (120000, -30.0, 31));
-        run (p, stereoOf (x));
-        const long before = allocs.load();
-        run (p, stereoOf (x), 256, [&] (int pos)
+        juce::AudioBuffer<float> buf (2, 256);
+        juce::MidiBuffer midi;
+        long used = 0;
+        int switches = 0;
+
+        for (int pos = 0; pos + 256 <= 120000; pos += 256)
         {
-            // The parameter write goes around run()'s own buffer, which only allocates once, ahead of the count.
-            if (pos == 20480) { const auto* a = p.parameters.getRawParameterValue ("quality"); juce::ignoreUnused (a); }
-        });
-        const long plainRun = allocs.load() - before;
-        const long start = allocs.load();
-        run (p, stereoOf (x), 256, [&] (int pos)
+            if (pos == 20480 || pos == 40960 || pos == 61440 || pos == 81920)
+            {
+                setParam (p, "quality", (float) (switches % 3));
+                ++switches;
+            }
+
+            std::copy_n (x.data() + pos, 256, buf.getWritePointer (0));
+            std::copy_n (x.data() + pos, 256, buf.getWritePointer (1));
+            const long before = allocs.load();
+            p.processBlock (buf, midi);
+            used += allocs.load() - before;
+        }
+
+        check (used == 0, "no allocations in processBlock across 4 Quality switches", (double) used);
+    }
+}
+
+/** The one moment two Qualities run at once and tables get rebuilt. A benchmark that skips the start of a preset never sees it. */
+static void testQualitySwitchCost()
+{
+    std::puts ("\n== Quality: cost of the switch itself, worst block of 128 samples, best of 5 tries at each so a stall from elsewhere does not count");
+
+    const std::pair<const char*, Set> layouts[] = { { "stereo", Set::stereo() }, { "7.1.4", Set::create7point1point4() } };
+
+    for (const auto& layout : layouts)
+    {
+        const int channels = layout.second.size();
+        double worstOfAll = 0.0;
+        bool allChanged = true;
+
+        for (int from = 0; from < 3; ++from)
         {
-            if (pos == 20480) p.parameters.getParameter ("quality")->setValue (0.0f);
-            if (pos == 40960) p.parameters.getParameter ("quality")->setValue (1.0f);
-            if (pos == 61440) p.parameters.getParameter ("quality")->setValue (0.5f);
-        });
-        const long used = allocs.load() - start;
-        check (used <= plainRun, "no allocations from a Quality switch on the audio path", (double) (used - plainRun));
+            for (int to = 0; to < 3; ++to)
+            {
+                if (from == to) continue;
+                double best = 1.0e9;
+
+                for (int attempt = 0; attempt < 5; ++attempt)
+                {
+                    Proc p;
+                    setParam (p, "quality", (float) from);
+                    prepareLayout (p, layout.second, kRate, 128);
+                    const auto x = plus (tone (72000, 3000.0, -14.0), noise (72000, -30.0, 900u));
+                    juce::AudioBuffer<float> buf (channels, 128);
+                    juce::MidiBuffer midi;
+                    double worst = 0.0;
+                    bool changed = false;
+
+                    for (int pos = 0; pos + 128 <= 72000; pos += 128)
+                    {
+                        if (pos == 24064)
+                        {
+                            setParam (p, "quality", (float) to);
+                            changed = p.getLatencySamples() == p.latencyForQuality ((Quality) to);
+                        }
+
+                        for (int ch = 0; ch < channels; ++ch)
+                            std::copy_n (x.data() + pos, 128, buf.getWritePointer (ch));
+
+                        const auto a = std::chrono::steady_clock::now();
+                        p.processBlock (buf, midi);
+                        const double e = std::chrono::duration<double> (std::chrono::steady_clock::now() - a).count();
+
+                        if (pos >= 24064)
+                            worst = std::max (worst, e);
+                    }
+
+                    allChanged = allChanged && changed;
+                    best = std::min (best, 100.0 * worst / (128.0 / kRate));
+                }
+
+                info (std::string (layout.first) + ", " + qualityName (from) + " to " + qualityName (to), best, "%");
+                worstOfAll = std::max (worstOfAll, best);
+            }
+        }
+
+        check (allChanged, std::string (layout.first) + ": every one of those really did change Quality");
+        const double limit = channels == 2 ? 25.0 : 100.0;
+        check (worstOfAll < limit, std::string (layout.first) + ": worst block during any switch (limit " + std::to_string ((int) limit) + "%)", worstOfAll, "%");
     }
 }
 
@@ -1280,7 +1349,7 @@ int main (int argc, char** argv)
     const juce::String only = argc > 1 ? argv[1] : "";
 
     if (only.isEmpty() || only == "dots")     testDots();
-    if (only.isEmpty() || only == "quality")  { testQualityLatency(); testQualitySwitching(); testQualityResolution(); }
+    if (only.isEmpty() || only == "quality")  { testQualityLatency(); testQualitySwitching(); testQualitySwitchCost(); testQualityResolution(); }
     if (only.isEmpty() || only == "maxcut")   testMaxCut();
     if (only.isEmpty() || only == "listen")   testBandListen();
     if (only.isEmpty() || only == "layouts")  testLayouts();

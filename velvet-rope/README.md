@@ -130,6 +130,8 @@ Each Quality at 48 kHz, stereo:
 
 Low Latency cannot tell two peaks 400 Hz apart, and on low notes it cannot see separate harmonics at all.
 
+A Quality switch runs two settings at once for a moment. Worst block of 128 samples during a switch, best of 5 tries: 9% in stereo, 38% in 7.1.4.
+
 CPU per layout through the real AU at default, one core: stereo 0.8%, 5.1 2.0%, 7.1 2.9%, 7.1.4 4.7%, 9.1.6 6.4%. All measured with other builds running.
 
 Real speech, 4 voices from macOS `say`, a +12 dB Q 6 boost added at a known frequency, Depth 12, the rest default. Reads as boost in the band, then how much came out:

@@ -288,6 +288,8 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
             voice.allpass[(size_t) a].set (juce::jmin (allPassHz[v][a], sr * 0.45), 0.8, sr);
         voice.control = {};
         voice.gain = voice.gainTarget = 0.0;
+        voice.powerIn = voice.powerOut = 0.0;
+        voice.match = 1.0;
     }
     pitchRing.fill (0.0);
     pitchRingAt = 0;
@@ -297,6 +299,8 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     fadeStep = (float) (1.0 / (0.002 * sr));
     bypassStep = (float) (1.0 / (0.02 * sr));
     smoothing = 1.0 - std::exp (-1.0 / (0.015 * sr));
+    matchPower = 1.0 - std::exp (-1.0 / (0.15 * sr));
+    matchGain = 1.0 - std::exp (-1.0 / (0.03 * sr));
     envelopeStep = 1.0 / (0.008 * sr);
     fadeGain = 1.0f;
     fading = false;
@@ -413,12 +417,13 @@ void PluginProcessor::tick() noexcept
     pitchRingAt = (pitchRingAt + 1) & (pitchRingSize - 1);
     pitchRing[(size_t) pitchRingAt] = semitones;
 
-    // A period is measured between two marks, the newest known 0.33 periods after it happens, so its middle is 0.83 periods back.
-    // What is coming out is the input from the latency ago. Look that far back, so a voice follows the part of the lead it plays with.
+    // The tracker's period is old by the time it arrives: two stretches a period apart are compared, the newest mark is known 0.33 periods
+    // after it happens, and the value then holds for a period. What is coming out is the input from the latency ago. Look back the difference,
+    // so a voice follows the part of the lead it plays with. The 2.48 periods was measured on a vibrato: see the Fixed Interval vibrato test.
     double aligned = semitones;
     if (voiced)
     {
-        int back = juce::jlimit (0, pitchRingSize - 1, juce::roundToInt (((double) latencyNow - 0.83 * period) / tickSamples));
+        int back = juce::jlimit (0, pitchRingSize - 1, juce::roundToInt (((double) latencyNow - 2.48 * period) / tickSamples));
         for (; back > 0; --back)
         {
             const double older = pitchRing[(size_t) ((pitchRingAt - back) & (pitchRingSize - 1))];
@@ -531,11 +536,25 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         mixNow += smooth * (mixTarget - mixNow);
 
         double sumL = 0.0, sumR = 0.0;
+        const double inputNow = (double) history.delayed (InputHistory::mono, latencyNow);
         for (auto& voice : voices)
         {
             double y = (double) voice.shifter.step (tracker, voice.control, history);
             for (auto& a : voice.allpass)
                 y = a.process (y);
+
+            // A shift changes how much of a vowel's energy lands on a harmonic, so a voice comes out a dB or two away from the lead, more on
+            // vowels with one narrow low formant. A slow match on voiced sound takes that out. Consonants are read as they are, so no match there.
+            double wanted = 1.0;
+            if (voice.control.voiced)
+            {
+                voice.powerIn += matchPower * (inputNow * inputNow - voice.powerIn);
+                voice.powerOut += matchPower * (y * y - voice.powerOut);
+                if (voice.powerOut > 1.0e-9 && voice.powerIn > 1.0e-9)
+                    wanted = juce::jlimit (0.63, 1.58, std::sqrt (voice.powerIn / voice.powerOut)); // +/-4 dB at most
+            }
+            voice.match += matchGain * (wanted - voice.match);
+            y *= voice.match;
 
             voice.gain += juce::jlimit (-step, step, voice.gainTarget - voice.gain);
             voice.level += smooth * (voice.levelTarget - voice.level);

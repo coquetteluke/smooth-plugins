@@ -262,6 +262,8 @@ void testPitchAllKeys()
                         const int expected = stepsFrom (root, hand, degree, scaleSteps (interval), 48);
                         const double from = degree * noteSec + lat + 0.12, to = (degree + 1) * noteSec + lat - 0.03;
                         const double e = pitchError (out, noteHz (expected), from, to);
+                        if (e > limits::voicePitchCents || std::getenv ("HARMONY_DUMP") != nullptr)
+                            std::printf ("  scale root %d minor %d interval %d degree %d, note %d: %.2f cents\n", root, minor, interval, degree, expected, e);
                         worstScale = std::max (worstScale, e);
                         if (interval == 4) worstThird = std::max (worstThird, e);
                         ++notes;
@@ -302,7 +304,7 @@ void testPitchAllKeys()
                     for (int c = 0; c < 3; ++c)
                     {
                         for (int k = 0; k < 3; ++k)
-                            chords[(size_t) c][(size_t) k] = stepsFrom (root, hand, degrees[(size_t) c], 2 * k, 60);
+                            chords[(size_t) c][(size_t) k] = stepsFrom (root, hand, degrees[(size_t) c], 2 * k, 48);
                         const int at = (int) (c * 0.8 * SR);
                         if (c > 0)
                             for (int k = 0; k < 3; ++k)
@@ -579,7 +581,9 @@ void formantOne (FormantScore& s, const voice::Vowel& v, double centre, int shif
     const auto fine = smoothSpectrumDb (control.data() + from, n, SR, 50.0), fineOut = smoothSpectrumDb (run.out.data() + from, n, SR, 50.0);
     const size_t f1 = (size_t) v.f[0];
     s.worstFlatten = std::max (s.worstFlatten, (fine[f1] - fine[f1 / 2]) - (fineOut[f1] - fineOut[f1 / 2]));
-    s.worstLevel = std::max (s.worstLevel, std::abs (toDb (rms (run.out.data() + from, (int) n)) - toDb (rms (run.in.data() + from, (int) n))));
+    const double levelMove = toDb (rms (run.out.data() + from, (int) n)) - toDb (rms (run.in.data() + from, (int) n));
+    s.worstLevel = std::max (s.worstLevel, std::abs (levelMove));
+    if (print) std::printf ("  vowel %s around %.0f Hz, shift %+d: level moves %.2f dB\n", v.name, centre, shift, levelMove);
 }
 
 void testFormants()
@@ -606,6 +610,23 @@ void testFormants()
     info ("  and the tool's floor: the input against that same real voice, worst", std::max (tuned.worstFloor, fresh.worstFloor) * 100.0, "%");
     info ("  first formant peak flatter than a real voice at that pitch, worst case", std::max (tuned.worstFlatten, fresh.worstFlatten), "dB");
     check (std::max (tuned.worstLevel, fresh.worstLevel) <= limits::voiceLevelAgainstLeadDb, "a voice at Level 0 dB against the lead, at +/-7 semitones, worst", std::max (tuned.worstLevel, fresh.worstLevel), "dB");
+
+    // The say voices with held vowels, reported only: their pitch barely moves, so harmonics do not fill in the tract's shape, and this reading is rough.
+    for (const char* name : { "held_fred", "held_kathy", "sung_goodnews" })
+    {
+        const auto wav = loadWav (name);
+        const std::vector<float> in (wav.getReadPointer (0), wav.getReadPointer (0) + wav.getNumSamples());
+        for (int shift : { 7, -7 })
+        {
+            auto p = clean (modeFixed, 1, wideRange);
+            setParam (*p, vid (0, "Interval"), (float) shift);
+            prepare (*p, 1, SR, 256);
+            const auto out = mono (render (*p, in, 256));
+            const long n = (long) in.size() - 4800;
+            const auto inShape = smoothSpectrumDb (in.data(), n, SR, 250.0), gotShape = smoothSpectrumDb (out.data(), n, SR, 250.0);
+            info (std::string ("  say material ") + name + " at " + std::to_string (shift) + " semitones: formant shape scale against the input, 400 to 3500 Hz", shapeScale (inShape, gotShape, 400.0, 3500.0), "times");
+        }
+    }
 
     // Other sizes of shift, reported only: the task asks for +/-7.
     for (int shift : { 3, -3, 5, -5, 12, -12 })

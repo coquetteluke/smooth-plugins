@@ -136,6 +136,7 @@ private:
         smoothharmony::VoiceShifter::Control control;
         std::array<AllPass, 3> allpass {};
         double gain = 0.0, gainTarget = 0.0;     // on, off, or at the consonant level
+        double powerIn = 0.0, powerOut = 0.0, match = 1.0; // slow level match against the lead, voiced sound only
         double level = 1.0, panL = 1.0, panR = 1.0;
         double levelTarget = 1.0, panLTarget = 1.0, panRTarget = 1.0;
     };
@@ -177,7 +178,7 @@ private:
     std::array<double, pitchRingSize> pitchRing {};
     int pitchRingAt = 0;
 
-    double sr = 48000.0, smoothing = 0.001, consonantGain = 0.35, envelopeStep = 0.001;
+    double sr = 48000.0, smoothing = 0.001, consonantGain = 0.35, envelopeStep = 0.001, matchPower = 0.001, matchGain = 0.001;
     double leadGain = 1.0, leadGainTarget = 1.0, leadL = 1.0, leadR = 1.0, leadLTarget = 1.0, leadRTarget = 1.0;
     double harmonyGain = 1.0, harmonyGainTarget = 1.0, mixNow = 1.0, mixTarget = 1.0;
     std::array<double, maxVoices> throatRate {}, driftNow {};

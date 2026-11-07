@@ -325,10 +325,11 @@ private:
             const double power = spacing >= period ? 1.0 / std::sqrt (ratio) : std::sqrt (ratio);
             next.gain = power * (1.0 + 0.09 * std::min (1.0, std::abs (std::log2 (ratio)) * 12.0 / 1.5));
             next.gain *= 1.0 + c.shimmer * nextRandom();
-            // The grains' harmonics drag the formants along with a shift. Reading the grain a little slower or faster cancels most of that.
+            // The grains' harmonics drag the formants along with a shift. Reading the grain a little slower cancels that. Tuned at +/-7 semitones on
+            // the test voices, see the formant test. Smooth Tune's larger values, tuned at +/-3, overshoot here and put formants 10% low.
             next.rate = c.grainRate;
-            if (ratio > 1.0 + 1.0e-4) next.rate *= std::pow (ratio, -dragUp);
-            else if (ratio < 1.0 - 1.0e-4) next.rate *= std::pow (ratio, dragDown);
+            if (ratio > 1.0 + 1.0e-4) next.rate *= std::pow (ratio, -0.08);
+            else if (ratio < 1.0 - 1.0e-4) next.rate *= std::pow (ratio, 0.05);
         }
 
         pending = next;
@@ -401,8 +402,5 @@ private:
     long long lastMarkUsed = -1;
     std::uint32_t random = 1, randomSeed = 1;
 
-public:
-    // Exposed for the formant measurements.
-    double dragUp = 0.25, dragDown = 0.1;
 };
 } // namespace smoothharmony

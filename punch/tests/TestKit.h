@@ -291,6 +291,23 @@ namespace testkit
             check (countDenormals (out) == 0, "no denormals decaying into silence", (double) countDenormals (out), "samples");
         }
 
+        // Bad input from the host or an upstream plug-in must not stick: burst of NaN, inf and huge values, then recovery
+        {
+            auto p = make();
+            prepare (*p, 2, 48000.0, 512);
+            std::vector<float> in (48000 * 6, 0.0f);
+            sine (in.data(), 24000, 440.0, 48000.0, 0.25);
+            const float badInput[] = { std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(),
+                                       1.0e38f, std::numeric_limits<float>::max() * 0.5f, -1.0e38f };
+            for (int i = 0; i < 512; ++i) in[(size_t) (24000 + i)] = badInput[(size_t) i % 6];
+            sine (in.data() + 48000 * 5, 48000, 440.0, 48000.0, 0.25);
+            auto out = render (*p, in, 512, opt.sendMidiNote ? &note : nullptr);
+            juce::AudioBuffer<float> tail (out.getNumChannels(), 48000);
+            for (int ch = 0; ch < out.getNumChannels(); ++ch) tail.copyFrom (ch, 0, out, ch, 48000 * 5, 48000);
+            double pk = 0; for (int ch = 0; ch < tail.getNumChannels(); ++ch) pk = std::max (pk, peak (tail.getReadPointer (ch), 48000));
+            check (countNonFinite (tail) == 0 && pk <= 16.0, "recovers after NaN, inf and huge input, peak in the last second", pk);
+        }
+
         // Clicks: jump each control to its ends during a steady low sine
         {
             auto p = make();

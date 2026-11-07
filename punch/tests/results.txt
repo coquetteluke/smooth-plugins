@@ -22,6 +22,7 @@ PASS  sweeps finished, mono
 PASS  sweeps finished, stereo
 PASS  no NaN after silence
 PASS  no denormals decaying into silence = 0.000 samples
+PASS  recovers after NaN, inf and huge input, peak in the last second = 0.250 
 INFO  click test baseline step = 0.004 
 PASS  no click when Punch jumps, biggest step = 0.005 
 PASS  no click when Attack jumps, biggest step = 0.004 
@@ -167,5 +168,5 @@ INFO  latency at 48 kHz = 96.000 samples
 PASS  state with NaN in Attack: Attack back at default, the rest kept = 0.000 dB
 PASS  state with a huge Attack: clamped to the top of its range = 15.000 dB
 PASS  cut off or foreign state: controls unchanged = 7.000 dB
-PASS  NaN and infinity in the input: output after them stays finite = 0.000 samples
+PASS  NaN and infinity in the input: none in the output = 0.000 samples
 RESULT PASS  0 failures

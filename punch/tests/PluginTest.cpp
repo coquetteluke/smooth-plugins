@@ -557,7 +557,7 @@ static void testDamagedStateAndInput()
         check (std::abs (valueOf (p, "sustain") - 7.0f) < 1.0e-3f, "cut off or foreign state: controls unchanged", valueOf (p, "sustain"), "dB");
     }
     {
-        // NaN and infinity samples in the input: the delay line passes them on, but the gain must recover right after.
+        // NaN and infinity samples in the input never reach the output, and the gain carries on as normal.
         auto in = burst (48000.0, 0.5);
         in[6000] = std::numeric_limits<float>::quiet_NaN();
         in[6001] = std::numeric_limits<float>::infinity();
@@ -565,8 +565,8 @@ static void testDamagedStateAndInput()
         int lat = 0;
         const auto out = process (in, s, 48000.0, 512, &lat);
         long bad = 0;
-        for (int i = 6002 + lat; i < (int) out.size(); ++i) if (! std::isfinite (out[(size_t) i])) ++bad;
-        check (bad == 0, "NaN and infinity in the input: output after them stays finite", (double) bad, "samples");
+        for (float v : out) if (! std::isfinite (v)) ++bad;
+        check (bad == 0, "NaN and infinity in the input: none in the output", (double) bad, "samples");
     }
 }
 

@@ -85,6 +85,7 @@ void PluginProcessor::reset()
 void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
 {
     juce::ScopedNoDenormals noDenormals;
+    sanitiseInput (buffer);
     if (delaySamples <= 0)
         return;
 

@@ -27,3 +27,14 @@ inline void applySafeState (juce::AudioProcessorValueTreeState& apvts, const juc
     }
     apvts.replaceState (state);
 }
+
+// Call first in processBlock. One bad sample from upstream must never stick in a filter, envelope or delay line.
+inline void sanitiseInput (juce::AudioBuffer<float>& buffer) noexcept
+{
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    {
+        auto* x = buffer.getWritePointer (ch);
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+            x[i] = std::isfinite (x[i]) ? juce::jlimit (-16.0f, 16.0f, x[i]) : 0.0f;
+    }
+}

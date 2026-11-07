@@ -65,6 +65,7 @@ Decaying burst: instant onset, 100 ms decay time. Start means the first 3 ms, ta
 - Impulse delay equals the reported latency at 44.1, 48, 88.2 and 96 kHz. Bypass nulls against the delayed input.
 - Any block size from 1 to 4096 gives the same output, and preparing again gives a clean restart.
 - Damaged saved state (NaN, infinity, huge, negative, garbage, cut off): controls stay in range and output stays finite. A dropped value goes back to its default. Those tests fail when the guard is taken out.
+- Bad input samples (NaN, infinity, huge values): replaced or clamped on the way in, and the plug-in recovers fully afterwards.
 
 Limits to know about:
 

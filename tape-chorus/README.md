@@ -75,6 +75,10 @@ Latency is 0 samples at every rate. The oversampling filters take 59.5 samples a
 
 ## What was measured
 
+CPU through the real AU at 48 kHz with 128 frame blocks, percent of one core: default 0.8, worst preset 1.1 (Eight Voice Stack), worst single block 3.
+
+Same sound after the CPU work: `tests/null_results.txt` holds the null of 0.2.1 against 0.2.0 for the default, every preset and random automation. Worst peak -114.4 dBFS, on a signal at 16 times full scale.
+
 Offline, in `tests/PluginTest.cpp`. Full numbers are in `tests/results.txt`.
 
 - Same as before: all 7 first presets null against a frozen copy of the 0.1.0 engine (`tests/EngineV010.h`), difference -240 dB, at 44.1, 48 and 96 kHz. A 0.1.0 session opens with its own settings and every new control neutral.

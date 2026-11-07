@@ -6,6 +6,7 @@
 #include <cmath>
 #include <memory>
 #include <vector>
+#include "FastOversampler.h"
 
 // The whole signal path, free of plug-in framework code.
 //
@@ -53,7 +54,7 @@ public:
         sr = sampleRate;
         // At 96 kHz, 2x already puts the clip stage at 192 kHz.
         const size_t stages = sr < 60000.0 ? 2u : 1u;
-        os = std::make_unique<juce::dsp::Oversampling<float>> (2, stages, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, false);
+        os = std::make_unique<FastOversampler> (2, stages, false);
         os->initProcessing ((size_t) tickLen);
         os->reset();
         wetLatency = (double) os->getLatencyInSamples();
@@ -553,9 +554,20 @@ private:
                 {
                     auto* d = up.getChannelPointer ((size_t) ch);
                     float g = g0;
-                    for (int i = 0; i < upN; ++i, g += gStep)
-                        if (g > 1.0e-4f)
-                            d[i] = saturate (d[i], g, driveDenominator (g));
+                    if (gStep == 0.0f)
+                    {
+                        // Drive is holding, so the parts of the curve that depend only on it are worked out once.
+                        constexpr float bias = 0.05f;
+                        const float centre = std::tanh (g * bias), den = driveDenominator (g);
+                        for (int i = 0; i < upN; ++i)
+                            d[i] = (std::tanh (g * (d[i] + bias)) - centre) / den;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < upN; ++i, g += gStep)
+                            if (g > 1.0e-4f)
+                                d[i] = saturate (d[i], g, driveDenominator (g));
+                    }
                 }
             }
             os->processSamplesDown (block);
@@ -743,7 +755,7 @@ private:
     double sr = 48000.0, tickSec = tickLen / 48000.0;
     int mask = 0, writeIndex = 0, tickLeft = 0, tickPos = 0;
     double wetLatency = 0.0, minDelayMs = 1.0;
-    std::unique_ptr<juce::dsp::Oversampling<float>> os;
+    std::unique_ptr<FastOversampler> os;
     std::array<std::vector<float>, 2> line;
     std::array<ChannelState, 2> chan;
     double preB0 = 1, preB1 = 0, preA1 = 0, dcR = 0.999, toneA = 0.1;

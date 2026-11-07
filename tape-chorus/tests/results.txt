@@ -134,7 +134,7 @@ PASS  Saturation 50: THD at 1 kHz, -12 dBFS = 5.344 %
 PASS  Saturation 100: THD at 1 kHz, -12 dBFS = 13.263 %
 PASS  Saturation 100 is plainly audible: THD over 3 percent = 13.263 %
 PASS  Saturation 100: level change of a -12 dBFS tone = 0.088 dB
-PASS  Saturation 100, 5 kHz sine: worst fold back from 2 to 22 kHz, below the tone = -96.201 dB
+PASS  Saturation 100, 5 kHz sine: worst fold back from 2 to 22 kHz, below the tone = -96.198 dB
 INFO  Saturation 100, 5 kHz sine: 23 kHz line, above hearing, below the tone = -51.926 dB
 PASS  Tone -12: change at 12 kHz at 48000 Hz rate = -10.557 dB
 PASS  Tone +6: change at 12 kHz at 48000 Hz rate = 5.913 dB
@@ -191,8 +191,8 @@ PASS  Stereo in with equal sides matches mono in, largest difference = -240.000 
 PASS  Stereo in, left only: level on the right = -240.000 dBFS
 PASS  Stereo in, left only: left is playing = -17.272 dBFS
 PASS  Mono in, mono out plays = -17.412 dBFS
-PASS  same output at block 512 and block 37, largest difference = -240.000 dB
-PASS  same output at block 512 and block 1, largest difference = -240.000 dB
+PASS  same output at block 512 and block 37, largest difference = -150.515 dB
+PASS  same output at block 512 and block 1, largest difference = -150.515 dB
 PASS  prepared again after another rate: same output, largest difference = -240.000 dB
 PASS  preset Default Tape Chorus: level against input = -0.620 dB
 PASS  preset Soft Vocal Double: level against input = -0.432 dB
@@ -221,7 +221,7 @@ PASS  first preset 4 still holds its 0.1.0 values
 PASS  first preset 5 still holds its 0.1.0 values
 PASS  first preset 6 still holds its 0.1.0 values
 PASS  first preset 7 still holds its 0.1.0 values
-PASS  The 7 first presets match 0.1.0 at 44100 Hz, largest difference = -240.000 dB
+PASS  The 7 first presets match 0.1.0 at 44100 Hz, largest difference = -144.494 dB
 PASS  first preset 1 still holds its 0.1.0 values
 PASS  first preset 2 still holds its 0.1.0 values
 PASS  first preset 3 still holds its 0.1.0 values
@@ -229,7 +229,7 @@ PASS  first preset 4 still holds its 0.1.0 values
 PASS  first preset 5 still holds its 0.1.0 values
 PASS  first preset 6 still holds its 0.1.0 values
 PASS  first preset 7 still holds its 0.1.0 values
-PASS  The 7 first presets match 0.1.0 at 48000 Hz, largest difference = -240.000 dB
+PASS  The 7 first presets match 0.1.0 at 48000 Hz, largest difference = -144.494 dB
 PASS  first preset 1 still holds its 0.1.0 values
 PASS  first preset 2 still holds its 0.1.0 values
 PASS  first preset 3 still holds its 0.1.0 values
@@ -237,7 +237,7 @@ PASS  first preset 4 still holds its 0.1.0 values
 PASS  first preset 5 still holds its 0.1.0 values
 PASS  first preset 6 still holds its 0.1.0 values
 PASS  first preset 7 still holds its 0.1.0 values
-PASS  The 7 first presets match 0.1.0 at 96000 Hz, largest difference = -240.000 dB
+PASS  The 7 first presets match 0.1.0 at 96000 Hz, largest difference = -144.494 dB
 PASS  Voices default is still 2
 PASS  Voices now reaches 8
 PASS  Tail length with no feedback is still = 0.080 s
@@ -352,8 +352,8 @@ PASS  read head reading, voice 1 of 2 at Delay 15 = 13.000 ms
 PASS  read head reading, voice 2 of 2 at Delay 15 = 17.000 ms
 PASS  read head reading, a silent voice reads 0
 PASS  the window has 3 live reading rows
-PASS  everything on: same output at block 512 and block 37, largest difference = -240.000 dB
-PASS  everything on: same output at block 512 and block 1, largest difference = -240.000 dB
+PASS  everything on: same output at block 512 and block 37, largest difference = -150.515 dB
+PASS  everything on: same output at block 512 and block 1, largest difference = -150.515 dB
 PASS  everything on: prepared again after another rate, largest difference = -240.000 dB
 PASS  everything on: allocations during audio = 0.000 
 PASS  everything on: recovers after NaN, inf and huge input, later peak at 44100 Hz = 0.503 

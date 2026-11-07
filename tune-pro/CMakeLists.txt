@@ -4,11 +4,11 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "" FORCE)
 
 # ---- edit these for each plug-in ----
 set(SP_TARGET  SmoothTunePro)
-set(SP_NAME    "Smooth Tune Pro")
+set(SP_NAME    "Tune Pro")
 set(SP_CODE    STpr)
 set(SP_BUNDLE  "com.lukegarito.smoothtunepro")
 set(SP_DESC    "Advanced automatic vocal tuning with two engines, MIDI targets and a pitch window")
-set(SP_VERSION 1.2.0)
+set(SP_VERSION 1.2.1)
 set(SP_AU_TYPE kAudioUnitType_MusicEffect)
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN TRUE)

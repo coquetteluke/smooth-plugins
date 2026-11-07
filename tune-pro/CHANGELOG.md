@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1, 2026-11-07
+
+Renamed to Tune Pro, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
 ## 1.2.0
 
 A new window, in ink, coral and white. No DSP changes. The window with it open and painting nulls against no window at all, largest sample difference 0.

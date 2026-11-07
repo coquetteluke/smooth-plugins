@@ -1,8 +1,8 @@
-# Smooth Tune Pro
+# Tune Pro
 
 Advanced automatic vocal tuning with two engines, MIDI targets, a mode for each note, and a window built around a live piano roll of your pitch above a clickable keyboard.
 
-**Load it:** in an audio effect slot, Audio Units > Luke Garito > Smooth Tune Pro. AU code `aumf STpr Luke`. Mono and stereo. It takes MIDI, but default settings tune with no MIDI at all.
+**Load it:** in an audio effect slot, Audio Units > Luke Garito > Tune Pro. AU code `aumf STpr Luke`. Mono and stereo. It takes MIDI, but default settings tune with no MIDI at all.
 
 Measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer.
 

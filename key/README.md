@@ -47,7 +47,7 @@ The window sets only real parameters, with begin and end gestures, and automatio
 
 Type is Jost, under the SIL Open Font License in `assets/fonts/OFL.txt`. It is a variable font and JUCE can only use its default weight, so `src/editor/FontOutlines.cpp` gets the letter shapes at any weight from CoreText.
 
-CPU of the open window, Retina, real window, every run with nothing else building: 1.9, 2.1, 2.1, 2.2% of one core on real speech, 1.1, 3.1, 3.3, 4.0% on steady test music (the higher ones landed on slow cores, 0.8% of a fast core's work each time), 0.5, 0.6, 0.6, 0.8% silent with nothing drawing. Earlier runs on speech, with other builds pushing it onto slow cores: 2.6, 2.6, 2.9, 2.9, 5.0, 5.9, 6.7%, for the same 2.4 to 3.0% of a fast core's work. Audio CPU did not change: 0.4% before and after.
+CPU of the open window, real window at Retina size. Nothing else building: 1.9, 2.1, 2.1, 2.2% of one core on real speech, and 1.1, 3.1, 3.3, 4.0% on steady test music (the higher ones landed on slow cores, 0.8% of a fast core's work each time). Silent with nothing drawing, with other builds running: 0.5, 0.6, 0.6, 0.8%. Earlier runs on speech, with other builds pushing it onto slow cores: 2.6, 2.6, 2.9, 2.9, 5.0, 5.9, 6.7%, for the same 2.4 to 3.0% of a fast core's work. Audio CPU did not change: 0.4% before and after.
 
 Render every state to PNG with real speech from macOS `say`: `build/RenderWindow_artefacts/Release/RenderWindow docs/window`. Measure the real window's CPU: `build/RenderWindow_artefacts/Release/RenderWindow --live 5 6 speech`.
 

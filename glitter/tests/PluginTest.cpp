@@ -699,6 +699,41 @@ void testFollowKey()
     }
 }
 
+// A sweep over notes and vowels, because one note on one vowel can hide what a mark sliding against the waveform does to the pitch.
+void testPitchSweep()
+{
+    const voice::Vowel* vowels[] = { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO };
+    double worstTune = 0.0, worstPitch = 0.0, worstHarmony = 0.0, worstMidi = 0.0;
+    for (int midi = 45; midi <= 76; midi += 2)
+        for (auto* v : vowels)
+        {
+            const auto x = steadyVoice (noteHz (midi) * std::pow (2.0, 20.0 / 1200.0), 1.2, *v);
+            auto plain = with ({});
+            const auto lead = left (render (*plain, x, 256));
+            worstTune = std::max (worstTune, percentile (absolute (centsOff (lead.data(), (long) lead.size(), SR, noteHz (midi), 0.3, 1.1)), 95));
+
+            for (int shift : { 7, -5, 12 })
+            {
+                auto p = with ({ { "pitchOn", 1 }, { "pitchSemitones", (float) shift } });
+                const auto out = left (render (*p, x, 256));
+                worstPitch = std::max (worstPitch, percentile (absolute (centsOff (out.data(), (long) out.size(), SR, noteHz (midi + shift), 0.3, 1.1)), 95));
+            }
+            // The harmony alone: the run with it, less the run without it.
+            auto h = with ({ { "harmonyOn", 1 }, { "harmonyInterval1", 7 }, { "harmonyInKey", 0 } });
+            auto out = left (render (*h, x, 256));
+            for (size_t i = 0; i < out.size(); ++i) out[i] -= lead[i];
+            worstHarmony = std::max (worstHarmony, percentile (absolute (centsOff (out.data(), (long) out.size(), SR, noteHz (midi + 7), 0.3, 1.1)), 95));
+
+            auto m = with ({});
+            const auto held = left (renderMidi (*m, x, 256, { { 0, on (midi + 3) } }));
+            worstMidi = std::max (worstMidi, percentile (absolute (centsOff (held.data(), (long) held.size(), SR, noteHz (midi + 3), 0.3, 1.1)), 95));
+        }
+    check (worstTune < limits::hardTuneCents, "sweep, A2 to E5, five vowels, default settings: worst 95th percentile", worstTune, "cents");
+    check (worstPitch < limits::pitchCents, "sweep: Pitch +7, -5 and +12, worst 95th percentile", worstPitch, "cents");
+    check (worstHarmony < limits::harmonyCents, "sweep: Harmony +7, the voice alone, worst 95th percentile", worstHarmony, "cents");
+    check (worstMidi < limits::midiCents, "sweep: held MIDI note, worst 95th percentile", worstMidi, "cents");
+}
+
 // ------------------------------------------------------------------------------------------------------ module: Pitch
 
 // A slow glide across an octave fills in the spectrum shape. All notes on Bypass, so the tuner leaves it alone.
@@ -1878,6 +1913,7 @@ int main (int argc, char** argv)
     if (want ("controls")) testTuningControls();
     if (want ("midi")) testMidi();
     if (want ("follow")) testFollowKey();
+    if (want ("sweep")) testPitchSweep();
     if (want ("pitch")) testPitch();
     if (want ("throat")) testThroat();
     if (want ("motion")) testMotion();

@@ -538,7 +538,8 @@ private:
         finePeriod = std::clamp (lagExact, periodMin, periodMax);
         double position = lastMarkPosition + lagExact;
 
-        // Keep marks near the loudest part of each period, gently enough never to bend the pitch.
+        // Keep marks near the loudest part of each period. Marks sliding against the waveform bend a shifted voice's pitch by as much.
+        // Slowed from the 1% in Smooth Tune, which measured up to 5.5 cents across notes and vowels here. At this rate, 1.3 cents.
         if (hasMarks())
         {
             const Mark& older = mark (lastMark());
@@ -555,7 +556,7 @@ private:
                 }
                 const double off = (double) (from + best) - older.position;
                 if (std::abs (off) > 0.1 * period)
-                    position += 0.01 * off;
+                    position += 0.002 * off;
             }
         }
         addMark (position, lagExact, bestMatch);

@@ -70,8 +70,9 @@ Held MIDI notes and Motion and the Filter sweep are delayed by the same latency,
 
 All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before the DSP. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`.
 
-- Tuning at default settings: 2.6 cents worst, 110 Hz to 988 Hz, 95th percentile. 4.4 cents with vibrato and breath. Limit 5.
-- `say` material at default settings: median distance from a note goes from 21 to 27 cents down to 1.5 to 10.2 on speech, and 2.3 to 3.4 on sung and held material.
+- Tuning at default settings: 0.7 cents worst, 110 Hz to 988 Hz, 95th percentile. 1.5 cents with vibrato and breath. Limit 5.
+- Sweep of A2 to E5 on five vowels, worst 95th percentile: default settings 1.0 cents, Pitch +7, -5 and +12 1.3 cents, Harmony +7 1.2 cents, held MIDI note 1.1 cents.
+- `say` material at default settings: see `tests/results.txt` for each file. Median distance from a note goes from 16 to 27 cents down to 10 cents or less on speech and 2.5 or less on sung and held material.
 - MIDI target: 0.02 cents on a clean voice, 1.2 cents with vibrato and breath. Pitch reaches a new note 6 ms from its place in the delayed audio.
 - Follow Key: 10 kinds of bad file ignored, good file used, last good held, off goes back to manual, the thread picks it up by itself, a held note wins over a followed key.
 - Retune Speed 25, 50, 100, 200 ms measures 22, 48, 97, 197 ms. Humanize 100 keeps 99% of a vibrato, default leaves 1%.
@@ -95,6 +96,10 @@ All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before
 - **Latency:** the measured delay equals the reported one at every rate and Input Type, and does not move with any module.
 - **Same output** with a playhead or none, at any block size, after `prepareToPlay` again, and after saving and loading state.
 - **CPU:** see the last lines of `tests/results.txt`. About 3% of one core with all on, about 2% with all off, on a machine busy with other builds.
+
+## One change from Smooth Tune
+
+`src/PitchTracker.h` is Smooth Tune's, except that marks slide towards the loudest part of each period at 0.2% instead of 1%. That slide bends a shifted voice's pitch. Measured on the sweep above, the 1% gave 4.7 cents at default settings and 5.5 cents through Pitch, over the 5 cent limit. Smooth Harmony found this first.
 
 ## What the numbers do not say
 

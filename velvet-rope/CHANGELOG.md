@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1, 2026-11-07
+
+Renamed to Velvet Rope, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
 ## 0.5.0
 
 Five new features. With the new controls at their defaults, the default sound and all 8 old presets null exactly against 0.4.1, as do old saved sessions. The window now reads Velvet Rope. The build and the AU are still named Smooth Resonance.

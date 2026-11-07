@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "" FORCE)
-project(SmoothResonance VERSION 0.5.0 LANGUAGES C CXX)
+project(SmoothResonance VERSION 0.5.1 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
@@ -19,14 +19,14 @@ else()
 endif()
 
 juce_add_plugin(SmoothResonance
-    VERSION 0.5.0
+    VERSION 0.5.1
     COMPANY_NAME "Luke Garito"
     BUNDLE_ID "com.lukegarito.smoothresonance"
     PLUGIN_MANUFACTURER_CODE Luke
     PLUGIN_CODE SmRs
     FORMATS AU
-    PRODUCT_NAME "Smooth Resonance"
-    PLUGIN_NAME "Smooth Resonance"
+    PRODUCT_NAME "Velvet Rope"
+    PLUGIN_NAME "Velvet Rope"
     DESCRIPTION "Dynamically turns down resonant peaks that stick out of the spectrum"
     AU_MAIN_TYPE kAudioUnitType_Effect
     IS_SYNTH FALSE
@@ -70,9 +70,9 @@ target_link_libraries(SmoothResonance
 set(AU_INSTALL_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/Components")
 add_custom_target(InstallAU
     COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:SmoothResonance_AU>"
-    COMMAND ${CMAKE_COMMAND} -E rm -rf "${AU_INSTALL_DIR}/Smooth Resonance.component"
-    COMMAND ditto "$<TARGET_BUNDLE_DIR:SmoothResonance_AU>" "${AU_INSTALL_DIR}/Smooth Resonance.component"
-    COMMENT "Ad-hoc signing and installing Smooth Resonance.component"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${AU_INSTALL_DIR}/Velvet Rope.component"
+    COMMAND ditto "$<TARGET_BUNDLE_DIR:SmoothResonance_AU>" "${AU_INSTALL_DIR}/Velvet Rope.component"
+    COMMENT "Ad-hoc signing and installing Velvet Rope.component"
     VERBATIM)
 add_dependencies(InstallAU SmoothResonance_AU)
 
@@ -108,7 +108,7 @@ target_compile_definitions(NullTest PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMITTE
 target_link_libraries(NullTest PRIVATE SmoothResonanceWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME null COMMAND NullTest)
 
-# The five features of 0.5.0, each measured.
+# The five features of 0.5.1, each measured.
 juce_add_console_app(FeatureTest PRODUCT_NAME "FeatureTest")
 target_sources(FeatureTest PRIVATE src/ResonanceEngine.cpp src/PluginProcessor.cpp ${SR_WINDOW_SOURCES} tests/legacy/LegacyEngine.cpp tests/FeatureTest.cpp)
 target_include_directories(FeatureTest PRIVATE src tests)

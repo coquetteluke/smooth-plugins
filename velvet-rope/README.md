@@ -1,10 +1,10 @@
-# Smooth Resonance
+# Velvet Rope
 
 Finds the narrow peaks that stick out of a voice and turns them down only while they are there. Written from scratch from the general technique: an overlapping STFT, a comparison of each band with the peaks around it, and gain smoothed over time and frequency. No license system.
 
 ## How to load it
 
-Audio Units > Luke Garito > Smooth Resonance. AU code `aufx SmRs Luke`. The window's title reads Velvet Rope, the final name. The build and AU keep the old name until the rename.
+Audio Units > Luke Garito > Velvet Rope. AU code `aufx SmRs Luke`. The window's title reads Velvet Rope, the final name. The build and AU keep the old name until the rename.
 
 Mono, stereo and surround in matching layouts, with an optional mono or stereo side chain input. Latency depends on Quality, is reported to the host, and is the same when bypassed:
 

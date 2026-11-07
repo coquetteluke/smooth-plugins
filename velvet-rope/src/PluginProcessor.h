@@ -73,7 +73,7 @@ public:
     SmoothResonanceProcessor();
     ~SmoothResonanceProcessor() override;
 
-    const juce::String getName() const override  { return "Smooth Resonance"; }
+    const juce::String getName() const override  { return "Velvet Rope"; }
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}

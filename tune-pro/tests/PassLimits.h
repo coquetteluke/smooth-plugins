@@ -81,6 +81,10 @@ namespace prolimits
     constexpr double bigShiftMove = 0.08;             // High Quality, voice around 165 and 247 Hz, +/-7 semitones
     constexpr double highNoteF1Flatter = 9.0;         // dB, High Quality, high notes and big shifts
     constexpr double hqLevelChangeDb = 1.5;           // level at the same shifts as above, High Quality
+    // Added for version 1.3, before any of its DSP. A peak that overshoots a real voice is as wrong as a flat one, and could otherwise pass the limit above.
+    constexpr double highNoteF1Sharper = 6.0;         // dB, High Quality, high notes
+    // Held out voices, 392 to 740 Hz, held notes, each harmonic against a real voice with the same vocal tract at the new pitch, mean RMS. 1.2.1 reads 4.59 dB here, so this asks for over 1 dB better.
+    constexpr double heldNoteHarmonicMeanDb = 3.5;
 
     // Engines
     constexpr double modeSwitchStepRatio = 2.0;       // biggest sample step during an engine switch against the same voice's own

@@ -11,6 +11,8 @@
 #include <chrono>
 #include <ctime>
 #include <fstream>
+#include <functional>
+#include <map>
 #include <thread>
 
 using namespace testkit;
@@ -327,6 +329,26 @@ void testRetuneSpeed()
 // harmonic cover the frequencies up to where its double starts: no gaps and no piling up. The shape is read from the long term average spectrum. The shift is the same +/-3 semitones a correction would ask for,
 // held steady with Transpose while Flex Amount leaves the glide alone.
 struct FormantRun { std::vector<float> in, out; };
+
+// How the test voice is made. The held out voices change these, so they differ from the tuning voices in more than their vowel.
+struct VoiceStyle { double breathDb = -60.0, softAboveHz = 0.0; };
+VoiceStyle gStyle;
+
+std::vector<float> styledVoice (const std::vector<double>& f0, const voice::Vowel& v)
+{
+    auto x = voice::synth (f0, v, SR, gStyle.breathDb);
+    if (gStyle.softAboveHz > 0.0)
+    {
+        // A softer, darker source: one more gentle pole on the way out.
+        const double a = std::exp (-2.0 * M_PI * gStyle.softAboveHz / SR);
+        double y = 0.0;
+        const double before = (double) rms (x.data(), (int) x.size());
+        for (auto& sample : x) { y = (1.0 - a) * sample + a * y; sample = (float) y; }
+        const double trim = before / std::max (1.0e-12, (double) rms (x.data(), (int) x.size()));
+        for (auto& sample : x) sample = (float) (sample * trim);
+    }
+    return x;
+}
 FormantRun glideThroughTuner (const voice::Vowel& v, double centreHz, int transposeBy, bool preserve = true, float throat = 100.0f, int type = lowMale)
 {
     const double seconds = 6.0;
@@ -348,7 +370,7 @@ FormantRun glideThroughTuner (const voice::Vowel& v, double centreHz, int transp
     setParam (*p, "throat", throat);
     prepare (*p, 1, SR, 256);
     FormantRun r;
-    r.in = voice::synth (f0, v, SR);
+    r.in = styledVoice (f0, v);
     r.out = mono (render (*p, r.in, 256));
     return r;
 }
@@ -364,14 +386,14 @@ std::vector<float> controlVoice (const voice::Vowel& v, double centreHz, int shi
         const double tri = u < 0.5 ? 4.0 * u - 1.0 : 3.0 - 4.0 * u;
         f0[i] = moved * std::pow (2.0, 0.5 * tri);
     }
-    return voice::synth (f0, v, SR);
+    return styledVoice (f0, v);
 }
 
 // Formant position measure: which frequency scale lines the output's spectrum shape up with that real voice's? The first
 // tries at this (picking peaks and fitting harmonics) could not read a real voice to better than +/-3 to 10%, so this one
 // was checked against known moves instead: Formant Preserve off must read the pitch shift, and Throat Length its own ratio
 // (see testAddedControls). Peak height is reported too, because grains do broaden each peak: it stays in place, a bit flatter.
-struct FormantScore { double move = 0.0, moveReal = 0.0, floor = 0.0, level = 0.0, flatter = 0.0, colour = 0.0, colourFloor = 0.0, peakFlatter = 0.0; };
+struct FormantScore { double move = 0.0, moveReal = 0.0, floor = 0.0, level = 0.0, flatter = 0.0, colour = 0.0, colourFloor = 0.0, peakFlatter = 0.0, peakSharper = -100.0, peakFlatterCrossed = 0.0; };
 
 void scoreFormants (FormantScore& s, const voice::Vowel& v, double centre, int shift, int type = lowMale)
 {
@@ -422,6 +444,20 @@ void scoreFormants (FormantScore& s, const voice::Vowel& v, double centre, int s
         return spec[f1] - sum / count;
     };
     s.peakFlatter = std::max (s.peakFlatter, peakOverAround (fine) - peakOverAround (fineOut));
+    s.peakSharper = std::max (s.peakSharper, peakOverAround (fineOut) - peakOverAround (fine));
+    // Only when a harmonic of the new voice actually crosses the formant. If the whole glide stays above it, as with /e/ at 660 Hz up 3, there is nothing at that frequency but
+    // a skirt and the noise floor, in a real voice too. So this one is the reading of a peak's height, and the one above is kept as the limit it always was.
+    if (v.f[0] >= 1.02 * centre * std::pow (2.0, shift / 12.0) * std::sqrt (0.5))
+        s.peakFlatterCrossed = std::max (s.peakFlatterCrossed, peakOverAround (fine) - peakOverAround (fineOut));
+    if (const char* folder = std::getenv ("TUNE_SPEC"))
+    {
+        const auto fineIn = smoothSpectrumDb (run.in.data() + from, n, SR, 50.0);
+        const auto path = juce::File (folder).getChildFile (juce::String (v.name) + "_" + juce::String ((int) centre) + "_" + juce::String (shift) + ".csv");
+        juce::String text;
+        for (size_t hz = 0; hz < 6000; hz += 5)
+            text << (int) hz << "," << fine[hz] << "," << fineOut[hz] << "," << fineIn[hz] << "\n";
+        path.replaceWithText (text);
+    }
     if (std::getenv ("TUNE_DUMP") != nullptr)
         std::printf ("  vowel %s around %.0f Hz, shift %d: peak against surroundings %.2f dB real, %.2f dB out\n", v.name, centre, shift, peakOverAround (fine), peakOverAround (fineOut));
     if (std::getenv ("TUNE_DUMP") != nullptr)
@@ -479,6 +515,9 @@ void testFormants()
     chk (gEngine == 0 || high.move <= high.floor + prolimits::highNoteMoveOverFloor, "high notes around 440 and 660 Hz, +/-3 semitones, worst formant move against the input", high.move * 100.0, "%");
     // Read against the peak's surroundings. The test above reads against half the formant's frequency, which at these pitches is below the lowest harmonic, so it compares a peak with the noise floor.
     chk (gEngine == 0 || high.peakFlatter <= prolimits::highNoteF1Flatter, "high notes, first formant against its surroundings, flatter than a real voice, worst case", high.peakFlatter, "dB");
+    // A flatter peak is one way to be wrong and a peak that overshoots is the other, so both directions are held to a limit.
+    chk (gEngine == 0 || high.peakSharper <= prolimits::highNoteF1Sharper, "high notes, first formant sharper than a real voice, worst case", high.peakSharper, "dB");
+    note ("  high notes, the same reading only where a harmonic crosses the formant, worst", high.peakFlatterCrossed, "dB");
     note ("  high notes, level change, worst", high.level, "dB");
     note ("colour on high notes, worst", high.colour, "dB");
     note ("  and the input against that real voice, worst", high.colourFloor, "dB");
@@ -498,6 +537,232 @@ void testFormants()
     note ("  big shifts, level change, worst", big.level, "dB");
     note ("colour on big shifts, worst", big.colour, "dB");
     note ("  and the input against that real voice, worst", big.colourFloor, "dB");
+}
+
+// -------------------------------------------------------------------------------------------------- held out voices
+
+// One harmonic's level in a held note, in dB. Searched over a few cents, so a sub-cent pitch error does not read as a level error at high harmonics.
+double harmonicDb (const float* x, long n, double hz)
+{
+    double best = 0.0;
+    for (int cent = -6; cent <= 6; cent += 2)
+    {
+        const double w = 2.0 * M_PI * hz * std::pow (2.0, cent / 1200.0) / SR;
+        double re = 0.0, im = 0.0;
+        for (long i = 0; i < n; ++i)
+        {
+            const double h = 0.5 - 0.5 * std::cos (2.0 * M_PI * (double) i / (double) n);
+            re += h * x[i] * std::cos (w * (double) i);
+            im += h * x[i] * std::sin (w * (double) i);
+        }
+        best = std::max (best, re * re + im * im);
+    }
+    return 10.0 * std::log10 (best + 1.0e-20);
+}
+
+// What a listener gets on a held note: each output harmonic against the same harmonic of a real voice with the same vocal tract at the new pitch.
+// Worst harmonic and RMS, with the overall level taken out. Harmonics up to 4 kHz. This reads a held note, which the glides above do not.
+struct HeldScore { double rmsDb = 0.0, worstDb = 0.0; };
+HeldScore heldNoteError (const voice::Vowel& v, double centre, int shift, int type)
+{
+    const double moved = centre * std::pow (2.0, shift / 12.0);
+    auto p = make();
+    setParam (*p, "inputType", (float) type);
+    setParam (*p, "retune", 0.0f);
+    setParam (*p, "humanize", 0.0f);
+    setParam (*p, "flex", 100.0f);
+    setParam (*p, "transpose", (float) shift);
+    prepare (*p, 1, SR, 256);
+    const auto in = styledVoice (voice::steady (centre, 1.6, SR), v);
+    const auto out = mono (render (*p, in, 256));
+    const auto real = styledVoice (voice::steady (moved, 1.6, SR), v);
+    const long from = (long) (0.5 * SR), n = (long) (1.0 * SR);
+    std::vector<double> difference;
+    double mean = 0.0;
+    for (double hz = moved; hz <= 4000.0; hz += moved)
+    {
+        difference.push_back (harmonicDb (out.data() + from, n, hz) - harmonicDb (real.data() + from, n, hz));
+        mean += difference.back();
+    }
+    mean /= (double) difference.size();
+    HeldScore s;
+    for (double d : difference) { s.rmsDb += (d - mean) * (d - mean); s.worstDb = std::max (s.worstDb, std::abs (d - mean)); }
+    s.rmsDb = std::sqrt (s.rmsDb / (double) difference.size());
+    return s;
+}
+
+// Vowels, voices and pitches kept out of all tuning. Formants are the published averages for men and for women (Peterson and Barney, 1952). Bandwidths
+// and source differ on purpose, across what the literature gives for sung and spoken voices. They are read only to check, never to set anything.
+void testHeldOut()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; };
+    const std::vector<Held> low {
+        { { { 390, 1990, 2550, 3400, 4500 }, { 55, 100, 130, 150, 200 }, "ih" }, { -60.0, 0.0 } },
+        { { { 640, 1190, 2390, 3400, 4500 }, { 85, 100, 140, 150, 200 }, "uh" }, { -40.0, 0.0 } },
+        { { { 490, 1350, 1690, 3400, 4500 }, { 65, 75, 110, 150, 200 }, "er" }, { -60.0, 2500.0 } },
+        { { { 440, 1020, 2240, 3400, 4500 }, { 60, 85, 120, 150, 200 }, "oo" }, { -45.0, 4000.0 } } };
+    const std::vector<Held> high {
+        { { { 430, 2480, 3070, 4000, 5000 }, { 60, 100, 130, 180, 220 }, "ih women" }, { -60.0, 0.0 } },
+        { { { 760, 1400, 2780, 4000, 5000 }, { 95, 110, 150, 180, 220 }, "uh women" }, { -40.0, 0.0 } },
+        { { { 850, 1220, 2810, 4000, 5000 }, { 110, 100, 150, 180, 220 }, "ah women" }, { -60.0, 2500.0 } },
+        { { { 590, 920, 2710, 4000, 5000 }, { 70, 90, 130, 180, 220 }, "aw women" }, { -45.0, 4000.0 } },
+        { { { 470, 1160, 2680, 4000, 5000 }, { 65, 90, 130, 180, 220 }, "oo women" }, { -60.0, 0.0 } } };
+
+    FormantScore lowScore;
+    for (const auto& h : low)
+    {
+        gStyle = h.style;
+        for (double centre : { 98.0, 147.0, 220.0 })
+            for (int shift : { 3, -3, 2, -2, 1, -1 })
+                scoreFormants (lowScore, h.v, centre, shift);
+    }
+    chk (lowScore.move <= prolimits::hqFormantMove, "held out vowels and pitches, 98 to 220 Hz, worst formant move against the input", lowScore.move * 100.0, "%");
+    note ("  and the tool's floor there", lowScore.floor * 100.0, "%");
+    note ("  first formant against its surroundings, flatter than a real voice, worst", lowScore.peakFlatter, "dB");
+    note ("  colour, worst", lowScore.colour, "dB");
+    note ("  and the input against that real voice, worst", lowScore.colourFloor, "dB");
+    chk (lowScore.level <= prolimits::hqLevelChangeDb, "  level change, worst", lowScore.level, "dB");
+
+    FormantScore highScore;
+    double heldRms = 0.0, heldWorst = 0.0, heldMean = 0.0;
+    int heldCount = 0;
+    for (const auto& h : high)
+    {
+        gStyle = h.style;
+        for (double centre : { 392.0, 523.0, 587.0, 740.0 })
+            for (int shift : { 3, -3, 2, -2 })
+            {
+                scoreFormants (highScore, h.v, centre, shift, wideRange);
+                const auto held = heldNoteError (h.v, centre, shift, wideRange);
+                heldRms = std::max (heldRms, held.rmsDb);
+                heldWorst = std::max (heldWorst, held.worstDb);
+                heldMean += held.rmsDb;
+                ++heldCount;
+                if (std::getenv ("TUNE_DUMP") != nullptr)
+                    std::printf ("  held note, vowel %s, %.0f Hz, shift %d: harmonics against a real voice %.2f dB RMS, %.2f dB worst\n", h.v.name, centre, shift, held.rmsDb, held.worstDb);
+            }
+    }
+    gStyle = {};
+    chk (highScore.peakFlatterCrossed <= prolimits::highNoteF1Flatter, "held out vowels and pitches, 392 to 740 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst", highScore.peakFlatterCrossed, "dB");
+    note ("  the same with every case, including where the whole glide stays above the formant", highScore.peakFlatter, "dB");
+    chk (highScore.peakSharper <= prolimits::highNoteF1Sharper, "  first formant sharper than a real voice, worst", highScore.peakSharper, "dB");
+    chk (highScore.move <= highScore.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", highScore.move * 100.0, "%");
+    note ("  and the tool's floor there", highScore.floor * 100.0, "%");
+    note ("  colour, worst", highScore.colour, "dB");
+    note ("  and the input against that real voice, worst", highScore.colourFloor, "dB");
+    note ("  level change, worst", highScore.level, "dB");
+    note ("  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+    note ("  held notes, harmonics against a real voice, worst RMS", heldRms, "dB");
+    note ("  held notes, harmonics against a real voice, worst single harmonic", heldWorst, "dB");
+    chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+}
+
+// ----------------------------------------------------------------------------------------------- Low Latency null test
+
+std::vector<float> loadWav (const char* name);
+
+// Low Latency must come out bit for bit the same as version 1.2.1. tests/ll_null.txt holds a hash of the 32 bit samples for each case, written by 1.2.1.
+// TUNE_LL_RAW=folder also writes the samples, to read a largest sample difference against a saved copy of an older build.
+void testLowLatencyNull()
+{
+    const auto file = juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory().getChildFile ("ll_null.txt");
+    const bool writing = std::getenv ("TUNE_LL_WRITE") != nullptr;
+    std::map<std::string, std::string> stored;
+    {
+        std::ifstream in (file.getFullPathName().toStdString());
+        std::string name, value;
+        while (in >> name >> value) stored[name] = value;
+    }
+    std::map<std::string, std::string> found;
+    const auto hashed = [] (const juce::AudioBuffer<float>& b)
+    {
+        unsigned long long h = 1469598103934665603ULL;
+        for (int ch = 0; ch < b.getNumChannels(); ++ch)
+            for (int i = 0; i < b.getNumSamples(); ++i)
+            {
+                unsigned int bits = 0;
+                std::memcpy (&bits, b.getReadPointer (ch) + i, 4);
+                h = (h ^ bits) * 1099511628211ULL;
+            }
+        char text[32];
+        std::snprintf (text, sizeof (text), "%016llx", h);
+        return std::string (text);
+    };
+    const auto run = [&] (const std::string& name, const std::vector<float>& x, double sr, const std::function<void (PluginProcessor&)>& set)
+    {
+        auto p = make();
+        setParam (*p, "retune", 0.0f);
+        setParam (*p, "humanize", 0.0f);
+        setParam (*p, "flex", 0.0f);
+        set (*p);
+        prepare (*p, 1, sr, 256);
+        const auto out = render (*p, x, 256);
+        found[name] = hashed (out);
+        if (const char* folder = std::getenv ("TUNE_LL_RAW"))
+        {
+            std::ofstream raw (std::string (folder) + "/" + name + ".raw", std::ios::binary);
+            raw.write ((const char*) out.getReadPointer (0), (std::streamsize) out.getNumSamples() * 4);
+        }
+    };
+    const auto a220 = voice::synth (voice::steady (223.8, 3.0, SR), voice::vowelA, SR);
+    const auto vib = voice::synth (voice::vibrato (330.0, 3.0, SR, 40.0, 5.5), voice::vowelE, SR);
+    const auto high = voice::synth (voice::steady (560.0, 3.0, SR), voice::vowelO, SR);
+    run ("hard_a220", a220, SR, [] (PluginProcessor&) {});
+    run ("natural_vibrato_e330", vib, SR, [] (PluginProcessor& p) { setParam (p, "retune", 40.0f); setParam (p, "humanize", 40.0f); });
+    run ("high_o560_wide", high, SR, [] (PluginProcessor& p) { setParam (p, "inputType", (float) wideRange); });
+    run ("transpose_up3", a220, SR, [] (PluginProcessor& p) { setParam (p, "transpose", 3.0f); });
+    run ("transpose_down7_wide", vib, SR, [] (PluginProcessor& p) { setParam (p, "inputType", (float) wideRange); setParam (p, "transpose", -7.0f); });
+    run ("throat_120", a220, SR, [] (PluginProcessor& p) { setParam (p, "throat", 120.0f); });
+    run ("formants_off", a220, SR, [] (PluginProcessor& p) { setParam (p, "formantPreserve", 0.0f); setParam (p, "transpose", 2.0f); });
+    run ("classic", vib, SR, [] (PluginProcessor& p) { setParam (p, "classic", 1.0f); });
+    run ("mix50", a220, SR, [] (PluginProcessor& p) { setParam (p, "mix", 50.0f); });
+    run ("rate441", voice::synth (voice::steady (223.8, 3.0, 44100.0), voice::vowelA, 44100.0), 44100.0, [] (PluginProcessor&) {});
+    run ("rate96", voice::synth (voice::steady (223.8, 3.0, 96000.0), voice::vowelA, 96000.0), 96000.0, [] (PluginProcessor&) {});
+    for (const char* name : { "speech_samantha", "speech_daniel", "sung_cellos", "held_kathy" })
+    {
+        const auto x = loadWav ((std::string (name) + ".wav").c_str());
+        const bool low = std::string (name).find ("daniel") != std::string::npos;
+        run (std::string ("say_hard_") + name, x, SR, [low] (PluginProcessor& p) { setParam (p, "inputType", (float) (low ? lowMale : altoTenor)); });
+        run (std::string ("say_natural_") + name, x, SR, [low] (PluginProcessor& p) { setParam (p, "inputType", (float) (low ? lowMale : altoTenor)); setParam (p, "retune", 40.0f); setParam (p, "humanize", 40.0f); });
+    }
+    // What the host sees: every parameter's ID, name and range, and the latency of each Input Type.
+    {
+        auto p = make();
+        unsigned long long h = 1469598103934665603ULL;
+        const auto add = [&h] (const juce::String& text) { for (auto c : text) h = (h ^ (unsigned long long) c) * 1099511628211ULL; };
+        for (auto* prm : p->getParameters())
+            if (auto* with = dynamic_cast<juce::RangedAudioParameter*> (prm))
+            {
+                add (with->getParameterID()); add (with->getName (64));
+                add (juce::String (with->getNormalisableRange().start)); add (juce::String (with->getNormalisableRange().end));
+            }
+        char text[32];
+        std::snprintf (text, sizeof (text), "%016llx", h);
+        found["parameters"] = text;
+        for (int type : { soprano, altoTenor, lowMale, wideRange })
+        {
+            setParam (*p, "inputType", (float) type);
+            prepare (*p, 1, SR, 256);
+            found["latency_" + std::to_string (type)] = std::to_string (p->getLatencySamples());
+        }
+    }
+    if (writing)
+    {
+        std::ofstream out (file.getFullPathName().toStdString());
+        for (const auto& [name, value] : found) out << name << " " << value << "\n";
+        return;
+    }
+    int same = 0;
+    for (const auto& [name, value] : found)
+    {
+        const bool ok = stored.count (name) > 0 && stored[name] == value;
+        same += ok ? 1 : 0;
+        if (! ok)
+            check (false, "[LL] null test against 1.2.1, case " + name);
+    }
+    check (same == (int) found.size() && ! found.empty(), "[LL] null test against 1.2.1: output, parameters and latency bit for bit the same, cases", (double) same);
 }
 
 // --------------------------------------------------------------------------------------------------------- vibrato
@@ -2426,6 +2691,10 @@ int main (int argc, char** argv)
     }
     gEngine = 0;
     if (want ("engines")) testEngines();
+    gEngine = 1;
+    if (want ("heldout")) testHeldOut();
+    gEngine = 0;
+    if (want ("llnull")) testLowLatencyNull();
     if (want ("window")) testWindow();
     return finish();
 }

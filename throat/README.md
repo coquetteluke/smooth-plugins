@@ -6,6 +6,18 @@ Reshapes the vocal tract of a voice without moving its pitch. It analyses the fo
 
 In your host: Audio Units > Luke Garito > Smooth Throat. AU code `aufx SThr Luke`. Mono and stereo. Latency is 1536 samples at 44.1 and 48 kHz (34.8 ms and 32.0 ms) and 3072 samples at 88.2 and 96 kHz (34.8 ms and 32.0 ms), the same when bypassed.
 
+## The window
+
+The tube is your singer's vocal tract seen from the side: cords at the bottom, lips at the right. **Bone** is the singer's own shape and **red** is the model. Both move with the voice, because the walls are worked out from where the formants sit. **Gray** is the realistic range: between 0.80 and 1.20 in width and length.
+
+- Drag a point out or in for width, and along the tube for its place. Shift gives a finer drag. Double-click resets a point. Reset puts Length, Width and all five points back to the singer's own.
+- Under the bend: pitch and F1 to F5 in Hz, original against model, above the two formant curves. Pitch stays the same in both rows.
+- The table under the tube holds every point's numbers. Click one to type, or drag it up and down.
+- Advanced holds the voice types, Pulse, Air tone (Breath High Pass), Range, Precision and Level Match.
+- Drag the corner to resize. The size and whether Advanced is open are saved with the session, and nothing else is added.
+
+The live shape is a picture of the formants through a simple tube formula, compressed to fit. It is the same physics the engine uses, but it is not a measurement of a real throat, and it drives nothing in the sound. Pictures are in `docs/window`.
+
 ## Controls
 
 Ratios read as plain numbers, where 1.00 is the singer's own. Between 0.80 and 1.20 is the realistic range.
@@ -64,6 +76,8 @@ input > clean bad samples > dry delay (same length as the engine) --------------
 For a later window, `PluginProcessor::analysis()` gives input and output envelopes on 96 log spaced points, F1 to F5, pitch and voicing, without blocking audio.
 
 ## What was measured
+
+Window: `tests/NullTest.cpp` compares against renders saved by the 0.2.0 build before any window code went in (`tests/baseline`). Seven cases on two macOS `say` voices, with the window closed, open and drawing, and being opened and closed during audio: every sample identical. It also checks that opening the window writes no parameter, that every parameter has a place on screen, that automation moves the controls, that a drag has begin and end gestures, and that the handle lands under the mouse.
 
 Full list in `tests/results.txt`. Synthetic voices are a glottal pulse through formant filters, with the pulse's own level taken back off when reading formants. Real speech is two macOS `say` voices, which are synthetic too. **None of this proves it sounds good on a sung vocal.** That needs ears.
 

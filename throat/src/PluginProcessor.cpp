@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "StateGuard.h"
+#include "editor/ThroatEditor.h"
 
 namespace
 {
@@ -253,6 +254,11 @@ void PluginProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, ju
     render (buffer, true); // keeps latency and fades through the same path
 }
 
+juce::AudioProcessorEditor* PluginProcessor::createEditor()
+{
+    return new ThroatEditor (*this);
+}
+
 int PluginProcessor::getNumPrograms() { return (int) std::size (presets); }
 
 const juce::String PluginProcessor::getProgramName (int i)
@@ -290,14 +296,25 @@ void PluginProcessor::setCurrentProgram (int i)
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     if (auto xml = apvts.copyState().createXml())
+    {
+        xml->setAttribute ("windowWidth", windowWidth.load (std::memory_order_relaxed));
+        xml->setAttribute ("advancedOpen", advancedOpen.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, dest);
+    }
 }
 
 void PluginProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
         if (xml->hasTagName (apvts.state.getType()))
+        {
+            // The window's own two values are read here and kept out of the parameter tree. Sessions from before the window have neither.
+            windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute ("windowWidth", defaultWindowWidth)), std::memory_order_relaxed);
+            advancedOpen.store (xml->getBoolAttribute ("advancedOpen", false), std::memory_order_relaxed);
+            xml->removeAttribute ("windowWidth");
+            xml->removeAttribute ("advancedOpen");
             applySafeState (apvts, *xml);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PluginProcessor(); }

@@ -15,6 +15,7 @@
  #define HAS_WINDOW 0
 #endif
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <thread>
 #include <vector>
@@ -75,7 +76,7 @@ static void configure (PluginProcessor& p, const Case& c)
         moveEverything (p);
 }
 
-static std::vector<float> renderAudio (PluginProcessor& p, const std::vector<float>& left, const std::vector<float>& right)
+static std::vector<float> renderAudio (PluginProcessor& p, const std::vector<float>& left, const std::vector<float>& right, int pauseMs = 0)
 {
     std::vector<float> out ((size_t) kSamples * 2);
     juce::AudioBuffer<float> b (2, kBlock);
@@ -92,6 +93,8 @@ static std::vector<float> renderAudio (PluginProcessor& p, const std::vector<flo
             out[(size_t) (at + i) * 2] = b.getSample (0, i);
             out[(size_t) (at + i) * 2 + 1] = b.getSample (1, i);
         }
+        if (pauseMs > 0)
+            std::this_thread::sleep_for (std::chrono::milliseconds (pauseMs));
     }
     return out;
 }
@@ -176,7 +179,7 @@ int main (int argc, char** argv)
         }
 
        #if HAS_WINDOW
-        // Window open and drawing, audio on its own thread as in a host. Slowed down so that many frames land inside the render.
+        // Window open and drawing, audio on its own thread as in a host. Paced, so that many frames land inside the render.
         {
             PluginProcessor p;
             configure (p, c);
@@ -188,7 +191,7 @@ int main (int argc, char** argv)
 
             std::vector<float> got;
             std::atomic<bool> done { false };
-            std::thread audio ([&] { got = renderAudio (p, left, right); done = true; });
+            std::thread audio ([&] { got = renderAudio (p, left, right, 5); done = true; });
             int frames = 0;
             while (! done.load())
             {
@@ -217,7 +220,7 @@ int main (int argc, char** argv)
             prepare (p);
             std::vector<float> got;
             std::atomic<bool> done { false };
-            std::thread audio ([&] { got = renderAudio (p, left, right); done = true; });
+            std::thread audio ([&] { got = renderAudio (p, left, right, 5); done = true; });
             int opened = 0;
             while (! done.load())
             {
@@ -232,6 +235,121 @@ int main (int argc, char** argv)
         }
        #endif
     }
+
+   #if HAS_WINDOW
+    // The window's own promises. Every control is a real parameter that moves both ways, with gestures, and the window saves only its two values.
+    {
+        const auto expect = [&failures] (bool ok, const juce::String& what)
+        {
+            failures += ok ? 0 : 1;
+            std::printf ("%s  window: %s\n", ok ? "PASS" : "FAIL", what.toRawUTF8());
+        };
+
+        struct Counter final : public juce::AudioProcessorListener
+        {
+            int changes = 0, begins = 0, ends = 0;
+            void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override  { ++changes; }
+            void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+            void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override { ++begins; }
+            void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int) override   { ++ends; }
+        };
+
+        PluginProcessor p;
+        prepare (p);
+        Counter counter;
+        p.addListener (&counter);
+        std::unique_ptr<ThroatEditor> window (dynamic_cast<ThroatEditor*> (p.createEditor()));
+        window->setVisible (true);
+        for (int i = 0; i < 20; ++i) window->tick (1.0 / 30.0);
+        expect (counter.changes == 0 && counter.begins == 0, "opening and running it writes no parameter");
+
+        auto& panel = window->getPanel();
+        int missing = 0;
+        for (auto* prm : p.getParameters())
+            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (prm))
+                if (withId->paramID != "outputLevel" && panel.findChildWithID (withId->paramID) == nullptr)
+                {
+                    std::printf ("      no control for %s\n", withId->paramID.toRawUTF8());
+                    ++missing;
+                }
+        expect (missing == 0, "every parameter has a place on screen, " + juce::String (p.getParameters().size()) + " parameters");
+
+        // Automation moves the window.
+        auto* lengthParam = p.apvts.getParameter ("length");
+        lengthParam->setValueNotifyingHost (lengthParam->convertTo0to1 (1.3f));
+        auto* slider = dynamic_cast<juce::Slider*> (panel.findChildWithID ("length"));
+        expect (slider != nullptr && std::abs (slider->getValue() - 1.3) < 0.002, "automation moves the Length control");
+
+        // A drag on the tract moves real parameters, inside begin and end gestures. It goes through the real mouse handlers.
+        auto& view = window->getView();
+        view.setBounds (view.getBounds());
+        window->tick (1.0 / 30.0);
+        const auto event = [&view] (juce::Point<float> at)
+        {
+            const auto now = juce::Time::getCurrentTime();
+            return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &view, &view, now, at, now, 1, false);
+        };
+        const auto widthBefore = p.apvts.getRawParameterValue ("width4")->load(), placeBefore = p.apvts.getRawParameterValue ("place4")->load();
+        counter.begins = counter.ends = 0;
+        const auto from = view.handlePosition (3);
+        const auto to = from + juce::Point<float> (40.0f, -18.0f);
+        view.mouseDown (event (from));
+        view.mouseDrag (event (to));
+        window->tick (1.0 / 30.0);
+        const auto handleAfter = view.handlePosition (3);
+        view.mouseUp (event (to));
+        const auto widthAfter = p.apvts.getRawParameterValue ("width4")->load(), placeAfter = p.apvts.getRawParameterValue ("place4")->load();
+        expect (widthAfter > widthBefore * 1.05f && placeAfter > placeBefore + 2.0f, "dragging the roof point out and along moves Width 4 from " + juce::String (widthBefore, 2) + " to " + juce::String (widthAfter, 2)
+                                                                                     + " and Position 4 from " + juce::String (placeBefore, 1) + " to " + juce::String (placeAfter, 1));
+        expect (handleAfter.getDistanceFrom (to) < 2.0f, "the handle lands under the mouse, within " + juce::String (handleAfter.getDistanceFrom (to), 2) + " pixels");
+        expect (counter.begins == 2 && counter.ends == 2, "the drag has one begin and one end for each of its two parameters");
+
+        // Reset takes the shape home, and nothing else.
+        auto* breathParam = p.apvts.getParameter ("breath");
+        breathParam->setValueNotifyingHost (0.3f);
+        window->resetShape();
+        bool home = true;
+        for (const char* id : { "length", "width", "width1", "width2", "width3", "width4", "width5", "place2", "place3", "place4", "place5" })
+            home = home && p.apvts.getParameter (id)->getValue() == p.apvts.getParameter (id)->getDefaultValue();
+        expect (home && std::abs (breathParam->getValue() - 0.3f) < 0.002f, "Reset puts the shape back and leaves Breath alone");
+
+        // Typing goes through the same parameter.
+        auto* typed = dynamic_cast<ui::ParamSlider*> (panel.findChildWithID ("width2"));
+        typed->applyTyped ("1.5");
+        expect (std::abs (p.apvts.getRawParameterValue ("width2")->load() - 1.5f) < 0.01f, "typing 1.5 sets Width 2");
+        typed->applyTyped ("nonsense");
+        expect (std::abs (p.apvts.getRawParameterValue ("width2")->load() - 1.5f) < 0.01f, "typing nonsense changes nothing");
+
+        // The window's two values survive a session, and stay in range. A session from before the window opens at the default size.
+        window->setAdvancedOpen (true, false);
+        p.windowWidth.store (1400);
+        juce::MemoryBlock state;
+        p.getStateInformation (state);
+        window.reset();
+        p.removeListener (&counter);
+
+        PluginProcessor q;
+        q.setStateInformation (state.getData(), (int) state.getSize());
+        expect (q.windowWidth.load() == 1400 && q.advancedOpen.load(), "window size and Advanced come back with the session");
+        expect (! q.apvts.state.hasProperty ("windowWidth") && ! q.apvts.state.hasProperty ("advancedOpen"), "they stay out of the parameter tree");
+
+        auto xml = q.getXmlFromBinary (state.getData(), (int) state.getSize());
+        xml->setAttribute ("windowWidth", 999999);
+        juce::MemoryBlock damaged;
+        q.copyXmlToBinary (*xml, damaged);
+        q.setStateInformation (damaged.getData(), (int) damaged.getSize());
+        expect (q.windowWidth.load() == PluginProcessor::maxWindowWidth, "a damaged window size is clamped");
+
+        juce::MemoryBlock old;
+        PluginProcessor fromBefore;
+        const bool loaded = stateFile().loadFileAsData (old);
+        fromBefore.setStateInformation (old.getData(), (int) old.getSize());
+        expect (loaded && fromBefore.windowWidth.load() == PluginProcessor::defaultWindowWidth && ! fromBefore.advancedOpen.load()
+                    && std::abs (fromBefore.apvts.getRawParameterValue ("length")->load() - 1.17f) < 0.002f,
+                "a 0.2.0 session loads its settings and opens the window at the default size");
+    }
+   #endif
 
     std::printf (failures == 0 ? "null test passed\n" : "%d null test failures\n", failures);
     return failures == 0 ? 0 : 1;

@@ -1,0 +1,49 @@
+PASS  default    no window          null exact, 0 of 144000 samples differ
+PASS  default    window drawing     null exact, 0 of 144000 samples differ
+PASS  default    window drawing     703 frames drawn, saved state unchanged
+PASS  default    window reopening   null exact, 0 of 144000 samples differ
+INFO  default    opened and closed the window 1335 times during audio
+PASS  big-chest  no window          null exact, 0 of 144000 samples differ
+PASS  big-chest  window drawing     null exact, 0 of 144000 samples differ
+PASS  big-chest  window drawing     700 frames drawn, saved state unchanged
+PASS  big-chest  window reopening   null exact, 0 of 144000 samples differ
+INFO  big-chest  opened and closed the window 1212 times during audio
+PASS  pinched    no window          null exact, 0 of 144000 samples differ
+PASS  pinched    window drawing     null exact, 0 of 144000 samples differ
+PASS  pinched    window drawing     692 frames drawn, saved state unchanged
+PASS  pinched    window reopening   null exact, 0 of 144000 samples differ
+INFO  pinched    opened and closed the window 1214 times during audio
+PASS  whisper    no window          null exact, 0 of 144000 samples differ
+PASS  whisper    window drawing     null exact, 0 of 144000 samples differ
+PASS  whisper    window drawing     693 frames drawn, saved state unchanged
+PASS  whisper    window reopening   null exact, 0 of 144000 samples differ
+INFO  whisper    opened and closed the window 1261 times during audio
+PASS  giant      no window          null exact, 0 of 144000 samples differ
+PASS  giant      window drawing     null exact, 0 of 144000 samples differ
+PASS  giant      window drawing     652 frames drawn, saved state unchanged
+PASS  giant      window reopening   null exact, 0 of 144000 samples differ
+INFO  giant      opened and closed the window 1096 times during audio
+PASS  blend      no window          null exact, 0 of 144000 samples differ
+PASS  blend      window drawing     null exact, 0 of 144000 samples differ
+PASS  blend      window drawing     638 frames drawn, saved state unchanged
+PASS  blend      window reopening   null exact, 0 of 144000 samples differ
+INFO  blend      opened and closed the window 1221 times during audio
+PASS  session    no window          null exact, 0 of 144000 samples differ
+PASS  session    window drawing     null exact, 0 of 144000 samples differ
+PASS  session    window drawing     645 frames drawn, saved state unchanged
+PASS  session    window reopening   null exact, 0 of 144000 samples differ
+INFO  session    opened and closed the window 1077 times during audio
+PASS  window: opening and running it writes no parameter
+PASS  window: every parameter has a place on screen, 23 parameters
+PASS  window: automation moves the Length control
+PASS  window: dragging the roof point out and along moves Width 4 from 1.00 to 1.62 and Position 4 from 68.0 to 73.8
+PASS  window: the handle lands under the mouse, within 0.78 pixels
+PASS  window: the drag has one begin and one end for each of its two parameters
+PASS  window: Reset puts the shape back and leaves Breath alone
+PASS  window: typing 1.5 sets Width 2
+PASS  window: typing nonsense changes nothing
+PASS  window: window size and Advanced come back with the session
+PASS  window: they stay out of the parameter tree
+PASS  window: a damaged window size is clamped
+PASS  window: a 0.2.0 session loads its settings and opens the window at the default size
+null test passed

@@ -42,7 +42,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor (*this); }
+    juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Smooth Throat"; }
@@ -67,6 +67,11 @@ public:
     // For a custom window later and for tests: input and output envelopes, tracked formants, pitch and voicing. Never blocks.
     const formant::FormantEngine::Analysis& analysis() const noexcept { return engine.analysis(); }
     ReadingParameter* outputLevel = nullptr;
+
+    // The only things the window adds to a saved session. Never touched by the audio thread.
+    static constexpr int defaultWindowWidth = 1120, minWindowWidth = 840, maxWindowWidth = 1792;
+    std::atomic<int> windowWidth { defaultWindowWidth };
+    std::atomic<bool> advancedOpen { false };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();

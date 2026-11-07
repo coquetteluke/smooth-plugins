@@ -308,6 +308,6 @@ PASS  Preset Full Whisper on speech, level change = 0.058 dB
 PASS  Preset Giant on speech, level change = -0.033 dB
 PASS  Preset Tiny on speech, level change = -0.048 dB
 PASS  Preset Subtle Blend on speech, level change = -0.097 dB
-PASS  CPU, neutral, stereo 48 kHz, percent of one core = 1.206 %
-PASS  CPU, everything on, stereo 48 kHz, percent of one core = 1.601 %
+PASS  CPU, neutral, stereo 48 kHz, percent of one core = 1.261 %
+PASS  CPU, everything on, stereo 48 kHz, percent of one core = 1.682 %
 RESULT PASS  0 failures

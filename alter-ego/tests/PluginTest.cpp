@@ -221,7 +221,8 @@ void testPitch()
 
 void testPitchFormants()
 {
-    double worst = 0.0, worstReal = 0.0, worstFloor = 0.0, best = 0.0;
+    double worst = 0.0, worstReal = 0.0, worstFloor = 0.0, best = 0.0, worstUnreadable = 0.0;
+    int unreadable = 0;
     const auto one = [&] (const voice::Vowel& v, double centre, double shift)
     {
         auto p = make();
@@ -234,13 +235,21 @@ void testPitchFormants()
         const double m = formantMove (in, out, v, smoothing);
         const double r = formantMove (control, out, v, smoothing);
         const double f = formantMove (control, in, v, smoothing);
-        // The same two readings as for Formant Shift. See there. Here the real voice has the same tract at the new pitch.
-        best = std::max (best, std::min (m, r));
-        if (std::min (m, r) > limits::pitchFormantFraction || std::getenv ("MORPH_DUMP") != nullptr)
-            std::printf ("  vowel %s around %.0f Hz, shift %+.0f: against input %.1f%%, against a real voice there %.1f%%, input against that voice %.1f%%\n", v.name, centre, shift, 100 * m, 100 * r, 100 * f);
         worst = std::max (worst, m);
         worstReal = std::max (worstReal, r);
         worstFloor = std::max (worstFloor, f);
+        // The same two readings as for Formant Shift. See there. Here the real voice has the same tract at the new pitch.
+        // If the input against that real voice, which share a vocal tract, already reads over the limit, the tool cannot judge this
+        // case at all: harmonics are too far apart for the shape to show. Those are counted and reported, not passed or failed.
+        if (f > limits::pitchFormantFraction)
+        {
+            ++unreadable;
+            worstUnreadable = std::max (worstUnreadable, r);
+            return;
+        }
+        best = std::max (best, std::min (m, r));
+        if (std::min (m, r) > limits::pitchFormantFraction || std::getenv ("MORPH_DUMP") != nullptr)
+            std::printf ("  vowel %s around %.0f Hz, shift %+.0f: against input %.1f%%, against a real voice there %.1f%%, input against that voice %.1f%%\n", v.name, centre, shift, 100 * m, 100 * r, 100 * f);
     };
     for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU })
         for (double centre : { 110.0, 165.0, 247.0 })
@@ -250,6 +259,8 @@ void testPitchFormants()
     info ("  output against input on its own, worst", worst * 100.0, "%");
     info ("  output against a real voice at the new pitch on its own, worst", worstReal * 100.0, "%");
     info ("  and the tool's floor: the input against that real voice, worst", worstFloor * 100.0, "%");
+    info ("  cases the tool cannot judge, because its floor is over the limit (high voice, wide harmonics)", unreadable);
+    info ("  those cases against a real voice, worst, for what it is worth", worstUnreadable * 100.0, "%");
 
     best = 0.0;
     for (auto* v : { &voice::vowelO, &voice::vowelAe })

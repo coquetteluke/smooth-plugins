@@ -105,6 +105,12 @@ public:
         lfoPhase = 0.0;
         lastPeriod = 0.0;
         readingOutHz = 0.0;
+        wantedOutputPeriod = 0.0;
+        pulseNext = 0.0;
+        pulsePeriod = 100.0;
+        pulseGate = 0.0;
+        pulseRing.fill (0.0);
+        pulseClock = 0;
         std::fill (history.begin(), history.end(), 0);
         std::fill (periodHistory.begin(), periodHistory.end(), 0.0);
         smoothedPeriod = 0.0;
@@ -187,6 +193,7 @@ public:
             if (outputIndex >= 0 && (outputIndex & (EnvelopeEngine::updateEvery - 1)) == 0)
                 envelope.synthesisAt (outputIndex, synthesisK.data(), synthesisGain);
 
+            const double pulse = current.robot > 0.0 ? nextPulse() : 0.0;
             const double noise = current.whisper > 0.0 ? nextGaussian() : 0.0;
             const double keep = std::cos (0.5 * M_PI * current.whisper), breath = std::sin (0.5 * M_PI * current.whisper);
 
@@ -200,6 +207,12 @@ public:
                 dry[ch] = hasDry ? dryLine[(size_t) ch][(size_t) dryAt] : 0.0f;
                 double e = (double) excitation[ch];
                 breathPower[(size_t) ch] += breathRate * (e * e - breathPower[(size_t) ch]);
+                if (current.robot > 0.0)
+                {
+                    // Robot's buzz: the voiced part of the sound comes mostly from a pure pulse train at the set note.
+                    const double share = 0.85 * current.robot * current.robot * pulseGate;
+                    e = (1.0 - share) * e + share * pulse * std::sqrt (std::max (breathPower[(size_t) ch], 0.0) * pulsePeriod);
+                }
                 if (current.whisper > 0.0)
                     e = keep * e + breath * noise * std::sqrt (std::max (breathPower[(size_t) ch], 0.0));
                 double y = latticeSynth (synthesisGain * e, synthesisK.data(), synthesisState[(size_t) ch].data(), order) + tilt * tiltOut[(size_t) ch];
@@ -266,6 +279,35 @@ private:
         tiltIn.fill (0.0);
         tiltOut.fill (0.0);
         lastMono = 0.0f;
+    }
+
+    // One sample of a band limited pulse train at the wanted output period. Each pulse has energy 1.
+    double nextPulse() noexcept
+    {
+        const long long now = pulseClock;
+        ++pulseClock;
+        pulsePeriod = std::max (control.inputPeriod > 0.0 ? wantedOutputPeriod : control.robotPeriod, 8.0);
+        if (pulseNext < (double) now + pulseTaps)
+        {
+            if (pulseNext < (double) now - pulseTaps)
+                pulseNext = (double) now + pulseTaps; // first pulse, or starting over
+            const long long whole = (long long) std::floor (pulseNext);
+            const double fraction = pulseNext - (double) whole;
+            for (int t = -pulseTaps + 1; t <= pulseTaps; ++t)
+            {
+                const double x = (double) t - fraction;
+                const double sinc = std::abs (x) < 1.0e-9 ? 1.0 : std::sin (M_PI * x) / (M_PI * x);
+                const double hann = 0.5 + 0.5 * std::cos (M_PI * x / (pulseTaps + 1));
+                const long long at = whole + t;
+                if (at >= now)
+                    pulseRing[(size_t) (at & (pulseRingSize - 1))] += sinc * hann;
+            }
+            pulseNext += pulsePeriod;
+        }
+        double& slot = pulseRing[(size_t) (now & (pulseRingSize - 1))];
+        const double out = slot;
+        slot = 0.0;
+        return out;
     }
 
     double nextUniform() noexcept
@@ -385,6 +427,8 @@ private:
         control.robotPeriod = sr / std::pow (2.0, fromRobot);
         control.vibratoScale = std::pow (2.0, -vibrato / 1200.0);
         readingOutHz = std::pow (2.0, fromInput + current.robot * (fromRobot - fromInput) + vibrato / 1200.0);
+        wantedOutputPeriod = sr / readingOutHz;
+        pulseGate += fadeSmooth * ((control.voiced ? 1.0 : 0.0) - pulseGate);
         control.noCorrection = std::abs (current.pitch + rangeNow) < 1.0e-3 && current.robot <= 0.0 && current.monster <= 0.0 && std::abs (current.vibrato) <= 0.0;
         control.alternate = 0.10 * current.monster;
         control.gainAlternate = 0.35 * current.monster;
@@ -414,7 +458,10 @@ private:
     Settings wanted;
     Smoothed current;
     double pitchSmooth = 0.1, formantSmooth = 0.1, blendSmooth = 0.1, fadeSmooth = 0.1, rangeSmooth = 0.01, learnRate = 0.001;
-    double readingOutHz = 0.0;
+    double readingOutHz = 0.0, wantedOutputPeriod = 0.0, pulseNext = 0.0, pulsePeriod = 100.0, pulseGate = 0.0;
+    static constexpr int pulseTaps = 6, pulseRingSize = 32;
+    std::array<double, pulseRingSize> pulseRing {};
+    long long pulseClock = 0;
     double lfoPhase = 0.0, lastPeriod = 0.0, learned = 0.0, rangeHeld = 0.0, rangeNow = 0.0, jitterHeld = 0.0;
     int learnedFrames = 0;
     uint64_t randomState = 0x9E3779B97F4A7C15ull;

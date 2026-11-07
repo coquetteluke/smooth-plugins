@@ -256,19 +256,19 @@ private:
         return sum / (2 * reach + 1);
     }
 
-    // Where the glottal pulse sits against a mark, in samples. Marks stay on one point of the waveform, but that
-    // point can be anywhere in the cycle, and when grains spread out, a pulse near the edge of the window would be lost.
-    // It is read once on entering a voiced sound and then only creeps: a cycle can have two near equal peaks, and following the
-    // bigger one from grain to grain was heard, and measured, as tens of cents of wobble.
+    // Where the glottal pulse sits against a mark, in samples. Marks stay on one point of the waveform, but that point can be anywhere
+    // in the cycle, and when grains spread out, a pulse near the edge of the window would be lost. It also creeps as a voice glides.
+    // First read: the loudest point in a whole period. After that the centre of energy close to where it was, which, unlike the
+    // loudest point, cannot flip between two near equal peaks. Following the loudest point measured as tens of cents of wobble.
     void updatePulse (double markPosition, double period) noexcept
     {
         const double centre = markPosition + (pulseKnown ? pulseShift : 0.0);
-        const double reach = pulseKnown ? 0.1 * period : 0.5 * period;
+        const double reach = pulseKnown ? 0.25 * period : 0.5 * period;
         const long long from = (long long) std::floor (centre - reach), to = (long long) std::ceil (centre + reach);
         if (to >= written || from < 0 || written - from >= size)
             return;
         const int mask = size - 1;
-        double best = -1.0;
+        double best = -1.0, sum = 0.0, moment = 0.0;
         long long at = from;
         for (long long i = from; i <= to; ++i)
         {
@@ -279,15 +279,17 @@ private:
                 e += v * v;
             }
             if (e > best) { best = e; at = i; }
+            e *= e;
+            sum += e;
+            moment += e * (double) (i - from);
         }
-        const double found = (double) at - markPosition;
-        if (pulseKnown)
-            pulseShift += 0.003 * (found - pulseShift);
-        else
+        if (! pulseKnown)
         {
-            pulseShift = found;
+            pulseShift = (double) at - markPosition;
             pulseKnown = true;
         }
+        else if (sum > 1.0e-30)
+            pulseShift += 0.003 * ((double) from + moment / sum - markPosition - pulseShift);
     }
 
     void addGrain (const Grain& g) noexcept
@@ -397,7 +399,6 @@ private:
         else
         {
             const double period = c.inputPeriod;
-            updatePulse (tracker.mark (std::clamp (lastMarkUsed + 1, tracker.firstMark(), tracker.lastMark())).position, period);
             const double shift = pulseShift;
             // In order, one mark per grain, unless the output has moved over 0.6 periods from where the input is.
             long long q = std::clamp (lastMarkUsed + 1, tracker.firstMark(), tracker.lastMark());
@@ -409,7 +410,9 @@ private:
             const double furthest = (double) (latency - interpolatorReach);
             while (q > tracker.firstMark() && tracker.mark (q).position + shift - g.mark > furthest)
                 --q;
-            double offset = steadyMark (tracker, q) + shift - g.mark;
+            const double steady = steadyMark (tracker, q);
+            updatePulse (steady, period);
+            double offset = steady + pulseShift - g.mark;
             if (offset > furthest)
                 offset -= period;
             if (std::abs (offset) > 2.1 * period || offset > furthest)

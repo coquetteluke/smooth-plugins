@@ -54,6 +54,7 @@ public:
         if (const char* e = std::getenv ("DHIGH")) changingDb = std::atof (e);
         if (const char* e = std::getenv ("WIDE")) wideAmount = std::atof (e);
         if (const char* e = std::getenv ("BASE")) baseWide = std::atof (e);
+        if (const char* e = std::getenv ("HELD")) longMemory = std::atof (e);
         lagWindow.resize ((size_t) order + 1);
         for (int l = 0; l <= order; ++l)
         {
@@ -219,6 +220,9 @@ private:
                 held[(size_t) i] = keep * held[(size_t) i] + (1.0 - keep) * power[(size_t) i];
             std::array<double, maxOrder + 1> lags {};
             toLags (held, lags.data());
+            const bool useLines = pitchHz >= lowestLinesHz && findLines (pitchHz);
+            if (useLines)
+                fitToLines (1.0, lags.data(), 1.0);
             const double heldLevel = lags[0];
             const double errorHeld = levinson (lags.data(), f.analysis.data());
             f.leftover = heldLevel > 0.0 ? errorHeld / (heldLevel * (1.0 + floorAmount)) : 1.0;
@@ -242,7 +246,10 @@ private:
                     warped[(size_t) i] = top * std::pow (std::max (warped[(size_t) i] * inverse, 1.0e-12), sharpen);
             }
             toLags (warped, f.wantedLags.data());
-            const double wide = wideAmount * std::max (1.0 / ratio - 1.0, 0.0) + baseWide;
+            if (useLines)
+                fitToLines (ratio, f.wantedLags.data(), sharpen);
+            // Sparse harmonics can't vouch for a very narrow peak, and small moves in one are what wobble pitch. Same reason on squeezing.
+            const double wide = std::max (wideAmount * std::max (1.0 / ratio - 1.0, 0.0), baseWide * pitchHz);
             for (int l = 0; l <= order; ++l)
             {
                 const double a = 2.0 * M_PI * wide * l / sr;
@@ -256,6 +263,161 @@ private:
                 publish (f);
         }
         finishFrame (frameIndex - lead);
+    }
+
+    // A window on a high voice sees separate harmonics, and an ordinary all-pole fit, which also has to explain the gaps between them,
+    // leans towards whichever harmonic is nearest a formant. When the harmonics then move, the lean shows as formants moved. So on a
+    // voiced frame the fit answers to the harmonics alone: discrete all-pole modelling (El-Jaroudi and Makhoul), which Smooth Throat
+    // also uses. The whitening filter then flattens the harmonics exactly, and no ghost of the old formant stays behind.
+    bool findLines (double pitchHz) noexcept
+    {
+        const int half = N / 2;
+        const double binHz = sr / N;
+        numLines = 0;
+        for (int h = 1; h <= maxLines && h * pitchHz < 0.95 * sr * 0.5; ++h)
+        {
+            const double at = h * pitchHz / binHz;
+            int bin = std::clamp ((int) std::lround (at), 1, half - 1);
+            // Tuned on the pitch from the tracker, within half a main lobe.
+            for (int i = std::max (1, bin - 1); i <= std::min (half - 1, bin + 1); ++i)
+                if (held[(size_t) i] > held[(size_t) bin]) bin = i;
+            const double a = held[(size_t) bin - 1], b = held[(size_t) bin], c = held[(size_t) bin + 1];
+            const double bend = a - 2.0 * b + c;
+            const double step = bend < 0.0 ? std::clamp (0.5 * (a - c) / bend, -0.5, 0.5) : 0.0;
+            lineFrequency[(size_t) numLines] = 2.0 * M_PI * (bin + step) / N;
+            linePower[(size_t) numLines] = std::max (b - 0.25 * (a - c) * step, 1.0e-30);
+            ++numLines;
+        }
+        return numLines > order + 2;
+    }
+
+    // Replaces lags with those of the all-pole curve fitted through the lines, whose frequencies are scaled by ratio.
+    void fitToLines (double ratio, double* lags, double sharpen) noexcept
+    {
+        const int p = order;
+        std::array<double, maxOrder + 1> a {}, start {}, target {}, step {};
+        // Line autocorrelation
+        std::array<double, maxOrder + 1> r {};
+        int used = 0;
+        double top = 1.0e-30;
+        for (int k = 0; k < numLines; ++k)
+            top = std::max (top, linePower[(size_t) k]);
+        for (int k = 0; k < numLines; ++k)
+        {
+            const double w = lineFrequency[(size_t) k] * ratio;
+            if (w >= M_PI) break;
+            lineFitFrequency[(size_t) used] = w;
+            const double power = sharpen != 1.0 ? top * std::pow (linePower[(size_t) k] / top, sharpen) : linePower[(size_t) k];
+            for (int l = 0; l <= p; ++l)
+                r[(size_t) l] += power * std::cos (w * l);
+            ++used;
+        }
+        if (used <= p + 2 || ! (r[0] > 0.0))
+            return;
+        for (double& v : r) v /= used;
+        r[0] *= 1.0 + 1.0e-4;
+
+        // Cholesky of the Toeplitz matrix, which stays the same in every round
+        std::array<std::array<double, maxOrder + 1>, maxOrder + 1> L;
+        for (int i = 0; i <= p; ++i)
+        {
+            for (int j = 0; j <= i; ++j)
+            {
+                double sum = r[(size_t) (i - j)];
+                for (int k = 0; k < j; ++k)
+                    sum -= L[(size_t) i][(size_t) k] * L[(size_t) j][(size_t) k];
+                if (i == j)
+                {
+                    if (sum <= 1.0e-14 * r[0]) return;
+                    L[(size_t) i][(size_t) i] = std::sqrt (sum);
+                }
+                else
+                    L[(size_t) i][(size_t) j] = sum / L[(size_t) j][(size_t) j];
+            }
+        }
+
+        // Starting point: the ordinary fit to the lines
+        std::array<double, maxOrder + 1> startLags = r, k0 {};
+        double error = levinson (startLags.data(), k0.data());
+        if (! (error > 0.0)) return;
+        a[0] = 1.0;
+        for (int i = 1; i <= p; ++i)
+        {
+            start = a;
+            const double kk = k0[(size_t) i - 1];
+            for (int j = 1; j < i; ++j)
+                a[(size_t) j] = start[(size_t) j] + kk * start[(size_t) (i - j)];
+            a[(size_t) i] = kk;
+        }
+        const double gain = 1.0 / std::sqrt (error);
+        for (int i = 0; i <= p; ++i) a[(size_t) i] *= gain;
+
+        for (int round = 0; round < fitRounds; ++round)
+        {
+            // Right hand side: the model's own impulse response read at the lines.
+            target.fill (0.0);
+            for (int k = 0; k < used; ++k)
+            {
+                const double w = lineFitFrequency[(size_t) k];
+                double re = 0.0, im = 0.0;
+                for (int i = 0; i <= p; ++i)
+                {
+                    re += a[(size_t) i] * std::cos (w * i);
+                    im -= a[(size_t) i] * std::sin (w * i);
+                }
+                const double d = re * re + im * im + 1.0e-30;
+                const double hr = re / d, hi = -im / d;
+                for (int i = 0; i <= p; ++i)
+                    target[(size_t) i] += hr * std::cos (w * i) + hi * std::sin (w * i);
+            }
+            for (int i = 0; i <= p; ++i) target[(size_t) i] /= used;
+            // Solve
+            for (int i = 0; i <= p; ++i)
+            {
+                double sum = target[(size_t) i];
+                for (int k = 0; k < i; ++k) sum -= L[(size_t) i][(size_t) k] * step[(size_t) k];
+                step[(size_t) i] = sum / L[(size_t) i][(size_t) i];
+            }
+            for (int i = p; i >= 0; --i)
+            {
+                double sum = step[(size_t) i];
+                for (int k = i + 1; k <= p; ++k) sum -= L[(size_t) k][(size_t) i] * a[(size_t) k];
+                a[(size_t) i] = sum / L[(size_t) i][(size_t) i];
+            }
+            if (! std::isfinite (a[0]) || a[0] <= 0.0) return;
+        }
+
+        // Back to lags: walk down to reflection coefficients and refuse anything unstable, then walk up to the curve's autocorrelation.
+        std::array<double, maxOrder + 1> mono {};
+        const double g = 1.0 / a[0];
+        for (int i = 0; i <= p; ++i) mono[(size_t) i] = a[(size_t) i] * g;
+        std::array<double, maxOrder + 1> ks {};
+        for (int m = p; m >= 1; --m)
+        {
+            const double kk = mono[(size_t) m];
+            if (std::abs (kk) >= 0.9999) return;
+            ks[(size_t) m] = kk;
+            const double den = 1.0 - kk * kk;
+            start = mono;
+            for (int j = 1; j < m; ++j)
+                mono[(size_t) j] = (start[(size_t) j] - kk * start[(size_t) (m - j)]) / den;
+        }
+        // Up: the lags that give these coefficients, at the level of the input lags
+        std::array<double, maxOrder + 1> out {}, up {};
+        out[0] = lags[0];
+        double e = out[0];
+        up[0] = 1.0;
+        for (int m = 1; m <= p; ++m)
+        {
+            double acc = 0.0;
+            for (int j = 1; j < m; ++j) acc += up[(size_t) j] * out[(size_t) (m - j)];
+            out[(size_t) m] = -ks[(size_t) m] * e - acc;
+            start = up;
+            for (int j = 1; j < m; ++j) up[(size_t) j] = start[(size_t) j] + ks[(size_t) m] * start[(size_t) (m - j)];
+            up[(size_t) m] = ks[(size_t) m];
+            e *= 1.0 - ks[(size_t) m] * ks[(size_t) m];
+        }
+        for (int l = 0; l <= p; ++l) lags[l] = out[(size_t) l];
     }
 
     // How far this frame's spectrum is from the remembered one: RMS difference in dB over bands, with overall level taken out.
@@ -341,6 +503,11 @@ private:
     long long count = 0;
     FFTSetupD setup = nullptr;
     std::vector<double> input, frame, window, real, imag, power, warped, held, lagWindow;
+    static constexpr int maxLines = 192;
+    std::array<double, maxLines> lineFrequency {}, linePower {}, lineFitFrequency {};
+    int numLines = 0;
+    int fitRounds = std::getenv ("ROUNDS") ? std::atoi (std::getenv ("ROUNDS")) : 3;
+    double lowestLinesHz = std::getenv ("LINES") ? std::atof (std::getenv ("LINES")) : 150.0;
     int lead = 0;
     double floorAmount = 1.0e-5, wideAmount = 60.0, baseWide = 0.0;
     double longMemory = 0.95, steadyDb = 2.0, changingDb = 6.0;

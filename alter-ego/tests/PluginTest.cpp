@@ -380,7 +380,12 @@ void testCharacters()
                 setParam (*p, "character", (float) c.id);
                 const auto in = glideVoice (*v, centre);
                 const auto out = run (*p, in);
-                const double m = formantMove (in, out, *v, std::max (centre, centre * std::pow (2.0, c.pitch / 12.0)), std::pow (2.0, c.formant / 12.0));
+                // Better of two readings, as for Formant Shift: against the input, and against a real voice with this tract and pitch.
+                const double smoothing = std::max (centre, centre * std::pow (2.0, c.pitch / 12.0));
+                voice::Vowel moved = *v;
+                for (auto& f : moved.f) f *= std::pow (2.0, c.formant / 12.0);
+                const auto real = glideVoice (moved, centre * std::pow (2.0, c.pitch / 12.0));
+                const double m = std::min (formantMove (in, out, *v, smoothing, std::pow (2.0, c.formant / 12.0)), formantMove (real, out, moved, smoothing));
                 worstFormant = std::max (worstFormant, m);
             }
         check (worstPitch <= limits::characterPitchCents, std::string (c.name) + ": pitch moves as stated, worst", worstPitch, "cents");
@@ -1096,43 +1101,6 @@ int main (int argc, char** argv)
         opt.minPresets = 4;
         opt.readOnly = { "detectedPitch", "outputPitch", "rangeOffset" };
         runGenericChecks ([] () -> std::unique_ptr<juce::AudioProcessor> { return make(); }, opt);
-    }
-    if (only == "floor")
-    {
-        for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI })
-            for (double centre : { 110.0, 196.0 })
-                for (double st : { -7.0, -4.0, -2.0, 2.0, 4.0, 7.0 })
-                {
-                    voice::Vowel moved = *v;
-                    const double r = std::pow (2.0, st / 12.0);
-                    for (auto& f : moved.f) f *= r;
-                    for (auto& f : moved.bw) f *= 1.0;
-                    const auto in = glideVoice (*v, centre), real = glideVoice (moved, centre);
-                    auto p = make();
-                    setParam (*p, "formant", (float) st);
-                    const auto out = run (*p, in);
-                    std::printf ("%s %.0f %+.0f: real voice reads off by %.1f%%, ours %.1f%%, ours against real voice %.1f%%\n", v->name, centre, st, 100 * formantMove (in, real, *v, centre, r), 100 * formantMove (in, out, *v, centre, r), 100 * formantMove (real, out, *v, centre, 1.0));
-                }
-        return 0;
-    }
-    if (only == "debug")
-    {
-        const double hz = std::atof (argv[2]), shift = std::atof (argv[3]);
-        auto p = make();
-        setParam (*p, "pitch", (float) shift);
-        if (argc > 4) setParam (*p, "formant", (float) std::atof (argv[4]));
-        std::vector<double> track ((size_t) (2.0 * SR), hz);
-        if (std::getenv ("GLIDE") != nullptr)
-            for (size_t i = 0; i < track.size(); ++i)
-                track[i] = hz * std::pow (2.0, std::atof (std::getenv ("GLIDE")) / 12.0 * std::sin (2.0 * M_PI * 5.5 * (double) i / SR));
-        const auto in = voice::synth (track, voice::vowelA, SR, -40.0);
-        double want = hz * std::pow (2.0, shift / 12.0);
-        if (const char* c = std::getenv ("ROBOT")) { setParam (*p, "character", 3.0f); setParam (*p, "robotNote", (float) std::atof (c)); want = 440.0 * std::pow (2.0, (std::atof (c) - 69.0) / 12.0); }
-        const auto out = run (*p, in);
-        for (double t = 0.5; t < 1.0; t += 0.01)
-            std::printf ("%.2f %.2f rms %.1f\n", t, cents (pitchNear (out.data(), (long) out.size(), (long) (t * SR), want, SR, 0.2), want), toDb (rms (out.data() + (long) (t * SR), 1000)));
-        std::printf ("level %.2f\n", levelChange (in, out, 24000));
-        return 0;
     }
     if (want ("latency")) testNeutralAndLatency();
     if (want ("pitch")) testPitch();

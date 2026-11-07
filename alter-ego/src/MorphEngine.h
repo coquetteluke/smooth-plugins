@@ -209,8 +209,8 @@ public:
                 breathPower[(size_t) ch] += breathRate * (e * e - breathPower[(size_t) ch]);
                 if (current.robot > 0.0)
                 {
-                    // Robot's buzz: the voiced part of the sound comes mostly from a pure pulse train at the set note.
-                    const double share = 0.85 * current.robot * current.robot * pulseGate;
+                    // Robot's buzz: the voiced part of the sound comes from a pure pulse train at the set note, all of it at Character Amount 100.
+                    const double share = current.robot * current.robot * pulseGate;
                     e = (1.0 - share) * e + share * pulse * std::sqrt (std::max (breathPower[(size_t) ch], 0.0) * pulsePeriod);
                 }
                 if (current.whisper > 0.0)
@@ -436,7 +436,7 @@ private:
             jitterHeld += 0.15 * ((2.0 * nextUniform() - 1.0) - jitterHeld);
         control.jitter = 0.04 * current.monster * jitterHeld;
         formantRatio = std::pow (2.0, current.formant / 12.0);
-        sharpen = 1.0 + 0.3 * current.robot;
+        sharpen = 1.0 + 0.5 * current.robot;
     }
 
     double sr = 48000.0;

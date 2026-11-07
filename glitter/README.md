@@ -1,8 +1,8 @@
-# Smooth Tune FX
+# Glitter
 
 A fast creative vocal tuner with effect modules. Hard tuning by default, held MIDI notes can set the pitch, and eleven modules with an On switch each, in a fixed order.
 
-**Load it:** Audio Units > Luke Garito > Smooth Tune FX. AU code `aumf STfx Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. To play it from MIDI, send a track's MIDI to it with the slot's side chain menu.
+**Load it:** Audio Units > Luke Garito > Glitter. AU code `aumf STfx Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. To play it from MIDI, send a track's MIDI to it with the slot's side chain menu.
 
 Measured on synthetic voices, clean tones and macOS `say`, offline. That does not prove it sounds good on a real singer. Nobody has listened to it yet.
 

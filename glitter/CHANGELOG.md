@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1, 2026-11-07
+
+Renamed to Glitter, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
 ## 1.1.0
 
 The custom window. The live pitch strip with your voice, the output and Harmony's voices, then a bold row of eleven colour blocks in signal order, lit when on, and one panel for the selected block with a picture of its real settings and all its controls. Most pictures are pads that move two controls together. Advanced holds Input Type, MIDI Target, Reference A4, Tracking and a keyboard for your own scale. Double-click resets, click a value to type it, the window resizes and remembers its size, Advanced and the selected module.

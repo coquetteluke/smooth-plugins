@@ -27,6 +27,11 @@ int main (int argc, char** argv)
         else if (k == "settle") knobs.settleSeconds = v;
         else if (k == "chordsonly") chordsOnly = v > 0.0;
         else if (k == "guard") knobs.relativeGuard = v;
+        else if (k == "back") knobs.returnGuard = v;
+        else if (k == "cad") knobs.cadenceWeight = v;
+        else if (k == "cadfull") knobs.cadenceFull = v;
+        else if (k == "home") knobs.homeChordWeight = v;
+        else if (k == "lead") knobs.firstLeadStable = v;
         else if (k == "verbose") verbose = v > 0.0;
     }
     const double sr = 48000.0;

@@ -10,8 +10,10 @@
 //   5. Solve for which notes explain the spectrum, each note being a stack of harmonics (non-negative least squares).
 //      This removes most of the false fifths and thirds that a note's own harmonics would add to a plain chromagram.
 //   6. Fold notes into a treble chroma and a bass chroma, kept in a leaky memory.
-//   7. Score all 24 keys: treble against a key profile, bass against a profile that favours tonic and fifth, and a small
-//      tie break for the opening chord, because Am F C G and C G Am F contain exactly the same notes in the same amounts.
+//   7. Score all 24 keys: treble against a key profile, bass against a profile that favours tonic and fifth, time spent on
+//      each key's home chord, and a tie break between relative keys from the opening chord, because Am F C G and C G Am F
+//      contain exactly the same notes in the same amounts.
+//      A major chord falling a fifth to the next chord (a dominant resolving) also adds to the key it lands on.
 //   8. Only move the reading when a new key has led for a set time by a set margin, so it cannot flicker.
 
 #include <algorithm>
@@ -87,6 +89,7 @@ struct Reading
     bool altMinor = false;
     bool signal = false;          // audio above the silence gate in this frame
     float tuningCents = 0.0f;     // how far the music sits from A440
+    float tempoBpm = 0.0f;        // 0 until a steady beat is found
     std::array<float, 12> chroma {};
 };
 
@@ -99,11 +102,17 @@ public:
         double tauStable = 22.0, tauFast = 7.0;         // memory of the chroma, seconds
         double dwellStable = 4.0, dwellFast = 1.0;      // a new key must lead this long
         double marginStable = 0.04, marginFast = 0.015; // and by this much score
-        double firstStable = 6.0, firstFast = 2.0;      // earliest first reading, seconds of audio
-        double settleSeconds = 12.0;                    // the dwell and margin reach full size after this much audio
+        double firstStable = 7.0, firstFast = 2.0;      // earliest first reading, seconds of audio
+        double firstLeadStable = 0.08, firstLeadFast = 0.03;
+        double settleSeconds = 18.0;                    // the dwell and margin reach full size after this much audio
         double bassWeight = 0.45;
         double openingWeight = 0.4;
         double relativeGuard = 2.0;
+        double returnGuard = 4.0;
+        double homeChordWeight = 0.5;
+        double cadenceWeight = 0.15;
+        double cadenceTau = 40.0;
+        double cadenceFull = 1.0;
         double openingSeconds = 1.5;
         double openingTau = 60.0;
         double harmonicDecay = 0.65;
@@ -116,7 +125,9 @@ public:
         : fft (fftSize), window ((size_t) fftSize), ring ((size_t) fftSize), re ((size_t) fftSize), im ((size_t) fftSize),
           mag ((size_t) fftSize / 2 + 1), firTaps ((size_t) maxTaps), firHistory ((size_t) maxTaps * 2),
           logFreqs ((size_t) numLog), logSpec ((size_t) numLog), logClean ((size_t) numLog), notes ((size_t) numNotes),
-          wtv ((size_t) numNotes), wtw ((size_t) (numNotes * numNotes)), dict ((size_t) (numNotes * numLog))
+          wtv ((size_t) numNotes), wtw ((size_t) (numNotes * numNotes)), dict ((size_t) (numNotes * numLog)),
+          shortFft (tempoFft), shortWindow ((size_t) tempoFft), shortRe ((size_t) tempoFft), shortIm ((size_t) tempoFft),
+          lastShort ((size_t) tempoFft / 2), onsets ((size_t) numOnsets), onsetWork ((size_t) numOnsets)
     {
         const double twoPi = 6.283185307179586476925;
         hannSum = 0.0;
@@ -125,6 +136,8 @@ public:
             window[(size_t) i] = 0.5 - 0.5 * std::cos (twoPi * (i + 0.5) / fftSize);
             hannSum += window[(size_t) i];
         }
+        for (int i = 0; i < tempoFft; ++i)
+            shortWindow[(size_t) i] = 0.5 - 0.5 * std::cos (twoPi * (i + 0.5) / tempoFft);
         for (int i = 0; i < numLog; ++i)
             logFreqs[(size_t) i] = 440.0 * std::pow (2.0, ((lowestNote + i / (double) binsPerNote) - 69.0) / 12.0);
         buildProfiles();
@@ -160,6 +173,7 @@ public:
         ringPos = 0;
         hopCounter = 0;
         windowFilled = 0;
+        resetTempo();
         hopSeconds = hop / outRate;
         binHz = outRate / fftSize;
         maxBin = std::min (fftSize / 2 - 1, (int) (maxHz / binHz));
@@ -173,16 +187,17 @@ public:
     {
         std::fill (ring.begin(), ring.end(), 0.0);
         ringPos = 0; hopCounter = 0; windowFilled = 0;
-        trebleMemory.fill (0.0); bassMemory.fill (0.0); opening.fill (0.0);
+        trebleMemory.fill (0.0); bassMemory.fill (0.0); opening.fill (0.0); chordMemory.fill (0.0);
         scores.fill (0.0); probs.fill (0.0);
         heardSeconds = openingHeard = silenceSeconds = 0.0;
         presence = 0.0; contrast = 0.0;
         tunRe = tunIm = 0.0; tuning = 0.0;
         loudest = 0.0;
-        candidate = -1; dwell = 0.0;
+        candidate = -1; dwell = 0.0; previousShown = -1;
+        cadence.fill (0.0); heldChord = pendingChord = -1; pendingFrames = 0;
         current = Reading {};
+        resetTempo();
         smoothedConfidence = 0.0;
-        aged = false;
     }
 
     void setResponse (Response r) noexcept { response = r; }
@@ -209,6 +224,11 @@ public:
 
             ring[(size_t) ringPos] = y;
             ringPos = (ringPos + 1) & (fftSize - 1);
+            if (++tempoCounter >= tempoHop)
+            {
+                tempoCounter = 0;
+                tempoFrame();
+            }
             if (windowFilled < fftSize) ++windowFilled;
             if (++hopCounter >= hop)
             {
@@ -229,6 +249,7 @@ public:
 
 private:
     static constexpr int fftSize = 8192, hop = 2048;
+    static constexpr int tempoFft = 512, tempoHop = 256, numOnsets = 1024; // about 20 s of onset curve
     static constexpr int maxDecimation = 32, maxTaps = maxDecimation * 32 + 1;
     static constexpr int lowestNote = 33, numNotes = 64;       // A1 to C7 can be sounding notes
     static constexpr int binsPerNote = 3, topNote = 112;       // log spectrum runs up to about 5.3 kHz
@@ -398,6 +419,85 @@ private:
             }
     }
 
+    // Tempo: how much the short spectrum rises at each moment, then which steady pulse best fits that curve.
+    void tempoFrame() noexcept
+    {
+        for (int i = 0; i < tempoFft; ++i)
+        {
+            const double s = ring[(size_t) ((ringPos - tempoFft + i + fftSize) & (fftSize - 1))];
+            shortRe[(size_t) i] = s * shortWindow[(size_t) i];
+            shortIm[(size_t) i] = 0.0;
+        }
+        shortFft.forward (shortRe.data(), shortIm.data());
+        double rise = 0.0;
+        for (int k = 1; k < tempoFft / 2; ++k)
+        {
+            const double m = std::log1p (1000.0 * std::sqrt (shortRe[(size_t) k] * shortRe[(size_t) k] + shortIm[(size_t) k] * shortIm[(size_t) k]));
+            rise += std::max (0.0, m - lastShort[(size_t) k]);
+            lastShort[(size_t) k] = m;
+        }
+        onsets[(size_t) onsetPos] = rise;
+        onsetPos = (onsetPos + 1) % numOnsets;
+        if (onsetCount < numOnsets) ++onsetCount;
+        const double rate = outRate / tempoHop;
+        if (++tempoEstimateCounter >= (int) rate && onsetCount >= (int) (6.0 * rate))
+        {
+            tempoEstimateCounter = 0;
+            estimateTempo (rate);
+        }
+    }
+
+    void estimateTempo (double rate) noexcept
+    {
+        const double twoPi = 6.283185307179586476925;
+        const int count = std::min (onsetCount, (int) (14.0 * rate));
+        double mean = 0.0;
+        for (int i = 0; i < count; ++i) mean += onsets[(size_t) ((onsetPos - 1 - i + 2 * numOnsets) % numOnsets)];
+        mean /= count;
+        if (mean <= 1.0e-9) { current.tempoBpm = 0.0f; return; }
+        for (int i = 0; i < count; ++i)
+        {
+            const double w = 0.5 - 0.5 * std::cos (twoPi * (i + 0.5) / count);
+            onsetWork[(size_t) i] = (onsets[(size_t) ((onsetPos - count + i + 2 * numOnsets) % numOnsets)] - mean) * w;
+        }
+        const auto strength = [&] (double bpm)
+        {
+            const double step = twoPi * bpm / 60.0 / rate, cr = std::cos (step), ci = std::sin (step);
+            double pr = 1.0, pi = 0.0, a = 0.0, b = 0.0;
+            for (int i = 0; i < count; ++i)
+            {
+                a += onsetWork[(size_t) i] * pr;
+                b += onsetWork[(size_t) i] * pi;
+                const double nr = pr * cr - pi * ci;
+                pi = pr * ci + pi * cr;
+                pr = nr;
+            }
+            return std::sqrt (a * a + b * b);
+        };
+        double best = 0.0, bestBpm = 0.0, total = 0.0;
+        int tried = 0;
+        for (double bpm = 60.0; bpm <= 240.0; bpm += 0.5)
+        {
+            // A real pulse also shows at twice its rate. Mild preference for the middle of the range settles half or double.
+            const double fit = strength (bpm) + 0.5 * strength (bpm * 2.0);
+            const double octaves = std::log2 (bpm / 115.0);
+            const double score = fit * std::exp (-0.5 * octaves * octaves);
+            total += score;
+            ++tried;
+            if (score > best) { best = score; bestBpm = bpm; }
+        }
+        // No pulse stands out: show nothing rather than a guess.
+        if (best < 2.2 * total / tried) { current.tempoBpm = 0.0f; return; }
+        for (double bpm = bestBpm - 0.5; bpm <= bestBpm + 0.5; bpm += 0.05)
+        {
+            const double fit = strength (bpm) + 0.5 * strength (bpm * 2.0);
+            const double octaves = std::log2 (bpm / 115.0);
+            const double score = fit * std::exp (-0.5 * octaves * octaves);
+            if (score > best) { best = score; bestBpm = bpm; }
+        }
+        current.tempoBpm = (float) bestBpm;
+    }
+
     void processFrame() noexcept
     {
         double energy = 0.0;
@@ -439,7 +539,8 @@ private:
             const int midi = lowestNote + n;
             const int pc = midi % 12;
             const double bassShare = voice ? 0.0 : std::clamp ((55.0 - midi) / 7.0, 0.0, 1.0);
-            treble[(size_t) pc] += a * (voice ? 1.0 : std::clamp ((midi - 48.0) / 7.0, 0.0, 1.0));
+            // A single voice has no bass line, so anything below A2 is rumble or spill and is left out.
+            treble[(size_t) pc] += a * (voice ? (midi >= 45 ? 1.0 : 0.0) : std::clamp ((midi - 48.0) / 7.0, 0.0, 1.0));
             bass[(size_t) pc] += a * bassShare;
         }
         double total = 0.0;
@@ -460,6 +561,23 @@ private:
         }
         heardSeconds += hopSeconds;
 
+        // Which chord is this frame closest to? Music tends to spend longest on its home chord.
+        if (total > 1.0e-12 && ! voice)
+        {
+            std::array<double, 12> frame {};
+            for (int i = 0; i < 12; ++i) frame[(size_t) i] = treble[(size_t) i] + bass[(size_t) i];
+            standardise (frame);
+            int bestChord = -1;
+            double bestMatch = 0.55;
+            for (int k = 0; k < 24; ++k)
+            {
+                const double m = correlate (frame, triadProfile[(size_t) k]);
+                if (m > bestMatch) { bestMatch = m; bestChord = k; }
+            }
+            for (auto& c : chordMemory) c *= decay;
+            if (bestChord >= 0) chordMemory[(size_t) bestChord] += frameWeight;
+        }
+
         if (openingHeard < knobs.openingSeconds && total > 1.0e-12)
         {
             for (int i = 0; i < 12; ++i)
@@ -467,10 +585,39 @@ private:
             openingHeard += hopSeconds;
         }
 
+        trackChords (treble, bass);
+
         presence += (1.0 - presence) * (1.0 - std::exp (-hopSeconds / 0.4));
         scoreKeys();
         updateReading();
         publishChroma();
+    }
+
+    // Follows the chord sounding now, and notes each major chord that falls a fifth to the next chord.
+    void trackChords (const std::array<double, 12>& treble, const std::array<double, 12>& bass) noexcept
+    {
+        const double fade = std::exp (-hopSeconds / knobs.cadenceTau);
+        for (auto& c : cadence) c *= fade;
+        if (source == Source::voice) return;
+
+        std::array<double, 12> frame {};
+        for (int i = 0; i < 12; ++i) frame[(size_t) i] = treble[(size_t) i] + bass[(size_t) i];
+        double best = 0.0;
+        int chord = -1;
+        for (int k = 0; k < 24; ++k)
+        {
+            const int root = k % 12, third = (root + (k >= 12 ? 3 : 4)) % 12, fifth = (root + 7) % 12;
+            const double s = frame[(size_t) root] * 1.2 + frame[(size_t) third] + frame[(size_t) fifth] + bass[(size_t) root];
+            if (s > best) { best = s; chord = k; }
+        }
+        if (chord < 0) return;
+        if (chord == pendingChord) ++pendingFrames;
+        else { pendingChord = chord; pendingFrames = 1; }
+        if (pendingFrames < 2 || chord == heldChord) return;
+
+        if (heldChord >= 0 && heldChord < 12 && (heldChord % 12 + 5) % 12 == chord % 12)
+            cadence[(size_t) chord] += 1.0;
+        heldChord = chord;
     }
 
     void scoreKeys() noexcept
@@ -503,13 +650,19 @@ private:
         const double openingGain = source == Source::voice ? 0.0 : knobs.openingWeight * std::exp (-openingAge / knobs.openingTau);
         const double bassGain = source == Source::voice ? 0.0 : knobs.bassWeight * bassScale;
 
+        double chordTotal = 0.0;
+        for (auto c : chordMemory) chordTotal += c;
+        const double chordGain = source == Source::voice || chordTotal <= 1.0e-9 ? 0.0 : knobs.homeChordWeight / chordTotal;
+
         for (int k = 0; k < 24; ++k)
         {
             double s = correlate (t, keyProfile[(size_t) k]);
+            s += chordGain * chordMemory[(size_t) k];
             if (bassGain > 0.0) s += bassGain * correlate (b, bassProfile[(size_t) k]);
             // The opening chord only helps choose between a key and its relative, which share the same notes. It says
             // nothing about which set of notes this is, so a song that opens away from home does not mislead the rest.
             if (openingGain > 0.0) s += openingGain * 0.5 * (correlate (o, triadProfile[(size_t) k]) - correlate (o, triadProfile[(size_t) relativeOf (k)]));
+            if (source != Source::voice) s += knobs.cadenceWeight * std::min (1.0, cadence[(size_t) k] / knobs.cadenceFull);
             scores[(size_t) k] = s;
         }
         double best = -1.0e9;
@@ -545,7 +698,13 @@ private:
         if (shown < 0)
         {
             const double first = stable ? knobs.firstStable : knobs.firstFast;
-            if (heardSeconds >= first && gate > 0.5)
+            // Wait while the leader is close to any key other than its own relative. Give up waiting at twice the normal time.
+            double rival = -1.0e9;
+            for (int k = 0; k < 24; ++k)
+                if (k != top && k != relativeOf (top)) rival = std::max (rival, scores[(size_t) k]);
+            const double needLead = stable ? knobs.firstLeadStable : knobs.firstLeadFast;
+            const bool clear = scores[(size_t) top] - rival >= needLead || heardSeconds >= first * 2.0;
+            if (heardSeconds >= first && gate > 0.5 && clear)
             {
                 shown = top;
                 candidate = -1;
@@ -566,9 +725,12 @@ private:
             // A move to the relative key adds no new notes, so it needs much stronger evidence than a move to anything else.
             const double guard = top == relativeOf (shown) ? knobs.relativeGuard : 1.0;
             const double need = (stable ? knobs.dwellStable : knobs.dwellFast) * settled * guard;
-            const double margin = (stable ? knobs.marginStable : knobs.marginFast) * settled * guard;
+            // Going back to the key just left needs a much clearer lead, which is what stops a reading bouncing.
+            const double back = top == previousShown ? knobs.returnGuard : 1.0;
+            const double margin = (stable ? knobs.marginStable : knobs.marginFast) * settled * guard * back;
             if (dwell >= need && scores[(size_t) top] - scores[(size_t) shown] >= margin && gate > 0.5)
             {
+                previousShown = shown;
                 shown = top;
                 candidate = -1;
                 dwell = 0.0;
@@ -614,9 +776,20 @@ private:
     {
         for (auto& x : trebleMemory) x *= 0.25;
         for (auto& x : bassMemory) x *= 0.25;
+        for (auto& x : chordMemory) x *= 0.25;
         opening.fill (0.0);
         openingHeard = 0.0;
+        cadence.fill (0.0);
+        heldChord = pendingChord = -1;
+        pendingFrames = 0;
         heardSeconds = std::min (heardSeconds, knobs.openingSeconds);
+    }
+
+    void resetTempo() noexcept
+    {
+        std::fill (lastShort.begin(), lastShort.end(), 0.0);
+        std::fill (onsets.begin(), onsets.end(), 0.0);
+        onsetPos = onsetCount = tempoCounter = tempoEstimateCounter = 0;
     }
 
     Knobs knobs;
@@ -625,6 +798,9 @@ private:
     std::vector<float> firTaps, firHistory;
     std::vector<double> logFreqs, logSpec, logClean, notes, wtv, wtw;
     std::vector<float> dict;
+    Fft shortFft;
+    std::vector<double> shortWindow, shortRe, shortIm, lastShort, onsets, onsetWork;
+    int onsetPos = 0, onsetCount = 0, tempoCounter = 0, tempoEstimateCounter = 0;
     std::array<std::array<double, 12>, 24> keyProfile {}, bassProfile {}, triadProfile {};
 
     double hostRate = 48000.0, outRate = 12000.0, hopSeconds = 0.17, binHz = 1.46, hannSum = 1.0;
@@ -635,12 +811,13 @@ private:
     Source source = Source::mix;
 
     std::array<double, 12> trebleMemory {}, bassMemory {}, opening {};
-    std::array<double, 24> scores {}, probs {};
+    std::array<double, 24> scores {}, probs {}, chordMemory {};
     double heardSeconds = 0.0, openingHeard = 0.0, silenceSeconds = 0.0, presence = 0.0, contrast = 0.0;
     double tunRe = 0.0, tunIm = 0.0, tuning = 0.0, loudest = 0.0;
-    int candidate = -1;
+    int candidate = -1, previousShown = -1;
+    std::array<double, 24> cadence {};
+    int heldChord = -1, pendingChord = -1, pendingFrames = 0;
     double dwell = 0.0, smoothedConfidence = 0.0;
-    bool aged = false;
     Reading current;
 };
 } // namespace smoothkey

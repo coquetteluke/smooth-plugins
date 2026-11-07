@@ -31,6 +31,16 @@ namespace limits
     // White noise alone must not look like a confident key
     constexpr double noiseConfidence = 0.20;
 
+    // Added with the rule change, before any of these features existed.
+    constexpr double referencePitchToleranceHz = 1.0;  // music tuned off A440 reads back within this
+    constexpr double tempoToleranceBpm = 1.0;          // half or double of the true tempo also counts as found
+    constexpr double tempoFoundPercent = 90.0;
+    constexpr double tempoScaleErrorBpm = 0.01;        // Half and Double read exactly half and double
+    constexpr double swapPercent = 100.0;              // Relative Swap gives the relative key of the detected one
+    constexpr double manualPercent = 100.0;            // Manual mode: all 24 keys reach the readings and the file
+    constexpr double manualFileSeconds = 1.5;          // a Manual Key change reaches key.json within this
+    constexpr double voiceDroneExact = 80.0;           // Single Voice, melody over a clashing rumble below A2
+
     // key.json
     constexpr double maxWritesPerSecond = 2.2;       // brief says at most about twice a second
 }

@@ -94,7 +94,8 @@ Exact and reported, the same bypassed. At 48 kHz: Soprano 9.0 ms, Alto/Tenor 13.
 | Same words | When an S starts, spread across voices | 4 ms | 30 ms |
 | | Two voices' S alike at the best lag | 0.85 | 0.05 |
 | | A voice's S against the lead, above 4.5 kHz | -9.8 dB | -20.3 dB |
-| Metallic | First formant flatter, +7, worst of 6 vowels at 3 pitches | 25.0 dB | 16.3 dB |
+| Metallic | First formant flatter, worst case, the set that read 11.6 dB in 1.0.0 | 11.6 dB | 11.5 dB |
+| | First formant flatter, +7, worst of 6 vowels at 3 pitches, up to a 220 Hz voice | 25.0 dB | 16.3 dB |
 | | First formant flatter, -7, worst of the same | 10.7 dB | 10.7 dB |
 | | First formant flatter, +7, median of open vowels | 0.2 dB | 0.2 dB |
 | | Energy between harmonics at +7, lead's own is -29.7 dB | -32.0 dB | -34.1 dB |
@@ -104,7 +105,7 @@ Exact and reported, the same bypassed. At 48 kHz: Soprano 9.0 ms, Alto/Tenor 13.
 
 - Tight: 0.46 cents at the 95th percentile, voices 4 ms apart, S level -9.2 dB, within every 1.0.0 limit.
 - Latency unchanged. CPU about 1.7% of one core at 4 voices.
-- Not moved: two voices on one interval correlate more at the best lag than before, 0.40 against 0.27, still under the 0.75 limit. Period blending costs a little of that.
+- No clear change: two voices on one interval at the best lag. Voices 1 and 2 over 8 s read 0.27 before and 0.40 now, while the worst of three pairs over 10 s read 0.53 before and 0.27 now. This reading swings with the window, so it says little either way. All under the 0.75 limit.
 - Three limits changed, with reasons in `tests/PassLimits.h`. Humanize 100's note body went from 10 to 20 cents, since it now lands off target on purpose. The grain pattern limit at -7 was dropped because it asked for less than the test lead itself contains. The real material level limit now runs on Tight, since at defaults voices run on behind a lead that has stopped, which reads 9.0 dB.
 
 ## Measured
@@ -128,7 +129,7 @@ All in `tests/results.txt`, 289 checks. Pitch, formant, level, pan, click and ti
 
 ## What the numbers do not say
 
-- Formants are the weak spot of any grain shifter at large shifts. Positions hold, but peaks get flatter on closed vowels with one narrow low formant, such as /i/ and /u/. Period blending took the worst case down, but it is not gone, -7 did not move, and open vowels were already fine at about 0.2 dB. The input's harmonics may simply miss a narrow formant, so nothing causal can put it back. Grain window sizes and shapes were tried again at +7 and did not help.
+- Formants are the weak spot of any grain shifter at large shifts. Positions hold, but peaks get flatter on closed vowels with one narrow low formant, such as /i/ and /u/. Period blending helped only the higher voices: the set behind the old 11.6 dB figure barely moved, to 11.5 dB, -7 did not move, and open vowels were already fine at about 0.2 dB. Cause 4 is mostly not solved. The input's harmonics may simply miss a narrow formant, so nothing causal can put it back. Grain window sizes and shapes were tried again at +7 and did not help.
 - Smooth Throat's engine was not used: 32 ms per voice, more than the whole plug-in's latency, and it does not repair flattening by itself.
 - Whether any of this reads as separate people is a question for ears. These numbers show lateness, spread and difference, not character.
 - The reading speed correction was tuned on the test voices, hence the thin margin. Smooth Tune's values, tuned at +/-3, put formants 10% low at +/-7. Moves at other shifts: +3 1.7%, -3 0.9%, +5 2.1%, -5 1.3%, +12 5.2%, -12 3.3%, a smaller set of voices. `say` voices read 0 to 3% low at +/-7, a rough reading.

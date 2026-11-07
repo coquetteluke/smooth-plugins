@@ -1,12 +1,60 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
-#include <juce_dsp/juce_dsp.h>
+#include <array>
+#include <atomic>
+#include "HarmonyBrain.h"
+#include "KeyFollower.h"
+#include "PitchTracker.h"
+#include "Scales.h"
+#include "VoiceShifter.h"
 
-// Template: a gain with Mix and Bypass. Shows parameters, AU factory presets, state, layouts and the generic editor.
-class PluginProcessor final : public juce::AudioProcessor
+// A reading shown to the host, by name and value string.
+// It is not automatable, ignores writes, and is never pushed to the host, so it cannot write automation.
+class ReadingParameter final : public juce::AudioProcessorParameterWithID
 {
 public:
-    PluginProcessor();
+    using Formatter = juce::String (*) (float);
+
+    ReadingParameter (const char* id, const juce::String& name, const char* label, float lowest, float highest, float initial, Formatter f)
+        : juce::AudioProcessorParameterWithID (juce::ParameterID { id, 1 }, name,
+                                               juce::AudioProcessorParameterWithIDAttributes().withLabel (label).withAutomatable (false)),
+          low (lowest), high (highest), start (initial), formatter (f)
+    {
+        value.store (initial, std::memory_order_relaxed);
+    }
+
+    void set (float v) noexcept { value.store (v, std::memory_order_relaxed); }
+    float get() const noexcept { return value.load (std::memory_order_relaxed); }
+
+    float getValue() const override { return juce::jlimit (0.0f, 1.0f, (get() - low) / (high - low)); }
+    void setValue (float) override {}
+    float getDefaultValue() const override { return juce::jlimit (0.0f, 1.0f, (start - low) / (high - low)); }
+    juce::String getText (float normalised, int) const override { return formatter (low + normalised * (high - low)); }
+    float getValueForText (const juce::String& text) const override { return juce::jlimit (0.0f, 1.0f, (text.getFloatValue() - low) / (high - low)); }
+
+private:
+    float low, high, start;
+    Formatter formatter;
+    std::atomic<float> value { 0.0f };
+};
+
+// Up to four harmony voices from one lead vocal. Tracker, shifter and the deciding of notes live in their own files.
+// This class holds the parameters, runs them sample by sample, mixes the voices with the delay matched lead, and looks after latency,
+// bypass, MIDI timing and the key file.
+class PluginProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater
+{
+public:
+    static constexpr int maxVoices = smoothharmony::HarmonyBrain::maxVoices;
+
+    struct Options
+    {
+        juce::String keyFilePath;           // empty means the real shared file
+        bool hostLatencyUpdates = true;     // tests turn this off, since nothing pumps messages there
+    };
+
+    PluginProcessor() : PluginProcessor (Options{}) {}
+    explicit PluginProcessor (const Options&);
+    ~PluginProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -17,12 +65,11 @@ public:
     juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor (*this); }
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "Smooth Template"; }
-    bool acceptsMidi() const override { return false; }
+    const juce::String getName() const override { return "Smooth Harmony"; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
-    // These become the AU factory presets.
     int getNumPrograms() override;
     int getCurrentProgram() override { return currentProgram; }
     void setCurrentProgram (int) override;
@@ -34,16 +81,122 @@ public:
 
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
 
+    // For a later window and for tests. Safe from any thread, never blocks audio.
+    struct Readings
+    {
+        float detectedHz = 0.0f;
+        int leadNote = -1, activeKey = 0, activeScale = 0, voicesSounding = 0;
+        std::array<int, maxVoices> voiceNote {};
+        std::array<float, maxVoices> voiceGain {}, voiceLagMs {}, voicePitch {};
+    };
+    Readings getReadings() const noexcept;
+
+    // The last few seconds of pitch, one point every 5 ms, for a graph. Read newest back from getPitchHistoryCount() - 1. 0 means no pitch.
+    struct PitchPoint { std::atomic<float> lead { 0.0f }; std::array<std::atomic<float>, maxVoices> voice {}; };
+    static constexpr int pitchHistorySize = 2048;
+    const PitchPoint& getPitchPoint (long long index) const noexcept { return pitchHistory[(size_t) (index & (pitchHistorySize - 1))]; }
+    long long getPitchHistoryCount() const noexcept { return pitchHistoryCount.load (std::memory_order_relaxed); }
+
+    // Latency in samples for an Input Type at a sample rate.
+    static int latencyFor (int inputType, double sampleRate) noexcept;
+
+    // Tests only: what the worker thread and message thread do.
+    void applyPendingLatencyNow() { handleAsyncUpdate(); }
+    void pollKeyFileNow();
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
+    class Worker;
 
-    std::atomic<float>* gainDb = nullptr;
-    std::atomic<float>* mix = nullptr;
+    // Same level at every frequency, a different delay at each. A fixed set per voice, so even two voices on one note differ in waveform.
+    struct AllPass
+    {
+        double b0 = 1.0, b1 = 0.0, z1 = 0.0, z2 = 0.0;
+        void set (double hz, double q, double sampleRate) noexcept
+        {
+            const double w = 2.0 * juce::MathConstants<double>::pi * hz / sampleRate, alpha = std::sin (w) / (2.0 * q), a0 = 1.0 + alpha;
+            b0 = (1.0 - alpha) / a0;
+            b1 = -2.0 * std::cos (w) / a0;
+            z1 = z2 = 0.0;
+        }
+        double process (double x) noexcept
+        {
+            const double y = b0 * x + z1;
+            z1 = b1 * x - b1 * y + z2;
+            z2 = x - b0 * y;
+            return y;
+        }
+    };
+
+    struct VoiceChannel
+    {
+        smoothharmony::VoiceShifter shifter;
+        smoothharmony::VoiceShifter::Control control;
+        std::array<AllPass, 3> allpass {};
+        double gain = 0.0, gainTarget = 0.0;     // on, off, or at the consonant level
+        double level = 1.0, panL = 1.0, panR = 1.0;
+        double levelTarget = 1.0, panLTarget = 1.0, panRTarget = 1.0;
+    };
+
+    void process (juce::AudioBuffer<float>&, juce::MidiBuffer&, bool forceBypass) noexcept;
+    void applyInputType (int type) noexcept;
+    void readSettings() noexcept;
+    void tick() noexcept;
+    void handleMidi (const juce::MidiMessage&) noexcept;
+    void publishReadings() noexcept;
+    void handleAsyncUpdate() override;
+
+    std::atomic<float>* modeParam = nullptr, *keyParam = nullptr, *scaleParam = nullptr, *followKey = nullptr, *voicesParam = nullptr,
+                       *humanize = nullptr, *vibrato = nullptr, *vibratoRate = nullptr, *leadLevel = nullptr, *leadPan = nullptr, *mix = nullptr,
+                       *harmonyLevel = nullptr, *glide = nullptr, *followLead = nullptr, *consonants = nullptr, *inputType = nullptr,
+                       *tracking = nullptr, *reference = nullptr, *chordRoot = nullptr, *chordType = nullptr, *chordHold = nullptr;
+    struct VoiceParams { std::atomic<float>* interval = nullptr, *level = nullptr, *pan = nullptr, *drift = nullptr, *throat = nullptr; };
+    std::array<VoiceParams, maxVoices> voiceParams {};
     juce::AudioParameterBool* bypass = nullptr;
-    juce::SmoothedValue<float> gainSmoothed, mixSmoothed, bypassMix;
+    ReadingParameter* hzReading = nullptr, *leadReading = nullptr, *keyReading = nullptr, *soundingReading = nullptr;
+    std::array<ReadingParameter*, maxVoices> voiceReading {};
+
+    smoothharmony::InputHistory history;
+    smoothharmony::PitchTracker tracker;
+    smoothharmony::HarmonyBrain brain;
+    smoothharmony::HarmonyBrain::Settings settings;
+    smoothharmony::KeyFollower follower;
+    std::array<VoiceChannel, maxVoices> voices;
+
+    // MIDI waits for the audio it was played against to come out, so a chord change lines up with the lead.
+    struct PendingMidi { long long due = 0; std::uint8_t data[3] {}; };
+    static constexpr int midiQueueSize = 1024;
+    std::array<PendingMidi, midiQueueSize> midiQueue {};
+    int midiHead = 0, midiTail = 0;
+    long long clock = 0;
+
+    // Lead pitch per tick, so what a voice follows lines up with the part of the lead coming out.
+    static constexpr int pitchRingSize = 256;
+    std::array<double, pitchRingSize> pitchRing {};
+    int pitchRingAt = 0;
+
+    double sr = 48000.0, smoothing = 0.001, consonantGain = 0.35, envelopeStep = 0.001;
+    double leadGain = 1.0, leadGainTarget = 1.0, leadL = 1.0, leadR = 1.0, leadLTarget = 1.0, leadRTarget = 1.0;
+    double harmonyGain = 1.0, harmonyGainTarget = 1.0, mixNow = 1.0, mixTarget = 1.0;
+    std::array<double, maxVoices> throatRate {}, driftNow {};
+    int tickSamples = 48, tickPhase = 0, historyPhase = 0, typeNow = 1, latencyNow = 0;
+    double tickSeconds = 0.001;
+    bool fading = false, leadVoiced = false;
+    double currentPeriod = 0.0;
+    float fadeGain = 1.0f, fadeStep = 1.0f / 64.0f, bypassMix = 1.0f, bypassStep = 0.001f;
+    float lastVoicingLimit = -1.0f;
+    int activeKeyNow = 0, activeScaleNow = 0;
+
+    std::array<PitchPoint, pitchHistorySize> pitchHistory;
+    std::atomic<long long> pitchHistoryCount { 0 };
+    std::array<std::atomic<float>, maxVoices> gainNow {}, lagNow {}, pitchNow {};
+
+    std::atomic<double> preparedRate { 0.0 };
+    bool hostLatencyUpdates = true;
     int currentProgram = 0;
+    std::unique_ptr<Worker> worker;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)
 };

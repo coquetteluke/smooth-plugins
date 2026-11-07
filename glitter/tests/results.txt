@@ -147,16 +147,16 @@ PASS  tuning accuracy at 44100 Hz, 95th percentile = 0.004 cents
 PASS  tuning accuracy at 96000 Hz, 95th percentile = 0.003 cents
 PASS  Key C, Scale Major: F#4 +20 goes to G4, offset = -0.001 cents
 PASS  Key D, Scale Major: F#4 +20 stays on F#4, offset = -0.003 cents
-INFO  speech_samantha.wav: median distance from a note, before 21.4 cents, after 5.5 cents
-INFO  speech_kathy.wav: median distance from a note, before 27.0 cents, after 1.5 cents
-INFO  speech_daniel.wav: median distance from a note, before 27.5 cents, after 9.9 cents
-INFO  speech_fred.wav: median distance from a note, before 23.6 cents, after 2.5 cents
-INFO  held_fred.wav: median distance from a note, before 22.9 cents, after 2.5 cents
-INFO  held_kathy.wav: median distance from a note, before 26.6 cents, after 2.3 cents
-INFO  sung_cellos.wav: median distance from a note, before 16.9 cents, after 1.5 cents
+INFO  speech_samantha.wav: median distance from a note, before 20.9 cents, after 5.4 cents
+INFO  speech_kathy.wav: median distance from a note, before 26.8 cents, after 1.4 cents
+INFO  speech_daniel.wav: median distance from a note, before 27.9 cents, after 10.4 cents
+INFO  speech_fred.wav: median distance from a note, before 23.7 cents, after 2.4 cents
+INFO  held_fred.wav: median distance from a note, before 23.1 cents, after 2.5 cents
+INFO  held_kathy.wav: median distance from a note, before 26.4 cents, after 2.3 cents
+INFO  sung_cellos.wav: median distance from a note, before 17.0 cents, after 1.6 cents
 INFO  sung_goodnews.wav: median distance from a note, before 6.4 cents, after 0.4 cents
-PASS  say speech at default settings: worst file's median distance from a note = 9.895 cents
-PASS  say singing and held vowels at default settings: worst file's median distance from a note = 2.494 cents
+PASS  say speech at default settings: worst file's median distance from a note = 10.401 cents
+PASS  say singing and held vowels at default settings: worst file's median distance from a note = 2.466 cents
 PASS  Retune Speed 25 ms, measured time constant = 22.000 ms
 PASS  Retune Speed 50 ms, measured time constant = 48.000 ms
 PASS  Retune Speed 100 ms, measured time constant = 97.000 ms
@@ -451,6 +451,6 @@ PASS  preset Synth Voice: finite, level near the plain voice, not overloading, l
 PASS    latency unchanged = 659.000 samples
 PASS  presets leave Key and Scale alone
 PASS  first preset is exactly the default sound, difference = -240.000 dB
-INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 1.821 %
-PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 3.044 %
+INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 1.742 %
+PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 2.913 %
 RESULT PASS  0 failures

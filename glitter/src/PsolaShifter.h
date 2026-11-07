@@ -354,8 +354,10 @@ private:
                 // The grains' harmonics drag the formants along with a shift, by up to a third of it upwards and less downwards,
                 // measured against a voice with the same vocal tract. Reading the grain a little slower cancels most of that.
                 // Tuned on the test voices: see the formant test and README.
+                // Copied from Smooth Tune, where shifts stay small. Smooth Tune FX shifts by octaves, and left to grow the correction overshoots
+                // to 16% at +12 semitones, so it stops growing past +3 semitones, where it was tuned.
                 if (planned != Plan::locked && ratio > 1.0 + 1.0e-4)
-                    next.rate *= std::pow (ratio, -0.25);
+                    next.rate *= std::max (std::pow (ratio, -0.25), 0.958);
                 else if (planned != Plan::locked && ratio < 1.0 - 1.0e-4)
                     next.rate *= std::pow (ratio, 0.1);
             }

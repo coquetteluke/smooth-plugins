@@ -50,6 +50,28 @@ struct Random
     }
 };
 
+// Holds a shifted voice at the level of the voice it came from. A formant-preserving shift goes up and down by a few dB as harmonics
+// land on or off a formant, which would make a Pitch or Harmony setting louder on some notes than others. Slow, and limited to +/-6 dB.
+struct LevelMatch
+{
+    float inPower = 0.0f, outPower = 0.0f, gain = 1.0f, powerCoef = 0.001f, gainCoef = 0.001f;
+    void prepare (double rate) noexcept
+    {
+        powerCoef = (float) (1.0 - std::exp (-1.0 / (0.06 * rate)));
+        gainCoef = (float) (1.0 - std::exp (-1.0 / (0.03 * rate)));
+        inPower = outPower = 0.0f;
+        gain = 1.0f;
+    }
+    float next (float in, float out) noexcept
+    {
+        inPower += powerCoef * (in * in - inPower);
+        outPower += powerCoef * (out * out - outPower);
+        const float wanted = std::clamp (std::sqrt ((inPower + 1.0e-8f) / (outPower + 1.0e-8f)), 0.5f, 2.0f);
+        gain += gainCoef * (wanted - gain);
+        return gain;
+    }
+};
+
 // ----------------------------------------------------------------------------------------------------------- Doubler line
 
 // A short delay line with a moving read head, one per double.
@@ -106,17 +128,21 @@ public:
         attack = (float) (1.0 - std::exp (-1.0 / (0.002 * sr)));
         release = (float) (1.0 - std::exp (-1.0 / (0.025 * sr)));
         levelCoef = (float) (1.0 - std::exp (-1.0 / (0.08 * sr)));
-        gainCoef = (float) (1.0 - std::exp (-1.0 / (0.03 * sr)));
+        gainCoef = (float) (1.0 - std::exp (-32.0 / (0.03 * sr)));
         voicedCoef = (float) (1.0 - std::exp (-1.0 / (0.004 * sr)));
+        phase = { 0.0, 0.31, 0.67 };
+        inc = 0.005;
+        gain = 8.0f;
+        gainPhase = 0;
+        voicePower = tonePower = voicedTarget = 0.0f;
+        noise = {};
         reset();
     }
 
     void reset() noexcept
     {
         for (auto& b : bands) { b.z1 = b.z2 = b.y1 = b.y2 = 0.0f; b.env = 0.0f; }
-        voicePower = tonePower = 0.0f;
-        gain = 2.0f;
-        voicedNow = 0.0f;
+        voicedNow = 0.0f; // the level match stays where it was, so coming back on starts near the right level
     }
 
     void setCarrier (double hz, bool voiced, int waveform) noexcept
@@ -150,13 +176,16 @@ public:
             if ((k & 1) == 0) { l += v; r += 0.5f * v; } else { r += v; l += 0.5f * v; }
         }
 
+        // Level match, feed forward: the gain is worked out from the tone before gain, so it cannot chase itself and overshoot.
+        // It moves by ratio rather than by amount, so the start of a note, when the tone lags the voice for a moment, cannot make a burst.
         const float tone = 0.5f * (l + r);
         voicePower += levelCoef * (voice * voice - voicePower);
-        tonePower += levelCoef * (gain * gain * tone * tone - tonePower);
-        if (voicePower > 1.0e-7f && tonePower > 1.0e-12f)
+        tonePower += levelCoef * (tone * tone - tonePower);
+        if (++gainPhase >= 32)
         {
-            const float ratio = std::min (std::sqrt (voicePower / tonePower), 4.0f);
-            gain = std::clamp (gain + gainCoef * gain * (ratio - 1.0f), 0.5f, 400.0f);
+            gainPhase = 0;
+            if (voicePower > 1.0e-7f && tonePower > 1.0e-12f)
+                gain *= std::pow (std::clamp (std::sqrt (voicePower / tonePower), 0.5f, 400.0f) / gain, gainCoef);
         }
         outL = l * gain;
         outR = r * gain;
@@ -196,8 +225,8 @@ private:
     double sr = 48000.0, inc = 0.005;
     std::array<double, 3> phase { 0.0, 0.31, 0.67 };
     std::array<Band, numBands> bands {};
-    float attack = 0, release = 0, levelCoef = 0, gainCoef = 0, voicedCoef = 0, voicePower = 0, tonePower = 0, gain = 2, voicedNow = 0, voicedTarget = 0;
-    int wave = saw;
+    float attack = 0, release = 0, levelCoef = 0, gainCoef = 0, voicedCoef = 0, voicePower = 0, tonePower = 0, gain = 8, voicedNow = 0, voicedTarget = 0;
+    int wave = saw, gainPhase = 0;
     Random noise;
 };
 

@@ -162,6 +162,8 @@ private:
     long long clock = 0;
 
     // Modules
+    tunefx::LevelMatch matchB;
+    std::array<tunefx::LevelMatch, 2> matchH;
     tunefx::ModuleFade fadeB, fadeHarmony, fadeHarmony2, fadeDoubler, fadeVocoder, fadeDist, fadeFilter, fadeRing, fadeDelay, fadeReverb;
     std::array<tunefx::DoublerLine, 2> doubleLine;
     tunefx::VocoderTone vocoder;
@@ -198,6 +200,7 @@ private:
     std::array<float, 3> filterWeights { 0.0f, 0.0f, 1.0f };
     float filterWeightStep = 0.01f;
     float reverbDecaySmooth = 2.0f;
+    bool tankWasWanted = false;
 
     // Tempo: from the host when it gives one, else 120 BPM
     double bpm = 120.0, beat = 0.0, beatStep = 0.0;

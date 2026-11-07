@@ -51,7 +51,7 @@ namespace
                                { "reverbOn", 1 }, { "reverbDecay", 1.4f }, { "reverbMix", 14 } } },
             { "Power Harmony", { { "harmonyOn", 1 }, { "harmonyVoices", 1 }, { "harmonyInterval1", 4 }, { "harmonyInterval2", 7 }, { "harmonyLevel", -7 }, { "harmonyWidth", 80 },
                                  { "reverbOn", 1 }, { "reverbType", 2 }, { "reverbDecay", 2.4f }, { "reverbMix", 16 } } },
-            { "Phone Line", { { "filterOn", 1 }, { "filterType", 1 }, { "filterCutoff", 1400 }, { "filterResonance", 35 }, { "distOn", 1 }, { "distType", 1 }, { "distDrive", 35 } } },
+            { "Phone Line", { { "filterOn", 1 }, { "filterType", 1 }, { "filterCutoff", 1400 }, { "filterResonance", 35 }, { "distOn", 1 }, { "distType", 1 }, { "distDrive", 35 }, { "outputGain", 6 } } },
             { "Filter Riser", { { "filterOn", 1 }, { "filterType", 2 }, { "filterCutoff", 900 }, { "filterResonance", 45 }, { "filterSweepDepth", 2.5f }, { "filterSweepRate", 1 },
                                 { "delayOn", 1 }, { "delayTime", 6 }, { "delayFeedback", 30 }, { "delayMix", 18 } } },
             { "Dub Throw", { { "delayOn", 1 }, { "delayTime", 6 }, { "delayFeedback", 58 }, { "delayTone", 3200 }, { "delayMix", 34 }, { "delayPingPong", 1 },
@@ -378,6 +378,8 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     beatStep = bpm / 60.0 / sr;
 
     // Everything after the tuner.
+    matchB.prepare (sr);
+    for (auto& m : matchH) m.prepare (sr);
     for (auto& l : doubleLine) l.prepare (sr, 0.09);
     vocoder.prepare (sr);
     for (auto& d : distortion) d.prepare (sr);
@@ -393,6 +395,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     wander = { 0.0, 0.0 };
     wanderTarget = { 0.0, 0.0 };
     wanderPhase = 0;
+    vocoderHz = 0.0;
     ringPhase = 0.0;
     filterWeightStep = (float) (1.0 / (0.005 * sr));
 
@@ -441,6 +444,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
 
     reverbDecaySmooth = reverbDecayNow;
     tank.configure (reverbTypeNow, 1.0f, reverbDecaySmooth, 0.5f);
+    tankWasWanted = reverbActive;
     if (! reverbActive)
     {
         tank.snapInput (0.0f);
@@ -805,15 +809,19 @@ void PluginProcessor::controlRate() noexcept
     const bool wantTank = reverbActive && tank.getType() == reverbTypeNow;
     if (fadeReverb.silent() && tank.getType() != reverbTypeNow)
     {
+        // Input starts from nothing, or a signal already running would reach each line as a sudden edge.
         tank.configure (reverbTypeNow, 1.0f, reverbDecaySmooth, 0.5f);
-        tank.snapInput (reverbActive ? 1.0f : 0.0f);
+        tank.snapInput (0.0f);
         if (! reverbActive)
             tank.sleep();
     }
-    else if (wantTank && tank.isSleeping())
+    else if (wantTank && ! tankWasWanted && fadeReverb.silent())
     {
+        // Switched on: a clean tank every time, whether it had gone to sleep or was still ringing unheard.
         tank.clear();
+        tank.snapInput (0.0f);
     }
+    tankWasWanted = wantTank;
     if (wantTank) tank.startInput(); else tank.stopInput();
     reverbDecaySmooth += (float) chunkCoef * (reverbDecayNow - reverbDecaySmooth);
     if (! tank.isSleeping())
@@ -842,6 +850,9 @@ void PluginProcessor::processSample (float inL, float inR, float& outL, float& o
     shifterA.step (tracker, controlA, a);
     shifterB.step (tracker, controlB, b);
     const float mixB = fadeB.next (pitchActive || motionActive || throatActive);
+    const float gainB = matchB.next (0.5f * (shifterB.dry (0) + shifterB.dry (1)), 0.5f * (b[0] + b[1]));
+    b[0] *= gainB;
+    b[1] *= gainB;
     float busL = a[0], busR = a[1];
     if (! fadeB.silent())
     {
@@ -856,6 +867,8 @@ void PluginProcessor::processSample (float inL, float inR, float& outL, float& o
     float h[2] = { 0.0f, 0.0f };
     harmonyShifter[0].step (tracker, controlH[0], &h[0]);
     harmonyShifter[1].step (tracker, controlH[1], &h[1]);
+    h[0] *= matchH[0].next (harmonyShifter[0].dry (0), h[0]);
+    h[1] *= matchH[1].next (harmonyShifter[1].dry (0), h[1]);
     const float mixH = fadeHarmony.next (harmonyActive);
     const float mixH2 = fadeHarmony2.next (twoVoices);
     const float levelH = smoothHarmonyLevel.next (harmonyLevelNow), widthH = smoothHarmonyWidth.next (harmonyWidthNow);
@@ -922,7 +935,7 @@ void PluginProcessor::processSample (float inL, float inR, float& outL, float& o
     const float distGain = smoothDistGain.next (distGainNow), distAmount = smoothDistMix.next (distMixNow);
     if (! fadeDist.silent())
     {
-        const float back = 1.0f / std::sqrt (distGain);
+        const float back = std::pow (distGain, -0.62f); // keeps a -18 dBFS voice within a few dB across Drive
         const float wetL = distortion[0].process (busL, distGain, back, distTypeNow);
         const float wetR = distortion[1].process (busR, distGain, back, distTypeNow);
         const float amount = mixDist * distAmount;

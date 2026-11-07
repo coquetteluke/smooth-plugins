@@ -4,11 +4,11 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "" FORCE)
 
 # ---- edit these for each plug-in ----
 set(SP_TARGET  SmoothDuo)
-set(SP_NAME    "Smooth Duo")
+set(SP_NAME    "Duo")
 set(SP_CODE    SDuo)
 set(SP_BUNDLE  "com.lukegarito.smoothduo")
 set(SP_DESC    "Automatic vocal doubling")
-set(SP_VERSION 0.3.0)
+set(SP_VERSION 0.3.1)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice

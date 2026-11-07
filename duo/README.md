@@ -1,10 +1,10 @@
-# Smooth Duo
+# Duo
 
 Automatic vocal doubling. Your vocal plays untouched, and 1 to 3 copies follow it, each with its own wandering timing and pitch, so they sound like separate takes instead of an echo or a chorus. You can also change each copy's vibrato and the size of its voice, and place the lead and the copies in the stereo field.
 
 ## How to load it
 
-Audio Units > Luke Garito > Smooth Duo. AU code: `aufx SDuo Luke`. Works mono to stereo (the usual choice on a vocal track), mono to mono, and stereo to stereo. No licence system. Zero latency at every sample rate, bypassed or not.
+Audio Units > Luke Garito > Duo. AU code: `aufx SDuo Luke`. Works mono to stereo (the usual choice on a vocal track), mono to mono, and stereo to stereo. No licence system. Zero latency at every sample rate, bypassed or not.
 
 ## Controls
 
@@ -27,7 +27,7 @@ Audio Units > Luke Garito > Smooth Duo. AU code: `aufx SDuo Luke`. Works mono to
 
 ## The window
 
-A stage seen from straight above, with the audience at the bottom. The title reads Duo, and the build name stays Smooth Duo until the rename.
+A stage seen from straight above, with the audience at the bottom. The title reads Duo, and the build name stays Duo until the rename.
 
 - **Left to right** is where each singer is panned. **Further back** is how far behind the lead a double is singing, read live from the sound. The rows on the floor are marked in ms and squeezed, so a few ms near the lead reads clearly and a 100 ms slapback still fits.
 - **Lanes:** each double has a tape mark where its path is centred, and a lane showing how far it can drift. Tightness makes the lane longer and moves it back. A double wanders inside its lane while you sing.

@@ -148,7 +148,7 @@ static void testWindow()
         for (const auto& id : ids)
             if (id != "presets" && id != "advanced" && id != "stage")
                 check (p.apvts.getParameter (id) != nullptr, "control is a real parameter: " + id.toStdString());
-        check (p.getName() == "Smooth Duo", "the build name is unchanged until the rename");
+        check (p.getName() == "Duo", "the build name is unchanged until the rename");
     }
 
     // Each control and the window move each other

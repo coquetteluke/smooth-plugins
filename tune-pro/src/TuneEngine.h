@@ -34,9 +34,9 @@ public:
     // Extra delay in High Quality, on top of what the Input Type needs.
     static constexpr double highQualityExtraSeconds = 0.045;
     // How far ahead High Quality looks for a change between voiced and not. The tracker takes this long to say so.
-    static constexpr double highQualityLeadSeconds = 0.02;
+    static constexpr double highQualityLeadSeconds = 0.010;
     // How much input each model of the vocal tract sees.
-    static constexpr double levelMemorySeconds = 1.0;
+    static constexpr double levelMemorySeconds = 0.6;
     static constexpr double highQualityWindowSeconds = 0.040, lowLatencyWindowSeconds = 0.040, lowLatencyFallShare = 0.3;
 
     static int latencyFor (double lowestHz, int mode, double sampleRate) noexcept
@@ -75,6 +75,7 @@ public:
             envelope.configure (lowLatencyWindowSeconds, 0.0, lowLatencyFallShare);
         // Without lookahead the direct fit can lock on to a harmonic sitting on the first formant, and its level then swings when the harmonic moves away.
         envelope.setHarmonicModelFrom (mode == highQuality ? 300.0 : 130.0);
+        envelope.setSharpen (mode == highQuality ? 0.5 : 0.35);
         ahead = envelope.getLookahead();
         levelGain = 1.0;
         passMix = 1.0;

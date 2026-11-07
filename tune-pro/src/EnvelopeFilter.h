@@ -96,6 +96,8 @@ public:
 
     // From this pitch up, the model is drawn through the harmonic peaks instead of fitted directly.
     void setHarmonicModelFrom (double hz) noexcept { harmonicModelFromHz = hz; }
+    // How much the lowest formants are narrowed once harmonics have moved half a spacing or more. 0 is not at all.
+    void setSharpen (double amount) noexcept { sharpenMax = amount; }
 
     // How much of the model to use: 0 makes both filters plain wires.
     void setStrength (double s) noexcept { strength = std::clamp (s, 0.0, 1.0); }
@@ -363,9 +365,9 @@ private:
             }
             // Only the lowest formants: they are the narrowest and carry the most level, and they are where the harmonics are sparse.
             const double gridHz = 0.5 * sr / gridSize;
-            // Past about 3 semitones it was measured to do more harm than good to the overall shape, so it fades out by 7.
+            // Past about 3 semitones it was measured to do more harm than good to the overall shape, so it fades out by 12.
             const double semitones = 12.0 * std::abs (std::log2 (shiftRatio));
-            const double bigShiftTaper = std::clamp (1.0 - (semitones - 3.0) / 4.0, 0.0, 1.0);
+            const double bigShiftTaper = std::clamp (1.0 - (semitones - 3.0) / 9.0, 0.0, 1.0);
             for (int i = 0; i <= gridSize; ++i)
             {
                 const double hz = i * gridHz;
@@ -393,9 +395,9 @@ private:
     static constexpr double sharpenFullAt = 0.5, sharpenFadeFromHz = 1200.0, sharpenFadeToHz = 2000.0;
     
     static constexpr float emphasis = 0.95f;
-    static constexpr double minBlurHz = 15.0, blurShare = 0.35, sharpenMax = 0.45;
+    static constexpr double minBlurHz = 15.0, blurShare = 0.35;
 
-    double harmonicModelFromHz = 300.0;
+    double harmonicModelFromHz = 300.0, sharpenMax = 0.5;
     double sr = 48000.0, strength = 1.0, formantScale = 1.0, periodNow = 0.0, shiftRatio = 1.0, gainNow = 1.0;
     int channels = 2, order = 32, hop = 120, ringSize = 32768, windowLength = 1920, lookahead = 0, numSets = 128;
     long long count = 0;

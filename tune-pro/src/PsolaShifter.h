@@ -432,6 +432,9 @@ private:
                     next.rate *= std::pow (ratio, -0.25);
                 else if (c.plainGrains && planned != Plan::locked && ratio < 1.0 - 1.0e-4)
                     next.rate *= std::pow (ratio, 0.1);
+                // Whitened grains still pull the first formant up a little when going down. Measured on the test voices, as for plain grains.
+                else if (! c.plainGrains && planned != Plan::locked && ratio < 1.0 - 1.0e-4)
+                    next.rate *= std::pow (ratio, 0.2);
             }
         }
 

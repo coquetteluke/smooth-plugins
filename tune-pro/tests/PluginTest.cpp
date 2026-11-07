@@ -423,6 +423,8 @@ void scoreFormants (FormantScore& s, const voice::Vowel& v, double centre, int s
     };
     s.peakFlatter = std::max (s.peakFlatter, peakOverAround (fine) - peakOverAround (fineOut));
     if (std::getenv ("TUNE_DUMP") != nullptr)
+        std::printf ("  vowel %s around %.0f Hz, shift %d: peak against surroundings %.2f dB real, %.2f dB out\n", v.name, centre, shift, peakOverAround (fine), peakOverAround (fineOut));
+    if (std::getenv ("TUNE_DUMP") != nullptr)
         std::printf ("  vowel %s around %.0f Hz, shift %d: first formant flatter by %.2f dB, level %+.2f dB\n", v.name, centre, shift, flatten, toDb (rms (run.out.data() + from, (int) n)) - toDb (rms (run.in.data() + from, (int) n)));
     s.flatter = std::max (s.flatter, flatten);
     s.level = std::max (s.level, std::abs (toDb (rms (run.out.data() + from, (int) n)) - toDb (rms (run.in.data() + from, (int) n))));
@@ -471,7 +473,10 @@ void testFormants()
         for (double centre : { 440.0, 660.0 })
             for (int shift : { 3, -3 })
                 scoreFormants (high, *v, centre, shift, wideRange);
-    chk (gEngine == 0 || high.move <= prolimits::highNoteMove, "high notes around 440 and 660 Hz, +/-3 semitones, worst formant move", high.move * 100.0, "%");
+    // Against the input the tool cannot tell better than its floor here: see PassLimits.h. Against a real voice it does not read at all, as it hits the end of its range.
+    note ("  high notes against a real voice, worst, not a usable reading", high.moveReal * 100.0, "%");
+    note ("  and the tool's floor there: the input against a real voice with the same vocal tract", high.floor * 100.0, "%");
+    chk (gEngine == 0 || high.move <= high.floor + prolimits::highNoteMoveOverFloor, "high notes around 440 and 660 Hz, +/-3 semitones, worst formant move against the input", high.move * 100.0, "%");
     // Read against the peak's surroundings. The test above reads against half the formant's frequency, which at these pitches is below the lowest harmonic, so it compares a peak with the noise floor.
     chk (gEngine == 0 || high.peakFlatter <= prolimits::highNoteF1Flatter, "high notes, first formant against its surroundings, flatter than a real voice, worst case", high.peakFlatter, "dB");
     note ("  high notes, level change, worst", high.level, "dB");
@@ -485,7 +490,10 @@ void testFormants()
         for (double centre : { 165.0, 247.0 })
             for (int shift : { 7, -7 })
                 scoreFormants (big, *v, centre, shift, wideRange);
-    chk (gEngine == 0 || big.move <= prolimits::bigShiftMove, "big shifts of +/-7 semitones, worst formant move", big.move * 100.0, "%");
+    // Against a real voice for the same reason as high notes.
+    note ("  big shifts against the input, worst", big.move * 100.0, "%");
+    note ("  and the tool's floor there: the input against a real voice with the same vocal tract", big.floor * 100.0, "%");
+    chk (gEngine == 0 || big.moveReal <= prolimits::bigShiftMove, "big shifts of +/-7 semitones, worst formant move against a real voice", big.moveReal * 100.0, "%");
     chk (gEngine == 0 || big.peakFlatter <= prolimits::highNoteF1Flatter, "big shifts, first formant against its surroundings, flatter than a real voice, worst case", big.peakFlatter, "dB");
     note ("  big shifts, level change, worst", big.level, "dB");
     note ("colour on big shifts, worst", big.colour, "dB");
@@ -564,13 +572,14 @@ void testHardStep()
     const double hop = 0.0005, hzMid = std::sqrt (a * b);
     const auto trace = pitchTrace (out.data(), (long) out.size(), SR, hzMid, start - 0.1, start + 0.2, hop, 0.14, 2.0);
     const double low = 0.1, high = 0.9;
+    // From the last frame still under 10% to the first over 90%. The reading can drop out in the step itself, and that gap counts as part of the step.
     double t10 = -1, t90 = -1;
     for (size_t i = 0; i < trace.size(); ++i)
     {
         if (trace[i] <= 0.0) continue;
         const double u = std::log (trace[i] / a) / std::log (b / a);
-        if (t10 < 0 && u > low) t10 = (double) i * hop;
-        if (t90 < 0 && u > high) { t90 = (double) i * hop; break; }
+        if (u <= low) t10 = (double) i * hop;
+        if (u > high) { t90 = (double) i * hop; break; }
     }
     const double ms = (t90 - t10) * 1000.0;
     chk (t10 >= 0 && t90 >= 0 && ms <= limits::hardStepMs, "hard tune step between two notes a tone apart, 10% to 90%", ms, "ms");
@@ -1485,6 +1494,18 @@ void testCpu()
     const double seconds = (double) (std::clock() - start) / CLOCKS_PER_SEC;
     const double percent = seconds / 10.0 * 100.0;
     chk (percent <= (gEngine == 1 ? prolimits::hqCpuPercent : prolimits::llCpuPercent), "CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds)", percent, "%");
+
+    // While correcting by 3 semitones, the heavier case, and at 96 kHz.
+    for (double sr : { 48000.0, 96000.0 })
+    {
+        auto q = make();
+        setParam (*q, "retune", 15.0f); setParam (*q, "transpose", 3.0f); setParam (*q, "inputType", (float) wideRange);
+        prepare (*q, 2, sr, 256);
+        const auto y = voice::synth (voice::vibrato (360.0, 5.0, sr, 30.0, 5.5), voice::vowelA, sr, -30.0);
+        const auto begin = std::clock();
+        render (*q, y, 256);
+        note ("  CPU correcting by 3 semitones at " + std::to_string ((int) sr) + " Hz, harmonic model in use", (double) (std::clock() - begin) / CLOCKS_PER_SEC / 5.0 * 100.0, "%");
+    }
 }
 
 // ------------------------------------------------------------------------------------------------------------ MIDI
@@ -1733,8 +1754,8 @@ double stepMs (PluginProcessor& p)
     {
         if (trace[i] <= 0.0) continue;
         const double u = std::log (trace[i] / a) / std::log (b / a);
-        if (t10 < 0 && u > 0.1) t10 = (double) i * hop;
-        if (t90 < 0 && u > 0.9) { t90 = (double) i * hop; break; }
+        if (u <= 0.1) t10 = (double) i * hop;
+        if (u > 0.9) { t90 = (double) i * hop; break; }
     }
     return t10 >= 0 && t90 >= 0 ? (t90 - t10) * 1000.0 : 1.0e6;
 }
@@ -2023,14 +2044,14 @@ void testEngines()
         info ("High Quality, high notes, colour", highNoteResults[1].colour, "dB");
         info ("Low Latency, big shifts, colour", bigShiftResults[0].colour, "dB");
         info ("High Quality, big shifts, colour", bigShiftResults[1].colour, "dB");
-        info ("Low Latency, high notes, formant move", highNoteResults[0].move * 100.0, "%");
-        info ("High Quality, high notes, formant move", highNoteResults[1].move * 100.0, "%");
-        info ("Low Latency, high notes, first formant flatter", highNoteResults[0].flatter, "dB");
-        info ("High Quality, high notes, first formant flatter", highNoteResults[1].flatter, "dB");
-        info ("Low Latency, big shifts, formant move", bigShiftResults[0].move * 100.0, "%");
-        info ("High Quality, big shifts, formant move", bigShiftResults[1].move * 100.0, "%");
-        info ("Low Latency, big shifts, first formant flatter", bigShiftResults[0].flatter, "dB");
-        info ("High Quality, big shifts, first formant flatter", bigShiftResults[1].flatter, "dB");
+        info ("Low Latency, high notes, formant move against the input", highNoteResults[0].move * 100.0, "%");
+        info ("High Quality, high notes, formant move against the input", highNoteResults[1].move * 100.0, "%");
+        info ("Low Latency, high notes, first formant against its surroundings, flatter", highNoteResults[0].peakFlatter, "dB");
+        info ("High Quality, high notes, first formant against its surroundings, flatter", highNoteResults[1].peakFlatter, "dB");
+        info ("Low Latency, big shifts, formant move against a real voice", bigShiftResults[0].moveReal * 100.0, "%");
+        info ("High Quality, big shifts, formant move against a real voice", bigShiftResults[1].moveReal * 100.0, "%");
+        info ("Low Latency, big shifts, first formant against its surroundings, flatter", bigShiftResults[0].peakFlatter, "dB");
+        info ("High Quality, big shifts, first formant against its surroundings, flatter", bigShiftResults[1].peakFlatter, "dB");
     }
 }
 
@@ -2141,23 +2162,25 @@ int main (int argc, char** argv)
         folder.createDirectory();
         juce::WavAudioFormat wav;
         for (const char* name : { "speech_samantha.wav", "speech_daniel.wav", "sung_cellos.wav", "held_kathy.wav" })
-            for (float retune : { 0.0f, 40.0f })
-            {
-                const auto x = loadWav (name);
-                auto p = tuner (std::string (name).find ("daniel") != std::string::npos ? lowMale : altoTenor, retune, retune > 0 ? 40.0f : 0.0f);
-                auto out = render (*p, x, 256);
-                const auto target = folder.getChildFile (juce::String (name).upToFirstOccurrenceOf (".", false, false) + (retune > 0 ? "_natural.wav" : "_hard.wav"));
-                target.deleteFile();
-                if (auto stream = target.createOutputStream())
+            for (int engine : { 0, 1 })
+                for (float retune : { 0.0f, 40.0f })
                 {
-                    std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (stream.get(), SR, 1, 24, juce::StringPairArray(), 0));
-                    if (writer != nullptr)
+                    gEngine = engine;
+                    const auto x = loadWav (name);
+                    auto p = tuner (std::string (name).find ("daniel") != std::string::npos ? lowMale : altoTenor, retune, retune > 0 ? 40.0f : 0.0f);
+                    auto out = render (*p, x, 256);
+                    const auto target = folder.getChildFile (juce::String (name).upToFirstOccurrenceOf (".", false, false) + (engine == 1 ? "_hq" : "_ll") + (retune > 0 ? "_natural.wav" : "_hard.wav"));
+                    target.deleteFile();
+                    if (auto stream = target.createOutputStream())
                     {
-                        stream.release();
-                        writer->writeFromAudioSampleBuffer (out, 0, out.getNumSamples());
+                        std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (stream.get(), SR, 1, 24, juce::StringPairArray(), 0));
+                        if (writer != nullptr)
+                        {
+                            stream.release();
+                            writer->writeFromAudioSampleBuffer (out, 0, out.getNumSamples());
+                        }
                     }
                 }
-            }
         return 0;
     }
     if (want ("generic"))

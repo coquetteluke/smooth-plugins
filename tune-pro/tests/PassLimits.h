@@ -74,7 +74,10 @@ namespace prolimits
     constexpr double llFormantMove = 0.05;            // Low Latency, same test
     constexpr double hqF1Flatter = 7.0;               // dB: first formant flatter than a real voice at that pitch, worst case, High Quality
     constexpr double llF1Flatter = 11.6;              // dB: Low Latency must at least not be worse than Smooth Tune
-    constexpr double highNoteMove = 0.08;             // High Quality, voice around 440 and 660 Hz, +/-3 semitones
+    // Changed after measuring, because the first version could not be met by anything. It read the output against the input, at 8%, but on high notes the
+    // input and a real voice with the same vocal tract already read 14.9% apart: the tool has no better resolution there. Now: no more than 2% beyond that floor.
+    constexpr double highNoteMoveOverFloor = 0.02;    // High Quality, voice around 440 and 660 Hz, +/-3 semitones
+    // Same reason, floor 10.5%. Kept at 8% but read against a real voice at the new pitch, which is the goal.
     constexpr double bigShiftMove = 0.08;             // High Quality, voice around 165 and 247 Hz, +/-7 semitones
     constexpr double highNoteF1Flatter = 9.0;         // dB, High Quality, high notes and big shifts
     constexpr double hqLevelChangeDb = 1.5;           // level at the same shifts as above, High Quality

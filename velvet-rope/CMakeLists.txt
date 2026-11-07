@@ -108,6 +108,14 @@ target_compile_definitions(NullTest PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMITTE
 target_link_libraries(NullTest PRIVATE SmoothResonanceWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME null COMMAND NullTest)
 
+# The five features of 0.5.0, each measured.
+juce_add_console_app(FeatureTest PRODUCT_NAME "FeatureTest")
+target_sources(FeatureTest PRIVATE src/ResonanceEngine.cpp src/PluginProcessor.cpp ${SR_WINDOW_SOURCES} tests/legacy/LegacyEngine.cpp tests/FeatureTest.cpp)
+target_include_directories(FeatureTest PRIVATE src tests)
+target_compile_definitions(FeatureTest PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0 SPEECH_DIR="${CMAKE_BINARY_DIR}/speech")
+target_link_libraries(FeatureTest PRIVATE SmoothResonanceWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+add_test(NAME features COMMAND FeatureTest)
+
 # Renders the window to PNG with real speech running through the real processor. Not a ctest: it writes docs/window.
 juce_add_console_app(RenderWindow PRODUCT_NAME "RenderWindow")
 target_sources(RenderWindow PRIVATE src/ResonanceEngine.cpp src/PluginProcessor.cpp ${SR_WINDOW_SOURCES} tests/RenderWindow.cpp)

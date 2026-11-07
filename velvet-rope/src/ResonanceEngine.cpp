@@ -1079,9 +1079,9 @@ void ResonanceEngine::Core::updateListenMask (int band) noexcept
     listenBuiltWidth = width;
 
     // The same bell as the dot's sensitivity, so what you hear is the region the graph marks. Half height at the ends of the
-    // width marker. It is never narrower than this FFT can resolve, or it would fall between two bins.
+    // width marker. It never gets narrower than one and a half bins, or a tone at its centre could fall between two of them.
     const float centre = std::log2 (std::max (hz, 1.0f));
-    const float narrowest = (float) binHz / (std::max (hz, 1.0f) * 0.6931472f);
+    const float narrowest = 1.5f * (float) binHz / (std::max (hz, 1.0f) * 0.6931472f);
     const float sigma = std::max (std::max (width, 0.05f) / 2.3548f, narrowest);
 
     listenMask[0] = 0.0f;

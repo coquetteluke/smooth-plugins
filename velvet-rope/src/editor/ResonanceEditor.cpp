@@ -634,7 +634,7 @@ void ResonanceEditor::Panel::paint (juce::Graphics& g)
 
     g.setColour (tone::text);
     g.setFont (font (Weight::medium, 24.0f));
-    g.drawText ("Resonance", juce::Rectangle<float> ((float) margin, 0.0f, 150.0f, (float) graphTop), juce::Justification::centredLeft, false);
+    g.drawText ("Velvet Rope", juce::Rectangle<float> ((float) margin, 0.0f, 150.0f, (float) graphTop), juce::Justification::centredLeft, false);
 
     // Axes live outside the plot, so they cost nothing per frame.
     g.setFont (font (Weight::regular, 12.0f));

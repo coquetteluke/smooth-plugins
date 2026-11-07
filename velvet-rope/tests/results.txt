@@ -1,4 +1,4 @@
-Smooth Resonance test results, 2026-11-06
+Smooth Resonance test results, 2026-11-07
 
 ===== ProcessorTest: the real processor, every control, generic checks
 PASS  parameter names are clear, unique, no em dash
@@ -174,7 +174,38 @@ PASS  preset Boxy Low Mids: finite, not silent, Max Reduction within its Depth =
 PASS  preset Hard Whistle Catcher: finite, not silent, Max Reduction within its Depth = 14.000 dB
 PASS  preset Side Chain Carve: finite, not silent, Max Reduction within its Depth = 6.000 dB
 PASS  no allocation with side chain, bands and tilts all moving = 0.000 
-PASS  the generic window with reading rows opens = 480.000 px high
+PASS  the window opens, draws and closes 40 times with no audio = 40.000 
+PASS  audio kept running while the window opened and closed 12 times = 29896.000 blocks
+PASS  the graph's reduction follows the live audio (limit 3 dB shown on a 12 dB cut)
+PASS  with no audio and nothing moving, the graph does not repaint
+PASS  automation moving a dot repaints with no audio running
+PASS  every changeable parameter has a control in the window, of 31 = 0.000 missing
+PASS  automation moves the Depth dial = 17.000 dB
+PASS  automation moves the Low value
+PASS  dragging a dial sends one begin and one end of gesture = 2.000 
+PASS  dragging a dial up raises the parameter = 59.091 %
+PASS  double-click returns a dial to its default as one gesture = 50.000 %
+PASS  a click on a slider does not jump its value = 100.000 %
+PASS  typing a value sets it as one gesture = 42.500 ms
+PASS  typing a huge value stays in range = 200.000 ms
+PASS  typing 9.5k means 9500 Hz = 9500.000 Hz
+PASS  the Delta switch sets the parameter as one gesture
+PASS  automation moves the Delta switch
+PASS  the Mode buttons set the parameter as one gesture
+PASS  automation moves the Mode buttons
+PASS  dragging a dot sends begin and end of gesture on Frequency and Sensitivity
+PASS  dragging a dot right raises its frequency = 4890.900 Hz
+PASS  dragging a dot up raises its sensitivity = 5.735 dB
+PASS  after automation moves a dot, the mouse finds it at its new place
+PASS  double-click returns a dot to its default = 3000.000 Hz
+PASS  closing the window during a drag still ends the gesture = 1.000 
+PASS  the window sends nothing to the host just by being open = 0.000 
+PASS  the window opens at its default size = 1160.000 wide
+PASS  resizing tells the processor = 1400.000 wide
+PASS  a reloaded session opens the window at its saved size = 1400.000 wide
+PASS  the window keeps its shape
+PASS  a damaged window size is kept in range = 1856.000 wide
+PASS  and the window opens at a legal size = 1856.000 wide
 RESULT PASS  0 failures
 
 ===== DspTest: synthetic signals through the DSP
@@ -333,9 +364,9 @@ PASS  60 s run: level change -1.651 dB early, -1.620 dB late
 
 == Real-time safety and CPU
 PASS  48 kHz: 0 allocations while processing
-PASS  48 kHz stereo with moving controls: 1.59% of one core (63x faster than real time, limit 5%)
+PASS  48 kHz stereo with moving controls: 1.57% of one core (64x faster than real time, limit 5%)
 PASS  96 kHz: 0 allocations while processing
-PASS  96 kHz stereo with moving controls: 3.27% of one core (31x faster than real time, limit 5%)
+PASS  96 kHz stereo with moving controls: 3.21% of one core (31x faster than real time, limit 5%)
 
 89 passed, 0 failed
 

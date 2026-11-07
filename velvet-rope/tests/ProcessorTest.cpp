@@ -3,6 +3,7 @@
 #define SMOOTH_COUNT_ALLOCS
 #include "TestKit.h"
 #include "PluginProcessor.h"
+#include "editor/ResonanceEditor.h"
 
 #include <thread>
 
@@ -822,6 +823,322 @@ static void testAllocationsEverythingOn()
     check (total == 0, "no allocation with side chain, bands and tilts all moving", (double) total);
 }
 
+
+// ---- the window ----------------------------------------------------------------------------------------------
+
+/** Counts begin and end of gesture on one parameter, the way a host sees them for automation. */
+struct GestureCounter final : juce::AudioProcessorParameter::Listener
+{
+    explicit GestureCounter (juce::RangedAudioParameter& p) : param (p)  { param.addListener (this); }
+    ~GestureCounter() override                                            { param.removeListener (this); }
+
+    void parameterValueChanged (int, float) override  { ++changes; }
+    void parameterGestureChanged (int, bool starting) override  { (starting ? begins : ends)++; }
+
+    juce::RangedAudioParameter& param;
+    int begins = 0, ends = 0, changes = 0;
+};
+
+static juce::MouseEvent mouseEventFor (juce::Component& c, juce::Point<float> at, int clicks = 1, juce::ModifierKeys mods = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier))
+{
+    const auto now = juce::Time::getCurrentTime();
+    return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c, now, at, now, clicks, false);
+}
+
+static void testWindow()
+{
+    using Editor = ResonanceEditor;
+    using ui::ParamSlider;
+    using ui::ParamToggle;
+    using ui::ParamChoice;
+
+    // Opening and closing, over and over, with no audio and nothing prepared.
+    {
+        Proc p;
+        int opened = 0;
+
+        for (int i = 0; i < 40; ++i)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+            auto* window = dynamic_cast<Editor*> (editor.get());
+            if (window != nullptr)
+            {
+                window->tick (1.0 / 60.0);
+                juce::Image image (juce::Image::RGB, 200, 130, true);
+                juce::Graphics g (image);
+                window->paintEntireComponent (g, true);
+                ++opened;
+            }
+        }
+
+        check (opened == 40, "the window opens, draws and closes 40 times with no audio", opened);
+    }
+
+    // The same while the audio thread is really running. The window only reads through the lock free readGraph.
+    {
+        Proc p;
+        prepare (p, 2, kRate, 256);
+        setParam (p, "depth", 12.0f);
+
+        std::atomic<bool> keepGoing { true };
+        std::atomic<long> blocks { 0 };
+        std::thread audio ([&]
+        {
+            const auto x = mixOf ({ toneVec (0.2, 2500.0, -12.0), noiseVec (0.2, -50.0, 71) });
+            juce::AudioBuffer<float> buffer (2, 256);
+            juce::MidiBuffer midi;
+            size_t at = 0;
+
+            while (keepGoing.load())
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < 256; ++i)
+                        buffer.setSample (ch, i, x[(at + (size_t) i) % x.size()]);
+
+                at = (at + 256) % x.size();
+                p.processBlock (buffer, midi);
+                ++blocks;
+            }
+        });
+
+        bool moved = false;
+
+        for (int i = 0; i < 12; ++i)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+            auto* window = dynamic_cast<Editor*> (editor.get());
+
+            for (int frame = 0; frame < 25 && window != nullptr; ++frame)
+            {
+                window->tick (1.0 / 60.0);
+                std::this_thread::sleep_for (std::chrono::milliseconds (4));
+            }
+
+            moved = moved || (window != nullptr && window->getGraph().getPeakDb() > 3.0f);
+        }
+
+        keepGoing = false;
+        audio.join();
+        check (blocks.load() > 100, "audio kept running while the window opened and closed 12 times", (double) blocks.load(), "blocks");
+        check (moved, "the graph's reduction follows the live audio (limit 3 dB shown on a 12 dB cut)");
+    }
+
+    // With nothing playing and nothing moving, the graph asks for no repaint: a stopped session costs no drawing at all.
+    {
+        Proc p;
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto& graph = dynamic_cast<Editor*> (editor.get())->getGraph();
+
+        for (int frame = 0; frame < 120; ++frame)
+            graph.advance (1.0 / 60.0);
+
+        check (! graph.advance (1.0 / 60.0), "with no audio and nothing moving, the graph does not repaint");
+        setParam (p, "band1Sens", 5.0f);
+        check (graph.advance (1.0 / 60.0), "automation moving a dot repaints with no audio running");
+    }
+
+    // Every parameter you can change has a control, and every control is a real parameter.
+    {
+        Proc p;
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto* window = dynamic_cast<Editor*> (editor.get());
+        auto& panel = window->getPanel();
+        int missing = 0, total = 0;
+
+        for (auto* prm : p.getParameters())
+        {
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (prm))
+            {
+                if (dynamic_cast<ReadingParameter*> (prm) != nullptr)
+                    continue;
+
+                ++total;
+
+                if (panel.findChildWithID (ranged->getParameterID()) == nullptr)
+                {
+                    ++missing;
+                    std::printf ("      no control for %s\n", ranged->getParameterID().toRawUTF8());
+                }
+            }
+        }
+
+        check (missing == 0, "every changeable parameter has a control in the window, of " + std::to_string (total), missing, "missing");
+    }
+
+    // Automation moves the window, and the window moves automation with begin and end of gesture.
+    {
+        Proc p;
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto* window = dynamic_cast<Editor*> (editor.get());
+        auto& panel = window->getPanel();
+
+        auto* dial = dynamic_cast<ParamSlider*> (panel.findChildWithID ("depth"));
+        setParam (p, "depth", 17.0f);
+        check (std::abs (dial->getValue() - 17.0) < 0.01, "automation moves the Depth dial", dial->getValue(), "dB");
+
+        setParam (p, "lowFreq", 800.0f);
+        check (dynamic_cast<ParamSlider*> (panel.findChildWithID ("lowFreq"))->valueText() == "800 Hz", "automation moves the Low value");
+
+        {
+            GestureCounter gestures (*p.parameters.getParameter ("sharpness"));
+            auto* sharp = dynamic_cast<ParamSlider*> (panel.findChildWithID ("sharpness"));
+            const double before = sharp->getValue();
+            sharp->mouseDown (mouseEventFor (*sharp, { 20.0f, 30.0f }));
+            sharp->mouseDrag (mouseEventFor (*sharp, { 20.0f, 10.0f }));
+            const bool beganDuringDrag = gestures.begins == 1 && gestures.ends == 0;
+            sharp->mouseUp (mouseEventFor (*sharp, { 20.0f, 10.0f }));
+            check (beganDuringDrag && gestures.ends == 1, "dragging a dial sends one begin and one end of gesture", gestures.begins + gestures.ends);
+            check (sharp->getValue() > before && std::abs (p.parameters.getRawParameterValue ("sharpness")->load() - (float) sharp->getValue()) < 0.01f, "dragging a dial up raises the parameter", sharp->getValue(), "%");
+
+            const auto ends = gestures.ends;
+            sharp->mouseDoubleClick (mouseEventFor (*sharp, { 20.0f, 30.0f }, 2));
+            check (std::abs (sharp->getValue() - 50.0) < 0.01 && gestures.ends == ends + 1, "double-click returns a dial to its default as one gesture", sharp->getValue(), "%");
+        }
+
+        {
+            // A click on a row's far end must not jump the value: only a drag moves it.
+            GestureCounter gestures (*p.parameters.getParameter ("link"));
+            auto* row = dynamic_cast<ParamSlider*> (panel.findChildWithID ("link"));
+            const double before = row->getValue();
+            row->mouseDown (mouseEventFor (*row, { 100.0f, 14.0f }));
+            row->mouseUp (mouseEventFor (*row, { 100.0f, 14.0f }));
+            check (std::abs (row->getValue() - before) < 0.001, "a click on a slider does not jump its value", row->getValue(), "%");
+        }
+
+        {
+            GestureCounter gestures (*p.parameters.getParameter ("attack"));
+            auto* attackDial = dynamic_cast<ParamSlider*> (panel.findChildWithID ("attack"));
+            attackDial->applyTyped ("42.5 ms");
+            check (std::abs (attackDial->getValue() - 42.5) < 0.02 && gestures.begins == 1 && gestures.ends == 1, "typing a value sets it as one gesture", attackDial->getValue(), "ms");
+            attackDial->applyTyped ("nonsense");
+            attackDial->applyTyped ("9999999");
+            check (attackDial->getValue() <= 200.0, "typing a huge value stays in range", attackDial->getValue(), "ms");
+            auto* freq = dynamic_cast<ParamSlider*> (panel.findChildWithID ("highFreq"));
+            freq->applyTyped ("9.5k");
+            check (std::abs (freq->getValue() - 9500.0) < 1.0, "typing 9.5k means 9500 Hz", freq->getValue(), "Hz");
+        }
+
+        {
+            GestureCounter gestures (*p.parameters.getParameter ("delta"));
+            auto* toggle = dynamic_cast<ParamToggle*> (panel.findChildWithID ("delta"));
+            toggle->setToggleState (true, juce::sendNotificationSync);
+            check (p.parameters.getRawParameterValue ("delta")->load() > 0.5f && gestures.begins == 1 && gestures.ends == 1, "the Delta switch sets the parameter as one gesture");
+            setParam (p, "delta", 0.0f);
+            check (! toggle->getToggleState(), "automation moves the Delta switch");
+        }
+
+        {
+            GestureCounter gestures (*p.parameters.getParameter ("mode"));
+            auto* choice = dynamic_cast<ParamChoice*> (panel.findChildWithID ("mode"));
+            choice->mouseDown (mouseEventFor (*choice, { (float) choice->getWidth() - 10.0f, (float) choice->getHeight() * 0.5f }));
+            check (p.parameters.getRawParameterValue ("mode")->load() > 0.5f && gestures.begins == 1 && gestures.ends == 1, "the Mode buttons set the parameter as one gesture");
+            setParam (p, "mode", 0.0f);
+            check (choice->getSelected() == 0, "automation moves the Mode buttons");
+        }
+
+        // A dot on the graph, with the real mouse handlers.
+        {
+            auto& graph = window->getGraph();
+            setParam (p, "band2Freq", 3000.0f);
+            setParam (p, "band2Sens", 0.0f);
+            const float x = (float) graph.getWidth() * std::log (3000.0f / 20.0f) / std::log (1000.0f);
+            const float y = (float) graph.getHeight() * 0.5f;
+            GestureCounter freqGestures (*p.parameters.getParameter ("band2Freq")), sensGestures (*p.parameters.getParameter ("band2Sens"));
+
+            graph.mouseDown (mouseEventFor (graph, { x, y }));
+            const bool bothBegan = freqGestures.begins == 1 && sensGestures.begins == 1 && freqGestures.ends == 0;
+            graph.mouseDrag (mouseEventFor (graph, { x + 60.0f, y - 80.0f }));
+            graph.mouseUp (mouseEventFor (graph, { x + 60.0f, y - 80.0f }));
+
+            check (bothBegan && freqGestures.ends == 1 && sensGestures.ends == 1, "dragging a dot sends begin and end of gesture on Frequency and Sensitivity");
+            check (p.parameters.getRawParameterValue ("band2Freq")->load() > 3200.0f, "dragging a dot right raises its frequency", p.parameters.getRawParameterValue ("band2Freq")->load(), "Hz");
+            check (p.parameters.getRawParameterValue ("band2Sens")->load() > 3.0f, "dragging a dot up raises its sensitivity", p.parameters.getRawParameterValue ("band2Sens")->load(), "dB");
+
+            // The graph follows automation with no audio running: the dot is where the parameter says, so it can be grabbed there.
+            setParam (p, "band2Freq", 500.0f);
+            setParam (p, "band2Sens", 0.0f);
+            const float x2 = (float) graph.getWidth() * std::log (500.0f / 20.0f) / std::log (1000.0f);
+            GestureCounter widthGestures (*p.parameters.getParameter ("band2Freq"));
+            graph.mouseDown (mouseEventFor (graph, { x2, y }));
+            graph.mouseUp (mouseEventFor (graph, { x2, y }));
+            check (widthGestures.begins == 1, "after automation moves a dot, the mouse finds it at its new place");
+
+            graph.mouseDoubleClick (mouseEventFor (graph, { x2, y }, 2));
+            check (std::abs (p.parameters.getRawParameterValue ("band2Freq")->load() - 3000.0f) < 0.5f, "double-click returns a dot to its default", p.parameters.getRawParameterValue ("band2Freq")->load(), "Hz");
+
+            // Closing the window in the middle of a drag must still finish the gesture.
+            const float x3 = (float) graph.getWidth() * std::log (3000.0f / 20.0f) / std::log (1000.0f);
+            GestureCounter open (*p.parameters.getParameter ("band2Freq"));
+            graph.mouseDown (mouseEventFor (graph, { x3, y }));
+            editor.reset();
+            check (open.begins == 1 && open.ends == 1, "closing the window during a drag still ends the gesture", open.ends);
+        }
+    }
+
+    // The window never sends anything to the host on its own: drawing and display frames write no parameters.
+    {
+        Proc p;
+        prepare (p, 2, kRate, 256);
+        const auto x = mixOf ({ toneVec (1.0, 2500.0, -12.0), noiseVec (1.0, -50.0, 71) });
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto* window = dynamic_cast<Editor*> (editor.get());
+
+        struct Listener final : juce::AudioProcessorListener
+        {
+            int changes = 0, gestures = 0;
+            void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override { ++changes; }
+            void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+            void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override { ++gestures; }
+        } listener;
+
+        p.addListener (&listener);
+        render (p, x, 256);
+
+        for (int frame = 0; frame < 120; ++frame)
+        {
+            window->tick (1.0 / 60.0);
+            juce::Image image (juce::Image::RGB, 300, 200, true);
+            juce::Graphics g (image);
+            window->paintEntireComponent (g, true);
+        }
+
+        p.removeListener (&listener);
+        check (listener.changes == 0 && listener.gestures == 0, "the window sends nothing to the host just by being open", listener.changes + listener.gestures);
+    }
+
+    // The size is saved with the session, and a damaged one is kept in range.
+    {
+        juce::MemoryBlock saved;
+        {
+            Proc p;
+            std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+            check (editor->getWidth() == Proc::defaultWindowWidth, "the window opens at its default size", editor->getWidth(), "wide");
+            const double ratio = (double) editor->getWidth() / (double) editor->getHeight();
+            editor->setSize (1400, juce::roundToInt (1400.0 / ratio));
+            check (p.windowWidth.load() == 1400, "resizing tells the processor", p.windowWidth.load(), "wide");
+            p.getStateInformation (saved);
+        }
+        {
+            Proc p;
+            p.setStateInformation (saved.getData(), (int) saved.getSize());
+            std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+            check (editor->getWidth() == 1400, "a reloaded session opens the window at its saved size", editor->getWidth(), "wide");
+            check (std::abs ((double) editor->getWidth() / editor->getHeight() - (double) Editor::designWidth / Editor::designHeight) < 0.005, "the window keeps its shape");
+        }
+        {
+            Proc p;
+            auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+            xml->setAttribute ("windowWidth", 999999);
+            juce::MemoryBlock damaged;
+            juce::AudioProcessor::copyXmlToBinary (*xml, damaged);
+            p.setStateInformation (damaged.getData(), (int) damaged.getSize());
+            check (p.windowWidth.load() == Proc::maxWindowWidth, "a damaged window size is kept in range", p.windowWidth.load(), "wide");
+            std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+            check (editor->getWidth() <= Proc::maxWindowWidth, "and the window opens at a legal size", editor->getWidth(), "wide");
+        }
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -845,13 +1162,7 @@ int main()
     testPresets();
     testAllocationsEverythingOn();
 
-    // Editor opens with the readings on it, and a reading stays read-only there.
-    {
-        Proc p;
-        prepare (p, 2, kRate, 256);
-        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
-        check (editor != nullptr && editor->getWidth() > 0 && editor->getHeight() > 0, "the generic window with reading rows opens", editor != nullptr ? editor->getHeight() : 0, "px high");
-    }
+    testWindow();
 
     return finish();
 }

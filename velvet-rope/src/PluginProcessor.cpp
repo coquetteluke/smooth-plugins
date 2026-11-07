@@ -1,10 +1,12 @@
 #include "PluginProcessor.h"
 
-#include "ReadingsEditor.h"
 #include "StateGuard.h"
+#include "editor/ResonanceEditor.h"
 
 namespace
 {
+    const juce::Identifier windowWidthAttribute { "windowWidth" };
+
     // These IDs are saved in sessions and automation. Never rename them.
     using Layout = juce::AudioProcessorValueTreeState::ParameterLayout;
 
@@ -240,7 +242,7 @@ juce::AudioProcessorParameter* SmoothResonanceProcessor::getBypassParameter() co
 
 juce::AudioProcessorEditor* SmoothResonanceProcessor::createEditor()
 {
-    return new ReadingsEditor (*this, { maxReduction, maxReductionFreq });
+    return new ResonanceEditor (*this);
 }
 
 int SmoothResonanceProcessor::getNumPrograms()
@@ -301,14 +303,27 @@ void SmoothResonanceProcessor::setCurrentProgram (int index)
 void SmoothResonanceProcessor::getStateInformation (juce::MemoryBlock& destination)
 {
     if (const auto xml = parameters.copyState().createXml())
+    {
+        xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, destination);
+    }
 }
 
 void SmoothResonanceProcessor::setStateInformation (const void* data, int size)
 {
     if (const auto xml = getXmlFromBinary (data, size))
+    {
         if (xml->hasTagName (parameters.state.getType()))
+        {
+            // Older sessions have no window size. A damaged one goes back in range. The size is not a parameter, so it
+            // stays out of the value tree.
+            if (xml->hasAttribute (windowWidthAttribute))
+                windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
+
+            xml->removeAttribute (windowWidthAttribute);
             applySafeState (parameters, *xml);
+        }
+    }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

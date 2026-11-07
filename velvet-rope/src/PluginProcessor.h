@@ -99,11 +99,15 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
-    /** For the later resonance graph: newest spectrum, gain curve and sensitivity curve. Never blocks the audio thread.
+    /** For the resonance graph: newest spectrum, gain curve and sensitivity curve. Never blocks the audio thread.
         Call from one thread at a time. Returns false if nothing new has arrived. */
     bool readGraph (smoothres::GraphFrame& destination) noexcept  { return engine.readGraph (destination); }
 
     juce::AudioProcessorValueTreeState parameters;
+
+    /** Window width in points. The height follows from the fixed shape. Saved with the session. */
+    static constexpr int defaultWindowWidth = 1160, minWindowWidth = 870, maxWindowWidth = 1856;
+    std::atomic<int> windowWidth { defaultWindowWidth };
 
     ReadingParameter* maxReduction = nullptr;
     ReadingParameter* maxReductionFreq = nullptr;

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "" FORCE)
-project(SmoothResonance VERSION 0.2.0 LANGUAGES C CXX)
+project(SmoothResonance VERSION 0.3.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
@@ -19,7 +19,7 @@ else()
 endif()
 
 juce_add_plugin(SmoothResonance
-    VERSION 0.2.0
+    VERSION 0.3.0
     COMPANY_NAME "Luke Garito"
     BUNDLE_ID "com.lukegarito.smoothresonance"
     PLUGIN_MANUFACTURER_CODE Luke
@@ -35,9 +35,25 @@ juce_add_plugin(SmoothResonance
     IS_MIDI_EFFECT FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE)   # installed only by the InstallAU target below
 
+# The window: one embedded font family (SIL OFL, see assets/fonts/OFL.txt) and the drawing code.
+juce_add_binary_data(SmoothResonanceWindowAssets
+    HEADER_NAME WindowAssets.h
+    NAMESPACE WindowAssets
+    SOURCES
+        assets/fonts/SourceSansPro-Regular.otf
+        assets/fonts/SourceSansPro-Semibold.otf
+        assets/fonts/SourceSansPro-Bold.otf)
+
+set(SR_WINDOW_SOURCES
+    src/editor/Theme.cpp
+    src/editor/Controls.cpp
+    src/editor/ResonanceGraph.cpp
+    src/editor/ResonanceEditor.cpp)
+
 target_sources(SmoothResonance PRIVATE
     src/ResonanceEngine.cpp
-    src/PluginProcessor.cpp)
+    src/PluginProcessor.cpp
+    ${SR_WINDOW_SOURCES})
 
 set(SR_DEFS
     JUCE_WEB_BROWSER=0
@@ -48,7 +64,7 @@ set(SR_DEFS
 
 target_compile_definitions(SmoothResonance PUBLIC ${SR_DEFS})
 target_link_libraries(SmoothResonance
-    PRIVATE juce::juce_audio_utils juce::juce_dsp
+    PRIVATE SmoothResonanceWindowAssets juce::juce_audio_utils juce::juce_dsp
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
 # ---- install: cmake --build build --target InstallAU ----
@@ -79,11 +95,18 @@ target_link_libraries(SpeechTest PRIVATE juce::juce_dsp PUBLIC juce::juce_recomm
 add_test(NAME speech COMMAND SpeechTest)
 
 juce_add_console_app(ProcessorTest PRODUCT_NAME "ProcessorTest")
-target_sources(ProcessorTest PRIVATE src/ResonanceEngine.cpp src/PluginProcessor.cpp tests/ProcessorTest.cpp)
+target_sources(ProcessorTest PRIVATE src/ResonanceEngine.cpp src/PluginProcessor.cpp ${SR_WINDOW_SOURCES} tests/ProcessorTest.cpp)
 target_include_directories(ProcessorTest PRIVATE src)
 target_compile_definitions(ProcessorTest PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0)
-target_link_libraries(ProcessorTest PRIVATE juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+target_link_libraries(ProcessorTest PRIVATE SmoothResonanceWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME processor COMMAND ProcessorTest)
+
+# Renders the window to PNG with real speech running through the real processor. Not a ctest: it writes docs/window.
+juce_add_console_app(RenderWindow PRODUCT_NAME "RenderWindow")
+target_sources(RenderWindow PRIVATE src/ResonanceEngine.cpp src/PluginProcessor.cpp ${SR_WINDOW_SOURCES} tests/RenderWindow.cpp)
+target_include_directories(RenderWindow PRIVATE src tests)
+target_compile_definitions(RenderWindow PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMITTED=1 SPEECH_DIR="${CMAKE_BINARY_DIR}/speech")
+target_link_libraries(RenderWindow PRIVATE SmoothResonanceWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 
 # Loads the installed .component through the system Audio Unit API, the way a host does. Run after InstallAU.
 add_executable(HostCheck tests/HostCheck.cpp)

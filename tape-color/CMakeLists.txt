@@ -8,7 +8,7 @@ set(SP_NAME    "Smooth Tape Color")
 set(SP_CODE    STcl)
 set(SP_BUNDLE  "com.lukegarito.smoothtapecolor")
 set(SP_DESC    "Oversampled tape saturation with wow, flutter, noise and age")
-set(SP_VERSION 0.1.0)
+set(SP_VERSION 0.2.0)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice

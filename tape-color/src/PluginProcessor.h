@@ -105,9 +105,9 @@ private:
     tapecolor::SincTable sinc;
     tapecolor::EmphasisCoefs emphasis;
     tapecolor::SvfCoefs gapCoefs, ageLpCoefs, bumpCoefs, dipCoefs, lowCutCoefs, highCutCoefs, detectCoefs;
-    double ageHpC = 0, dcC = 0, detectHpC = 0, envC = 0, ratioC = 0, noiseLpC = 1, noiseHpC = 0, noiseNorm = 1, flutterLpC = 0, flutterHpC = 0;
+    double ageHpC = 0, dcC = 0, detectHpC = 0, envC = 0, ratioC = 0, noiseLpC = 1, noiseHpC = 0, noiseNorm = 1;
     double wanderDb = 0, wanderTarget = 0;
-    double spacingC = 1, randomLpC = 0, randomHpC = 0, randomGain = 0, grainLpC = 0, grainHpC = 0, grainNorm = 1, grainEnvC = 0;
+    double spacingC = 1, grainLpC = 0, grainHpC = 0, grainNorm = 1, grainEnvC = 0;
     double sideHpC = 0, sideAttackC = 0, sideReleaseC = 0, companderSlewPerSample = 0;
     double dropDownC = 0, dropUpC = 0;
 
@@ -148,11 +148,8 @@ private:
     // Modulation
     double phaseWow = 0, phaseWow2 = 0, phaseFlutter = 0, phaseFlutter2 = 0, phaseWander1 = 0, phaseWander2 = 0, phaseWander3 = 0;
     double incWow = 0, incWow2 = 0, incFlutter = 0, incFlutter2 = 0, incWander1 = 0, incWander2 = 0, incWander3 = 0;
-    double wowMs = 0, flutterMs = 0, flutterRandomGain = 0;
-    tapecolor::OnePole flutterLp, flutterHp;
-    tapecolor::Random flutterRng;
-    tapecolor::OnePole flutterLpR, flutterHpR, randomLp, randomHp, randomLpR, randomHpR;
-    tapecolor::Random flutterRngR, randomRng, randomRngR;
+    double wowMs = 0, flutterMs = 0;
+    tapecolor::SmoothRandom flutterRandom, flutterRandomR, slowRandom, slowRandomR;
 
     // Dropouts
     tapecolor::Random dropRng;

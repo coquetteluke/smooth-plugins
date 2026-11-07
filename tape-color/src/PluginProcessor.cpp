@@ -222,14 +222,11 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     wowMs = msForCents (kWowCents, kWowHz);
     flutterMs = msForCents (kFlutterCents, kFlutterHz);
 
-    // The irregular part of Flutter is noise kept between 2 and 16 Hz. Its gain follows from the filter, so the depth holds at every rate.
-    flutterLpC = onePoleCoef (16.0, sr);
-    flutterHpC = onePoleCoef (2.0, sr);
-    flutterRandomGain = kFlutterRandomMs * std::sqrt (3.0 * (2.0 - flutterLpC) / flutterLpC);
+    flutterRandom.prepare (kFlutterRandomValuesPerSecond, sr, 0x3C6EF372u);
+    flutterRandomR.prepare (kFlutterRandomValuesPerSecond, sr, 0x6A09E667u);
+    slowRandom.prepare (kRandomValuesPerSecond, sr, 0x510E527Fu);
+    slowRandomR.prepare (kRandomValuesPerSecond, sr, 0x1F83D9ABu);
 
-    randomLpC = onePoleCoef (4.0, sr);
-    randomHpC = onePoleCoef (0.3, sr);
-    randomGain = kRandomRmsMs * std::sqrt (3.0 * (2.0 - randomLpC) / randomLpC);
     grainLpC = onePoleCoef (8000.0, sr);
     grainHpC = onePoleCoef (1000.0, sr);
     grainNorm = std::sqrt (3.0 * (2.0 - grainLpC) / grainLpC);
@@ -278,7 +275,7 @@ void PluginProcessor::buildDeviceFilters()
         for (int i = 0; i < deviceLength; ++i)
         {
             const double fade = i < fadeFrom ? 1.0 : 0.5 + 0.5 * std::cos (kPi * (i - fadeFrom) / (double) (deviceLength - fadeFrom));
-            ir[(size_t) i] = (float) (out[(size_t) i].real() * fade / size);
+            ir[(size_t) i] = (float) (out[(size_t) i].real() * fade);
         }
     }
     for (auto& c : chans)
@@ -307,12 +304,10 @@ void PluginProcessor::reset()
         oversampler->reset();
     dryPos = linePos = gainPos = 0;
     phaseWow = phaseWow2 = phaseFlutter = phaseFlutter2 = phaseWander1 = phaseWander2 = phaseWander3 = 0.0;
-    flutterLp = {}; flutterHp = {};
-    flutterRng.state = 0x3C6EF372u;
-    flutterLpR = {}; flutterHpR = {}; randomLp = {}; randomHp = {}; randomLpR = {}; randomHpR = {};
-    flutterRngR.state = 0x6A09E667u;
-    randomRng.state = 0x510E527Fu;
-    randomRngR.state = 0x1F83D9ABu;
+    flutterRandom.reset (0x3C6EF372u);
+    flutterRandomR.reset (0x6A09E667u);
+    slowRandom.reset (0x510E527Fu);
+    slowRandomR.reset (0x1F83D9ABu);
     dropRng.state = 0x5BE0CD19u;
     dropEnv = 0.0;
     dropSeverity = 1.0;
@@ -633,10 +628,8 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
         phaseWow2 += incWow2; if (phaseWow2 >= kTwoPi) phaseWow2 -= kTwoPi;
         phaseFlutter += incFlutter; if (phaseFlutter >= kTwoPi) phaseFlutter -= kTwoPi;
         phaseFlutter2 += incFlutter2; if (phaseFlutter2 >= kTwoPi) phaseFlutter2 -= kTwoPi;
-        const double rnd = flutterHp.high (flutterLp.low (flutterRng.bipolar(), flutterLpC), flutterHpC) * flutterRandomGain;
-        const double rndR = flutterHpR.high (flutterLpR.low (flutterRngR.bipolar(), flutterLpC), flutterHpC) * flutterRandomGain;
-        const double slow = randomHp.high (randomLp.low (randomRng.bipolar(), randomLpC), randomHpC) * randomGain;
-        const double slowR = randomHpR.high (randomLpR.low (randomRngR.bipolar(), randomLpC), randomHpC) * randomGain;
+        const double rnd = flutterRandom.tick() * kFlutterRandomMs, rndR = flutterRandomR.tick() * kFlutterRandomMs;
+        const double slow = slowRandom.tick() * kRandomRmsMs, slowR = slowRandomR.tick() * kRandomRmsMs;
         const double depth = (double) depthSm.getNextValue();
         const double stereoAmt = (double) stereoSm.getNextValue();
         const double tilt = (double) azimuthSm.getNextValue();

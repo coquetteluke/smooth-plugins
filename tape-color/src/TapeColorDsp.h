@@ -103,8 +103,9 @@ namespace tapecolor
     constexpr double kAzimuthMsAt15 = 0.1;     // the whole difference between channels at 100 percent and 15 ips
     inline double azimuthMs (double azimuth, double speedPos) noexcept { return azimuth * kAzimuthMsAt15 * std::pow (2.0, 2.0 - speedPos); }
 
-    // Random Drift: irregular slow movement of the read head, kept between 0.3 and 4 Hz.
+    // Random Drift: irregular slow movement of the read head, with five new values a second.
     constexpr double kRandomRmsMs = 0.35;
+    constexpr double kRandomValuesPerSecond = 5.0, kFlutterRandomValuesPerSecond = 32.0;
 
     // Dropouts: dips where the tape coating is thin. Depth 100 percent reaches at most this far.
     constexpr double kDropoutMaxDb = 24.0;
@@ -282,6 +283,38 @@ namespace tapecolor
             state ^= state >> 17;
             state ^= state << 5;
             return (double) (std::int32_t) state * 4.656612873077393e-10;
+        }
+    };
+
+    // Smooth random movement for the read head: new random values at a fixed rate, joined by raised cosine curves.
+    // There is no sample to sample jitter, which would be heard as noise on the signal. Output RMS is 1.
+    struct SmoothRandom
+    {
+        Random rng;
+        double from = 0, to = 0, phase = 0, inc = 0;
+
+        void prepare (double valuesPerSecond, double sampleRate, std::uint32_t seed) noexcept
+        {
+            inc = valuesPerSecond / sampleRate;
+            reset (seed);
+        }
+        void reset (std::uint32_t seed) noexcept
+        {
+            rng.state = seed;
+            from = rng.bipolar();
+            to = rng.bipolar();
+            phase = 0.0;
+        }
+        double tick() noexcept
+        {
+            phase += inc;
+            if (phase >= 1.0)
+            {
+                phase -= 1.0;
+                from = to;
+                to = rng.bipolar();
+            }
+            return 2.0 * (from + (to - from) * (0.5 - 0.5 * std::cos (kPi * phase)));
         }
     };
 

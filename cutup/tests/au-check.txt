@@ -1,0 +1,13 @@
+PASS  state file read, MB = 0.740
+PASS  real component opens in a plain host
+PASS  with no sample it is silent through the real AU
+PASS  state with a sample restores through the class info
+PASS  note 61 plays slice 2 through the real AU, cents off = 0.000
+PASS  and at the file's level (velocity sens is 0 in this state), peak = 0.500
+PASS  the real AU saves the same bytes it was given, sample included
+PASS  a factory preset selects
+PASS  that preset keeps the sample and loops the slice, peak late on = 0.500
+PASS  a damaged state is accepted without an error
+PASS  and loads empty, silent, through the real AU
+PASS  a good state still loads after it
+RESULT PASS  0 failures

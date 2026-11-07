@@ -1163,6 +1163,24 @@ static void testLoadPath()
     const auto out = play (p, 12000, { { 0, on (60) } });
     check (countNonFinite (out) == 0 && worstPeak (out) <= 16.0, "NaN, infinity and huge samples in a file are cleaned up, peak", worstPeak (out));
 
+    // Other file types, through the same path. Made here with the system's afconvert, from a known tone.
+    const auto base = writeWav ("base.wav", { tone (48000 * 2, 440.0, 48000.0) }, 48000.0);
+    for (const auto& kind : std::vector<std::vector<juce::String>> { { "m4a", "-d", "aac", "-f", "m4af" }, { "flac", "-d", "flac", "-f", "flac" }, { "aiff", "-d", "BEI16", "-f", "AIFF" }, { "caf", "-d", "alac", "-f", "caff" } })
+    {
+        const auto dest = tempDir().getChildFile ("base." + kind[0]);
+        juce::ChildProcess cp;
+        juce::StringArray cmd { "/usr/bin/afconvert", kind[1], kind[2], kind[3], kind[4], base.getFullPathName(), dest.getFullPathName() };
+        const bool made = cp.start (cmd) && cp.waitForProcessToFinish (30000) && dest.existsAsFile();
+        if (! made) { info (("afconvert could not make " + kind[0]).toStdString(), 0); continue; }
+        PluginProcessor f;
+        load (f, dest);
+        setP (f, "vel_sens", 0.0f);
+        prepare (f, 2, 48000.0, 256);
+        const auto o = play (f, 40000, { { 0, on (60) } });
+        const double c = centsBetween (measureFreq (o.getReadPointer (0) + 8000, 20000, 48000.0), 440.0);
+        check (std::abs (c) <= 5.0, ("a " + kind[0] + " file loads and plays at pitch, off by").toStdString(), c, "cents");
+    }
+
     // More than 2 channels: the first 2 are kept.
     const auto six = writeWav ("three.wav", { tone (4800, 200.0, 48000.0), tone (4800, 300.0, 48000.0), tone (4800, 400.0, 48000.0) }, 48000.0);
     load (p, six);
@@ -1194,9 +1212,8 @@ static void testSwap()
     const long inBlock = allocs.load() - before;
     check (inBlock == 0, "the block that takes the new sample allocates nothing", (double) inBlock);
 
-    juce::AudioBuffer<float> tailOut (2, 960);
     const auto more = play (p, 960, {}, 256);
-    check (peak (more.getReadPointer (0), 960) == 0.0 || peak (more.getReadPointer (0) + 256, 700) == 0.0, "the old voice is gone within about 5 ms of the swap");
+    check (peak (more.getReadPointer (0), 960) == 0.0, "the old voice is gone in the 5.3 ms block that took the new sample");
     check (maxJump (buf.getReadPointer (0), 256) <= 0.05, "taking the new sample does not click, biggest step", maxJump (buf.getReadPointer (0), 256));
 
     midi.clear();
@@ -1361,7 +1378,7 @@ static void testStateNull()
         }
 
         const auto st = saved (a);
-        info ("saved state size for 12 s of stereo audio", (double) st.getSize() / 1048576.0, "MB");
+        info ("saved state size for 6 s of stereo audio", (double) st.getSize() / 1048576.0, "MB");
 
         // The file is gone: the audio must come from the state.
         const auto moved = file.getSiblingFile ("moved.wav");
@@ -1911,6 +1928,17 @@ int main()
     testReadingsAndPresets();
     testControlClicksWithSound();
     testCpu();
+
+    // A saved state for tests/AUStateCheck.cpp, which plays it through the real installed component.
+    const auto statePath = juce::SystemStats::getEnvironmentVariable ("SMOOTH_SLICE_WRITE_STATE", {});
+    if (statePath.isNotEmpty())
+    {
+        PluginProcessor p;
+        load (p, writeWav ("austate.wav", { toneSegments (4, 1.0, 48000.0, 300.0, 170.0) }, 48000.0));
+        toGrid (p, 2);
+        const auto st = saved (p);
+        juce::File (statePath).replaceWithData (st.getData(), st.getSize());
+    }
 
     tempDir().deleteRecursively();
     return finish();

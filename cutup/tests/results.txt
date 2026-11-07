@@ -1,0 +1,611 @@
+PASS  parameter names are clear, unique, no em dash
+INFO  parameter count = 218.000 
+PASS  factory presets = 14.000 
+PASS  preset names are not empty, no em dash
+PASS  presets change the state
+PASS  state save and restore
+PASS  damaged state value 'nan' gives finite output
+PASS  damaged state value 'nan' leaves controls in range
+PASS  damaged state value 'inf' gives finite output
+PASS  damaged state value 'inf' leaves controls in range
+PASS  damaged state value '-inf' gives finite output
+PASS  damaged state value '-inf' leaves controls in range
+PASS  damaged state value '-1e30' gives finite output
+PASS  damaged state value '-1e30' leaves controls in range
+PASS  damaged state value '1e30' gives finite output
+PASS  damaged state value '1e30' leaves controls in range
+PASS  damaged state value '-1' gives finite output
+PASS  damaged state value '-1' leaves controls in range
+PASS  damaged state value 'garbage' gives finite output
+PASS  damaged state value 'garbage' leaves controls in range
+PASS  sweeps finished, mono
+PASS  sweeps finished, stereo
+PASS  no NaN after silence
+PASS  no denormals decaying into silence = 0.000 samples
+PASS  recovers after NaN, inf and huge input, peak in the last second = 0.000 
+INFO  click test baseline step = 0.000 
+PASS  no click when Slice Mode jumps, biggest step = 0.000 
+PASS  no click when Sensitivity jumps, biggest step = 0.000 
+PASS  no click when Grid jumps, biggest step = 0.000 
+PASS  no click when Min Slice jumps, biggest step = 0.000 
+PASS  no click when Grid Type jumps, biggest step = 0.000 
+PASS  no click when Grid Note jumps, biggest step = 0.000 
+PASS  no click when Grid Tempo jumps, biggest step = 0.000 
+PASS  no click when Slice Start jumps, biggest step = 0.000 
+PASS  no click when Play Mode jumps, biggest step = 0.000 
+PASS  no click when Key Mode jumps, biggest step = 0.000 
+PASS  no click when Root Note jumps, biggest step = 0.000 
+PASS  no click when Selected Slice jumps, biggest step = 0.000 
+PASS  no click when Polyphony jumps, biggest step = 0.000 
+PASS  no click when Transpose jumps, biggest step = 0.000 
+PASS  no click when Bend Range jumps, biggest step = 0.000 
+PASS  no click when Pitch Env Amount jumps, biggest step = 0.000 
+PASS  no click when Pitch Env Time jumps, biggest step = 0.000 
+PASS  no click when Velocity Sens jumps, biggest step = 0.000 
+PASS  no click when Output jumps, biggest step = 0.000 
+PASS  no click when Loop Crossfade jumps, biggest step = 0.000 
+PASS  no click when Decay jumps, biggest step = 0.000 
+PASS  no click when Sustain jumps, biggest step = 0.000 
+PASS  no click when Bypass jumps, biggest step = 0.000 
+PASS  no click when Slice 01 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 01 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 01 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 01 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 01 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 01 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 02 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 02 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 02 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 02 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 02 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 02 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 03 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 03 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 03 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 03 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 03 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 03 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 04 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 04 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 04 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 04 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 04 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 04 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 05 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 05 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 05 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 05 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 05 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 05 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 06 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 06 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 06 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 06 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 06 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 06 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 07 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 07 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 07 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 07 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 07 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 07 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 08 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 08 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 08 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 08 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 08 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 08 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 09 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 09 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 09 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 09 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 09 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 09 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 10 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 10 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 10 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 10 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 10 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 10 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 11 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 11 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 11 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 11 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 11 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 11 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 12 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 12 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 12 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 12 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 12 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 12 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 13 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 13 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 13 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 13 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 13 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 13 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 14 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 14 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 14 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 14 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 14 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 14 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 15 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 15 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 15 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 15 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 15 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 15 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 16 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 16 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 16 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 16 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 16 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 16 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 17 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 17 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 17 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 17 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 17 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 17 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 18 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 18 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 18 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 18 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 18 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 18 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 19 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 19 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 19 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 19 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 19 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 19 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 20 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 20 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 20 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 20 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 20 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 20 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 21 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 21 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 21 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 21 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 21 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 21 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 22 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 22 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 22 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 22 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 22 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 22 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 23 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 23 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 23 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 23 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 23 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 23 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 24 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 24 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 24 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 24 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 24 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 24 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 25 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 25 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 25 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 25 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 25 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 25 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 26 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 26 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 26 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 26 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 26 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 26 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 27 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 27 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 27 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 27 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 27 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 27 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 28 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 28 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 28 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 28 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 28 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 28 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 29 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 29 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 29 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 29 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 29 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 29 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 30 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 30 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 30 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 30 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 30 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 30 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 31 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 31 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 31 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 31 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 31 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 31 Pan jumps, biggest step = 0.000 
+PASS  no click when Slice 32 Pitch jumps, biggest step = 0.000 
+PASS  no click when Slice 32 Reverse jumps, biggest step = 0.000 
+PASS  no click when Slice 32 Attack jumps, biggest step = 0.000 
+PASS  no click when Slice 32 Release jumps, biggest step = 0.000 
+PASS  no click when Slice 32 Level jumps, biggest step = 0.000 
+PASS  no click when Slice 32 Pan jumps, biggest step = 0.000 
+PASS  with no sample it is silent (the stated exception)
+PASS  with no sample there are no slices
+PASS  generated file loads
+PASS  transient slicing, 14 known onsets, worst distance at 44100 Hz = 1.315 ms
+PASS  transient slicing finds the 14 and few extras at 44100 Hz = 14.000 slices
+PASS  generated file loads
+PASS  transient slicing, 14 known onsets, worst distance at 48000 Hz = 1.333 ms
+PASS  transient slicing finds the 14 and few extras at 48000 Hz = 14.000 slices
+PASS  generated file loads
+PASS  transient slicing, 14 known onsets, worst distance at 96000 Hz = 2.000 ms
+PASS  transient slicing finds the 14 and few extras at 96000 Hz = 14.000 slices
+PASS  speech file loads, clean
+PASS  macOS say, 26 words, default settings, clean, worst word start distance = 2.086 ms
+INFO    latest cut against its word start, clean = 0.000 ms
+PASS  macOS say, clean, no cut comes more than 5 ms after the word starts = 0.000 ms
+INFO    mean distance, clean = 0.295 ms
+INFO    slices used of the 32, clean (extras are syllables) = 32.000 
+PASS  speech file loads, noise 60 dB under
+PASS  macOS say, 26 words, default settings, noise 60 dB under, worst word start distance = 5.306 ms
+INFO    latest cut against its word start, noise 60 dB under = 0.045 ms
+PASS  macOS say, noise 60 dB under, no cut comes more than 5 ms after the word starts = 0.045 ms
+INFO    mean distance, noise 60 dB under = 0.668 ms
+INFO    slices used of the 32, noise 60 dB under (extras are syllables) = 32.000 
+PASS  joined up speech gives usable slices = 21.000 slices
+PASS  grid slicing is exact for all 9 grids on a prime length
+PASS  grid slice 6 plays the file's exact samples, worst difference = 0.000 
+INFO  Sensitivity 0 gives slices = 1.000 
+INFO  Sensitivity 10 gives slices = 6.000 
+INFO  Sensitivity 25 gives slices = 10.000 
+INFO  Sensitivity 40 gives slices = 13.000 
+INFO  Sensitivity 50 gives slices = 14.000 
+INFO  Sensitivity 75 gives slices = 14.000 
+INFO  Sensitivity 100 gives slices = 14.000 
+PASS  more Sensitivity never gives fewer slices
+PASS  Sensitivity 0 keeps only the strongest = 1.000 slices
+PASS  Min Slice 450 ms keeps cuts apart, smallest gap = 499.417 ms
+PASS  Min Slice 450 ms thins the slices = 7.000 slices
+PASS  80 onsets stop at the 32 slots = 32.000 slices
+PASS  of those 32, the loud onsets are the ones kept = 32.000 of 32
+PASS  each of 8 notes plays its own slice, smallest margin over the other tones = 107.588 dB
+PASS  notes outside the slices are silent
+PASS  Root Note 36: note 38 plays slice 3, tone off by = 0.000 cents
+PASS  Grid 4: slice 2 lands on the third tone, off by = 0.000 cents
+PASS  a note at sample 777 starts there, first sound at = 778.000 samples
+PASS  Slice Pitch -24.000000 st, error = 0.000 cents
+PASS  Slice Pitch -12.000000 st, error = -0.000 cents
+PASS  Slice Pitch -7.000000 st, error = -0.000 cents
+PASS  Slice Pitch -1.000000 st, error = 0.000 cents
+PASS  Slice Pitch 0.500000 st, error = 0.000 cents
+PASS  Slice Pitch 1.000000 st, error = -0.000 cents
+PASS  Slice Pitch 7.000000 st, error = -0.000 cents
+PASS  Slice Pitch 12.000000 st, error = 0.000 cents
+PASS  Slice Pitch 24.000000 st, error = 0.000 cents
+INFO  Slice Pitch worst error = 0.000 cents
+PASS  Slice 02 Pitch leaves slice 1 alone
+PASS  Slice 02 Pitch +12 moves slice 2 up an octave
+PASS  44.1 kHz file at host 44100 Hz, +7 st, error = -0.000 cents
+PASS  44.1 kHz file at host 48000 Hz, +7 st, error = 0.000 cents
+PASS  44.1 kHz file at host 96000 Hz, +7 st, error = -0.000 cents
+PASS  Reverse plays the exact reverse of the slice, worst difference = 0.000 
+PASS  forward plays the exact slice, worst difference = 0.000 
+PASS  Slice 02 Reverse leaves slice 1 alone, worst difference = 0.000 
+PASS  Attack 5 ms at 44100 Hz measures = 5.014 ms
+PASS  Attack 50 ms at 44100 Hz measures = 50.013 ms
+PASS  Attack 200 ms at 44100 Hz measures = 200.000 ms
+PASS  Attack 1000 ms at 44100 Hz measures = 1000.000 ms
+PASS  Attack 0 is the 1 ms floor, full level after = 0.998 ms
+PASS  Release 5 ms at 44100 Hz measures = 5.014 ms
+PASS  Release 30 ms at 44100 Hz measures = 30.008 ms
+PASS  Release 100 ms at 44100 Hz measures = 100.025 ms
+PASS  Release 500 ms at 44100 Hz measures = 500.025 ms
+PASS  Release 2000 ms at 44100 Hz measures = 2000.025 ms
+PASS  Attack 5 ms at 48000 Hz measures = 5.000 ms
+PASS  Attack 50 ms at 48000 Hz measures = 50.000 ms
+PASS  Attack 200 ms at 48000 Hz measures = 200.000 ms
+PASS  Attack 1000 ms at 48000 Hz measures = 1000.000 ms
+PASS  Attack 0 is the 1 ms floor, full level after = 1.000 ms
+PASS  Release 5 ms at 48000 Hz measures = 5.023 ms
+PASS  Release 30 ms at 48000 Hz measures = 30.023 ms
+PASS  Release 100 ms at 48000 Hz measures = 100.023 ms
+PASS  Release 500 ms at 48000 Hz measures = 500.023 ms
+PASS  Release 2000 ms at 48000 Hz measures = 2000.023 ms
+PASS  Attack 5 ms at 96000 Hz measures = 5.000 ms
+PASS  Attack 50 ms at 96000 Hz measures = 50.000 ms
+PASS  Attack 200 ms at 96000 Hz measures = 200.000 ms
+PASS  Attack 1000 ms at 96000 Hz measures = 1000.000 ms
+PASS  Attack 0 is the 1 ms floor, full level after = 1.000 ms
+PASS  Release 5 ms at 96000 Hz measures = 5.012 ms
+PASS  Release 30 ms at 96000 Hz measures = 30.012 ms
+PASS  Release 100 ms at 96000 Hz measures = 100.012 ms
+PASS  Release 500 ms at 96000 Hz measures = 500.012 ms
+PASS  Release 2000 ms at 96000 Hz measures = 2000.012 ms
+PASS  Level 0 dB passes the file at its own level, off by = -0.000 dB
+PASS  Slice Level -24 dB measures = -24.000 dB
+PASS  Slice Level -12 dB measures = -12.000 dB
+PASS  Slice Level -6 dB measures = -6.000 dB
+PASS  Slice Level 6 dB measures = 6.000 dB
+PASS  Slice Level 12 dB measures = 12.000 dB
+PASS  Output -12 dB measures = -12.000 dB
+PASS  Velocity Sens 100%, velocity 64, gain off by = -0.000 dB
+PASS  Velocity Sens 0% ignores velocity, off by = 0.000 dB
+PASS  Polyphony 1: voices sounding = 1.000 
+PASS  Polyphony 1: the oldest are the ones stolen
+PASS  Polyphony 1: no click when stealing, biggest step  = 0.014 
+INFO    its own slope limit = 0.024 
+PASS  Polyphony 2: voices sounding = 2.000 
+PASS  Polyphony 2: the oldest are the ones stolen
+PASS  Polyphony 2: no click when stealing, biggest step  = 0.024 
+INFO    its own slope limit = 0.042 
+PASS  Polyphony 4: voices sounding = 4.000 
+PASS  Polyphony 4: the oldest are the ones stolen
+PASS  Polyphony 4: no click when stealing, biggest step  = 0.037 
+INFO    its own slope limit = 0.092 
+PASS  Polyphony 8: voices sounding = 8.000 
+PASS  Polyphony 8: the oldest are the ones stolen
+PASS  Polyphony 8: no click when stealing, biggest step  = 0.082 
+INFO    its own slope limit = 0.247 
+PASS  Polyphony 16: voices sounding = 16.000 
+PASS  Polyphony 16: the oldest are the ones stolen
+PASS  Polyphony 16: no click when stealing, biggest step  = 0.172 
+INFO    its own slope limit = 0.770 
+PASS  40 fast steals at one voice, biggest step = 0.115 
+PASS  the same note struck again 30 times, biggest step = 0.051 
+PASS  Polyphony lowered during four notes, biggest step = 0.121 
+PASS  Polyphony lowered: one voice left = 1.000 
+PASS  400 notes in one block stay finite, peak = 3.548 
+PASS  slice end does not click, held to the end, short Release, biggest step = 0.029 
+PASS  voice ended cleanly, held to the end, short Release
+PASS  slice end does not click, held to the end, long Release, biggest step = 0.029 
+PASS  voice ended cleanly, held to the end, long Release
+PASS  slice end does not click, One Shot, biggest step = 0.029 
+PASS  voice ended cleanly, One Shot
+PASS  slice end does not click, Reverse, biggest step = 0.029 
+PASS  voice ended cleanly, Reverse
+PASS  slice end does not click, up 12 st, biggest step = 0.058 
+PASS  voice ended cleanly, up 12 st
+PASS  slice end does not click, down 12 st, biggest step = 0.014 
+PASS  voice ended cleanly, down 12 st
+PASS  slice end does not click, To End, biggest step = 0.029 
+PASS  slice end does not click, Loop, biggest step = 0.031 
+PASS  slice end does not click, Loop, Reverse, biggest step = 0.031 
+PASS  32 slices of 2 ms each: biggest step = 0.030 
+PASS  2 ms slices stay finite
+PASS  note off at the shortest Release, biggest step = 0.029 
+PASS  One Shot plays on after note off, level = -9.031 dBFS
+PASS  Gate stops 5 ms after note off
+PASS  Gate held stops at the slice end
+PASS  Loop keeps going past the slice end, level = -9.031 dBFS
+PASS  Loop stays on its slice, off by = -0.000 cents
+PASS  To End plays on into the next slice, off by = -0.000 cents
+PASS  Key Mode Chromatic: Selected Slice 3, note 67 plays 7 st up, error = -0.000 cents
+PASS  Sustain pedal holds after note off
+PASS  pedal up releases
+PASS  All Sound Off is silent within 5.1 ms
+PASS  All Sound Off does not click, biggest step = 0.022 
+PASS  Transpose -12 st, error = -0.000 cents
+PASS  Bend Range 7, wheel full up, error = -0.085 cents
+PASS  Pitch Env +12 st over 200 ms: at 100 ms it is = 6.000 st
+PASS  Pitch Env back on pitch after its time, error = 0.000 cents
+PASS  Bypass goes silent within about 30 ms
+PASS  Bypass does not click, biggest step = 0.021 
+PASS  latency is 0 samples, bypassed or not
+PASS  the host's bypass call goes silent too
+PASS  Boomerang plays forward then the exact reverse, worst difference = 0.000 
+PASS  Boomerang ends at twice the slice
+PASS  note off stops a Boomerang like a Gate
+PASS  Slice Pan 0 leaves both sides the same
+PASS  Slice Pan -100: far side is silent = -230.969 dB
+PASS  Slice Pan -100: near side stays, off by = 0.000 dB
+PASS  Slice Pan -50: far side measures = -6.021 dB
+PASS  Slice Pan -50: near side stays, off by = 0.000 dB
+PASS  Slice Pan 50: far side measures = -6.021 dB
+PASS  Slice Pan 50: near side stays, off by = 0.000 dB
+PASS  Slice Pan 100: far side is silent = -230.969 dB
+PASS  Slice Pan 100: near side stays, off by = 0.000 dB
+PASS  Sustain 100% holds full level
+PASS  Decay 20 ms measures = 20.000 ms
+PASS  Sustain 50% holds at = -6.021 dB
+PASS  Decay 100 ms measures = 100.000 ms
+PASS  Sustain 50% holds at = -6.021 dB
+PASS  Decay 500 ms measures = 500.000 ms
+PASS  Sustain 50% holds at = -6.021 dB
+PASS  Sustain 0% ends the voice after its Decay
+PASS  Loop Crossfade 5 ms: half way, level = 0.300 
+PASS  Loop Crossfade 5 ms measures = 4.854 ms
+PASS  Loop Crossfade 50 ms: half way, level = 0.300 
+PASS  Loop Crossfade 50 ms measures = 48.729 ms
+PASS  Loop Crossfade 200 ms: half way, level = 0.300 
+PASS  Loop Crossfade 200 ms measures = 194.979 ms
+PASS  Grid Type Note Length is exact for 11 notes at 3 tempos
+PASS  1/8 at 120 BPM is 12000 frames at 48 kHz = 12000.000 
+PASS  Slice Start 250 ms moves the first cut there, in frames = 12000.000 
+PASS  Slice Start with Equal Parts shares out what follows
+PASS  Slice Start 2 s: transient cuts begin at that point and later only = 96000.000 
+PASS  pitching a 15 kHz tone up an octave: fold back at 18 kHz, re the tone = -93.986 dB
+PASS  a 5 kHz tone up an octave keeps its level, off by = -0.000 dB
+PASS  a 5 kHz tone down an octave keeps its level, off by = 0.000 dB
+PASS  pitching down adds no image at 21.5 kHz, re the tone = -101.863 dB
+PASS  a stereo file stays stereo, worst difference = 0.000 
+PASS  mono output layout accepted
+PASS  mono output is the plain sum of both sides over 2, worst difference = 0.000 
+PASS  block size 32 against 1024, with pitch wheel moving, worst difference = 0.000 
+PASS  with a playhead or without: identical, worst difference = 0.000 
+PASS  a good file loads
+PASS  a text file named .wav gives a message and keeps the sample
+PASS  a missing file gives a message and keeps the sample
+PASS  a file over the 64 MB limit is refused with a message
+INFO  allocations while refusing it = 153.000 
+PASS  NaN, infinity and huge samples in a file are cleaned up, peak = 0.500 
+PASS  a m4a file loads and plays at pitch, off by = 0.020 cents
+PASS  a flac file loads and plays at pitch, off by = -0.000 cents
+PASS  a aiff file loads and plays at pitch, off by = 0.000 cents
+PASS  a caf file loads and plays at pitch, off by = -0.000 cents
+PASS  a 3 channel file loads as its first 2
+PASS  second file loads while a note rings
+PASS  the block that takes the new sample allocates nothing = 0.000 
+PASS  the old voice is gone in the 5.3 ms block that took the new sample
+PASS  taking the new sample does not click, biggest step = 0.020 
+PASS  the next note plays the new sample, off by = -0.000 cents
+PASS  the old sample is freed off the audio thread
+PASS  10 file loads during 1500 audio blocks: all output finite and in range
+PASS  still holding a sample after that
+PASS  4 loads with no audio running: the newest plays
+PASS  destroyed in the middle of a load, 5 times, no crash
+INFO  saved state size for 6 s of stereo audio = 2.206 MB
+PASS  state restores the sample with the file moved away
+PASS  state restores the same slices
+PASS  save and restore plays identically, null test in mode 0, worst difference = 0.000 
+PASS  that null test had sound in it in mode 0 = 0.978 
+PASS  a restored state saves back byte for byte in mode 0
+INFO  saved state size for 6 s of stereo audio = 2.206 MB
+PASS  state restores the sample with the file moved away
+PASS  state restores the same slices
+PASS  save and restore plays identically, null test in mode 1, worst difference = 0.000 
+PASS  that null test had sound in it in mode 1 = 0.639 
+PASS  a restored state saves back byte for byte in mode 1
+PASS  a marker moves by hand
+PASS  a marker is added by hand
+INFO  saved state size for 6 s of stereo audio = 2.206 MB
+PASS  state restores the sample with the file moved away
+PASS  state restores the same slices
+PASS  save and restore plays identically, null test in mode 2, worst difference = 0.000 
+PASS  that null test had sound in it in mode 2 = 0.978 
+PASS  a restored state saves back byte for byte in mode 2
+PASS  a session keeps its saved slices even if slicing would now come out differently
+PASS  a state over the size limit loads empty
+PASS  the undamaged state used for these tests loads
+PASS  damaged state loads empty: sample rate 0
+PASS  damaged state loads empty: sample rate -1
+PASS  damaged state loads empty: sample rate nan
+PASS  damaged state loads empty: sample rate inf
+PASS  damaged state loads empty: sample rate 1e300
+PASS  damaged state loads empty: sample rate 7
+PASS  damaged state loads empty: sample rate 1000000
+PASS  damaged state loads empty: sample rate abc
+PASS  damaged state loads empty: channels 0
+PASS  damaged state loads empty: channels -5
+PASS  damaged state loads empty: channels 3
+PASS  damaged state loads empty: channels 99
+PASS  damaged state loads empty: channels nan
+PASS  damaged state loads empty: channels x
+PASS  damaged state loads empty: frames 0
+PASS  damaged state loads empty: frames -1
+PASS  damaged state loads empty: frames 96001
+PASS  damaged state loads empty: frames 95999
+PASS  damaged state loads empty: frames 16777217
+PASS  damaged state loads empty: frames 2147483647
+PASS  damaged state loads empty: frames 99999999999
+PASS  damaged state loads empty: frames nan
+PASS  damaged state loads empty: frames 1e9
+PASS  damaged state loads empty: frames 
+PASS  damaged state loads empty: version 0
+PASS  damaged state loads empty: version 2
+PASS  damaged state loads empty: version -1
+PASS  damaged state loads empty: version abc
+PASS  damaged state loads empty: wrong audio hash
+PASS  damaged state loads empty: no manual markers
+PASS  damaged state loads empty: manual markers out of order
+PASS  damaged state loads empty: manual marker past the end
+PASS  damaged state loads empty: negative manual marker
+PASS  damaged state loads empty: manual marker not a number
+PASS  damaged state loads empty: two manual markers on one frame
+PASS  damaged state loads empty: 40 manual markers
+PASS  damaged state loads empty: saved slice past the end
+PASS  damaged state loads empty: a saved slice with no end
+PASS  damaged state loads empty: onset past the end
+PASS  damaged state loads empty: onset strength over 1
+PASS  damaged state loads empty: negative onset strength
+PASS  damaged state loads empty: onsets not sorted by strength
+PASS  damaged state loads empty: onset junk
+PASS  damaged state loads empty: first audible frame negative
+PASS  damaged state loads empty: first audible frame past the end
+PASS  damaged state loads empty: too many onsets
+PASS  damaged state loads empty: bad value in the audio nan
+PASS  damaged state loads empty: bad value in the audio inf
+PASS  damaged state loads empty: bad value in the audio -inf
+PASS  damaged state loads empty: bad value in the audio 1000000015047466219876688855040.000000
+PASS  damaged state loads empty: bad value in the audio 17.000000
+PASS  damaged state loads empty: one flipped bit in the audio
+PASS  damaged state loads empty: wrong audio magic number
+PASS  damaged state loads empty: audio tail claims a different size
+PASS  damaged state loads empty: extra bytes after the audio
+PASS  damaged state loads empty: audio tail missing
+PASS  state cut short at 17 places always loads empty, empty count = 17.000 
+PASS  XML length in the header claims 0: stays safe
+PASS  XML length in the header claims 1: stays safe
+PASS  XML length in the header claims 2147483647: stays safe
+PASS  XML length in the header claims 4294967295: stays safe
+PASS  XML length in the header claims 8388609: stays safe
+PASS  100 blocks of pure noise: unsafe results = 0.000 
+PASS  400 randomly damaged states: unsafe results = 0.000 
+INFO    of those, still loaded a sample (flips in names or digits that are still valid) = 69.000 
+PASS  damaged state says so in the window: The saved state was damaged or too big, so it loaded empty
+PASS  a good state still loads after a bad one
+PASS  damaged parameter value 'nan' with good audio stays safe
+PASS  damaged parameter value 'inf' with good audio stays safe
+PASS  damaged parameter value '-inf' with good audio stays safe
+PASS  damaged parameter value '-1e30' with good audio stays safe
+PASS  damaged parameter value '1e30' with good audio stays safe
+PASS  damaged parameter value '-1' with good audio stays safe
+PASS  damaged parameter value 'garbage' with good audio stays safe
+PASS  window opens with no sample
+PASS  window says when no sample is loaded
+PASS  window created and destroyed 20 times while playing
+PASS  waveform has room in the window = 304.000 px tall
+PASS  window shows the slice count: ed.wav   2.00 s   48.0 kHz   mono   8 slices
+PASS  window paints off screen
+PASS  clicking slice 5 selects it = 5.000 
+PASS  clicking slice 5 plays slice 5, off by = -0.000 cents
+PASS  the window shows the selected slice: Slice 5  E3
+PASS  selected slice settings are the slot's real parameters
+PASS  moving a marker turns Slice Mode to Manual
+PASS  dragging moved the marker by = 49.000 ms
+PASS  double click adds a marker = 9.000 
+PASS  option click removes a marker = 8.000 
+PASS  the audio uses the moved marker, worst difference = 0.000 
+PASS  picking Manual keeps the markers on show
+PASS  window closed while a file loads
+PASS  window accepts audio files and turns down others
+PASS  a dropped file loads through the same path
+PASS  readings are parameters
+PASS  Slices Found reads 4: 4
+PASS  Sample Length reads 2.00: 2.00
+PASS  Active Voices reads 2: 2
+PASS  readings cannot write automation
+PASS  Slices Found follows with no audio running: 8
+PASS  all presets leave the sample alone
+PASS  preset Boomerang sets play_mode
+PASS  preset Even Eighths sets grid
+PASS  preset Fine Transients sets sensitivity
+PASS  preset Keys From One Slice sets key_mode
+PASS  preset Mono Cut sets polyphony
+PASS  preset Octave Down Run sets transpose
+PASS  preset One Shot Stabs sets play_mode
+PASS  preset Pitch Drop Chops sets penv_amount
+PASS  preset Pluck Chops sets sustain
+PASS  preset Reverse Swell sets s07_reverse
+PASS  preset Stutter Loop sets play_mode
+PASS  preset Tempo Sixteenths sets grid_type
+PASS  preset Vowel Hold sets loop_fade
+PASS  preset 1 matches the defaults
+PASS  32 slots with 6 parameters each = 192.000 
+PASS  slot names read plainly: Slice 32 Level
+PASS  Pitch shows +3.00
+PASS  Root Note 60 shows C3
+PASS  Slice Mode shows its name
+PASS  every control jumps on a held note with no click, worst step (Transpose) = 0.014 
+INFO  16 stereo voices pitched up 7 st: share of one core = 4.135 %
+PASS  16 stereo voices run faster than real time, for 10 s of audio took = 413.493 ms
+RESULT PASS  0 failures

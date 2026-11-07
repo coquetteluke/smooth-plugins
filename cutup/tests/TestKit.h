@@ -15,15 +15,15 @@
 #ifdef SMOOTH_COUNT_ALLOCS
 #include <new>
 #include <cstdlib>
-namespace testkit { inline std::atomic<long> allocs { 0 }; }
-void* operator new (std::size_t n) { testkit::allocs.fetch_add (1, std::memory_order_relaxed); if (void* p = std::malloc (n ? n : 1)) return p; throw std::bad_alloc(); }
+namespace testkit { inline std::atomic<long> allocs { 0 }; inline thread_local long threadAllocs = 0; }
+void* operator new (std::size_t n) { testkit::allocs.fetch_add (1, std::memory_order_relaxed); ++testkit::threadAllocs; if (void* p = std::malloc (n ? n : 1)) return p; throw std::bad_alloc(); }
 void* operator new[] (std::size_t n) { return operator new (n); }
 void operator delete (void* p) noexcept { std::free (p); }
 void operator delete[] (void* p) noexcept { std::free (p); }
 void operator delete (void* p, std::size_t) noexcept { std::free (p); }
 void operator delete[] (void* p, std::size_t) noexcept { std::free (p); }
 #else
-namespace testkit { inline std::atomic<long> allocs { 0 }; }
+namespace testkit { inline std::atomic<long> allocs { 0 }; inline thread_local long threadAllocs = 0; }
 #endif
 
 namespace testkit

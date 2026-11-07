@@ -1,4 +1,4 @@
-PASS  state file read, MB = 0.740
+PASS  state file read, MB = 0.741
 PASS  real component opens in a plain host
 PASS  with no sample it is silent through the real AU
 PASS  state with a sample restores through the class info

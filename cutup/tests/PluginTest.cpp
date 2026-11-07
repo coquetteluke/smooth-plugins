@@ -5,6 +5,9 @@
 #include "TestKit.h"
 #include "PluginProcessor.h"
 #include "SliceEditor.h"
+#include <chrono>
+#include <set>
+#include <thread>
 
 using namespace testkit;
 using slicecore::SliceTable;
@@ -1940,6 +1943,7 @@ int main (int argc, char** argv)
     testStateNull();
     testDamagedState();
     testEditor();
+    testWindow();
     testReadingsAndPresets();
     testControlClicksWithSound();
     testCpu();

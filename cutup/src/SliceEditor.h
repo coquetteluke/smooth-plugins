@@ -1,36 +1,12 @@
 #pragma once
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
+#include "window/Controls.h"
+#include "window/SliceViews.h"
 
-// The plain window: waveform with slice markers, Load and drag and drop, slice settings. A styled pass comes later.
-// Every knob here is attached to a real parameter. It only polls the processor on a timer.
-class SliceWaveform final : public juce::Component
-{
-public:
-    explicit SliceWaveform (PluginProcessor& p) : processor (p) {}
-
-    void refresh (const slicecore::SliceTable& t, int selected, bool playing);
-    void paint (juce::Graphics&) override;
-    void mouseDown (const juce::MouseEvent&) override;
-    void mouseDrag (const juce::MouseEvent&) override;
-    void mouseUp (const juce::MouseEvent&) override;
-    void mouseDoubleClick (const juce::MouseEvent&) override;
-    void mouseMove (const juce::MouseEvent&) override;
-
-    // Public so a test can drive the window with no message loop running.
-    int frameAtX (float x) const;
-    int sliceAtFrame (int frame) const;
-    int markerNearX (float x) const;
-
-private:
-    float xForFrame (int frame) const;
-
-    PluginProcessor& processor;
-    slicecore::SliceTable table;
-    int selected = 0, dragging = -1;
-    bool wasPlaying = false;
-};
-
+// The window. The waveform cut into coloured slices runs edge to edge, each slice flows down to its key, and the controls below
+// edit whichever slice is selected. Every knob is a real parameter. Per slice controls point at the selected slot's parameters,
+// so all 32 slots are in reach through the Selected Slice control. The window only adds its size and Advanced to the saved state.
 class SliceEditor final : public juce::AudioProcessorEditor,
                           public juce::FileDragAndDropTarget,
                           private juce::Timer
@@ -41,56 +17,84 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseEnter (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
 
     bool isInterestedInFileDrag (const juce::StringArray&) override;
+    void fileDragEnter (const juce::StringArray&, int, int) override;
+    void fileDragExit (const juce::StringArray&) override;
     void filesDropped (const juce::StringArray&, int, int) override;
 
     // Public so a test can drive the window with no message loop running.
     void refresh();
     SliceWaveform& getWaveform() noexcept { return waveform; }
-    juce::String getStatusText() const { return statusLabel.getText(); }
-    juce::String getSelectedText() const { return selectedLabel.getText(); }
+    KeyMap& getKeyMap() noexcept { return keyMap; }
+    juce::String getStatusText() const { return statusText; }
+    juce::String getSelectedText() const;
+    juce::String getHintText() const { return hintText; }
+    int getHintRoom() const noexcept { return hintArea.getWidth(); }
+    static juce::String getWindowTitle() { return "Cutup"; }
+
+    bool isAdvancedOpen() const noexcept;
+    void setAdvancedOpen (bool);
+    bool isZoomed() const noexcept { return zoomButton.isLatched(); }
+    void setZoomed (bool);
+    void previewHint (const juce::String& componentId);
+    bool isFastTimer() const noexcept { return fast; }
+
+    // The arrows that step through the slots, for a test to click.
+    juce::Component& getStepperComponent() noexcept;
+    juce::Point<float> stepperNextArrow() const;
+    juce::Point<float> stepperPreviousArrow() const;
 
 private:
-    using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
-    using ComboAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
+    class SliceStepper;
+    class AdvancedHeader;
 
-    struct Knob
-    {
-        juce::Slider slider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
-        juce::Label label;
-        std::unique_ptr<SliderAttachment> attachment;
-    };
-    struct Choice
-    {
-        juce::ComboBox box;
-        juce::Label label;
-        std::unique_ptr<ComboAttachment> attachment;
-    };
-
-    void timerCallback() override { refresh(); }
-    void setupKnob (Knob&, const char* text, const char* paramId);
-    void setupChoice (Choice&, const char* text, const char* paramId);
+    void timerCallback() override;
+    void pollSlow();
+    void pollFast();
     void bindSelected (int index);
+    void updateToolbar();
+    void updateInfo();
     void chooseFile();
+    void showHintFor (juce::Component*);
+    void setHint (const juce::String&);
+    bool isDraggingSlotControl() const;
+    bool acceptsFile (const juce::String&) const;
 
     PluginProcessor& processor;
-    SliceWaveform waveform;
+    juce::SharedResourcePointer<ui::Assets> assets;
+    ui::LookAndFeel lookAndFeel;
 
-    juce::TextButton loadButton { "Load" };
-    juce::Label statusLabel, selectedLabel, helpLabel;
+    SliceWaveform waveform;
+    KeyMap keyMap;
+    AmpGraph ampGraph;
+    PitchGraph pitchGraph;
+
+    ui::PresetBox presets;
+    ui::ActionButton loadButton, zoomButton;
+    ui::Pill bypass;
+    ui::Segments sliceMode, gridType, keyMode;
+    ui::MenuField grid, gridNote, playMode;
+    ui::ValueCell sensitivity, sliceStart, gridTempo;
+    ui::ValueCell output, root, polyphony, velSens, loopFade;
+    ui::ValueCell decay, sustain, penvAmount, penvTime;
+    ui::ValueCell minSlice, transpose, bendRange;
+    ui::ValueCell slotPitch, slotLevel, slotPan, slotAttack, slotRelease;
+    ui::Pill slotReverse;
+    ui::ReadingCell slicesFound, sampleLength, activeVoices;
+
+    std::unique_ptr<SliceStepper> stepper;
+    std::unique_ptr<AdvancedHeader> advancedHeader;
     std::unique_ptr<juce::FileChooser> chooser;
 
-    Choice sliceMode, gridType, grid, gridNote, playMode, keyMode;
-    Knob sensitivity, minSlice, sliceStart, gridTempo, polyphony, transpose, rootNote, velSens, penvAmount, penvTime, bendRange, output, loopFade, decay, sustain;
-    Knob slotPitch, slotPan, slotAttack, slotRelease, slotLevel;
-    juce::ToggleButton slotReverse { "Reverse" };
-    std::unique_ptr<ButtonAttachment> slotReverseAttachment;
-
-    int boundSlot = -1;
-    int shownMode = -1;
+    juce::Rectangle<int> titleArea, infoArea, manualNoteArea, hintArea, ampLabel, pitchLabel;
+    juce::String statusText, hintText;
+    int boundSlot = -1, shownMode = -1, shownLayout = -1, slowCounter = 0;
     slicecore::SliceTable shownTable;
+    bool constructed = false, fast = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SliceEditor)
 };

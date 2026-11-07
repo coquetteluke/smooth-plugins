@@ -8,11 +8,11 @@ set(SP_NAME    "Smooth Slice")
 set(SP_CODE    SSlc)
 set(SP_BUNDLE  "com.lukegarito.smoothslice")
 set(SP_DESC    "Vocal sample slicer played from MIDI")
-set(SP_VERSION 1.0.0)
+set(SP_VERSION 1.1.0)
 set(SP_AU_TYPE kAudioUnitType_MusicDevice)
 set(SP_SYNTH   TRUE)
 set(SP_MIDI_IN TRUE)
-set(SP_SOURCES src/PluginProcessor.cpp src/SliceEditor.cpp) # every .cpp except tests
+set(SP_SOURCES src/PluginProcessor.cpp src/SliceEditor.cpp src/window/Theme.cpp src/window/Controls.cpp src/window/SliceViews.cpp) # every .cpp except tests
 # -------------------------------------
 
 project(${SP_TARGET} VERSION ${SP_VERSION} LANGUAGES C CXX)
@@ -31,6 +31,14 @@ else()
     FetchContent_Declare(JUCE GIT_REPOSITORY https://github.com/juce-framework/JUCE.git GIT_TAG 8.0.10 GIT_SHALLOW TRUE)
     FetchContent_MakeAvailable(JUCE)
 endif()
+
+# The window's one font family (SIL OFL, see assets/fonts/OFL.txt).
+juce_add_binary_data(SliceWindowAssets
+    HEADER_NAME WindowAssets.h
+    NAMESPACE WindowAssets
+    SOURCES
+        assets/fonts/Inter-Regular.otf
+        assets/fonts/Inter-Medium.otf)
 
 juce_add_plugin(${SP_TARGET}
     VERSION ${SP_VERSION}
@@ -60,7 +68,7 @@ set(SP_DEFS
 
 target_compile_definitions(${SP_TARGET} PUBLIC ${SP_DEFS})
 target_link_libraries(${SP_TARGET}
-    PRIVATE juce::juce_audio_utils juce::juce_dsp
+    PRIVATE SliceWindowAssets juce::juce_audio_utils juce::juce_dsp
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
 # ---- install: cmake --build build --target InstallAU ----
@@ -79,5 +87,12 @@ juce_add_console_app(PluginTest PRODUCT_NAME "PluginTest")
 target_sources(PluginTest PRIVATE ${SP_SOURCES} tests/PluginTest.cpp)
 target_include_directories(PluginTest PRIVATE src tests)
 target_compile_definitions(PluginTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0)
-target_link_libraries(PluginTest PRIVATE juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+target_link_libraries(PluginTest PRIVATE SliceWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME plugin COMMAND PluginTest)
+
+# Renders the real window to PNG with real speech loaded through the real processor, and measures its CPU. Not a ctest: it writes docs/window.
+juce_add_console_app(RenderWindow PRODUCT_NAME "RenderWindow")
+target_sources(RenderWindow PRIVATE ${SP_SOURCES} tests/RenderWindow.cpp)
+target_include_directories(RenderWindow PRIVATE src tests)
+target_compile_definitions(RenderWindow PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=1 SMOOTH_SLICE_CORPUS="${CMAKE_CURRENT_SOURCE_DIR}/tests/corpus")
+target_link_libraries(RenderWindow PRIVATE SliceWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)

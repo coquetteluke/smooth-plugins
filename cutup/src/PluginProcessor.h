@@ -131,9 +131,23 @@ public:
     void audition (int index) noexcept { auditionRequest.store (index, std::memory_order_release); }
 
     float getPlayhead (int i) const noexcept { return playheads[(size_t) i].load (std::memory_order_relaxed); }
+
+    // One voice as the window draws it. The audio thread only ever stores these, after the block is done, so they cannot change the sound.
+    struct PlayheadView { float position = -1.0f; int slot = -1, note = -1; float level = 0.0f; };
+    PlayheadView getPlayheadView (int i) const noexcept
+    {
+        const auto n = (size_t) i;
+        return { playheads[n].load (std::memory_order_relaxed), playheadSlots[n].load (std::memory_order_relaxed),
+                 playheadNotes[n].load (std::memory_order_relaxed), playheadLevels[n].load (std::memory_order_relaxed) };
+    }
     int getActiveVoices() const noexcept { return (int) activeVoicesReading->get(); }
 
     static juce::String slotId (int slot, const char* what);
+
+    // The only things the window adds to the saved state.
+    static constexpr int defaultWindowWidth = 1160, defaultWindowHeight = 740, minWindowWidth = 1040, minWindowHeight = 640, maxWindowWidth = 2200, maxWindowHeight = 1500;
+    std::atomic<int> windowWidth { defaultWindowWidth }, windowHeight { defaultWindowHeight };
+    std::atomic<bool> advancedOpen { false };
     int noteForSlice (int index) const noexcept;
 
 private:
@@ -248,7 +262,8 @@ private:
     bool sustainDown = false;
     juce::SmoothedValue<float> outputSmoothed, bypassSmoothed;
 
-    std::array<std::atomic<float>, kPlayheads> playheads;
+    std::array<std::atomic<float>, kPlayheads> playheads, playheadLevels;
+    std::array<std::atomic<int>, kPlayheads> playheadSlots, playheadNotes;
     int currentProgram = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)

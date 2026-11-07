@@ -53,6 +53,10 @@ namespace
         { "Tempo Sixteenths",     P::modeGrid,      4, 50.0f,  50.0f, P::playOneShot,   P::keySlices,    8,   0,   1.0f,  10.0f, false,   0.0f, 100.0f,  100.0f, 100.0f,  5.0f, P::gridNote,  3 },
     };
 
+    const char* const kWindowWidth = "windowWidth";
+    const char* const kWindowHeight = "windowHeight";
+    const char* const kAdvancedOpen = "advancedOpen";
+
     juce::String plain (float v, int decimals) { return juce::String (v, decimals); }
     juce::String signedText (float v, int decimals)
     {
@@ -311,6 +315,9 @@ PluginProcessor::PluginProcessor()
     addParameter (activeVoicesReading = new ReadingParameter ("active_voices", "Active Voices", "", 0.0f, (float) kVoicePool, 0.0f, [] (float v) { return juce::String (juce::roundToInt (v)); }));
 
     for (auto& p : playheads) p.store (-1.0f, std::memory_order_relaxed);
+    for (auto& p : playheadLevels) p.store (0.0f, std::memory_order_relaxed);
+    for (auto& p : playheadSlots) p.store (-1, std::memory_order_relaxed);
+    for (auto& p : playheadNotes) p.store (-1, std::memory_order_relaxed);
 
     latest = new LoadedSample();
     keepAlive.push_back (latest);
@@ -737,6 +744,17 @@ void PluginProcessor::publishReadings() noexcept
         {
             const double inSlice = v.pos >= (double) v.len ? (double) (v.total - 1) - v.pos : v.pos;
             const double logical = v.reverse ? (double) (v.start + v.len - 1) - inSlice : (double) v.start + inSlice;
+
+            // For the window only: how loud this voice is right now, read from where its envelope has got to.
+            float envelope = juce::jlimit (0.0f, 1.0f, v.level * v.velocityGain);
+            if (v.attackLeft > 0) envelope *= 1.0f - (float) v.attackLeft / (float) v.attackTotal;
+            else if (v.decayTotal > 0) envelope *= v.sustainLevel + (1.0f - v.sustainLevel) * (float) v.decayLeft / (float) v.decayTotal;
+            if (v.releaseTotal > 0) envelope *= (float) v.releaseLeft / (float) v.releaseTotal;
+            if (v.stealTotal > 0) envelope *= (float) v.stealLeft / (float) v.stealTotal;
+
+            playheadSlots[(size_t) shown].store (v.slot, std::memory_order_relaxed);
+            playheadNotes[(size_t) shown].store (v.note, std::memory_order_relaxed);
+            playheadLevels[(size_t) shown].store (envelope, std::memory_order_relaxed);
             playheads[(size_t) shown++].store ((float) (logical / (double) v.sample->frames()), std::memory_order_relaxed);
         }
     }
@@ -1150,6 +1168,10 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
     auto xml = apvts.copyState().createXml();
     if (xml == nullptr) return;
 
+    xml->setAttribute (kWindowWidth, windowWidth.load (std::memory_order_relaxed));
+    xml->setAttribute (kWindowHeight, windowHeight.load (std::memory_order_relaxed));
+    xml->setAttribute (kAdvancedOpen, advancedOpen.load (std::memory_order_relaxed) ? 1 : 0);
+
     const bool hasAudio = s != nullptr && ! s->isEmpty();
     juce::int64 bytes = 0;
     if (hasAudio)
@@ -1281,6 +1303,17 @@ void PluginProcessor::setStateInformation (const void* data, int size)
         loadEmpty ("The saved state was damaged or too big, so it loaded empty", true);
         return;
     }
+
+    // The window's size and whether Advanced is open. Older sessions have none of these.
+    if (xml->hasAttribute (kWindowWidth))
+        windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (kWindowWidth, defaultWindowWidth)), std::memory_order_relaxed);
+    if (xml->hasAttribute (kWindowHeight))
+        windowHeight.store (juce::jlimit (minWindowHeight, maxWindowHeight, xml->getIntAttribute (kWindowHeight, defaultWindowHeight)), std::memory_order_relaxed);
+    if (xml->hasAttribute (kAdvancedOpen))
+        advancedOpen.store (xml->getIntAttribute (kAdvancedOpen, 0) != 0, std::memory_order_relaxed);
+    xml->removeAttribute (kWindowWidth);
+    xml->removeAttribute (kWindowHeight);
+    xml->removeAttribute (kAdvancedOpen);
 
     SliceTable saved, manual;
     bool edited = false;

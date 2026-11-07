@@ -16,12 +16,22 @@ The audio itself is saved in the plug-in state, as 32 bit floats, so a session s
 
 ## The window
 
-Plain for now. A styled pass comes later.
+The window is titled Cutup. The build keeps its current name for now.
 
-- Waveform with numbered slice markers. The selected slice is shaded. Green lines are the voices playing.
-- Click a slice to select it and hear it.
-- Drag a marker to move it. Double click to add one. Option click or right click a marker to remove it. Any of these turns Slice Mode to Manual.
-- The row under the waveform edits the selected slice. Those sliders are that slot's real parameters.
+![The window while notes play](docs/window/active@2x.png)
+
+- The waveform runs edge to edge, cut into coloured slices with numbers on top. Eight warm colours repeat. A colour only ever means a slice: slice 7 is the same colour on the waveform, on its ribbon, on its key, and on the controls that edit it.
+- Ribbons carry each slice down to its key. A voice lights up its key and its ribbon, and the part of the slice it has played so far, as bright as that voice is loud.
+- Click a slice or a key to select it and hear it. Drag a marker to move it. Double-click to add one. Option-click or right-click to remove one. Any of these turns Slice Mode to Manual.
+- Level changes the height of a slice on the waveform, Reverse flips it, and Pitch shows on its number.
+- Drag the Start tab under the waveform to set Slice Start. Drag the Root tab above the keys to set Root Note.
+- Zoom slice fills the waveform with the selected slice, to place its markers closely. It is a view, and is not saved.
+- Load sample, or drop a file anywhere on the window. With nothing loaded, the waveform invites you to.
+- The stepper chooses which of the 32 slots the Pitch, Level, Pan, Reverse, Attack and Release controls edit, including slots this sample has not filled. Those are the slot's real parameters.
+- Amp and Pitch glide are graphs with dots to drag. Their cells underneath are the same parameters.
+- Advanced holds Min Slice, Transpose, Bend Range and the three readings.
+- Drag any value, click it to type one, double-click it to reset it. Type 1.5 s or 250 ms for a time, 40 L for a pan, D3 for a root.
+- Resize it from the corner. Its size and Advanced are saved with the session, and nothing else is added.
 
 ## Controls
 
@@ -119,7 +129,11 @@ All numbers are in `tests/results.txt` and `tests/au-check.txt`. Limits were wri
 - State: save and restore nulls to exactly 0 in all three Slice Modes, with the file moved away, and saves back byte for byte. The real installed component does the same
 - Damaged state: about 50 kinds of named damage, 17 cut lengths, 100 blocks of noise and 400 randomly damaged states, none unsafe
 - Swap: the block that takes a new sample allocates nothing, does not click, and the old sample is freed off the audio thread
-- Window: created and destroyed 20 times while playing, clicks, drags, double clicks and drops driven offline
+- Window: created and destroyed 90 more times, 60 of them with a real audio thread running and a file loading, clicks, drags, double clicks and drops driven offline
+- Window reaches every parameter: `tests/WindowTests.h` clicks its way to each of the 218 by mouse at the smallest size, with no sample and with one. It steps through all 32 slots, drags each cell, and checks that it moves that parameter and no other slot's, with one begin and one end gesture, and that a double-click resets it. Taking one control out makes the test fail, which was tried
+- Sound with the window: all 14 presets bit identical to 1.0.0, with the window closed and with it open and drawing throughout
+- Loading through the window: no block allocates, and a held note never goes silent, until the new sample takes over
+- Window CPU, real window at 2x with notes playing: 1.4 to 3.4% of one core over 10 runs, median 1.8%. The 3.4% run landed mostly on slow cores; the work stayed at 1.0% of a fast core in all 10. 16 voices looping at once: 3.8% over 3 runs. Silent: 0.6% over 3 runs, with almost no redraws. Other agents were building during these, at a load of about 4 to 5
 - Pitching a 15 kHz tone up an octave: fold back at -94 dB. Pitching a 5 kHz tone down an octave: image at 21.5 kHz at -102 dB
 
 Tones, noise and a synthetic voice do not prove it sounds good on a real singer. Slicing a real vocal with breaths, reverb and bleed needs ears. Nothing has been loaded in Logic.
@@ -141,3 +155,15 @@ SMOOTH_SLICE_WRITE_STATE=build/austate.bin build/PluginTest_artefacts/Release/Pl
 clang++ -std=c++17 -O2 tests/AUStateCheck.cpp -framework AudioToolbox -framework CoreFoundation -o build/AUStateCheck
 build/AUStateCheck build/austate.bin | tee tests/au-check.txt
 ```
+
+The window's pictures and CPU, with speech from macOS `say` loaded through the real load path (`tests/make_corpus.sh` remakes it):
+
+```
+cmake --build build --target RenderWindow -j 1
+build/RenderWindow_artefacts/Release/RenderWindow docs/window
+build/RenderWindow_artefacts/Release/RenderWindow --live 5 8
+build/RenderWindow_artefacts/Release/RenderWindow --live 3 8 dense
+build/RenderWindow_artefacts/Release/RenderWindow --live 3 6 silent
+```
+
+Inter (SIL Open Font License, `assets/fonts/OFL.txt`) is the window's font.

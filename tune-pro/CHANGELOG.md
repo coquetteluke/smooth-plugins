@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.4.0, 2026-11-08
+
+Two fixes. Low Latency changes on purpose for the first one, so its null test now holds 1.4.0's output.
+
+**Notes starting after silence no longer burst.** Where a note starts, each new 40 ms window holds far more of it than the last, so the vocal tract model changed completely within a few ms. The grains read up to a period either side, so the voice was whitened by one model and shaped again by another, and that mismatch rang out. In Low Latency the output at a note start reached 4.85, about 14 dB over full scale, on test voices peaking at 0.4. Now, for 40 ms after the level jumps, the model's shape moves to the new one over 2.5 ms instead of at once. The level itself is not held. After the first half second, steady test notes differ from 1.3.0 by 65 to 92 dB under the signal, from the slower level trim below. Speech, sung phrases and vibrato, which start notes often or swing in level, differ by 17 to 39 dB under the signal. A new test plays vowels at 110 to 560 Hz starting hard after silence, at once or over 20 ms, and looks for a burst in the output against the input.
+
+**High Quality's glide memory model has 48 poles instead of 32.** With the memory showing it the peaks between harmonics, the finer model follows them, so less of the vocal tract is left in the grains to move with the pitch. Only that model gets 48: a direct fit with more poles locks on to single harmonics, measured as level jumps on speech (3.50 dB against 2.52), and a model through one moment's harmonics on high notes moved the formants further. The memory now runs below 400 Hz instead of 350. Low Latency keeps its level trim over 2 seconds instead of 0.6, because holding the shape through note starts moved its worst level change from 1.47 to 1.53 dB. High Quality keeps 0.6, because 2 seconds moved high notes' formants past their limit.
+
+Also: vDSP's FFT gave slightly different results on buffers not 64 byte aligned, and where the heap put them changed from run to run, so the same input could give two slightly different outputs. The FFT buffers are now aligned.
+
+| | 1.3.0 | 1.4.0 | Limit |
+|---|---|---|---|
+| Low Latency, burst at a note start after silence | 9.09 dB | **2.10 dB** | 3 dB |
+| Low Latency, loudest sample at a note start, test voices | 4.85 | 0.47 | none |
+| Low Latency, level change at +/-1 to +/-3 | 1.47 dB | 1.45 dB | 1.5 dB |
+| High Quality, burst at a note start | 0.72 dB | 0.96 dB | 3 dB |
+| High Quality, formant move, +/-1 to +/-3 | 3.32% | 2.29% | 4% |
+| High Quality, formant move, other vowels and pitches | 3.11% | 2.91% | 4% |
+| High Quality, first formant flatter than a real voice | 6.02 dB | 5.38 dB | 7 dB |
+| High Quality, level change | 1.10 dB | 0.60 dB | 1.5 dB |
+| High Quality, big shifts +/-7 | 2.09% | 2.50% | 8% |
+| High notes, formant move | 16.48% | 16.48% | 16.89% |
+| High notes, first formant against its surroundings | 13.15 dB | 13.14 dB | 9 dB |
+| First held out set, 98 to 220 Hz, formant move | 4.24% | **1.52%** | 4% |
+| First held out set, level change | 1.69 dB | **0.72 dB** | 1.5 dB |
+| First held out set, 392 to 740 Hz, first formant flatter | 16.54 dB | 15.93 dB | 9 dB |
+| Held notes, harmonics against a real voice | 4.59 dB | 4.54 dB | 3.5 dB |
+| Second held out set, formant move | 6.32% | **2.29%** | 4% |
+| New third held out set, formant move | 4.62% | **3.47%** | 4% |
+| Third held out set, level change | 1.15 dB | 0.80 dB | 1.5 dB |
+| Real speech, 99th percentile frame level change, High Quality | 2.42 dB | 2.52 dB | 3 dB |
+| Real speech, the same, Low Latency | 2.71 dB | 2.86 dB | 3 dB |
+| CPU, High Quality, voice at 180 Hz, 48 kHz stereo | 3.24% | 4.41% | 8% |
+
+Bold now passes. 481 tests pass, 3 fail (1.3.0: 474 and 6). All 3 failed in 1.3.0 too, and nothing that passed in 1.3.0 fails now. AuBench, which runs the default Low Latency, reads 2.7% default and 3.0% worst preset, as before.
+
+How clean the held out numbers are: the first and second sets were both used to choose 1.4.0's settings, so they are no longer clean. The third set, men at 123 and 185 Hz and women at 233 and 311 Hz from the Hillenbrand table, was written before any of it was run. It was run four times, because two settings changed after its first run, each for a failure on another test: it read 3.47% every time. 1.3.0 on the same voices reads 4.62%.
+
 ## 1.3.0, 2026-11-07
 
 High Quality keeps formants in place much better. Low Latency is bit for bit the same as 1.2.1.

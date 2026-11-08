@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <vector>
 
 namespace smoothtune
@@ -22,13 +23,13 @@ namespace smoothtune
 class EnvelopeFilter
 {
 public:
-    static constexpr int maxOrder = 64;
+    static constexpr int maxOrder = 128;
 
     void prepare (double sampleRate, int numChannels)
     {
         sr = sampleRate;
         channels = std::clamp (numChannels, 1, 2);
-        order = std::clamp ((int) std::lround (32.0 * sr / 48000.0), 16, maxOrder);
+        order = std::clamp ((int) std::lround (32.0 * sr / 48000.0), 16, 64);
         hop = std::max (8, (int) std::lround (0.0025 * sr));
         ringSize = 1;
         while (ringSize < (int) (sr * 0.5)) ringSize *= 2;
@@ -41,21 +42,21 @@ public:
         synthSets.assign ((size_t) (numSets * maxOrder), 0.0);
         synthGains.assign ((size_t) numSets, 1.0);
 
-        cosGrid.assign ((size_t) (gridSize + 1) * (size_t) (order + 1), 0.0);
-        sinGrid.assign ((size_t) (gridSize + 1) * (size_t) (order + 1), 0.0);
+        cosGrid.assign ((size_t) (gridSize + 1) * (size_t) gridStride, 0.0);
+        sinGrid.assign ((size_t) (gridSize + 1) * (size_t) gridStride, 0.0);
         for (int i = 0; i <= gridSize; ++i)
-            for (int k = 0; k <= order; ++k)
+            for (int k = 0; k <= maxOrder; ++k)
             {
-                cosGrid[(size_t) (i * (order + 1) + k)] = std::cos (M_PI * i * k / gridSize);
-                sinGrid[(size_t) (i * (order + 1) + k)] = std::sin (M_PI * i * k / gridSize);
+                cosGrid[(size_t) (i * gridStride + k)] = std::cos (M_PI * i * k / gridSize);
+                sinGrid[(size_t) (i * gridStride + k)] = std::sin (M_PI * i * k / gridSize);
             }
         fftOrder = 12;
         while ((1 << fftOrder) < (int) (sr * 0.085)) ++fftOrder;
         fftSize = 1 << fftOrder;
-        fftBuffer.assign ((size_t) fftSize, 0.0f);
-        fftReal.assign ((size_t) fftSize / 2, 0.0f);
-        fftImag.assign ((size_t) fftSize / 2, 0.0f);
-        fftPower.assign ((size_t) fftSize / 2 + 1, 0.0f);
+        fftBuffer = aligned (fftBufferStore, (size_t) fftSize);
+        fftReal = aligned (fftRealStore, (size_t) fftSize / 2);
+        fftImag = aligned (fftImagStore, (size_t) fftSize / 2);
+        fftPower = aligned (fftPowerStore, (size_t) fftSize / 2 + 1);
         if (fftSetup != nullptr) vDSP_destroy_fftsetup (fftSetup);
         fftSetup = vDSP_create_fftsetup ((vDSP_Length) fftOrder, kFFTRadix2);
         configure (0.04, 0.0, 0.5);
@@ -76,6 +77,13 @@ public:
         reset();
     }
 
+    // Model order, given for 48 kHz and scaled with the rate, at most cap. Call before configure(), which clears the filters. No allocation.
+    void setOrder (double at48k, int cap) noexcept
+    {
+        order = std::clamp ((int) std::lround (at48k * sr / 48000.0), 16, std::min (cap, maxOrder));
+        directOrder = std::clamp ((int) std::lround (directFitOrder * sr / 48000.0), 16, order);
+    }
+
     void reset() noexcept
     {
         std::fill (ring.begin(), ring.end(), 0.0f);
@@ -92,6 +100,8 @@ public:
         kSynthesis.fill (0.0);
         clearSweep();
         forgetGlide();
+        heardSilence();
+        onsetLeft = 0;
     }
 
     int getLookahead() const noexcept { return lookahead; }
@@ -235,6 +245,7 @@ private:
         {
             std::fill (kA, kA + maxOrder, 0.0);
             std::fill (kS, kS + maxOrder, 0.0);
+            heardSilence();
             return;
         }
         const double f0Now = periodNow > 0.0 ? sr / periodNow : 0.0;
@@ -245,6 +256,8 @@ private:
         if (throughHarmonics && ! sweeping)
             envelopeThroughHarmonics();
 
+        holdShapeThroughOnset();
+
         // Blur the power spectrum a little, so a peak follows the shape and not one harmonic. A small floor keeps it stable.
         const double blurHz = throughHarmonics ? minBlurHz : (periodNow > 0.0 ? std::max (minBlurHz, blurShare * sr / periodNow) : minBlurHz);
         const double spread = 2.0 * M_PI * blurHz / sr;
@@ -253,15 +266,21 @@ private:
         r[0] *= 1.0 + 1.0e-4;
 
         double error = 0.0;
-        if (! levinson (r.data(), order, kA, a.data(), temp.data(), error))
+        // Only the sweep memory's model gets the higher order, because only it sees points between the harmonics. A direct fit with more poles
+        // locks on to single harmonics, measured as level jumps on speech, and a model drawn through one moment's harmonics on high notes moved
+        // the formants further: 17.6% against 16.7% with the plain order.
+        const int fitted = sweeping ? order : std::min (order, directOrder);
+        if (! levinson (r.data(), fitted, kA, a.data(), temp.data(), error))
         {
             std::fill (kA, kA + maxOrder, 0.0);
             std::fill (kS, kS + maxOrder, 0.0);
             return;
         }
-        for (int m = 0; m < order; ++m)
+        for (int m = fitted + 1; m <= order; ++m)
+            a[(size_t) m] = 0.0;
+        for (int m = 0; m < fitted; ++m)
             kA[m] *= strength;
-        for (int m = order; m < maxOrder; ++m)
+        for (int m = fitted; m < maxOrder; ++m)
             kA[m] = 0.0;
 
         // Nothing to reshape: the same filter comes back, so the voice passes exactly.
@@ -278,15 +297,15 @@ private:
     // deep notches between them, which a moved harmonic then falls into. Here the model is drawn straight through the harmonic peaks instead.
     void envelopeThroughHarmonics() noexcept
     {
-        std::fill (fftBuffer.begin(), fftBuffer.end(), 0.0f);
-        std::copy_n (windowed.data(), std::min (windowLength, fftSize), fftBuffer.data());
-        DSPSplitComplex split { fftReal.data(), fftImag.data() };
-        vDSP_ctoz ((const DSPComplex*) fftBuffer.data(), 2, &split, 1, (vDSP_Length) fftSize / 2);
+        std::fill (fftBuffer, fftBuffer + fftSize, 0.0f);
+        std::copy_n (windowed.data(), std::min (windowLength, fftSize), fftBuffer);
+        DSPSplitComplex split { fftReal, fftImag };
+        vDSP_ctoz ((const DSPComplex*) fftBuffer, 2, &split, 1, (vDSP_Length) fftSize / 2);
         vDSP_fft_zrip (fftSetup, &split, 1, (vDSP_Length) fftOrder, kFFTDirection_Forward);
         fftPower[0] = fftReal[0] * fftReal[0];
         fftPower[(size_t) fftSize / 2] = fftImag[0] * fftImag[0];
         fftImag[0] = 0.0f;
-        vDSP_zvmags (&split, 1, fftPower.data(), 1, (vDSP_Length) fftSize / 2);
+        vDSP_zvmags (&split, 1, fftPower, 1, (vDSP_Length) fftSize / 2);
 
         const double f0 = sr / periodNow, binsPerHz = fftSize / sr, gridHz = 0.5 * sr / gridSize;
         double previousHz = 0.0, previousLog = 0.0;
@@ -298,7 +317,7 @@ private:
             const int from = std::max (1, (int) ((centre - 0.3 * f0) * binsPerHz));
             const int to = std::min (fftSize / 2, (int) ((centre + 0.3 * f0) * binsPerHz) + 1);
             float peak = 0.0f;
-            vDSP_maxv (fftPower.data() + from, 1, &peak, (vDSP_Length) (to - from + 1));
+            vDSP_maxv (fftPower + from, 1, &peak, (vDSP_Length) (to - from + 1));
             const double logPeak = std::log ((double) peak + 1.0e-12);
             if (first) { previousLog = logPeak; first = false; }
             for (; gridAt <= gridSize && gridAt * gridHz <= centre; ++gridAt)
@@ -315,6 +334,34 @@ private:
         spectrumToAutocorrelation (1.0);
     }
 
+    // Where a note starts, each new window holds far more of it than the last, so the model changes completely within a few ms. The grains
+    // read up to a period either side of the output, so the voice gets whitened by one of those models and shaped again by another, and
+    // where the models are sharp the mismatch rang out: measured up to 17 dB over the voice for a few ms in Low Latency. So for a short
+    // while after the level jumps, the shape moves towards the new one over onsetShapeSeconds instead of at once. The level itself is not held.
+    void holdShapeThroughOnset() noexcept
+    {
+        const double rise = r[0] / std::max (lastLevel, 1.0e-12);
+        lastLevel = r[0];
+        if (rise > onsetRise)
+            onsetLeft = (int) std::lround (onsetHoldSeconds * sr / hop);
+        const double follow = onsetLeft > 0 ? 1.0 - std::exp (-(double) hop / (onsetShapeSeconds * sr)) : 1.0;
+        for (int lag = 0; lag <= order; ++lag)
+            shapeMemory[(size_t) lag] += follow * (r[(size_t) lag] / r[0] - shapeMemory[(size_t) lag]);
+        if (onsetLeft > 0)
+        {
+            --onsetLeft;
+            for (int lag = 1; lag <= order; ++lag)
+                r[(size_t) lag] = r[0] * shapeMemory[(size_t) lag];
+        }
+    }
+    // A flat shape to start from.
+    void heardSilence() noexcept
+    {
+        lastLevel = 0.0;
+        shapeMemory.fill (0.0);
+        shapeMemory[0] = 1.0;
+    }
+
     void clearSweep() noexcept
     {
         if (! sweepEmpty) { sweepNum.fill (0.0); sweepDen.fill (0.0); sweepEmpty = true; }
@@ -327,15 +374,15 @@ private:
     // of those points. Returns false, leaving r alone, when this moment should use the other models instead.
     bool envelopeThroughSweep() noexcept
     {
-        std::fill (fftBuffer.begin(), fftBuffer.end(), 0.0f);
-        std::copy_n (windowed.data(), std::min (windowLength, fftSize), fftBuffer.data());
-        DSPSplitComplex split { fftReal.data(), fftImag.data() };
-        vDSP_ctoz ((const DSPComplex*) fftBuffer.data(), 2, &split, 1, (vDSP_Length) fftSize / 2);
+        std::fill (fftBuffer, fftBuffer + fftSize, 0.0f);
+        std::copy_n (windowed.data(), std::min (windowLength, fftSize), fftBuffer);
+        DSPSplitComplex split { fftReal, fftImag };
+        vDSP_ctoz ((const DSPComplex*) fftBuffer, 2, &split, 1, (vDSP_Length) fftSize / 2);
         vDSP_fft_zrip (fftSetup, &split, 1, (vDSP_Length) fftOrder, kFFTDirection_Forward);
         fftPower[0] = fftReal[0] * fftReal[0];
         fftPower[(size_t) fftSize / 2] = fftImag[0] * fftImag[0];
         fftImag[0] = 0.0f;
-        vDSP_zvmags (&split, 1, fftPower.data(), 1, (vDSP_Length) fftSize / 2);
+        vDSP_zvmags (&split, 1, fftPower, 1, (vDSP_Length) fftSize / 2);
 
         const double f0 = sr / periodNow, binsPerHz = fftSize / sr;
         int count = 0, referenceCount = 0;
@@ -346,7 +393,7 @@ private:
             const int from = std::max (1, (int) ((centre - 0.3 * f0) * binsPerHz));
             const int to = std::min (fftSize / 2, (int) ((centre + 0.3 * f0) * binsPerHz) + 1);
             float peak = 0.0f;
-            vDSP_maxv (fftPower.data() + from, 1, &peak, (vDSP_Length) (to - from + 1));
+            vDSP_maxv (fftPower + from, 1, &peak, (vDSP_Length) (to - from + 1));
             heardHz[(size_t) count] = centre;
             heardLog[(size_t) count] = std::log ((double) peak + 1.0e-12);
             if (centre < 4000.0) { reference += heardLog[(size_t) count]; ++referenceCount; }
@@ -422,7 +469,7 @@ private:
     // logPower on the grid, read with its frequency axis scaled, to autocorrelation in r.
     void spectrumToAutocorrelation (double invScale) noexcept
     {
-        const int stride = order + 1;
+        const int stride = gridStride;
         std::fill (r.begin(), r.begin() + order + 1, 0.0);
         for (int i = 0; i <= gridSize; ++i)
         {
@@ -453,7 +500,7 @@ private:
     // back to a stable filter.
     void reshape (double* kS, double& gain, bool sharpen) noexcept
     {
-        const int stride = order + 1;
+        const int stride = gridStride;
         for (int i = 0; i <= gridSize; ++i)
         {
             const double* c = cosGrid.data() + i * stride;
@@ -504,11 +551,15 @@ private:
         gain = std::sqrt (error);
     }
 
-    static constexpr int gridSize = 1024;
+    static constexpr int gridSize = 1024, gridStride = maxOrder + 1;
     static constexpr double sharpenFullAt = 0.5, sharpenFadeFromHz = 1200.0, sharpenFadeToHz = 2000.0;
     
     static constexpr float emphasis = 0.95f;
     static constexpr double minBlurHz = 15.0, blurShare = 0.35;
+    // Poles in a direct fit, at 48 kHz, whatever the order. Measured on speech: 48 there made the 99th percentile frame level change 3.50 dB, 32 keeps it at 2.52.
+    static constexpr double directFitOrder = 32.0;
+    // A level more than this many times the last model's counts as a start, and holds the shape for onsetHoldSeconds after.
+    static constexpr double onsetRise = 1.5, onsetHoldSeconds = 0.04, onsetShapeSeconds = 0.0025;
 
     double harmonicModelFromHz = 300.0, sharpenMax = 0.5;
 
@@ -520,17 +571,32 @@ private:
     std::array<double, maxSweepHarmonics> heardHz {}, heardLog {};
     bool sweepEmpty = false;
     double sr = 48000.0, strength = 1.0, formantScale = 1.0, periodNow = 0.0, shiftRatio = 1.0, gainNow = 1.0;
+    int directOrder = 32;
     int channels = 2, order = 32, hop = 120, ringSize = 32768, windowLength = 1920, lookahead = 0, numSets = 128;
     long long count = 0;
     float previous = 0.0f;
     std::vector<float> ring, windowed, window;
     std::vector<double> analysisSets, synthSets, synthGains, cosGrid, sinGrid;
     std::array<std::array<double, maxOrder + 1>, 2> analysis {}, synthesis {};
-    std::array<double, maxOrder + 1> r {}, a {}, temp {}, warped {};
+    std::array<double, maxOrder + 1> r {}, a {}, temp {}, warped {}, shapeMemory {};
+    double lastLevel = 0.0;
+    int onsetLeft = 0;
     std::array<double, gridSize + 1> logPower {}, smoothed {};
     std::array<double, maxOrder> kAnalysis {}, kSynthesis {};
     FFTSetup fftSetup = nullptr;
     int fftOrder = 12, fftSize = 4096;
-    std::vector<float> fftBuffer, fftReal, fftImag, fftPower;
+    // vDSP's FFT rounds differently on buffers that are not 64 byte aligned, and where the heap puts a vector changes from run to run, so
+    // the same input gave two slightly different outputs. These point into their stores at a 64 byte boundary.
+    static float* aligned (std::vector<float>& store, size_t n)
+    {
+        store.assign (n + 16, 0.0f);
+        const auto at = reinterpret_cast<std::uintptr_t> (store.data());
+        return reinterpret_cast<float*> ((at + 63) & ~(std::uintptr_t) 63);
+    }
+    std::vector<float> fftBufferStore, fftRealStore, fftImagStore, fftPowerStore;
+    float* fftBuffer = nullptr;
+    float* fftReal = nullptr;
+    float* fftImag = nullptr;
+    float* fftPower = nullptr;
 };
 } // namespace smoothtune

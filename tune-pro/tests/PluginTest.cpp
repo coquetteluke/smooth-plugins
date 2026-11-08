@@ -699,11 +699,54 @@ void testHeldOutSecond()
     note ("  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
 }
 
+// A third held out set, written for 1.4.0 before any of it was run, after the second set had been used to choose the 1.4.0 settings.
+// Run once at the end. Men's and women's averages from a later study (Hillenbrand and others, 1995), at pitches neither earlier set used,
+// with bandwidths, upper formants, breath and source tone of their own. Nothing was tuned on these.
+void testHeldOutThird()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; int type; std::vector<double> centres; };
+    const std::vector<Held> voices {
+        { { { 427, 2034, 2684, 3500, 4300 }, { 50, 95, 125, 160, 210 }, "ih men" }, { -55.0, 3500.0 }, lowMale, { 123.0, 185.0 } },
+        { { { 768, 1333, 2522, 3500, 4300 }, { 80, 95, 135, 160, 210 }, "ah men" }, { -42.0, 0.0 }, lowMale, { 123.0, 185.0 } },
+        { { { 469, 1122, 2434, 3500, 4300 }, { 55, 80, 120, 160, 210 }, "uu men" }, { -60.0, 6000.0 }, lowMale, { 123.0, 185.0 } },
+        { { { 474, 1379, 1710, 3500, 4300 }, { 60, 85, 100, 160, 210 }, "er men" }, { -50.0, 0.0 }, lowMale, { 123.0, 185.0 } },
+        { { { 437, 2761, 3372, 4100, 4900 }, { 50, 115, 145, 190, 230 }, "i women" }, { -48.0, 0.0 }, wideRange, { 233.0, 311.0 } },
+        { { { 753, 1426, 2933, 4100, 4900 }, { 85, 105, 150, 190, 230 }, "uh women" }, { -58.0, 4500.0 }, wideRange, { 233.0, 311.0 } },
+        { { { 459, 1105, 2735, 4100, 4900 }, { 55, 90, 140, 190, 230 }, "u women" }, { -40.0, 2500.0 }, wideRange, { 233.0, 311.0 } } };
+    FormantScore score;
+    double heldMean = 0.0;
+    int heldCount = 0;
+    for (const auto& h : voices)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 4, -4, 2, -2, 1, -1 })
+            {
+                scoreFormants (score, h.v, centre, shift, h.type);
+                heldMean += heldNoteError (h.v, centre, shift, h.type).rmsDb;
+                ++heldCount;
+            }
+    }
+    gStyle = {};
+    chk (score.move <= prolimits::hqFormantMove, "third held out set, men 123 and 185 Hz, women 233 and 311 Hz, worst formant move against the input", score.move * 100.0, "%");
+    note ("  and the tool's floor there", score.floor * 100.0, "%");
+    note ("  the same output against a real voice at the new pitch, worst", score.moveReal * 100.0, "%");
+    chk (score.level <= prolimits::hqLevelChangeDb, "  level change, worst", score.level, "dB");
+    note ("  first formant against its surroundings, flatter than a real voice, worst", score.peakFlatter, "dB");
+    note ("  first formant sharper than a real voice, worst", score.peakSharper, "dB");
+    note ("  colour, worst", score.colour, "dB");
+    note ("  and the input against that real voice, worst", score.colourFloor, "dB");
+    note ("  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+}
+
 // ----------------------------------------------------------------------------------------------- Low Latency null test
 
 std::vector<float> loadWav (const char* name);
 
-// Low Latency must come out bit for bit the same as version 1.2.1. tests/ll_null.txt holds a hash of the 32 bit samples for each case, written by 1.2.1.
+// Low Latency must come out bit for bit the same as the last version that changed it on purpose: 1.4.0, which stopped the burst at note starts and made the level trim slower.
+// Before that it was 1.2.1. tests/ll_null.txt holds a hash of the 32 bit samples for each case, written by 1.4.0.
 // TUNE_LL_RAW=folder also writes the samples, to read a largest sample difference against a saved copy of an older build.
 void testLowLatencyNull()
 {
@@ -800,9 +843,9 @@ void testLowLatencyNull()
         const bool ok = stored.count (name) > 0 && stored[name] == value;
         same += ok ? 1 : 0;
         if (! ok)
-            check (false, "[LL] null test against 1.2.1, case " + name);
+            check (false, "[LL] null test against 1.4.0, case " + name);
     }
-    check (same == (int) found.size() && ! found.empty(), "[LL] null test against 1.2.1: output, parameters and latency bit for bit the same, cases", (double) same);
+    check (same == (int) found.size() && ! found.empty(), "[LL] null test against 1.4.0: output, parameters and latency bit for bit the same, cases", (double) same);
 }
 
 // --------------------------------------------------------------------------------------------------------- vibrato
@@ -1020,6 +1063,64 @@ void testUnvoiced()
 }
 
 // ------------------------------------------------------------------------------------------------------- artifacts
+
+// A note that starts hard after silence, as a sung entry can. Looks for a short burst in the output's level against the input's.
+// A first model made from a window that is nearly all silence used to ring out at many times the voice's own level.
+void testNoteStart()
+{
+    double worst = 0.0;
+    std::string worstName;
+    for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelO })
+        for (double hz : { 110.0, 223.8, 330.0, 560.0 })
+            for (int shift : { 0, 3 })
+                for (double attackMs : { 0.0, 20.0 })
+                {
+                    std::vector<double> f0 ((size_t) (0.3 * SR), 0.0);
+                    const auto note = voice::steady (hz, 2.0, SR);
+                    f0.insert (f0.end(), note.begin(), note.end());
+                    auto x = voice::synth (f0, *v, SR);
+                    for (size_t i = 0; i < (size_t) (0.3 * SR); ++i) x[i] = 0.0f;
+                    // At once, or rising over 20 ms
+                    const size_t len = (size_t) (attackMs * 0.001 * SR);
+                    for (size_t i = 0; i < len; ++i) x[(size_t) (0.3 * SR) + i] *= (float) i / (float) len;
+                    auto p = make();
+                    setParam (*p, "inputType", (float) wideRange);
+                    setParam (*p, "retune", 0.0f);
+                    setParam (*p, "transpose", (float) shift);
+                    prepare (*p, 1, SR, 256);
+                    const auto out = mono (render (*p, x, 256));
+                    const long delay = p->getLatencySamples();
+                    // Output against input, 20 ms at a time, so at least two periods, lined up by the latency, over the first 0.6 s. A burst stands above
+                    // both the median of those within 40 ms of it and the median once the note is steady. The level trim settling over a tenth of a
+                    // second passes the first, and a start at the right level followed by a dip passes the second.
+                    const auto against = [&] (long from, long to)
+                    {
+                        std::vector<double> d;
+                        for (long i = from; i + 960 <= to; i += 240)
+                        {
+                            const double in = toDb (rms (x.data() + i, 960) + 1.0e-12f);
+                            if (in > -60.0)
+                                d.push_back (toDb (rms (out.data() + delay + i, 960) + 1.0e-12f) - in);
+                        }
+                        return d;
+                    };
+                    const auto start = against ((long) (0.3 * SR), (long) (0.9 * SR));
+                    auto steady = against ((long) (1.5 * SR), (long) (2.2 * SR));
+                    std::nth_element (steady.begin(), steady.begin() + (long) steady.size() / 2, steady.end());
+                    const double settled = steady[steady.size() / 2];
+                    double ratio = 0.0;
+                    for (size_t i = 0; i < start.size(); ++i)
+                    {
+                        std::vector<double> around (start.begin() + (long) (i >= 8 ? i - 8 : 0), start.begin() + (long) std::min (start.size(), i + 9));
+                        std::nth_element (around.begin(), around.begin() + (long) around.size() / 2, around.end());
+                        ratio = std::max (ratio, std::min (start[i] - around[around.size() / 2], start[i] - settled));
+                    }
+                    if (ratio > worst) { worst = ratio; worstName = std::string (v->name) + " at " + std::to_string ((int) hz) + " Hz, shift " + std::to_string (shift) + ", attack " + std::to_string ((int) attackMs) + " ms"; }
+                    if (std::getenv ("TUNE_DUMP") != nullptr)
+                        std::printf ("  note start, vowel %s, %.0f Hz, shift %d, attack %.0f ms: burst in output against input %+.2f dB\n", v->name, hz, shift, attackMs, ratio);
+                }
+    chk (worst <= limits::noteStartOverDb, "note starting hard after silence, a burst in output against input over the first 0.6 s, worst (" + worstName + ")", worst, "dB");
+}
 
 void testArtifacts()
 {
@@ -2716,6 +2817,7 @@ int main (int argc, char** argv)
         if (want ("flex")) testFlex();
         if (want ("unvoiced")) testUnvoiced();
         if (want ("artifacts")) testArtifacts();
+        if (want ("start")) testNoteStart();
         if (want ("real")) testRealMaterial();
         if (want ("added")) testAddedControls();
         if (want ("meter")) testMeter();
@@ -2734,6 +2836,7 @@ int main (int argc, char** argv)
     gEngine = 1;
     if (want ("heldout")) testHeldOut();
     if (want ("heldout2")) testHeldOutSecond();
+    if (want ("heldout3")) testHeldOutThird();
     gEngine = 0;
     if (want ("llnull")) testLowLatencyNull();
     if (want ("window")) testWindow();

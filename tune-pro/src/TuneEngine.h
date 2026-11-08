@@ -35,8 +35,12 @@ public:
     static constexpr double highQualityExtraSeconds = 0.045;
     // How far ahead High Quality looks for a change between voiced and not. The tracker takes this long to say so.
     static constexpr double highQualityLeadSeconds = 0.010;
+    // Poles in each model of the vocal tract, at 48 kHz.
+    static constexpr double lowLatencyOrder = 32.0, highQualityOrder = 48.0;
+    // How much corrected voice the level trim averages over, by engine. Low Latency needs longer since 1.4.0 holds the shape through a note
+    // start: at 0.6 its worst level change read 1.53 dB, at 2.0 it reads 1.45. In High Quality 2.0 moved high notes' formants past their limit.
+    static constexpr double lowLatencyLevelMemorySeconds = 2.0, highQualityLevelMemorySeconds = 0.6;
     // How much input each model of the vocal tract sees.
-    static constexpr double levelMemorySeconds = 0.6;
     static constexpr double highQualityWindowSeconds = 0.040, lowLatencyWindowSeconds = 0.040, lowLatencyFallShare = 0.3;
 
     static int latencyFor (double lowestHz, int mode, double sampleRate) noexcept
@@ -69,6 +73,9 @@ public:
         tracker.reset();
         tracker.setRange (lowHz, highHz);
         lastVoicingLimit = -1.0f;
+        // High Quality's sweep memory model has half as many poles again. With the memory showing it the peaks between the harmonics, the finer
+        // model follows them closely, so less of the vocal tract is left in the grains to move with the pitch. Other models keep 32, see EnvelopeFilter.
+        envelope.setOrder (mode == highQuality ? highQualityOrder : lowLatencyOrder, mode == highQuality ? EnvelopeFilter::maxOrder : 64);
         if (mode == highQuality)
             envelope.configure (highQualityWindowSeconds, 0.5 * highQualityWindowSeconds, 0.5);
         else
@@ -77,14 +84,14 @@ public:
         envelope.setHarmonicModelFrom (mode == highQuality ? 300.0 : 130.0);
         // High Quality remembers the harmonics as the pitch moves, which shows the formant peaks far better, so it needs much less sharpening.
         envelope.setSharpen (mode == highQuality ? 0.1 : 0.35);
-        envelope.setSweepMemory (mode == highQuality ? 0.2 : 0.0, 350.0);
+        envelope.setSweepMemory (mode == highQuality ? 0.2 : 0.0, 400.0);
         ahead = envelope.getLookahead();
         levelGain = 1.0;
         passMix = 1.0;
         passStep = 1.0 / (0.003 * sr);
         wetLevel = dryLevel = levelSeen = 0.0;
         correctingFor = 0;
-        levelMemory = levelMemorySeconds * sr;
+        levelMemory = (mode == highQuality ? highQualityLevelMemorySeconds : lowLatencyLevelMemorySeconds) * sr;
         levelFollow = 1.0 - std::exp (-1.0 / (0.03 * sr));
         levelRelease = 1.0 - std::exp (-1.0 / (0.003 * sr));
         shifter.reset();
@@ -170,7 +177,7 @@ public:
 private:
     struct ControlPoint { double period = 0.0; HeldNotes held; };
 
-    // Moving the harmonics changes how many land on a formant, which changes the level on average. This trims that average, over about a second of
+    // Moving the harmonics changes how many land on a formant, which changes the level on average. This trims that average, over about a second (two in Low Latency) of
     // corrected voice, so a shift does not make a phrase louder or softer. It is too slow to touch the voice's own dynamics. With nothing being
     // corrected the gain goes straight back to exactly 1, so consonants and uncorrected notes are untouched.
     void holdLevel (float* wet, const float* dryNow) noexcept

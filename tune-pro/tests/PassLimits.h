@@ -26,6 +26,7 @@ namespace limits
     // Formants at +/-3 semitones of correction
     constexpr double formantShiftFraction = 0.05;
     constexpr double levelChangeDb = 1.5;             // loudness must stay put when correcting +/-3 semitones
+    constexpr double noteStartOverDb = 3.0;           // a burst at a note start, output against input. An untouched 110 Hz note reads up to 2.2 here
 
     // Vibrato (input +/-40 cents at 5.5 Hz unless stated)
     constexpr double vibratoKeptFlex = 0.85;          // kept with Flex Amount 60 cents

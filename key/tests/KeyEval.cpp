@@ -13,7 +13,7 @@ int main (int argc, char** argv)
 {
     const int every = argc > 1 ? std::atoi (argv[1]) : 3;        // keep it quick: every Nth tonic
     KeyAnalyser::Knobs knobs;
-    bool chordsOnly = false, verbose = false, fastOnly = false, allClips = false;
+    bool chordsOnly = false, verbose = false, fastOnly = false, stableOnly = false, allClips = false;
     unsigned seed = limits::devSeed;       // tune on dev seeds only: 1000, 1001, 1002 ...
     int seeds = 1;                         // key changes are only 24 clips a seed, so tuning looks at several
     int parts = 31;                        // 1 chords, 2 key changes, 4 Fast chords, 8 melody, 16 loop from its second chord
@@ -47,6 +47,7 @@ int main (int argc, char** argv)
         else if (k == "lead") knobs.firstLeadStable = v;
         else if (k == "verbose") verbose = v > 0.0;
         else if (k == "fastonly") fastOnly = v > 0.0;
+        else if (k == "stableonly") stableOnly = v > 0.0;
         else if (k == "all") allClips = v > 0.0;
         else if (k == "seed") seed = (unsigned) v;
         else if (k == "seeds") seeds = (int) v;
@@ -78,6 +79,7 @@ int main (int argc, char** argv)
         else if (k == "hfirst") knobs.harmonyFirst = v;
         else if (k == "hhome") knobs.harmonyHome = v;
         else if (k == "hramp") knobs.harmonyRamp = v;
+        else if (k == "hfirstfit") knobs.harmonyFirstFitStable = v;
     }
     const double sr = 48000.0;
     const auto start = std::chrono::steady_clock::now();
@@ -88,19 +90,20 @@ int main (int argc, char** argv)
     std::map<std::string, Summary> byProg, byTimbre;
     const auto ts = timbres();
     const auto ps = progressions();
-    if (parts & 1) for (int tonic = 0; tonic < 12; tonic += every)
+    // Chords run on every seed asked for, like the key changes, so a few clips moving after 8 s can be counted over more clips.
+    if (parts & 1) for (int sd = 0; sd < seeds; ++sd) for (int tonic = 0; tonic < 12; tonic += every)
         for (size_t p = 0; p < ps.size(); ++p)
             for (size_t ti = 0; ti < ts.size(); ++ti)
             {
                 a.reset();
                 a.setResponse (smoothkey::Response::stable);
                 a.setSource (smoothkey::Source::mix);
-                const auto clip = chordClip (tonic, ps[p], ts[ti], clipSeed (seed, tonic, (int) p, (int) ti), sr, 24.0);
+                const auto clip = chordClip (tonic, ps[p], ts[ti], clipSeed (seed + (unsigned) sd, tonic, (int) p, (int) ti), sr, 24.0);
                 const int want = keyIndex (tonic, ps[p].minor);
                 const auto tr = analyse (a, clip, sr, want);
                 if (verbose && (tr.changesAfterEight > 0 || tr.finalKey != want))
                 {
-                    std::printf ("  %s/%s want %d:", ps[p].name, ts[ti].name, want);
+                    std::printf ("  seed %u %s/%s want %d:", seed + (unsigned) sd, ps[p].name, ts[ti].name, want);
                     for (auto& h : tr.history) std::printf (" %.1f=%d", h.first, h.second);
                     std::printf ("\n");
                 }
@@ -114,6 +117,7 @@ int main (int argc, char** argv)
     if (parts & 2) for (auto response : { smoothkey::Response::stable, smoothkey::Response::fast })
     {
         if (fastOnly && response == smoothkey::Response::stable) continue;
+        if (stableOnly && response == smoothkey::Response::fast) continue;
         std::vector<double> times;
         int followed = 0, total = 0;
         for (int sd = 0; sd < seeds; ++sd)
@@ -171,14 +175,14 @@ int main (int argc, char** argv)
     if (parts & 4)
     {
         Summary fast;
-        for (int tonic = 0; tonic < 12; tonic += every)
+        for (int sd = 0; sd < seeds; ++sd) for (int tonic = 0; tonic < 12; tonic += every)
             for (size_t p = 0; p < ps.size(); ++p)
                 for (size_t ti = 0; ti < ts.size(); ++ti)
                 {
                     a.reset();
                     a.setResponse (smoothkey::Response::fast);
                     a.setSource (smoothkey::Source::mix);
-                    const auto clip = chordClip (tonic, ps[p], ts[ti], clipSeed (seed, tonic, (int) p, (int) ti), sr, 24.0);
+                    const auto clip = chordClip (tonic, ps[p], ts[ti], clipSeed (seed + (unsigned) sd, tonic, (int) p, (int) ti), sr, 24.0);
                     const int want = keyIndex (tonic, ps[p].minor);
                     fast.add (analyse (a, clip, sr, want), want);
                 }

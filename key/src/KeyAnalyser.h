@@ -16,8 +16,9 @@
 //      A major chord falling a fifth to the next chord (a dominant resolving) also adds to the key it lands on.
 //      When recent notes clearly fall outside the key on show, the old memory is mostly let go, so a real key change is
 //      followed in seconds without making the memory short for everything else.
-//      In Fast, the chords since the current section began also count: which key they belong to, and which chord is home,
-//      the one the section opened on and stays on longest. This follows a move to a close key without waiting for its notes.
+//      The chords since the current section began also count: which key they belong to, and which chord is home, the one
+//      the section opened on and stays on longest. This follows a move to a close key without waiting for its notes. Stable
+//      gives it less weight, and counts the opening chord only while the section's chords all fit the key.
 //   8. Only move the reading when a new key has led for a set time by a set margin, so it cannot flicker.
 
 #include <algorithm>
@@ -148,13 +149,17 @@ public:
         double oddPenalty = 0.05;       // how much more a note must explain to be heard as odd harmonics only, so chord tones are not read as harmonics of a missing root
         double outsideWeight = 1.2;     // takes off this much times the share of notes heard that fall outside a key's scale
         // Harmony since the section began: which key its chords belong to, and which chord is home (the one the section opens
-        // on and the one it stays on longest). Fast only: 0 is off. Giving credit to the chord a dominant resolves to as well
-        // made more loops of i iv VII III read as their relative major, so it is left out.
-        double harmonyFast = 1.0, harmonyStable = 0.0;
+        // on and the one it stays on longest). 0 is off. Stable has it at a lower weight since 1.5.0. Giving credit to the chord
+        // a dominant resolves to as well made more loops of i iv VII III read as their relative major, so it is left out.
+        double harmonyFast = 1.0, harmonyStable = 0.7;
         double harmonyFit = 1.0;        // takes off this much times the share of the section's time on chords outside the key
         double harmonyFirst = 0.3;      // the section opens on the key's home chord
         double harmonyHome = 0.2;       // times the share of the section's time on the home chord
         double harmonyRamp = 1.0;       // reaches full weight after this many chord changes in the section
+        // Stable only: the opening chord counts less when the section's chords leave the key, by this much times the share of time
+        // outside it, so one chord of four outside takes it away. Without this, ii V I I loops were read as the key of their ii
+        // chord, and the reading went there and back.
+        double harmonyFirstFitStable = 4.0;
         double chromaPower = 0.75;      // compression of the long term chroma
         double softness = 14.0;         // turns score gaps into a probability
         int iterations = 30;
@@ -926,7 +931,11 @@ private:
             for (int c = 0; c < 24; ++c)
                 if (time[(size_t) c] > 0.0 && ! chordInKey (c, k)) outside += time[(size_t) c];
             double e = -knobs.harmonyFit * outside / total;
-            if (first == k) e += knobs.harmonyFirst;
+            if (first == k)
+            {
+                const double needFit = response == Response::stable ? knobs.harmonyFirstFitStable : 0.0;
+                e += knobs.harmonyFirst * std::max (0.0, 1.0 - needFit * outside / total);
+            }
             e += knobs.harmonyHome * time[(size_t) k] / total;
             harmony[(size_t) k] = ramp * e;
         }

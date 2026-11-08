@@ -141,3 +141,21 @@ Result, run once on 2026-11-08 after the above was committed (b4071dd), with the
 | Stable key change followed in 30 s | 83.3% | 83.3% | 100% | 100% |
 
 As expected: both Fast limits pass on both seeds, Stable and the melody and loop-from-its-second-chord tests are identical. Not expected: on 20261111 Stable follows only 83.3% of key changes, against 90%, in both versions. That is a fail the seed shows, not one this change made. Shipped as 1.4.0.
+
+## Held out check for harmony in Stable, written before it was run
+
+Written on 2026-11-08, before seed 20261112 was run. Version under test: this commit, which turns the harmony reading on in Stable too (`harmonyStable` 0.7, Fast keeps 1.0) and, in Stable only, counts the section's opening chord only while all its chords fit the key (`harmonyFirstFitStable` 4: one chord of four outside the key takes the opening chord's credit away). Without that second part, ii V I I loops were read as the key of their ii chord and Stable went there and back. Fast's code path is unchanged, so every Fast reading should be bit identical to 1.4.0.
+
+Tuned on new dev seeds 1018 to 1023 only. Checked once on unseen dev seeds 1024 to 1029, 1.4.0 against this version: Stable key change followed 91.7% to 97.2%, median 11.2 s to 8.8 s; Stable chords exact 99.3% to 99.6%, moving after 8 s 0.6% to 0.1%, bounces 0 and 0 (every second tonic, 1440 clips). The lowest single unseen seed still followed only 21 of 24 (87.5%), so one seed can still fail.
+
+Also run before this, on seeds already used: 20261111 now passes everything (Stable followed 83.3% to 95.8%, median 10.13 s to 8.26 s, moving after 8 s 0.42% to 0%). 20261110 passes everything (Stable 100% both, median 10.82 s to 8.60 s, moving after 8 s 0.83% to 0%). Fast identical on both.
+
+What I expect on 20261112, run once with PluginTest:
+
+- Stable key change followed in 30 s: about 92 to 100%, likely a pass, with roughly a 1 in 10 chance of 21 of 24 or fewer, a fail.
+- Stable key change median: about 8 to 10 s, a pass (limit 15).
+- Stable chords: exact about 99 to 100%, moving after 8 s 0 to 0.4%, bounces 0. Median time to correct about 7.85 s, a pass (limit 8).
+- Fast: the same as 1.4.0 would give on this seed. Fast has never been run on 20261112, so its key change limits (90%, 8 s) could fail on this seed alone; on dev it followed 95.8% to 97.2%.
+- Melody and loop from its second chord: melody unchanged (it has no bass line, so no harmony reading), loop from its second chord within a couple of points of 1.4.0.
+
+The result will be reported whatever it is.

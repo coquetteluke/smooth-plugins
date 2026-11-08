@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.4.0, 2026-11-08
+
+Voices come in on the right note at the start of a phrase. Luke heard Choir Loft miss vocal starts on his real vocals in Logic.
+
+What caused it, measured with a new test (`tests/OnsetTests.h`, 432 voice starts per preset, 17 kinds: hard, soft, scoops, breathy, creaky, s t m l into the vowel, vibrato at once, short first notes, a short gap, room reverb, quiet and bright takes, every Input Type, 3 pitches each, at the default preset, Tight and Humanize 0):
+
+- The pitch tracker's first few ms of a note can read an octave high, while its window is still half silence. The voices then picked a note an octave up and took about 100 ms to glide down from it. 1.3.1: hard starts reached their note up to 148 ms late.
+- Voices looked back into the first, least sure ms of pitch for as long as they stand behind the lead, so a wrong first reading came back after the tracker had fixed it.
+- Each new word after a consonant, a breath or a room's tail glided over from the last note instead of starting on its own.
+- A scoop into a note sang the scale note under it first, then jumped.
+- Breathy sound made the tracker jump an octave or a twelfth down for a few ms, and every jump started a glide back.
+- After any start the level match took up to 150 ms to come round.
+
+What changed:
+
+- Pitch for the first 30 ms of a stretch is rewritten with the newest reading, and a voice whose look back lands before the stretch began takes the newest reading.
+- Starts inside a phrase (after 10 ms without pitch, or when the lead comes in 9 dB louder) are treated like phrase starts. In a start's first 50 ms plus the voice's lag, and after a note held under 80 ms, notes change without a glide. Glides are for legato notes.
+- While the lead rises out of a start the voices bend with it, letting go within about 20 ms once it stops rising.
+- The tracker moves to two or three times its period, once a note is under way, only when that also holds over three windows.
+- The level match reads 7 times faster for 60 ms after a start.
+
+Results, 1.3.1 to 1.4.0, default preset: voices singing another note first 115 to 2 of 432; time to sound past the voice's lag, worst kind's 95th percentile, 288 ms to 74 ms; hard starts 148 to 26 ms. Tight: 100 to 1 and 168 to 76 ms. Humanize 0: 111 to 0 and 252 to 73 ms. No voice missed a first note before or after.
+
+Still failing: breathy starts on high notes (Soprano and Wide Range, A4 and D5, aspiration at -10 dB through the vowel's formants) still read an octave high for about 50 ms, 95th percentile 73 to 76 ms against 40. Breaths through a closed vowel at -30 dBFS make a voice sing 54.5% of the time against 1% (1.3.1: 55.1%). A new test for that was added; it failed before and fails after.
+
+The 22 null tests that pinned the sound to 1.1.0 and 1.2.0 bit for bit now pin 1.4.0, since phrase starts changed on purpose. Every control keeps its AU parameter and ID. No new controls. Latency unchanged.
+
 ## 1.3.1, 2026-11-07
 
 Renamed to Choir Loft, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.

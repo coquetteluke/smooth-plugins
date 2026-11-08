@@ -1,18 +1,21 @@
 #pragma once
 // The window, tested without a screen. Included by PluginTest.cpp, inside its namespace.
-// Numbers from the 1.1.0 source, before the window or its level readings existed, by `PluginTest fingerprints` at commit 2af225a.
+// The sound pinned bit for bit, by `PluginTest fingerprints`. These held the 1.1.0 and 1.2.0 numbers until 1.4.0, which changed how voices
+// start on purpose (phrase starts, see tests/OnsetTests.h): 1.3.1's output was still identical to 1.1.0 at presets 0, 3, 4, 7 and 10 and to 1.2.0
+// at every preset. They now hold 1.4.0's numbers, so any later change to the sound that is not meant shows here again.
 
 namespace windowtests
 {
 struct Fingerprint { int preset; std::uint64_t sum; };
-constexpr Fingerprint before11[] = { { 0, 12819405965456412613ull }, { 3, 10956679219727345505ull }, { 4, 7588531360145783692ull },
-                                     { 7, 10480141954853775759ull }, { 10, 17408058606749435550ull } };
+// Presets 0, 3, 4, 7 and 10 with four voices, as 1.1.0 measured them.
+constexpr Fingerprint before11[] = { { 0, 16570286879023029206ull }, { 3, 12960831677116291164ull }, { 4, 1082256635754400192ull },
+                                     { 7, 2754627803227643390ull }, { 10, 6636637009819420078ull } };
 
-// From 1.2.0 before voices 5 to 8 existed, at commit b7db582, each at its own voice count. -1 is the settings as first opened.
+// Each preset at its own voice count. -1 is the settings as first opened.
 constexpr Fingerprint before12[] = {
-    { -1, 14299031040907950147ull }, { 0, 11022625518125669870ull }, { 1, 8815588865538701058ull }, { 2, 5890609036138441008ull },
-    { 3, 10956679219727345505ull }, { 4, 7588531360145783692ull }, { 5, 6466102523420279802ull }, { 6, 9696839667077025709ull },
-    { 7, 10480141954853775759ull }, { 8, 7431532097480106654ull }, { 9, 4447638139727080309ull }, { 10, 13149107942618835037ull } };
+    { -1, 1590004729458437473ull }, { 0, 13952988945919903863ull }, { 1, 16915091830475372270ull }, { 2, 10152671442993417509ull },
+    { 3, 12960831677116291164ull }, { 4, 1082256635754400192ull }, { 5, 12230157831319643057ull }, { 6, 1020079298827962190ull },
+    { 7, 2754627803227643390ull }, { 8, 12499939071562400793ull }, { 9, 12262546829093631422ull }, { 10, 2304318657619123540ull } };
 
 inline void collectIds (juce::Component& c, std::set<juce::String>& ids)
 {
@@ -62,14 +65,14 @@ void testWindow()
     const juce::StringArray readings { "detectedPitch", "leadNote", "voice1Note", "voice2Note", "voice3Note", "voice4Note", "voice5Note", "voice6Note", "voice7Note", "voice8Note",
                                        "voicesSounding", "activeKey" };
 
-    // The sound, bit for bit, against the build from before the window, with the window open and drawing all the way through.
+    // The sound, bit for bit, against 1.4.0, and with the window open and drawing all the way through.
     for (const auto& f : before12)
         check (outputFingerprintOf (f.preset, false, false) == f.sum,
-               "null test: bit for bit the same as 1.2.0, " + (f.preset < 0 ? std::string ("first opened") : "preset " + std::to_string (f.preset)));
+               "null test: bit for bit the same as 1.4.0, each preset at its voice count, " + (f.preset < 0 ? std::string ("first opened") : "preset " + std::to_string (f.preset)));
 
     for (const auto& f : before11)
     {
-        check (outputFingerprint (f.preset) == f.sum, "null test: output identical to 1.1.0, preset " + std::to_string (f.preset));
+        check (outputFingerprint (f.preset) == f.sum, "null test: output identical to 1.4.0, four voices, preset " + std::to_string (f.preset));
 
         check (outputFingerprintWithWindow (f.preset) == f.sum, "null test: identical with the window open and drawing, preset " + std::to_string (f.preset));
     }

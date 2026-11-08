@@ -326,6 +326,11 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     tracker.prepare (sr);
     tickSamples = juce::jmax (1, juce::roundToInt (sr * 0.001));
     tickSeconds = tickSamples / sr;
+    rewriteTicks = juce::roundToInt (0.03 / tickSeconds);
+    leadRunTicks = 0;
+    levelRing.fill (0.0);
+    levelAt = 0;
+    tickPower = 0.0;
     brain.prepare (sr, tickSeconds);
     for (int v = 0; v < maxVoices; ++v)
     {
@@ -337,6 +342,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
         voice.gain = voice.gainTarget = 0.0;
         voice.powerIn = voice.powerOut = 0.0;
         voice.match = 1.0;
+        voice.fastMatch = 0;
         voice.voicedNow = false;
         voice.attackStep = 1.0 / (0.008 * sr);
         voice.wander = 1.0;
@@ -374,6 +380,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     bypassStep = (float) (1.0 / (0.02 * sr));
     smoothing = 1.0 - std::exp (-1.0 / (0.015 * sr));
     matchPower = 1.0 - std::exp (-1.0 / (0.15 * sr));
+    matchPowerFast = 1.0 - std::exp (-1.0 / (0.02 * sr));
     matchGain = 1.0 - std::exp (-1.0 / (0.03 * sr));
     envelopeStep = 1.0 / (0.008 * sr);
     fadeGain = 1.0f;
@@ -420,6 +427,7 @@ void PluginProcessor::applyInputType (int type) noexcept
     }
     pitchRing.fill (0.0);
     voicedRing.fill (false);
+    leadRunTicks = 0;
 }
 
 void PluginProcessor::readSettings() noexcept
@@ -502,18 +510,26 @@ void PluginProcessor::tick() noexcept
     pitchRingAt = (pitchRingAt + 1) & (pitchRingSize - 1);
     pitchRing[(size_t) pitchRingAt] = semitones;
 
+    // The tracker's first ms of a stretch of pitch are its least sure: at a note's start it can read an octave high until its window has filled,
+    // and voices look back that far, by their lag, so they would sing the wrong note later on as well. So for the first 30 ms of each stretch the
+    // pitch kept for looking back is rewritten with the newest.
+    leadRunTicks = voiced ? juce::jmin (leadRunTicks + 1, 1 << 20) : 0;
+    if (voiced && leadRunTicks <= rewriteTicks)
+        for (int k = 1; k < leadRunTicks; ++k)
+            pitchRing[(size_t) ((pitchRingAt - k) & (pitchRingSize - 1))] = semitones;
+
     // The tracker's period is old by the time it arrives: two stretches a period apart are compared, the newest mark is known 0.33 periods
     // after it happens, and the value then holds for a period. What is coming out is the input from the latency ago. Look back the difference,
     // so a voice follows the part of the lead it plays with. The 2.48 periods was measured on a vibrato: see the Fixed Interval vibrato test.
+    // At the start of a stretch of pitch the look back lands before it began. Then the newest pitch is the best guess for the start too: the
+    // tracker's first few ms are its least sure (an octave high at a note's start, until the window has filled), and holding on to them kept a
+    // voice on a wrong note for as long as it stands behind the lead.
     double aligned = semitones;
     if (voiced)
     {
-        int back = juce::jlimit (0, pitchRingSize - 1, juce::roundToInt (((double) latencyNow - 2.48 * period) / tickSamples));
-        for (; back > 0; --back)
-        {
-            const double older = pitchRing[(size_t) ((pitchRingAt - back) & (pitchRingSize - 1))];
-            if (older > 0.0) { aligned = older; break; }
-        }
+        const int back = juce::jlimit (0, pitchRingSize - 1, juce::roundToInt (((double) latencyNow - 2.48 * period) / tickSamples));
+        const double older = pitchRing[(size_t) ((pitchRingAt - back) & (pitchRingSize - 1))];
+        if (older > 0.0) aligned = older;
     }
 
     // Each voice stands behind the lead by its own lag, so it hears the lead that much later. Its note changes come late by themselves.
@@ -522,14 +538,23 @@ void PluginProcessor::tick() noexcept
     for (int v = 0; v < maxVoices; ++v)
     {
         const int lagTicks = juce::roundToInt (brain.lagMilliseconds (v) * 0.001 / tickSeconds);
-        int back = juce::jlimit (0, pitchRingSize - 1, juce::jmax (0, juce::roundToInt (back0)) + lagTicks);
-        double heard = 0.0;
-        for (; back >= 0 && heard <= 0.0; --back)
-            heard = pitchRing[(size_t) ((pitchRingAt - back) & (pitchRingSize - 1))];
-        voiceLead[(size_t) v] = heard;
+        const int back = juce::jlimit (0, pitchRingSize - 1, juce::jmax (0, juce::roundToInt (back0)) + lagTicks);
+        const double heard = pitchRing[(size_t) ((pitchRingAt - back) & (pitchRingSize - 1))];
+        voiceLead[(size_t) v] = heard > 0.0 ? heard : semitones;
     }
 
-    brain.update (aligned, voiceLead, voiced, settings);
+    // A reattack: the lead 9 dB or more louder than 20 to 30 ms ago. A new word over the room's tail of the last one keeps the pitch going
+    // without a gap, and the voices would glide over from the old note.
+    const double powerNow = tickPower / (double) tickSamples;
+    tickPower = 0.0;
+    levelAt = (levelAt + 1) & (levelRingSize - 1);
+    levelRing[(size_t) levelAt] = powerNow;
+    double recent = 0.0, earlier = 0.0;
+    for (int k = 0; k < 3; ++k) recent += levelRing[(size_t) ((levelAt - k) & (levelRingSize - 1))];
+    for (int k = 20; k < 30; ++k) earlier += levelRing[(size_t) ((levelAt - k) & (levelRingSize - 1))];
+    const bool reattack = voiced && recent / 3.0 > 8.0 * (earlier / 10.0) && recent / 3.0 > 1.0e-7;
+
+    brain.update (aligned, voiceLead, voiced, settings, reattack);
 
     voicedRing[(size_t) pitchRingAt] = voiced;
 
@@ -567,6 +592,10 @@ void PluginProcessor::tick() noexcept
             voice.consonantLevel = 1.0 - scatterNow * 0.225 * (singer.nextRandom() + 1.0);
             voice.unvoicedFor = 0.0;
         }
+        // At any start the level match still holds the last note's vowel and shift, a few dB off for the new one, and at its usual speed it
+        // took up to 150 ms to come round. For 60 ms after a start it reads the levels faster.
+        if ((sungNow && ! voice.voicedNow) || brain.startedNow())
+            voice.fastMatch = juce::roundToInt (0.06 * sr);
         voice.voicedNow = sungNow;
         if (! sungNow) voice.unvoicedFor += tickSeconds;
 
@@ -670,6 +699,7 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         const float inMono = 0.5f * (inL + inR);
         history.push (inL, inR, inMono);
         tracker.push (inMono);
+        tickPower += (double) inMono * inMono;
 
         if (++tickPhase >= tickSamples)
         {
@@ -738,11 +768,13 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             {
                 // The part of the lead this voice is reading, or a voice that stands back reads as too quiet at every onset and gets pushed.
                 const double inputNow = (double) history.delayed (InputHistory::mono, latencyNow + juce::roundToInt (voice.lagSamples));
-                voice.powerIn += matchPower * (inputNow * inputNow - voice.powerIn);
-                voice.powerOut += matchPower * (y * y - voice.powerOut);
+                const double k = voice.fastMatch > 0 ? matchPowerFast : matchPower;
+                voice.powerIn += k * (inputNow * inputNow - voice.powerIn);
+                voice.powerOut += k * (y * y - voice.powerOut);
                 if (voice.powerOut > 1.0e-9 && voice.powerIn > 1.0e-9)
                     wanted = juce::jlimit (0.63, 1.58, std::sqrt (voice.powerIn / voice.powerOut)); // +/-4 dB at most
             }
+            if (voice.fastMatch > 0) --voice.fastMatch;
             voice.match += matchGain * (wanted - voice.match);
             y *= voice.match;
 

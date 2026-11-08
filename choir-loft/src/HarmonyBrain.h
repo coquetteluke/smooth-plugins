@@ -158,6 +158,8 @@ public:
     {
         sr = sampleRate;
         tick = tickSeconds;
+        riseSmoothing = 1.0 - std::exp (-tick / 0.005);   // pitch smoothed over 5 ms for its slope
+        scoopRelease = std::exp (-tick / 0.02);
         for (int v = 0; v < maxVoices; ++v)
             singers[(size_t) v].prepare (v, tick);
         reset();
@@ -168,6 +170,9 @@ public:
         chord.clearAll();
         hasLead = false;
         silentFor = 1.0;
+        startAge = 1.0e6;
+        scoopFollow = 0.0;
+        risingPitch = 0.0;
         leadScaleNote = -1;
         leadChromaticNote = -1;
         leadPitch = 0.0;
@@ -177,6 +182,7 @@ public:
             singers[(size_t) v].reset();
             voices[(size_t) v] = {};
             remains[(size_t) v] = 0.0;
+            noteHeld[(size_t) v] = 0.0;
             lastDiscrete[(size_t) v] = 1000000;
             sounding[(size_t) v] = false;
             voiceScaleNote[(size_t) v] = -1;
@@ -190,16 +196,17 @@ public:
 
     // lead: semitones lined up with the output, 0 when there is none. voiced: the tracker has a pitch right now.
     // voiceLead: the same for each voice, later by how far that voice stands behind the lead. A voice hears the lead late, so it moves late.
-    void update (double lead, const std::array<double, maxVoices>& voiceLead, bool voiced, const Settings& s) noexcept
+    // reattack: the lead has just come in again much louder, as a new word does over the room's tail of the last one.
+    void update (double lead, const std::array<double, maxVoices>& voiceLead, bool voiced, const Settings& s, bool reattack = false) noexcept
     {
         chord.setHold (s.chordHold);
         if (s.mode == modeMidi) chord.assignChord (s.voices);
         else if (s.mode == modeChannel) chord.assignChannels (s.voices);
 
-        bool phraseStart = false;
+        // A phrase starts after silence. A new start inside a phrase is pitch coming back after a consonant or a breath, or a reattack.
+        bool phraseStart = false, freshStart = false;
         if (voiced && lead > 0.0)
         {
-            silentFor = 0.0;
             if (! hasLead)
             {
                 phraseStart = true;
@@ -207,6 +214,11 @@ public:
                 voiceScaleNote.fill (-1);
                 voiceChromaticNote.fill (-1);
             }
+            else if (silentFor >= freshGapSeconds || reattack)
+            {
+                freshStart = true;
+            }
+            silentFor = 0.0;
             hasLead = true;
             leadPitch = lead;
         }
@@ -216,6 +228,28 @@ public:
             if (silentFor > 0.04)
                 hasLead = false;
         }
+
+        // Into a note the lead often scoops up. Holding a scale note there sings another note first and then glides to the right one. So while
+        // the lead is still rising from a start, the voices bend with it; once the rise stops they let go within about 20 ms.
+        // Note changes in a start's first moments are taken at once, without a glide: the tracker's first ms are its least sure, and a voice
+        // gliding in from the note before a consonant or a breath is heard as late. Glides are for notes sung legato.
+        startedThisTick = phraseStart || freshStart;
+        if (phraseStart || freshStart)
+        {
+            startAge = 0.0;
+            scoopFollow = 1.0;
+            risingPitch = leadPitch;
+        }
+        else if (hasLead)
+        {
+            startAge += tick;
+            const double before = risingPitch;
+            risingPitch += riseSmoothing * (leadPitch - risingPitch);
+            const bool rising = (risingPitch - before) / tick > scoopRiseSemitonesPerSecond;
+            if (! rising || startAge > scoopLongestSeconds)
+                scoopFollow *= scoopRelease;
+        }
+        const double startFollow = hasLead ? scoopFollow : 0.0;
 
         if (hasLead)
         {
@@ -244,7 +278,7 @@ public:
             bool wantsPitch = inCount && hasLead;
             bool on = inCount;
             static constexpr double copiesLess[8] = { 0.2, 0.5, 0.35, 0.7, 0.3, 0.6, 0.45, 0.8 };
-            const double follow = std::clamp (s.followLead, 0.0, 1.0) * (1.0 - s.humanize * copiesLess[v]);
+            const double follow = std::max (startFollow, std::clamp (s.followLead, 0.0, 1.0) * (1.0 - s.humanize * copiesLess[v]));
 
             switch (s.mode)
             {
@@ -315,6 +349,11 @@ public:
                     remains[(size_t) v] = 0.0;
                     singer.noteEvent (s.humanize, 0);
                 }
+                else if ((discrete != lastDiscrete[(size_t) v] || s.mode != lastMode)
+                         && (startAge < startSettleSeconds + 0.001 * singer.lagMilliseconds() || noteHeld[(size_t) v] < glideFromSeconds))
+                {
+                    remains[(size_t) v] = 0.0;
+                }
                 else if (discrete != lastDiscrete[(size_t) v] || s.mode != lastMode)
                 {
                     // Keep going from where the voice actually is, then let the difference die away. That is the glide.
@@ -327,6 +366,7 @@ public:
                 }
                 remains[(size_t) v] = s.glideMs < 0.5 ? 0.0 : remains[(size_t) v] * std::exp (-tick * 1000.0 / (s.glideMs * singer.glideStretch()));
                 out.target = aim + remains[(size_t) v];
+                noteHeld[(size_t) v] = discrete != lastDiscrete[(size_t) v] ? 0.0 : noteHeld[(size_t) v] + tick;
                 lastDiscrete[(size_t) v] = discrete;
                 lastPitch[(size_t) v] = out.target;
             }
@@ -345,6 +385,7 @@ public:
 
     const Voice& voice (int v) const noexcept { return voices[(size_t) v]; }
     double lagMilliseconds (int v) const noexcept { return singers[(size_t) v].lagMilliseconds(); }
+    bool startedNow() const noexcept { return startedThisTick; }   // a phrase or a fresh start inside one began on the last update
     double levelWander (int v) const noexcept { return singers[(size_t) v].levelWander(); }
     Singer& singer (int v) noexcept { return singers[(size_t) v]; }
     int leadNote() const noexcept { return hasLead ? leadChromaticNote : -1; }
@@ -379,11 +420,17 @@ private:
     MidiChord chord;
     std::array<Singer, maxVoices> singers;
     std::array<Voice, maxVoices> voices {};
-    std::array<double, maxVoices> remains {}, lastPitch {};
+    std::array<double, maxVoices> remains {}, lastPitch {}, noteHeld {};
     std::array<int, maxVoices> lastDiscrete {}, voiceScaleNote {}, voiceChromaticNote {}, midiHeld {}, midiAge {};
     std::array<bool, maxVoices> sounding {};
-    bool hasLead = false;
-    double silentFor = 1.0, leadPitch = 0.0;
+    // A voice looks back by its lag, and the processor rewrites a start's first 30 ms of pitch, so settling lasts 50 ms plus the voice's lag.
+    static constexpr double startSettleSeconds = 0.05, freshGapSeconds = 0.01;
+    // A note held for less than this was an ornament or a misreading: the next note starts clean instead of gliding over from it.
+    static constexpr double glideFromSeconds = 0.08;
+    static constexpr double scoopRiseSemitonesPerSecond = 3.0, scoopLongestSeconds = 0.25;
+    double scoopFollow = 0.0, risingPitch = 0.0, riseSmoothing = 0.2, scoopRelease = 0.95;
+    bool hasLead = false, startedThisTick = false;
+    double silentFor = 1.0, leadPitch = 0.0, startAge = 1.0e6;
     int leadScaleNote = -1, leadChromaticNote = -1, lastMode = -1;
 };
 } // namespace smoothharmony

@@ -174,13 +174,14 @@ public:
 private:
     void clearTracking() noexcept
     {
-        tauCurrent = 0.0; dipCurrent = 1.0f; voiced = false; voicedVotes = 0; unvoicedVotes = 0; pendingVotes = 0; pendingTau = 0.0;
+        tauCurrent = 0.0; dipCurrent = 1.0f; voiced = false; voicedAnalyses = 0; voicedVotes = 0; unvoicedVotes = 0; pendingVotes = 0; pendingTau = 0.0;
         markValid = false; finePeriod = 0.0; weakMarks = 0; markSeq = 0; lastMarkPosition = -1.0e12; mismatchVotes = 0;
     }
 
     void setUnvoiced() noexcept
     {
         voiced = false;
+        voicedAnalyses = 0;
         voicedVotes = 0;
         markValid = false;
     }
@@ -258,6 +259,7 @@ private:
 
         double tau = dipTau[(size_t) chosen];
         float dip = dipValue[(size_t) chosen];
+        if (voiced) ++voicedAnalyses;
         trackContinuity (tau, dip, numDips);
 
         // Voiced or not, with votes so one lucky frame of noise does nothing.
@@ -332,8 +334,12 @@ private:
             {
                 // The new period is longer. A rough sound can look that way for a moment, so stay put, unless a clean sound
                 // plainly fits the longer period far better: then the note really has come down.
+                // A multiple of the current period always fits wherever the current one does, so on breathy or noisy sound one short window can
+                // make two or three periods look deepest for a few ms, and the voices would jump an octave or a twelfth down and glide back.
+                // So a move to a multiple must also hold over a stretch three windows long.
                 const bool plainlyBetter = nearDip < 0.15f && dip < 0.35f * nearDip && clearlyDeeper (tau, nearTau);
-                stay = related ? (nearDip <= dip + 0.15f && ! plainlyBetter) : nearDip <= dip + 0.02f;
+                const bool established = voicedAnalyses * hop >= 3 * window;   // not in a note's first moments, where an octave-high start still needs correcting
+                stay = related ? ((nearDip <= dip + 0.15f && ! plainlyBetter) || (established && ! clearlyDeeper (tau, nearTau, 3))) : nearDip <= dip + 0.02f;
             }
         }
 
@@ -370,15 +376,15 @@ private:
 
     // Is one period much deeper than another? Asked at full rate, because at 12 kHz a period falling between two samples
     // reads worse than a multiple of it that falls on a sample, even when both fit equally well.
-    bool clearlyDeeper (double longTau, double shortTau) const noexcept
+    bool clearlyDeeper (double longTau, double shortTau, int windows = 1) const noexcept
     {
-        const float a = fineDip (longTau * decimation), b = fineDip (shortTau * decimation);
+        const float a = fineDip (longTau * decimation, windows), b = fineDip (shortTau * decimation, windows);
         return a < 0.35f * b - 0.002f;
     }
 
-    float fineDip (double lagExact) const noexcept
+    float fineDip (double lagExact, int windows = 1) const noexcept
     {
-        const int span = window * decimation;
+        const int span = std::min (window * decimation * windows, fastSize / 2);
         const int lag = (int) std::lround (lagExact);
         const int stride = std::max (1, span / 400);
         const int points = span / stride;
@@ -578,7 +584,7 @@ private:
     std::array<float, 64> dipValue {};
     double tauCurrent = 0.0, pendingTau = 0.0, votedTau = 1.0;
     float dipCurrent = 1.0f;
-    int pendingVotes = 0, voicedVotes = 0, unvoicedVotes = 0, mismatchVotes = 0;
+    int pendingVotes = 0, voicedVotes = 0, unvoicedVotes = 0, mismatchVotes = 0, voicedAnalyses = 0;
     bool voiced = false;
 
     std::array<Mark, maxMarks> marks {};

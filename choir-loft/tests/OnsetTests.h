@@ -49,6 +49,7 @@ inline Piece note (double sec, int midi, const voice::Vowel& v, double from = 1.
 struct Lead
 {
     std::vector<float> x;
+    std::vector<float> voiced;             // the voiced part alone: what a voice's level is measured against, so breath noise in the lead does not count
     std::vector<double> f0, noteHz, amp;   // per sample: true pitch (0 when not voiced), the note meant (0 for none), voiced level
 };
 
@@ -164,57 +165,67 @@ inline Lead build (const std::vector<Piece>& pieces, double levelDb, unsigned se
     // Gains move over about 3 ms, so a change of piece is not a click of its own
     const double k3 = 1.0 - std::exp (-1.0 / (0.003 * SR));
     double gv = 0.0, gn = 0.0;
-    std::vector<double> mix (n, 0.0);
+    std::vector<double> mix (n, 0.0), voicedOnly (n, 0.0);
     for (size_t i = 0; i < n; ++i)
     {
         gv += k3 * (vGain[i] - gv);
         gn += k3 * (nGain[i] - gn);
-        mix[i] = gv * V[i] + gn * N[i];
+        voicedOnly[i] = gv * V[i];
+        mix[i] = voicedOnly[i] + gn * N[i];
     }
-    if (bright)
+    double wetGain = 0.0;   // set on the whole lead, then used for the voiced part too
+    const auto colour = [&] (std::vector<double>& sig)
     {
-        // A bright singer or a bright condenser: +10 dB shelf above about 3 kHz
-        double low = 0.0;
-        const double kl = 1.0 - std::exp (-2.0 * M_PI * 3000.0 / SR);
-        for (auto& s : mix) { low += kl * (s - low); s = s + 2.16 * (s - low); }
-    }
-    if (reverb)
-    {
-        // A small room: four combs and two all passes, RT60 0.6 s, wet 10 dB under the dry
-        const int combMs[4] = { 297, 371, 411, 437 };
-        std::vector<double> wet (n, 0.0);
-        for (int c = 0; c < 4; ++c)
+        if (bright)
         {
-            const int d = (int) (combMs[c] * 0.0001 * SR);
-            const double g = std::pow (10.0, -3.0 * (combMs[c] * 0.0001) / 0.6);
-            std::vector<double> line ((size_t) d, 0.0);
-            int pos = 0;
-            for (size_t i = 0; i < n; ++i)
-            {
-                const double outv = line[(size_t) pos];
-                line[(size_t) pos] = mix[i] + g * outv;
-                pos = (pos + 1) % d;
-                wet[i] += 0.25 * outv;
-            }
+            // A bright singer or a bright condenser: +10 dB shelf above about 3 kHz
+            double low = 0.0;
+            const double kl = 1.0 - std::exp (-2.0 * M_PI * 3000.0 / SR);
+            for (auto& s : sig) { low += kl * (s - low); s = s + 2.16 * (s - low); }
         }
-        for (const double apMs : { 5.0, 1.7 })
+        if (reverb)
         {
-            const int d = (int) (apMs * 0.001 * SR);
-            std::vector<double> line ((size_t) d, 0.0);
-            int pos = 0;
-            for (size_t i = 0; i < n; ++i)
+            // A small room: four combs and two all passes, RT60 0.6 s, wet 10 dB under the dry (set on the whole lead, used for both)
+            const int combMs[4] = { 297, 371, 411, 437 };
+            std::vector<double> wet (n, 0.0);
+            for (int c = 0; c < 4; ++c)
             {
-                const double b = line[(size_t) pos], in = wet[i] + 0.7 * b;
-                line[(size_t) pos] = in;
-                pos = (pos + 1) % d;
-                wet[i] = b - 0.7 * in;
+                const int d = (int) (combMs[c] * 0.0001 * SR);
+                const double g = std::pow (10.0, -3.0 * (combMs[c] * 0.0001) / 0.6);
+                std::vector<double> line ((size_t) d, 0.0);
+                int pos = 0;
+                for (size_t i = 0; i < n; ++i)
+                {
+                    const double outv = line[(size_t) pos];
+                    line[(size_t) pos] = sig[i] + g * outv;
+                    pos = (pos + 1) % d;
+                    wet[i] += 0.25 * outv;
+                }
             }
+            for (const double apMs : { 5.0, 1.7 })
+            {
+                const int d = (int) (apMs * 0.001 * SR);
+                std::vector<double> line ((size_t) d, 0.0);
+                int pos = 0;
+                for (size_t i = 0; i < n; ++i)
+                {
+                    const double b = line[(size_t) pos], in = wet[i] + 0.7 * b;
+                    line[(size_t) pos] = in;
+                    pos = (pos + 1) % d;
+                    wet[i] = b - 0.7 * in;
+                }
+            }
+            if (&sig == &mix)
+            {
+                double dryE = 0.0, wetE = 0.0;
+                for (size_t i = 0; i < n; ++i) { dryE += sig[i] * sig[i]; wetE += wet[i] * wet[i]; }
+                wetGain = std::sqrt (dryE / std::max (wetE, 1.0e-20)) * std::pow (10.0, -10.0 / 20.0);
+            }
+            for (size_t i = 0; i < n; ++i) sig[i] += wetGain * wet[i];
         }
-        double dryE = 0.0, wetE = 0.0;
-        for (size_t i = 0; i < n; ++i) { dryE += mix[i] * mix[i]; wetE += wet[i] * wet[i]; }
-        const double g = std::sqrt (dryE / std::max (wetE, 1.0e-20)) * std::pow (10.0, -10.0 / 20.0);
-        for (size_t i = 0; i < n; ++i) mix[i] += g * wet[i];
-    }
+    };
+    colour (mix);
+    colour (voicedOnly);
     // Level: the last note's body at levelDb
     long lastFrom = -1, lastTo = -1;
     for (long i = (long) n - 1; i >= 0; --i)
@@ -224,7 +235,8 @@ inline Lead build (const std::vector<Piece>& pieces, double levelDb, unsigned se
     for (long i = lastFrom; i <= lastTo && lastFrom >= 0; ++i) e += mix[(size_t) i] * mix[(size_t) i];
     const double rmsLast = std::sqrt (e / std::max (1L, lastTo - lastFrom + 1));
     const double g = std::pow (10.0, levelDb / 20.0) / std::max (rmsLast, 1.0e-12);
-    for (size_t i = 0; i < n; ++i) L.x[i] = (float) (g * mix[i]);
+    L.voiced.assign (n, 0.0f);
+    for (size_t i = 0; i < n; ++i) { L.x[i] = (float) (g * mix[i]); L.voiced[i] = (float) (g * voicedOnly[i]); }
     return L;
 }
 
@@ -423,7 +435,7 @@ inline double steadyDb (const Out& o, int v, const Lead& L, const Run& last)
     for (long i = last.arrive + (long) (0.25 * SR); i < last.end - (long) (0.05 * SR); i += (long) (0.005 * SR))
     {
         const long at = i + o.latency + (long) std::lround (lagSamplesAt (o, v, i + o.latency));
-        d.push_back (relativeDb (o, v, L.x, at));
+        d.push_back (relativeDb (o, v, L.voiced, at));
     }
     return d.empty() ? 0.0 : median (d);
 }
@@ -441,7 +453,7 @@ inline Result measure (const Out& o, int v, const Lead& L, const Run& r, double 
     long okFrom = -1, found = -1;
     for (long at = from; at < until; at += hop)
     {
-        const double lvl = relativeDb (o, v, L.x, at) - steady;
+        const double lvl = relativeDb (o, v, L.voiced, at) - steady;
         const double hz = pitchNear (y.data(), (long) y.size(), at, targetHz, SR, 0.06, 2.5);
         const bool onNote = hz > 0.0 && std::abs (cents (hz, targetHz)) <= limits::onsetOnNoteCents;
         frames.push_back ({ at, lvl, onNote });
@@ -492,10 +504,12 @@ inline Result measure (const Out& o, int v, const Lead& L, const Run& r, double 
     return res;
 }
 
+struct TypePitches { int type; int midi[3]; };
+inline const TypePitches grid[] = { { soprano, { 64, 69, 74 } }, { altoTenor, { 50, 57, 64 } }, { lowMale, { 40, 45, 52 } }, { wideRange, { 43, 57, 69 } } };
+inline unsigned seedFor (int kind, int pitchIndex) { return 100u + (unsigned) (kind * 7 + pitchIndex); }
+
 inline void testPhraseStarts()
 {
-    struct TypePitches { int type; int midi[3]; };
-    const TypePitches grid[] = { { soprano, { 64, 69, 74 } }, { altoTenor, { 50, 57, 64 } }, { lowMale, { 40, 45, 52 } }, { wideRange, { 43, 57, 69 } } };
     const char* typeNames[] = { "Soprano", "Alto/Tenor", "Low Male", "Wide Range" };
     const int steps[2] = { 2, 4 };   // default voices: Interval +4 and +7, a third and a fifth up the scale
 
@@ -515,7 +529,7 @@ inline void testPhraseStarts()
                 for (int pi = 0; pi < 3; ++pi)
                 {
                     std::vector<int> measured;
-                    const Lead L = makeKind (kind, tp.midi[pi], 100u + (unsigned) (kind * 7 + pi), measured);
+                    const Lead L = makeKind (kind, tp.midi[pi], seedFor (kind, pi), measured);
                     const auto runs = runsOf (L);
                     auto p = setup (variant, tp.type);
                     const Out o = run (*p, L.x);
@@ -531,6 +545,8 @@ inline void testPhraseStarts()
                             ++starts;
                             char where[160];
                             std::snprintf (where, sizeof where, "%s, %s, note %d, voice %d%s", kindNames[kind], typeNames[tp.type], r.midi, v + 1, m > 0 ? ", second note" : "");
+                            if (std::getenv ("SH_ONSET_LIST") != nullptr)
+                                std::printf ("start %s, %s: %s %.1f ms past lag %.1f, wrong %d\n", variantNames[variant], where, res.sounded ? "sounds" : "missed", res.ms, res.lagMs, res.wrong ? 1 : 0);
                             if (! res.sounded)
                             {
                                 ++misses;
@@ -642,6 +658,9 @@ inline void testCorpusStarts()
                         if (ok) { if (okFrom < 0) okFrom = at; if (at - okFrom >= hold) { found = okFrom; break; } }
                         else okFrom = -1;
                     }
+                    if (std::getenv ("SH_CORPUS_LIST") != nullptr)
+                        std::printf ("corpus %s variant %d voice %d onset %.3f s length %.0f ms: %s %.1f ms\n", name, variant, v + 1, onset / SR, 1000.0 * (end - onset) / SR,
+                                     found >= 0 ? "sounds after" : "never", found >= 0 ? 1000.0 * (double) (found - onset - o.latency) / SR - 1000.0 * lagSamplesAt (o, v, found) / SR : 0.0);
                     if (found >= 0 && found <= end + o.latency + (long) lagSamplesAt (o, v, found))
                     {
                         ++sounded;
@@ -753,5 +772,146 @@ inline void testNoTrigger()
             }
     check (worstShare <= limits::noTriggerShare, "breaths, s, sh, noise and room tone: share of time a voice sings, worst (" + (worstShareText.empty() ? std::string ("none") : worstShareText) + ")", worstShare);
     check (worstRun <= limits::noTriggerRunMs, "  and its longest stretch, worst (" + (worstRunText.empty() ? std::string ("none") : worstRunText) + ")", worstRun, "ms");
+}
+} // namespace onsets
+
+namespace onsets
+{
+// For looking into one start: PluginTest onsettrace <kind> <inputType> <midi> <variant>. Prints the voices frame by frame.
+inline void trace (int kind, int type, int midi, int variant, double spanSec = 0.2, double stepSec = 0.004)
+{
+    std::vector<int> measured;
+    int pitchIndex = 0;
+    for (int i = 0; i < 3; ++i) if (grid[type].midi[i] == midi) pitchIndex = i;
+    const Lead L = makeKind (kind, midi, seedFor (kind, pitchIndex), measured);
+    const auto runs = runsOf (L);
+    auto p = setup (variant, type);
+    const int lat = p->getLatencySamples();
+    // Per block readings too
+    const int n = (int) L.x.size(), block = 128;
+    juce::AudioBuffer<float> buf (2, block);
+    juce::MidiBuffer midiBuf;
+    Out o; o.latency = lat;
+    for (auto& c : o.ch) c.assign ((size_t) n, 0.0f);
+    std::vector<PluginProcessor::Readings> reads;
+    for (int pos = 0; pos < n; pos += block)
+    {
+        const int len = std::min (block, n - pos);
+        buf.setSize (2, len, false, false, true);
+        for (int c = 0; c < 2; ++c) std::copy_n (L.x.data() + pos, len, buf.getWritePointer (c));
+        p->processBlock (buf, midiBuf);
+        for (int c = 0; c < 2; ++c) std::copy_n (buf.getReadPointer (c), len, o.ch[(size_t) c].data() + pos);
+        const auto r = p->getReadings();
+        reads.push_back (r);
+        for (int v = 0; v < 2; ++v) o.lagMs[(size_t) v].push_back (r.voiceLagMs[(size_t) v]);
+    }
+    const Run& r = runs[(size_t) measured.back()];
+    const int steps[2] = { 2, 4 };
+    std::printf ("kind %s, type %d, note %d, onset %.1f ms arrive %.1f ms end %.1f ms (input), latency %.2f ms\n", kindNames[kind], type, r.midi,
+                 1000.0 * r.onset / SR, 1000.0 * r.arrive / SR, 1000.0 * r.end / SR, 1000.0 * lat / SR);
+    double steady[2];
+    for (int v = 0; v < 2; ++v) steady[v] = steadyDb (o, v, L, runs.back());
+    std::printf ("  t(out, from lead onset)  inputHz  detHz  | per voice: lag  lvl  onNoteHz  freeHz  noteReading gain\n");
+    for (long at = r.onset + lat - (long) (0.02 * SR); at < r.onset + lat + (long) (spanSec * SR); at += (long) (stepSec * SR))
+    {
+        const auto& rd = reads[(size_t) (at / block)];
+        const long in = at - lat;
+        std::printf ("  %6.1f  %7.1f  %7.1f |", 1000.0 * (at - r.onset - lat) / SR, in >= 0 ? L.f0[(size_t) in] : 0.0, rd.detectedHz);
+        for (int v = 0; v < 2; ++v)
+        {
+            const double target = noteHz (diatonic (r.midi, steps[v]));
+            const double hz = pitchNear (o.ch[(size_t) v].data(), (long) n, at, target, SR, 0.06, 2.5);
+            const double fh = freePitch (o.ch[(size_t) v], at, target);
+            std::printf ("  %5.1f %6.1f %7.1f %7.1f %3d %4.2f |", lagSamplesAt (o, v, at) * 1000.0 / SR, relativeDb (o, v, L.voiced, at) - steady[v], hz, fh, rd.voiceNote[(size_t) v], rd.voiceGain[(size_t) v]);
+        }
+        std::printf ("\n");
+    }
+}
+} // namespace onsets
+
+namespace onsets
+{
+// PluginTest trackertrace <kind> <inputType> <midi> <fromMs> <toMs>: the tracker alone on that lead, every ms, input time.
+inline void trackerTrace (int kind, int type, int midi, double fromMs, double toMs)
+{
+    int pitchIndex = 0;
+    for (int i = 0; i < 3; ++i) if (grid[type].midi[i] == midi) pitchIndex = i;
+    std::vector<int> measured;
+    Lead L;
+    if (kind >= 100)
+    {
+        // 100: breaths through a closed vowel, 101: through an open vowel, as in testNoTrigger, at -30 dBFS
+        const auto& vw = kind == 100 ? voice::vowelU : voice::vowelA;
+        Res r[5];
+        for (int i = 0; i < 5; ++i) r[i].set (vw.f[i], vw.bw[i]);
+        std::mt19937 gen (77);
+        std::normal_distribution<double> gauss (0.0, 1.0);
+        const int n = (int) (2.0 * SR);
+        L.x.assign ((size_t) n, 0.0f); L.f0.assign ((size_t) n, 0.0); L.amp.assign ((size_t) n, 0.0); L.noteHz.assign ((size_t) n, 0.0);
+        double e2 = 0.0;
+        for (int i = 0; i < n; ++i)
+        {
+            double e = gauss (gen);
+            for (auto& rr : r) e = rr.process (e);
+            const double t = std::fmod ((double) i / SR, 0.7);
+            L.x[(size_t) i] = (float) (e * (t < 0.6 ? std::sin (M_PI * t / 0.6) : 0.0));
+            e2 += (double) L.x[(size_t) i] * L.x[(size_t) i];
+        }
+        const double g = std::pow (10.0, -30.0 / 20.0) / std::sqrt (e2 / n);
+        for (auto& v : L.x) v = (float) (v * g);
+    }
+    else L = makeKind (kind, midi, seedFor (kind, pitchIndex), measured);
+    static const double lows[] = { 150.0, 98.0, 65.0, 65.0 }, highs[] = { 1300.0, 1000.0, 600.0, 1300.0 };
+    PitchTracker t;
+    t.prepare (SR);
+    t.setRange (lows[type], highs[type]);
+    t.setVoicingLimit (0.30f);
+    for (size_t i = 0; i < L.x.size(); ++i)
+    {
+        t.push (L.x[i]);
+        const double ms = 1000.0 * (double) i / SR;
+        if (ms >= fromMs && ms < toMs && i % 48 == 0)
+            std::printf ("%7.1f true %6.1f amp %4.2f | voiced %d period %6.1f Hz coarse %6.1f Hz dip %5.3f fric %d\n", ms, L.f0[i], L.amp[i], t.isVoiced() ? 1 : 0,
+                         t.period() > 0 ? SR / t.period() : 0.0, t.coarsePeriod() > 0 ? SR / t.coarsePeriod() : 0.0, t.difference(), t.isFricative() ? 1 : 0);
+    }
+}
+} // namespace onsets
+
+namespace onsets
+{
+// PluginTest corpustrace <file> <fromSec> <variant>: both voices and the readings on a say file, Wide Range, every 4 ms for 0.2 s (output time).
+inline void corpusTrace (const char* name, double fromSec, int variant)
+{
+    const auto wav = loadWav (name);
+    const std::vector<float> in (wav.getReadPointer (0), wav.getReadPointer (0) + wav.getNumSamples());
+    auto p = setup (variant, wideRange);
+    const int lat = p->getLatencySamples(), n = (int) in.size(), block = 128;
+    juce::AudioBuffer<float> buf (2, block);
+    juce::MidiBuffer midiBuf;
+    std::vector<PluginProcessor::Readings> reads;
+    std::array<std::vector<float>, 2> out;
+    for (auto& c : out) c.assign ((size_t) n, 0.0f);
+    for (int pos = 0; pos < n; pos += block)
+    {
+        const int len = std::min (block, n - pos);
+        buf.setSize (2, len, false, false, true);
+        for (int c = 0; c < 2; ++c) std::copy_n (in.data() + pos, len, buf.getWritePointer (c));
+        p->processBlock (buf, midiBuf);
+        for (int c = 0; c < 2; ++c) std::copy_n (buf.getReadPointer (c), len, out[(size_t) c].data() + pos);
+        reads.push_back (p->getReadings());
+    }
+    const auto track = referenceTrack (in, SR, 0.005);
+    const double rate = 12000.0;
+    const int tauMax = (int) (rate / 60.0) + 1, W = tauMax + 40;
+    for (long at = (long) (fromSec * SR) + lat; at < (long) ((fromSec + 0.2) * SR) + lat && at < n; at += (long) (0.004 * SR))
+    {
+        const auto& rd = reads[(size_t) (at / block)];
+        const long i = at - lat;
+        const int f = (int) std::lround ((i / SR * rate - tauMax - 0.5 * W) / 60.0);
+        const double ref = f >= 0 && f < (int) track.size() ? track[(size_t) f] : 0.0;
+        std::printf ("%7.3f s in | ref %6.1f det %6.1f | v1 note %3d lag %4.1f gain %4.2f pitch %7.1f | v2 note %3d lag %4.1f gain %4.2f pitch %7.1f\n", i / SR, ref, rd.detectedHz,
+                     rd.voiceNote[0], rd.voiceLagMs[0], rd.voiceGain[0], freePitch (out[0], at, rd.voiceNote[0] > 0 ? noteHz (rd.voiceNote[0]) : 200.0),
+                     rd.voiceNote[1], rd.voiceLagMs[1], rd.voiceGain[1], freePitch (out[1], at, rd.voiceNote[1] > 0 ? noteHz (rd.voiceNote[1]) : 200.0));
+    }
 }
 } // namespace onsets

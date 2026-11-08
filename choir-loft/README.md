@@ -103,11 +103,38 @@ On a vocal peaking at -6 dBFS, measured output peaks: two voices at defaults 0.6
 
 Input > clean bad samples > history > pitch tracker (on left and right mixed) > note logic on a 1 ms tick > up to eight grain voices reading the shared mono history, each with its own consonant path > per voice all-pass, level match, Tone, Breath, fade, Level, Pan > summed with the delay matched lead > Mix > Bypass > output.
 
-- `src/PitchTracker.h`: from Smooth Tune. One change: marks slide much more slowly towards the loudest part of each period, because that slide bent shifted pitch by up to 8.6 cents.
+- `src/PitchTracker.h`: from Smooth Tune. Changes: marks slide much more slowly towards the loudest part of each period, because that slide bent shifted pitch by up to 8.6 cents. Since 1.4.0, once a note is under way, a move to two or three times the current period must also hold over three windows, so breathy sound no longer drops it an octave or a twelfth for a few ms.
 - `src/VoiceShifter.h`: pitch-synchronous grains, one input period of window each side of a mark, spaced at the wanted output period. Timing lag comes from choosing an older period, so it cannot bend pitch. Unvoiced sound is read straight at one held offset, so it is the input at a lag, with no grain spacing on it. A slight reading speed change cancels the formant drag at large shifts. With Humanize above 0, a grain reads between two neighbouring periods instead of repeating or dropping whole ones, and where it reads is nudged at random per grain, so the high end stops repeating exactly while pitch stays put.
-- `src/HarmonyBrain.h`: the modes, Glide, Follow Lead, and each voice's drift, vibrato and humanize. Each voice hears the lead late by its own lag, so its note changes come late by themselves. `src/MidiChord.h`: held notes and voice assignment. `src/Scales.h`: scales, chords, intervals. `src/KeyFollower.h`: the key file.
-- `src/PluginProcessor.cpp`: parameters, latency, MIDI timing, the mix. MIDI waits for the latency, so a chord change lines up with the lead. Pitch from the tracker is looked up in a short history for the same reason, and so is voicing, per voice: a voice keeps singing until the end of a vowel it is reading, not until the tracker has seen the vowel end, which in 1.0.0 cut each vowel short and left its last moments at the lead's pitch.
+- `src/HarmonyBrain.h`: the modes, Glide, Follow Lead, and each voice's drift, vibrato and humanize. Each voice hears the lead late by its own lag, so its note changes come late by themselves. Since 1.4.0 a start is a phrase after silence, pitch coming back after 10 ms or more without it, or a reattack. In a start's first 50 ms plus the voice's lag, and after a note held under 80 ms, notes change without a glide; glides are for legato notes. While the lead rises out of a start, the voices bend with it. `src/MidiChord.h`: held notes and voice assignment. `src/Scales.h`: scales, chords, intervals. `src/KeyFollower.h`: the key file.
+- `src/PluginProcessor.cpp`: parameters, latency, MIDI timing, the mix. Since 1.4.0: the first 30 ms of pitch of each stretch are rewritten with the newest reading; a reattack is the lead 9 dB louder than 20 to 30 ms before; the level match reads faster for 60 ms after a start. MIDI waits for the latency, so a chord change lines up with the lead. Pitch from the tracker is looked up in a short history for the same reason, and so is voicing, per voice: a voice keeps singing until the end of a vowel it is reading, not until the tracker has seen the vowel end, which in 1.0.0 cut each vowel short and left its last moments at the lead's pitch.
 - `getReadings()` and `getPitchPoint()` give a later window everything without touching audio.
+
+## Phrase starts (1.4.0)
+
+Luke heard 1.3.1 miss vocal starts on his own vocals. `tests/OnsetTests.h` makes the starts a singer makes, at every Input Type and three pitches in its range, with the two default voices on their own channels: 432 voice starts per preset. A voice has sounded once it is within 50 cents of its note and within 3 dB of its own steady level against the lead, held 20 ms. Limits are in `tests/PassLimits.h`, committed before 1.3.1 was measured on them (commit d336daf).
+
+| Kind of start | Default 1.3.1 | Default 1.4.0 | Tight 1.3.1 | Tight 1.4.0 |
+|---|---|---|---|---|
+| Hard start | 4 wrong, 148 ms | 0, 26 ms | 4, 82 ms | 0, 28 ms |
+| Soft start | 6, 108 ms | 0, on time | 6, 64 ms | 0, on time |
+| Scoop of 2 semitones | 20, 77 ms | 0, 8 ms | 14, 18 ms | 0, on time |
+| Breathy start | 18, 288 ms | 2, 74 ms | 14, 168 ms | 0, 76 ms |
+| Creaky start | 12, 133 ms | 0, 17 ms | 9, 88 ms | 0, 18 ms |
+| s into the vowel | 4, 115 ms | 0, 24 ms | 3, 76 ms | 0, 30 ms |
+| t into the vowel | 4, 146 ms | 0, 26 ms | 4, 82 ms | 0, 28 ms |
+| Vibrato at once | 5, 129 ms | 0, 22 ms | 6, 82 ms | 1, 26 ms |
+| After a 100 ms gap | 4, 145 ms | 0, 19 ms | 4, 82 ms | 0, 20 ms |
+| Room reverb | 28, 148 ms | 0, 27 ms | 26, 134 ms | 0, 28 ms |
+| Bright take | 2, 50 ms | 0, 19 ms | 2, 38 ms | 0, 26 ms |
+| All 17 kinds | 115 wrong | 2 wrong | 100 wrong | 1 wrong |
+
+Each cell: voices that sang another note first, then the 95th percentile time to sound past the voice's own lag (limit 40 ms). m and l into the vowel and first notes of 150 ms were already fine. Humanize 0: 111 wrong to 0, worst kind 252 to 73 ms. No voice skipped a first note of 150 ms or longer, before or after.
+
+The `say` corpus, every voiced stretch of 150 ms or longer: every voice sounds in all 58, median 21 ms past the lag (1.3.1: 21 ms). Its 90th percentile went from 37 to 57 ms, because voices now bend with a rising start, and `say` speech rises a lot; a bent voice is not counted until it sits within 50 cents of a scale note.
+
+Still failing: breathy starts on high notes, where the aspiration noise goes through the vowel's own formants and the tracker reads an octave high for about 50 ms (74 to 76 ms against 40). Breaths through a closed vowel at -30 dBFS make a voice sing 54.5% of the time against a limit of 1%, longest 190 ms (1.3.1: 55.1%, 190 ms): a narrow formant rings like a note. Two fixes were tried and dropped: a check that a start repeats at twice its period (it delayed `say` starts, median 22 to 34 ms) and whitening the tracker's input (`say` starts slower, 2 of 58 missed).
+
+`PluginTest onsets`, `PluginTest notrigger`; `PluginTest onsettrace`, `trackertrace` and `corpustrace` print one start frame by frame.
 
 ## Latency
 
@@ -146,7 +173,7 @@ Exact and reported, the same bypassed. At 48 kHz: Soprano 9.0 ms, Alto/Tenor 13.
 
 ## Measured
 
-All in `tests/results.txt`, 289 checks. Pitch, formant, level, pan, click and timing figures below are on plain settings, which is what Tight gives. Limits are in `tests/PassLimits.h`, committed before any DSP existed. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`.
+All in `tests/results.txt`: 559 pass, 7 fail as of 1.4.0, the 7 all in the new phrase start and breath tests (see Phrase starts). Pitch, formant, level, pan, click and timing figures below are on plain settings, which is what Tight gives. Limits are in `tests/PassLimits.h`, committed before any DSP existed. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`.
 
 - Voice pitch against target, 95th percentile, 24 keys, every degree, 1056 notes: Scale Interval 2.3 cents, Fixed Interval 1.8, MIDI Chord 0.03. Limit 5.
 - Scale intervals: every seven note scale, root, degree and interval, all right. Chord assignment, Chord Hold, pedal and channels: all right, no voice crossings in 2000 random chords.
@@ -158,7 +185,7 @@ All in `tests/results.txt`, 289 checks. Pitch, formant, level, pan, click and ti
 - Clicks, against steady voices, biggest step: see `no click` lines in `tests/results.txt`. Limit 2 times.
 - Consonants: an S through a voice keeps its shape within 0.2 dB, with no added repeat strength (0.009 at most). Real S and T sounds in three `say` voices: no rise. Level at Consonants 35 is -9.1 dB within 1 dB.
 - MIDI mode with no notes: lead passes exactly, under -100 dB against the delayed input.
-- Chord change timing against the lead: 4.3 ms. Voice onset against the lead: 2.4 ms.
+- Chord change timing against the lead: 4.3 ms. Voice onset against the lead, unison on a clean start: see `starts with the lead's onset` in `tests/results.txt`. Phrase starts: see above.
 - Vibrato depth within 1%, Glide within 2 ms, Throat 130 and 75 within 1%, Follow Lead within 0.01 cents.
 - Real speech, fixed fifth: median distance from lead plus a fifth 1.3 to 16.5 cents against a two sided reference, which is not ground truth.
 - CPU: about 1.7% of one core at 4 voices.
@@ -171,6 +198,7 @@ All in `tests/results.txt`, 289 checks. Pitch, formant, level, pan, click and ti
 - The reading speed correction was tuned on the test voices, hence the thin margin. Smooth Tune's values, tuned at +/-3, put formants 10% low at +/-7. Moves at other shifts: +3 1.7%, -3 0.9%, +5 2.1%, -5 1.3%, +12 5.2%, -12 3.3%, a smaller set of voices. `say` voices read 0 to 3% low at +/-7, a rough reading.
 - Voices are built from the mono mix of a stereo input.
 - Voices add level. Adding them to a lead near full scale can pass 0 dBFS, which the plug-in does not limit.
+- Phrase starts were measured on synthetic voices and `say`, not on a real singer. Whether 1.4.0 fixes what Luke heard needs his ears on his own vocals in Logic.
 
 ## Demo files
 

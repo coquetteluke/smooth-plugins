@@ -2191,6 +2191,9 @@ int main (int argc, char** argv)
     const auto want = [&] (const char* name) { return only.empty() || only == name; };
 
     if (only == "demo") { demo(); return 0; }
+    if (only == "corpustrace" && argc >= 5) { onsets::corpusTrace (argv[2], std::atof (argv[3]), std::atoi (argv[4])); return 0; }
+    if (only == "trackertrace" && argc >= 7) { onsets::trackerTrace (std::atoi (argv[2]), std::atoi (argv[3]), std::atoi (argv[4]), std::atof (argv[5]), std::atof (argv[6])); return 0; }
+    if (only == "onsettrace" && argc >= 6) { onsets::trace (std::atoi (argv[2]), std::atoi (argv[3]), std::atoi (argv[4]), std::atoi (argv[5]), argc > 6 ? std::atof (argv[6]) : 0.2, argc > 7 ? std::atof (argv[7]) : 0.004); return 0; }
     if (only == "human") { humanNumbers(); return 0; }
     if (only == "fingerprints")
     {

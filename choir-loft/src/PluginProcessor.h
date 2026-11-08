@@ -154,6 +154,7 @@ private:
         std::array<AllPass, 3> allpass {};
         double gain = 0.0, gainTarget = 0.0;     // on, off, or at the consonant level
         double powerIn = 0.0, powerOut = 0.0, match = 1.0; // slow level match against the lead, voiced sound only
+        int fastMatch = 0;                                  // samples left of reading levels faster, after a start
         double level = 1.0, panL = 1.0, panR = 1.0;
         double levelTarget = 1.0, panLTarget = 1.0, panRTarget = 1.0;
 
@@ -217,8 +218,13 @@ private:
     std::array<double, pitchRingSize> pitchRing {};
     std::array<bool, pitchRingSize> voicedRing {};
     int pitchRingAt = 0;
+    int leadRunTicks = 0, rewriteTicks = 30;   // ticks the lead has had pitch for, and how many of a stretch's first ticks get rewritten
+    static constexpr int levelRingSize = 32;   // input power per tick, for telling a reattack
+    std::array<double, levelRingSize> levelRing {};
+    int levelAt = 0;
+    double tickPower = 0.0;
 
-    double sr = 48000.0, smoothing = 0.001, consonantGain = 0.35, envelopeStep = 0.001, matchPower = 0.001, matchGain = 0.001;
+    double sr = 48000.0, smoothing = 0.001, consonantGain = 0.35, envelopeStep = 0.001, matchPower = 0.001, matchPowerFast = 0.01, matchGain = 0.001;
     double scatterNow = 0.0, breathNow = 0.0, breathEnvK = 0.01, breathHighK = 0.2, breathLowK = 0.6, toneK = 0.2, mixStep = 0.01, consonantLowK = 0.05;
     double leadDisplayPeak = 0.0;
     double leadHear = 1.0, leadHearTarget = 1.0, hearStep = 0.001;

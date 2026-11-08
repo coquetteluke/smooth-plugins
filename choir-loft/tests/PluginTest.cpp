@@ -2172,6 +2172,7 @@ std::uint64_t outputFingerprintWithWindow (int preset) { return outputFingerprin
 using ui::StageView;
 #include "WindowTests.h"
 #include "EightVoiceTests.h"
+#include "OnsetTests.h"
 
 // Before and after files for ears. The before files come from the 1.0.0 source, see README.
 void demo()
@@ -2227,5 +2228,7 @@ int main (int argc, char** argv)
     if (want ("humanchecks")) testHuman();
     if (want ("window")) testWindow();
     if (want ("eight")) testEightVoices();
+    if (want ("onsets")) { onsets::testPhraseStarts(); onsets::testCorpusStarts(); }
+    if (want ("notrigger")) onsets::testNoTrigger();
     return finish();
 }

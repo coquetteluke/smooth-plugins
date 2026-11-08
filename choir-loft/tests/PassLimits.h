@@ -116,4 +116,24 @@ namespace limits
     constexpr double eightAgainstFourDb = 1.5;                     // eight voices at one Level against four at that Level, RMS
     constexpr double newPresetPeak = 1.0;                          // new presets, input peaking at -6 dBFS: output peak under this
     constexpr double offVoiceCpuShare = 0.25;                      // CPU of 6 off out of 8, as a share of their cost when on
+
+    // 1.4.0, phrase starts. Luke: "choir loft misses when vocals start pretty often". Set from what a listener hears, written down and
+    // committed before measuring the 1.3.1 build on them. See tests/OnsetTests.h for exactly how each is measured.
+    // A voice has sounded once it is within onsetOnNoteCents of its note and within onsetLevelDb of its own steady level against the lead,
+    // and stays so for onsetHoldMs. Times run from when the lead is on its note (for a scoop, when it is within 50 cents of it).
+    constexpr double onsetOnNoteCents = 50.0;
+    constexpr double onsetLevelDb = -3.0;
+    constexpr double onsetHoldMs = 20.0;
+    constexpr int onsetMisses = 0;                    // first notes of 150 ms or longer where a voice never sounded, any kind of start
+    constexpr double onsetSoundP95Ms = 40.0;          // time to sound past that voice's own lag, 95th percentile per kind of start
+    constexpr double onsetSoundWorstMs = 80.0;        // and any single start: past this a listener hears the voice skip the note
+    constexpr int onsetWrongNotes = 0;                // a voice singing another note first, audibly, before it reaches its own
+    constexpr double onsetWrongCents = 80.0;          // counts as another note when this far from its note, from the lead and from the lead's scoop
+    constexpr double onsetWrongMs = 20.0;             // for at least this long
+    constexpr double onsetWrongAudibleDb = -12.0;     // and no quieter than this against its steady level
+    constexpr double onsetCorpusSounded = 0.90;       // macOS say material: share of voiced stretches of 150 ms or longer where each voice sounds
+    constexpr double onsetCorpusMedianMs = 40.0;      // and the median time to sound past the lag there
+    // Things that are not singing: breaths, s and sh, noise, room tone. With Consonants 0 a voice is silent unless it thinks it hears a note.
+    constexpr double noTriggerShare = 0.01;           // share of 10 ms frames where a voice sings (over -20 dB against the input), at most
+    constexpr double noTriggerRunMs = 20.0;           // and never longer than this at once
 }

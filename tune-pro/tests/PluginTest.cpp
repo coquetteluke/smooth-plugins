@@ -956,6 +956,95 @@ void testHeldOutSixth()
     chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
 }
 
+// A seventh held out set, written on 2026-11-08 blind to the tuning going on at the same time, and committed before any of it was run. All six sets
+// above have been used or written. Formants from a published source and a language none of the earlier sets used: Seoul Korean monophthongs in h_da words.
+//   Yang, B. (1996), A comparative study of American English and Korean vowels produced by male and female speakers,
+//   Journal of Phonetics 24, 245 to 261, mean F1, F2, F3 for Korean men and women.
+// The paper itself could not be reached here. The numbers below are the men's and women's means as bundled with the phonTools R package
+// (Santiago Barreda, version 0.2-2.2, dataset y96, "Yang (1996) Korean Vowel Data"), copied as they are, in hertz. That package's help page
+// describes them as averaged across 60 male and female speakers, while the paper is usually described as 10 men and 10 women; either way
+// they are group means for each sex, not one speaker's. Two of the values (u: men 369 and 981, women 422 and 1021) agree with what later
+// Korean papers quote from Yang (1996).
+// Speaker groups none of the earlier sets used: Korean men and women. Vowels from Korean's own set, named in the Revised Romanisation:
+// i, eu (high central or back unrounded), ae, o and eo (open mid back unrounded) for men speaking; wi (front rounded), oe (front rounded mid),
+// u and e for women speaking; a, eo, ae, o and eu for women singing; a and e for men singing at tenor pitches. Pitches none of the earlier
+// sets or the tuning voices used: men speaking at 93, 102, 113, 128 and 146 Hz, three of the five below 115 Hz because low male speech matters
+// most (93 Hz glides down to 66 Hz, still inside Low Male's 65 Hz floor); women speaking at 183, 204 and 237 Hz; women singing at 405, 508,
+// 618 and 776 Hz; men singing at 294 and 405 Hz.
+// That table has no F4, F5 or bandwidths, so they were set here, before running, by the earlier sets' conventions: F4 and F5 inside the range
+// those sets used for each sex (men 3500 and 4400, women 4100 and 5000); the first formant's bandwidth about an eighth of its frequency,
+// rounded to 5 Hz, 45 Hz at least; F2 bandwidth rising with F2 (men 80, 90, 100; women 90 to 100, 100, 115); F3 to F5 bandwidths as the sixth
+// set's; women's wider than men's. Women's sources a little breathier than men's (Klatt and Klatt, 1990). Breath and source tone otherwise
+// vary from voice to voice, chosen to differ from the sixth set's. Nothing was tuned on these, and none of it was chosen by looking at output.
+void testHeldOutSeventh()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; int type; std::vector<double> centres; };
+    // F1, F2, F3 from Yang (1996) as bundled with phonTools; F4, F5 and all bandwidths set here.
+    const std::vector<Held> speaking {
+        { { { 341, 2219, 3047, 3500, 4400 }, { 45, 100, 130, 165, 215 }, "Korean i men" }, { -56.0, 2600.0 }, lowMale, { 93.0, 102.0, 113.0, 128.0, 146.0 } },
+        { { { 405, 1488, 2497, 3500, 4400 }, { 50, 90, 130, 165, 215 }, "Korean eu men" }, { -48.0, 0.0 }, lowMale, { 93.0, 102.0, 113.0, 128.0, 146.0 } },
+        { { { 591, 1849, 2597, 3500, 4400 }, { 75, 100, 130, 165, 215 }, "Korean ae men" }, { -60.0, 4200.0 }, lowMale, { 93.0, 102.0, 113.0, 128.0, 146.0 } },
+        { { { 448, 945, 2674, 3500, 4400 }, { 55, 80, 130, 165, 215 }, "Korean o men" }, { -52.0, 0.0 }, lowMale, { 93.0, 102.0, 113.0, 128.0, 146.0 } },
+        { { { 608, 1121, 2683, 3500, 4400 }, { 75, 90, 130, 165, 215 }, "Korean eo men" }, { -45.0, 3200.0 }, lowMale, { 93.0, 102.0, 113.0, 128.0, 146.0 } },
+        { { { 373, 2704, 3222, 4100, 5000 }, { 45, 115, 145, 185, 225 }, "Korean wi women" }, { -46.0, 0.0 }, wideRange, { 183.0, 204.0, 237.0 } },
+        { { { 602, 2195, 3013, 4100, 5000 }, { 75, 115, 145, 185, 225 }, "Korean oe women" }, { -41.0, 3700.0 }, wideRange, { 183.0, 204.0, 237.0 } },
+        { { { 422, 1021, 3024, 4100, 5000 }, { 55, 100, 145, 185, 225 }, "Korean u women" }, { -50.0, 2300.0 }, wideRange, { 183.0, 204.0, 237.0 } },
+        { { { 650, 2377, 3068, 4100, 5000 }, { 80, 115, 145, 185, 225 }, "Korean e women" }, { -43.0, 0.0 }, wideRange, { 183.0, 204.0, 237.0 } } };
+    const std::vector<Held> singing {
+        { { { 986, 1794, 2957, 4100, 5000 }, { 120, 115, 145, 185, 225 }, "Korean a women" }, { -44.0, 0.0 }, wideRange, { 405.0, 508.0, 618.0, 776.0 } },
+        { { { 765, 1371, 3009, 4100, 5000 }, { 95, 100, 145, 185, 225 }, "Korean eo women" }, { -49.0, 3000.0 }, wideRange, { 405.0, 508.0, 618.0, 776.0 } },
+        { { { 677, 2285, 3063, 4100, 5000 }, { 85, 115, 145, 185, 225 }, "Korean ae women" }, { -39.0, 4800.0 }, wideRange, { 405.0, 508.0, 618.0, 776.0 } },
+        { { { 499, 1029, 3068, 4100, 5000 }, { 60, 100, 145, 185, 225 }, "Korean o women" }, { -47.0, 0.0 }, wideRange, { 405.0, 508.0, 618.0, 776.0 } },
+        { { { 447, 1703, 2997, 4100, 5000 }, { 55, 115, 145, 185, 225 }, "Korean eu women" }, { -42.0, 2600.0 }, wideRange, { 405.0, 508.0, 618.0, 776.0 } },
+        { { { 738, 1372, 2573, 3500, 4400 }, { 90, 90, 130, 165, 215 }, "Korean a men" }, { -55.0, 0.0 }, wideRange, { 294.0, 405.0 } },
+        { { { 490, 1968, 2644, 3500, 4400 }, { 60, 100, 130, 165, 215 }, "Korean e men" }, { -51.0, 3800.0 }, wideRange, { 294.0, 405.0 } } };
+
+    FormantScore low;
+    for (const auto& h : speaking)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 4, -4, 3, -3, 1, -1 })
+                scoreFormants (low, h.v, centre, shift, h.type);
+    }
+    chk (low.move <= prolimits::hqFormantMove, "seventh held out set, Korean men 93 to 146 Hz and women 183 to 237 Hz, worst formant move against the input", low.move * 100.0, "%");
+    note ("  and the tool's floor there", low.floor * 100.0, "%");
+    chk (low.level <= prolimits::hqLevelChangeDb, "  level change, worst", low.level, "dB");
+    note ("  first formant against its surroundings, flatter than a real voice, worst", low.peakFlatter, "dB");
+    note ("  colour, worst", low.colour, "dB");
+
+    FormantScore high;
+    double heldMean = 0.0, heldRms = 0.0;
+    int heldCount = 0;
+    for (const auto& h : singing)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 3, -3, 2, -2 })
+            {
+                scoreFormants (high, h.v, centre, shift, h.type);
+                const auto held = heldNoteError (h.v, centre, shift, h.type);
+                heldMean += held.rmsDb;
+                heldRms = std::max (heldRms, held.rmsDb);
+                ++heldCount;
+                if (std::getenv ("TUNE_DUMP") != nullptr)
+                    std::printf ("  held note, vowel %s, %.0f Hz, shift %d: harmonics against a real voice %.2f dB RMS, %.2f dB worst\n", h.v.name, centre, shift, held.rmsDb, held.worstDb);
+            }
+    }
+    gStyle = {};
+    chk (high.peakFlatterCrossed <= prolimits::highNoteF1Flatter, "seventh held out set, Korean women 405 to 776 Hz and men 294 and 405 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst", high.peakFlatterCrossed, "dB");
+    note ("  the same with every case, including where the whole glide stays above the formant", high.peakFlatter, "dB");
+    chk (high.peakSharper <= prolimits::highNoteF1Sharper, "  first formant sharper than a real voice, worst", high.peakSharper, "dB");
+    chk (high.move <= high.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", high.move * 100.0, "%");
+    note ("  and the tool's floor there", high.floor * 100.0, "%");
+    note ("  colour, worst", high.colour, "dB");
+    note ("  level change, worst", high.level, "dB");
+    note ("  held notes, harmonics against a real voice, worst RMS", heldRms, "dB");
+    chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+}
+
 // A vowel change in the middle of a glide, added for 1.5.0 with its limit set before it was first run. High Quality remembers each
 // harmonic's level over a voiced stretch; it must not carry the old vowel into the new one. After the change, the output's formants
 // are read against a real voice singing the new vowel at the new pitch, with the same tool and limit as the formant test.
@@ -3113,6 +3202,7 @@ int main (int argc, char** argv)
     if (want ("heldout4")) testHeldOutFourth();
     if (want ("heldout5")) testHeldOutFifth();
     if (want ("heldout6")) testHeldOutSixth();
+    if (want ("heldout7")) testHeldOutSeventh();
     if (want ("vowel")) testVowelChange();
     gEngine = 0;
     if (want ("llnull")) testLowLatencyNull();

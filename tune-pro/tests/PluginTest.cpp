@@ -741,6 +741,69 @@ void testHeldOutThird()
     note ("  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
 }
 
+// A fourth held out set, written on 2026-11-08 before any of it was run and before any 1.5.0 formant code was judged, because all three sets above
+// had been used. Run once at the end. Children's averages from Peterson and Barney (1952), a speaker group none of the earlier sets used, at pitches
+// none of them used: 277 and 330 Hz for speaking, 349 to 698 Hz for singing. F4 and F5 are not in that table, so they are set higher than the adults'.
+// Bandwidths, breath and source tone are their own, wider than the adults', as children's are. Nothing was tuned on these.
+void testHeldOutFourth()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; };
+    const std::vector<Held> mid {
+        { { { 530, 2730, 3600, 4400, 5300 }, { 75, 120, 170, 220, 260 }, "ih children" }, { -50.0, 3500.0 } },
+        { { { 1010, 2320, 3320, 4400, 5300 }, { 120, 130, 170, 220, 260 }, "ae children" }, { -38.0, 0.0 } },
+        { { { 560, 1410, 3310, 4400, 5300 }, { 80, 110, 160, 220, 260 }, "oo children" }, { -56.0, 2000.0 } },
+        { { { 560, 1820, 2160, 4400, 5300 }, { 80, 115, 140, 220, 260 }, "er children" }, { -44.0, 5500.0 } } };
+    const std::vector<Held> high {
+        { { { 690, 2610, 3570, 4400, 5300 }, { 90, 125, 170, 220, 260 }, "eh children" }, { -50.0, 3500.0 } },
+        { { { 1030, 1370, 3170, 4400, 5300 }, { 130, 120, 165, 220, 260 }, "ah children" }, { -38.0, 0.0 } },
+        { { { 680, 1060, 3180, 4400, 5300 }, { 90, 110, 165, 220, 260 }, "aw children" }, { -56.0, 2000.0 } },
+        { { { 430, 1170, 3260, 4400, 5300 }, { 70, 105, 165, 220, 260 }, "u children" }, { -44.0, 5500.0 } },
+        { { { 850, 1590, 3360, 4400, 5300 }, { 105, 115, 170, 220, 260 }, "uh children" }, { -60.0, 0.0 } } };
+
+    FormantScore midScore;
+    for (const auto& h : mid)
+    {
+        gStyle = h.style;
+        for (double centre : { 277.0, 330.0 })
+            for (int shift : { 4, -4, 2, -2, 1, -1 })
+                scoreFormants (midScore, h.v, centre, shift, wideRange);
+    }
+    chk (midScore.move <= prolimits::hqFormantMove, "fourth held out set, children 277 and 330 Hz, worst formant move against the input", midScore.move * 100.0, "%");
+    note ("  and the tool's floor there", midScore.floor * 100.0, "%");
+    chk (midScore.level <= prolimits::hqLevelChangeDb, "  level change, worst", midScore.level, "dB");
+    note ("  first formant against its surroundings, flatter than a real voice, worst", midScore.peakFlatter, "dB");
+    note ("  colour, worst", midScore.colour, "dB");
+
+    FormantScore highScore;
+    double heldMean = 0.0, heldRms = 0.0;
+    int heldCount = 0;
+    for (const auto& h : high)
+    {
+        gStyle = h.style;
+        for (double centre : { 349.0, 466.0, 622.0, 698.0 })
+            for (int shift : { 3, -3, 2, -2 })
+            {
+                scoreFormants (highScore, h.v, centre, shift, wideRange);
+                const auto held = heldNoteError (h.v, centre, shift, wideRange);
+                heldMean += held.rmsDb;
+                heldRms = std::max (heldRms, held.rmsDb);
+                ++heldCount;
+            }
+    }
+    gStyle = {};
+    chk (highScore.peakFlatterCrossed <= prolimits::highNoteF1Flatter, "fourth held out set, children 349 to 698 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst", highScore.peakFlatterCrossed, "dB");
+    note ("  the same with every case, including where the whole glide stays above the formant", highScore.peakFlatter, "dB");
+    chk (highScore.peakSharper <= prolimits::highNoteF1Sharper, "  first formant sharper than a real voice, worst", highScore.peakSharper, "dB");
+    chk (highScore.move <= highScore.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", highScore.move * 100.0, "%");
+    note ("  and the tool's floor there", highScore.floor * 100.0, "%");
+    note ("  colour, worst", highScore.colour, "dB");
+    note ("  level change, worst", highScore.level, "dB");
+    note ("  held notes, harmonics against a real voice, worst RMS", heldRms, "dB");
+    chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+}
+
 // ----------------------------------------------------------------------------------------------- Low Latency null test
 
 std::vector<float> loadWav (const char* name);
@@ -2837,6 +2900,7 @@ int main (int argc, char** argv)
     if (want ("heldout")) testHeldOut();
     if (want ("heldout2")) testHeldOutSecond();
     if (want ("heldout3")) testHeldOutThird();
+    if (want ("heldout4")) testHeldOutFourth();
     gEngine = 0;
     if (want ("llnull")) testLowLatencyNull();
     if (want ("window")) testWindow();

@@ -73,6 +73,9 @@ static bool waitForShown (PluginProcessor& p, int want, int ms)
     return false;
 }
 
+// The seed the accuracy runs use. PluginTest --seed N runs them on another seed, such as an earlier held out one.
+static unsigned heldOutSeed = limits::heldOutSeed;
+
 // ---------------------------------------------------------------- accuracy
 
 static Summary runChords (KeyAnalyser& a, Response response, int everyTonic, double sr, unsigned seed, size_t onlyTimbres = 99, int startAt = 0)
@@ -99,7 +102,7 @@ static void testChordAccuracy()
     const double sr = 48000.0;
     KeyAnalyser a;
     a.configure (sr);
-    const auto stable = runChords (a, Response::stable, 1, sr, limits::heldOutSeed);
+    const auto stable = runChords (a, Response::stable, 1, sr, heldOutSeed);
     info ("chord clips, all 24 keys, 5 timbres, held out seed", stable.total);
     check (stable.exactPercent() >= limits::chordExactPercent, "chord progressions exact", stable.exactPercent(), "%");
     check (stable.relatedPercent() >= limits::chordRelatedPercent, "chord progressions exact, relative or a fifth away", stable.relatedPercent(), "%");
@@ -110,7 +113,7 @@ static void testChordAccuracy()
     check (stable.bounces <= limits::stableBounces, "Stable never goes A to B and back to A, bounces", stable.bounces);
     check (stable.movedPercent() <= limits::stableClipsWithAnyChange, "Stable clips whose reading moves after 8 s", stable.movedPercent(), "%");
 
-    const auto fast = runChords (a, Response::fast, 2, sr, limits::heldOutSeed);
+    const auto fast = runChords (a, Response::fast, 2, sr, heldOutSeed);
     info ("chords, Fast, exact", fast.exactPercent(), "%");
     info ("chords, Fast, exact, relative or a fifth away", fast.relatedPercent(), "%");
     check (fast.percentile (0.5) <= limits::chordMedianSettleFast, "chords, Fast, median time to the correct answer", fast.percentile (0.5), "s");
@@ -121,13 +124,13 @@ static void testChordAccuracy()
     {
         KeyAnalyser other;
         other.configure (rate);
-        const auto s = runChords (other, Response::stable, 4, rate, limits::heldOutSeed, 2);
+        const auto s = runChords (other, Response::stable, 4, rate, heldOutSeed, 2);
         check (s.exactPercent() >= limits::chordExactPercent, "chord progressions exact at " + std::to_string ((int) rate) + " Hz", s.exactPercent(), "%");
     }
 
     // Honest weak spot: a loop heard from its second chord. Some of these loops have the same notes as their relative key,
     // so without the opening chord nothing tells the two apart. Not a pass or fail.
-    const auto rotated = runChords (a, Response::stable, 3, sr, limits::heldOutSeed, 99, 1);
+    const auto rotated = runChords (a, Response::stable, 3, sr, heldOutSeed, 99, 1);
     info ("chords, loop heard from its second chord, exact", rotated.exactPercent(), "%");
     info ("chords, loop heard from its second chord, exact, relative or a fifth away", rotated.relatedPercent(), "%");
 }
@@ -149,7 +152,7 @@ static void testMelodyAccuracy()
                     a.reset();
                     a.setResponse (Response::stable);
                     a.setSource (src);
-                    const auto clip = melodyClip (tonic, minor == 1, ts[ti], clipSeed (limits::heldOutSeed + 7, tonic, minor, (int) ti), sr, 30.0);
+                    const auto clip = melodyClip (tonic, minor == 1, ts[ti], clipSeed (heldOutSeed + 7, tonic, minor, (int) ti), sr, 30.0);
                     const int want = keyIndex (tonic, minor == 1);
                     mel.add (analyse (a, clip, sr, want), want);
                 }
@@ -181,7 +184,7 @@ static void testVoiceRumble()
     for (int tonic = 0; tonic < 12; ++tonic)
         for (int minor = 0; minor < 2; ++minor)
         {
-            auto clip = melodyClip (tonic, minor == 1, t, clipSeed (limits::heldOutSeed + 11, tonic, minor, 0), sr, 30.0);
+            auto clip = melodyClip (tonic, minor == 1, t, clipSeed (heldOutSeed + 11, tonic, minor, 0), sr, 30.0);
             // A tritone from the key, down low and steady.
             const int low = 33 + ((tonic + 6 - 33) % 12 + 12) % 12;
             const double f = 440.0 * std::pow (2.0, (low - 69) / 12.0);
@@ -223,7 +226,7 @@ static void testSilenceAndNoise()
     {
         a.reset();
         a.setResponse (response);
-        const auto music = chordClip (0, ps[0], ts[0], clipSeed (limits::heldOutSeed, 1, 2, 3), sr, 16.0);
+        const auto music = chordClip (0, ps[0], ts[0], clipSeed (heldOutSeed, 1, 2, 3), sr, 16.0);
         a.push (music.data(), (int) music.size());
         const auto before = a.reading();
         const std::string tag = response == Response::stable ? "Stable" : "Fast";
@@ -254,7 +257,7 @@ static void testKeyChange()
     const auto ts = timbres();
     for (auto response : { Response::stable, Response::fast })
     {
-        std::mt19937 rng (limits::heldOutSeed);
+        std::mt19937 rng (heldOutSeed);
         std::vector<double> times;
         int followed = 0, total = 0, sameNotes = 0;
         for (int i = 0; i < 24; ++i)
@@ -263,8 +266,8 @@ static void testKeyChange()
             size_t p2 = rng() % ps.size();
             const int from = i % 12, to = (from + 1 + (int) (rng() % 11)) % 12;
             const size_t timbre = rng() % ts.size();
-            auto first = chordClip (from, ps[p1], ts[timbre], clipSeed (limits::heldOutSeed, i, 1, 1), sr, 24.0);
-            const auto second = chordClip (to, ps[p2], ts[timbre], clipSeed (limits::heldOutSeed, i, 2, 2), sr, 30.0);
+            auto first = chordClip (from, ps[p1], ts[timbre], clipSeed (heldOutSeed, i, 1, 1), sr, 24.0);
+            const auto second = chordClip (to, ps[p2], ts[timbre], clipSeed (heldOutSeed, i, 2, 2), sr, 30.0);
             first.insert (first.end(), second.begin(), second.end());
             a.reset();
             a.setResponse (response);
@@ -587,7 +590,7 @@ static void testEndToEnd()
     juce::File (path).deleteFile();
     const auto ps = progressions();
     const auto ts = timbres();
-    const auto clip = chordClip (7, ps[4], ts[0], clipSeed (limits::heldOutSeed, 7, 4, 0), sr, 28.0);
+    const auto clip = chordClip (7, ps[4], ts[0], clipSeed (heldOutSeed, 7, 4, 0), sr, 28.0);
     const int want = keyIndex (7, true);
     long automationWrites = 0;
 
@@ -637,7 +640,7 @@ static void testEndToEnd()
         const auto held = p.getDisplay();
         setParam (p, "listening", 0.0f);
         automationWrites = 0;
-        const auto other = chordClip (2, ps[0], ts[0], clipSeed (limits::heldOutSeed, 2, 0, 0), sr, 16.0);
+        const auto other = chordClip (2, ps[0], ts[0], clipSeed (heldOutSeed, 2, 0, 0), sr, 16.0);
         feed (p, other, sr, 7.0);
         sleepMs (700);
         const auto paused = p.getDisplay();
@@ -742,7 +745,7 @@ static void testManualAndSwap()
         p.requestReset();
         sleepMs (100);
         setParam (p, "swapRelative", 0.0f);
-        const auto clip = chordClip (c.first, ps[c.second], ts[0], clipSeed (limits::heldOutSeed, c.first, 9, 9), 48000.0, 14.0);
+        const auto clip = chordClip (c.first, ps[c.second], ts[0], clipSeed (heldOutSeed, c.first, 9, 9), 48000.0, 14.0);
         feed (p, clip, 48000.0, 7.0);
         const int want = keyIndex (c.first, ps[c.second].minor);
         check (waitForShown (p, want, 3000), "Relative Swap off shows the detected key");
@@ -865,6 +868,8 @@ int main (int argc, char** argv)
     testFolder().createDirectory();
 
     const bool quick = argc > 1 && juce::String (argv[1]) == "--quick"; // skips the long accuracy runs while developing
+    if (argc > 2 && juce::String (argv[1]) == "--seed") heldOutSeed = (unsigned) juce::String (argv[2]).getLargeIntValue();
+    if (heldOutSeed != limits::heldOutSeed) std::printf ("INFO  accuracy runs on seed %u, not the held out seed %u\n", heldOutSeed, limits::heldOutSeed);
 
     GenericOptions opt;
     opt.minPresets = 4;

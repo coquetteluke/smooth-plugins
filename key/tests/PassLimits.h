@@ -7,8 +7,10 @@ namespace limits
     // Earlier held out seeds (20261106, then 20261107) were run once each and showed misses. The detector was then changed using
     // the dev seed only. 1.0.0 and 1.1.0 were reported on a third seed, 20261108. For 1.2.0 the detector was changed using dev
     // seeds 1000 to 1002 only, and reported on a fourth seed, 20261109. 1.3.0 was tuned on dev seeds 1000 to 1005 only, and the
-    // reported numbers come from this fifth seed, run once at the end. No limit was changed.
-    constexpr unsigned heldOutSeed = 20261110u;
+    // reported numbers came from a fifth seed, 20261110. 1.4.0 was tuned on dev seeds 1000 to 1005 only, checked on unseen dev
+    // seeds 1012 to 1017, and reported on this sixth seed, run once at the end. 20261110 is still run with PluginTest --seed 20261110.
+    // No limit was changed.
+    constexpr unsigned heldOutSeed = 20261111u;
 
     // Chord progressions in all 24 keys, every timbre, Response Stable, Source Mix, read at the end of the clip.
     constexpr double chordExactPercent = 90.0;

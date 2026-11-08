@@ -69,47 +69,50 @@ Render every state to PNG with real speech from macOS `say`: `build/RenderWindow
 
 ## Signal flow
 
-Audio in goes straight to audio out, never written to. A cleaned mono copy goes through a lock-free queue to one background thread, which: decimates to about 12 kHz, runs its own FFT over 0.7 s windows, estimates tuning from spectral peaks, works out which notes explain the spectrum (each note as a stack of harmonics), folds them into treble and bass note memories, and scores all 24 keys. The score uses a listener-rated key profile, a bass profile, time on each key's home chord, dominant chords resolving, and the opening chord as a tie break between relative keys. The reading moves only after a new key has led for a set time by a set margin. When recent notes clearly leave the key, old memory is mostly dropped. Tempo comes from a separate curve of spectral rises, matched against steady pulses.
+Audio in goes straight to audio out, never written to. A cleaned mono copy goes through a lock-free queue to one background thread, which: decimates to about 12 kHz, runs its own FFT over 0.7 s windows, estimates tuning from spectral peaks, works out which notes explain the spectrum (each note as a stack of harmonics), folds them into treble and bass note memories, and scores all 24 keys. The score uses a listener-rated key profile, a bass profile, time on each key's home chord, dominant chords resolving, and the opening chord as a tie break between relative keys. In Fast it also reads the chords since the current section began: which key they belong to, and which chord is home, the one the section opened on and stays on longest. The reading moves only after a new key has led for a set time by a set margin. When recent notes clearly leave the key, old memory is mostly dropped. Tempo comes from a separate curve of spectral rises, matched against steady pulses.
 
 Why not plain profile correlation: a note's own harmonics add false fifths and thirds, and relative keys have the same notes, so correlation alone can't separate them.
 
 ## Measured
 
-Full numbers in `tests/results.txt`. Synthetic test music only: it doesn't prove accuracy on real songs or a real voice. Limits are in `tests/PassLimits.h`, set before results. 1.3.0's numbers use a fifth held out seed, 20261110, run at the end. The detector was tuned on dev seeds 1000 to 1005 only. Earlier seeds and how 1.1.1 compares on this one are in `CHANGELOG.md`.
+Full numbers in `tests/results.txt`, and on the previous held out seed 20261110 in `tests/results-20261110.txt` (`PluginTest --seed 20261110`). Synthetic test music only: it doesn't prove accuracy on real songs or a real voice. Limits are in `tests/PassLimits.h`, set before results. 1.4.0's numbers use a sixth held out seed, 20261111, run once at the end. The detector was tuned on dev seeds 1000 to 1005 only. Earlier seeds and how 1.3.0 compares are in `CHANGELOG.md`.
 
 Latency 0 at all rates. Output bit identical over 720 blocks, including NaN and huge samples, listening, paused, manual and bypassed. No malloc on the audio thread, checked with the system hook.
 
-| Test, all 24 keys, 5 timbres | Limit | Result |
-|---|---|---|
-| Chords exact | at least 90% | 99.4% |
-| Chords exact, relative or a fifth away | at least 98% | 100% |
-| Median time to correct, Stable | up to 8 s | 7.85 s |
-| Median time to correct, Fast | up to 5 s | 3.07 s |
-| Stable bounces, A to B and back | 0 | 0 |
-| Stable clips moving after 8 s | up to 1% | 0.83% |
-| Key change followed in 30 s, Stable | at least 90% | 100% |
-| Key change median, Stable | up to 15 s | 10.82 s |
-| Key change followed in 30 s, Fast | at least 90% | **87.5%, FAIL** |
-| Key change median, Fast | up to 8 s | **9.11 s, FAIL** |
+| Test, all 24 keys, 5 timbres | Limit | 20261111 | 20261110 |
+|---|---|---|---|
+| Chords exact | at least 90% | 99.6% | 99.4% |
+| Chords exact, relative or a fifth away | at least 98% | 100% | 100% |
+| Median time to correct, Stable | up to 8 s | 7.85 s | 7.85 s |
+| Median time to correct, Fast | up to 5 s | 3.07 s | 3.07 s |
+| Stable bounces, A to B and back | 0 | 0 | 0 |
+| Stable clips moving after 8 s | up to 1% | 0.42% | 0.83% |
+| Key change followed in 30 s, Stable | at least 90% | **83.3%, FAIL** | 100% |
+| Key change median, Stable | up to 15 s | 10.13 s | 10.82 s |
+| Key change followed in 30 s, Fast | at least 90% | 91.7% | 100% |
+| Key change median, Fast | up to 8 s | 4.50 s | 6.38 s |
 | Confidence after 10 s silence, Stable | up to 0.10 | 0.023 |
 | Reference pitch error, -40 to +45 cents | up to 1 Hz | 0.525 Hz |
 | Tempo within 1 BPM, half or double counting | at least 90% | 100% (58.3% at exactly the played tempo) |
 
 Other results:
 
-- Melody only, Single Voice: 98.6% exact, 100% within related keys. Full Mix: 100% and 100%. These tunes land on the tonic often, which real melodies may not.
-- Still failing: Fast follows 87.5% of key changes within 30 s, against 90%, with a 9.11 s median against 8. Most misses are a minor loop of i, iv, VII, III, the same chords as vi, ii, V, I in the relative major, which Fast drifts to later. Fast's median moved between 6.2 and 10.3 s from one seed to the next, so one seed says little about it. Looked at again on 2026-11-08, with no change kept:
+- Melody only, Single Voice: 97.9% exact, 100% within related keys. Full Mix: 93.8% and 100%. These tunes land on the tonic often, which real melodies may not.
+- Still failing, on 20261111 only: Stable follows 83.3% of key changes within 30 s, against 90%. 1.3.0 gives exactly the same there, as Stable did not change in 1.4.0, and 100% on 20261110. It was not tuned on, since 20261111 is the held out seed.
+- Fast passed both its key change limits for the first time in 1.4.0, on both held out seeds. Its remaining misses are mostly a loop that starts on a chord the old key also led into, so the new section's first chord is not seen as new, and the reading lands on the relative key.
+- Before 1.4.0, Fast followed 87.5% of key changes within 30 s, against 90%, with a 9.11 s median against 8, on 20261110. Most misses are a minor loop of i, iv, VII, III, the same chords as vi, ii, V, I in the relative major, which Fast drifts to later. Fast's median moved between 6.2 and 10.3 s from one seed to the next, so one seed says little about it. Looked at on 2026-11-08 before the harmony reading, with no change kept:
   - Where the time goes, on dev seeds 1000 to 1005: key changes to a far key (2 or 3 notes shared) settle in 4.5 to 6.4 s; to a close key (5 or 6 notes shared) in 9.6 to 9.9 s, and those hold most of the misses. A close key adds one or two new notes, too few for the 30% outside share, so the old memory is never let go and Fast waits for it to fade.
   - Test chords last 1.5 to 2.5 s, so a loop of four takes about 8 s. Telling a key from the one a fifth away often needs the whole loop, so a median of 8 s sits close to what the music shows.
   - Tried, each for Fast only: hold, dwell, margin, memory and recent memory lengths, outside share, waiting until the new key leads its close neighbours, waiting after a let go, and letting go on one strong outside note. None moved the median reliably: results swing by 0.4 s between neighbouring settings.
   - The best, letting go on one outside note with 6% of the recent notes, followed 93.8% to 95.8% on six unseen dev seeds (1006 to 1011), median 8.3 s both, but on clips with no key change Fast read the right key 98.1% to 95.8% and moved back and forth 82 to 122 times. At 8% that cost went away and so did the gain (94.4%). Not kept.
   - `tests/KeyEval.cpp` now takes `fastonly 1` to skip Stable and `all 1` with `verbose 1` to print every clip's readings.
 - Key changes all ended on the right key or its relative.
+- Harmony reading in Fast, 1.4.0: for each key, how much of the current section's time is on chords outside it, whether the section opened on its home chord, and how long it stays there. A section starts at the first run of chord changes not heard lately. Results before and after are in `CHANGELOG.md`.
 - A loop heard from its second chord: 65.0% exact, 100% within related keys. With the opening chord gone, some loops can't be told from their relative. This is the main weakness to expect on real songs joined midway.
 - Silence from the start: no key and no file. White noise: no key.
 - key.json: 13470 writes raced against 115342 reads with no partial file seen. A blocked path shows the note and audio stays bit identical.
 - Window created, painted and destroyed 20 times offline, and 30 more times while audio ran, with audio bit identical throughout.
-- Every detection reading is bit identical to the saved 1.3.0 fingerprint over 12 clips, in `tests/ReadingFingerprint.h`, so a window change cannot alter detection unnoticed.
+- Every detection reading is bit identical to the saved 1.4.0 fingerprint over 12 clips, in `tests/ReadingFingerprint.h`, so a window change cannot alter detection unnoticed.
 
 ## Held out check for the harmony change, written before it was run
 
@@ -126,3 +129,15 @@ What I expect on 20261111, run once with the same tests as PluginTest:
 - Loop heard from its second chord and melody tests: identical, as they run in Stable.
 
 1.3.0 and the new version will both be run on 20261111 and on 20261110, and the numbers reported whatever they are.
+
+Result, run once on 2026-11-08 after the above was committed (b4071dd), with the same tests as PluginTest:
+
+| | 1.3.0, 20261111 | new, 20261111 | 1.3.0, 20261110 | new, 20261110 |
+|---|---|---|---|---|
+| Fast key change followed in 30 s | 83.3% | 91.7% | 87.5% | 100% |
+| Fast key change median | 7.23 s | 4.50 s | 9.11 s | 6.38 s |
+| Fast chords exact | 98.75% | 100% | 97.50% | 99.17% |
+| Fast bounces | 32 | 8 | 39 | 19 |
+| Stable key change followed in 30 s | 83.3% | 83.3% | 100% | 100% |
+
+As expected: both Fast limits pass on both seeds, Stable and the melody and loop-from-its-second-chord tests are identical. Not expected: on 20261111 Stable follows only 83.3% of key changes, against 90%, in both versions. That is a fail the seed shows, not one this change made. Shipped as 1.4.0.

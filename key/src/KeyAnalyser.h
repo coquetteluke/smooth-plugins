@@ -16,6 +16,8 @@
 //      A major chord falling a fifth to the next chord (a dominant resolving) also adds to the key it lands on.
 //      When recent notes clearly fall outside the key on show, the old memory is mostly let go, so a real key change is
 //      followed in seconds without making the memory short for everything else.
+//      In Fast, the chords since the current section began also count: which key they belong to, and which chord is home,
+//      the one the section opened on and stays on longest. This follows a move to a close key without waiting for its notes.
 //   8. Only move the reading when a new key has led for a set time by a set margin, so it cannot flicker.
 
 #include <algorithm>
@@ -145,6 +147,14 @@ public:
         double oddHarmonicNotes = 1.0;  // 1 also lets each note be one with odd harmonics only, as on a clarinet or a hollow synth, so its third harmonic is not heard as a fifth
         double oddPenalty = 0.05;       // how much more a note must explain to be heard as odd harmonics only, so chord tones are not read as harmonics of a missing root
         double outsideWeight = 1.2;     // takes off this much times the share of notes heard that fall outside a key's scale
+        // Harmony since the section began: which key its chords belong to, and which chord is home (the one the section opens
+        // on and the one it stays on longest). Fast only: 0 is off. Giving credit to the chord a dominant resolves to as well
+        // made more loops of i iv VII III read as their relative major, so it is left out.
+        double harmonyFast = 1.0, harmonyStable = 0.0;
+        double harmonyFit = 1.0;        // takes off this much times the share of the section's time on chords outside the key
+        double harmonyFirst = 0.3;      // the section opens on the key's home chord
+        double harmonyHome = 0.2;       // times the share of the section's time on the home chord
+        double harmonyRamp = 1.0;       // reaches full weight after this many chord changes in the section
         double chromaPower = 0.75;      // compression of the long term chroma
         double softness = 14.0;         // turns score gaps into a probability
         int iterations = 30;
@@ -226,6 +236,7 @@ public:
         openingBorn = 0.0;
         for (auto& row : transitionHeard) row.fill (-1.0e9);
         changePos = changeCount = 0;
+        heldPos = heldCount = 0;
         freshRun = repeatRun = 0; loopSettled = false;
         outsideSeconds = 0.0; sinceLetGo = 1.0e9;
         scores.fill (0.0); probs.fill (0.0);
@@ -300,6 +311,7 @@ private:
     static constexpr double maxHz = 5400.0;
     static constexpr double silenceRms = 0.001;                // -60 dBFS
     static constexpr double newStartAfter = 8.0;               // this much silence and the next audio counts as a new start
+    struct HeldChord { int chord = -1; double start = 0.0; bool fresh = false; }; // a chord as it was settled on, and whether the change to it was new
 
     void buildProfiles() noexcept
     {
@@ -828,6 +840,15 @@ private:
         else { pendingChord = chord; pendingFrames = 1; }
         if (pendingFrames < 2 || chord == heldChord) return;
 
+        {
+            auto& h = heldHistory[(size_t) heldPos];
+            h.chord = chord;
+            h.start = heardSeconds - (pendingFrames - 1) * hopSeconds;
+            h.fresh = heldChord < 0 || heardSeconds - transitionHeard[(size_t) heldChord][(size_t) chord] > knobs.transitionMemory;
+            heldPos = (heldPos + 1) % numChanges;
+            heldCount = std::min (heldCount + 1, numChanges);
+        }
+
         if (heldChord >= 0 && heldChord < 12 && (heldChord % 12 + 5) % 12 == chord % 12)
             cadence[(size_t) chord] += 1.0;
         if (heldChord >= 0)
@@ -856,6 +877,59 @@ private:
             }
         }
         heldChord = chord;
+    }
+
+    const HeldChord& heldBack (int n) const noexcept { return heldHistory[(size_t) ((heldPos - 1 - n + 2 * numChanges) % numChanges)]; }
+
+    // Is this chord (0 to 11 major triads, 12 to 23 minor) one of the key's own? Minor also has the major chord on its fifth.
+    static bool chordInKey (int chord, int key) noexcept
+    {
+        const int t = key % 12, root = (chord % 12 - t + 12) % 12;
+        const bool chordMinor = chord >= 12;
+        if (key < 12) return chordMinor ? (root == 2 || root == 4 || root == 9) : (root == 0 || root == 5 || root == 7);
+        return chordMinor ? (root == 0 || root == 5 || root == 7) : (root == 3 || root == 8 || root == 10 || root == 7);
+    }
+
+    // Harmony since the current section began. A section starts at the first run of chord changes not heard lately, walking
+    // back past the new loop's own repeats, as in hearSectionStart. For each key: the share of the section's time on chords
+    // outside it, whether the section opened on its home chord, and the share of time on that chord.
+    void hearHarmony() noexcept
+    {
+        harmony.fill (0.0);
+        if (heldCount < 2 || ! hasBassLine()) return;
+        int start = -1, repeats = 0;
+        bool inRun = false;
+        for (int n = 0; n < heldCount; ++n)
+        {
+            if (heldBack (n).fresh) { start = n; repeats = 0; inRun = true; }
+            else if (inRun && ++repeats >= 2) break;
+        }
+        if (start < 0) start = heldCount - 1;
+        const double changes = start;
+        const double ramp = knobs.harmonyRamp > 0.0 ? std::clamp (changes / knobs.harmonyRamp, 0.0, 1.0) : 1.0;
+        if (ramp <= 0.0) return;
+        std::array<double, 24> time {};
+        double total = 0.0;
+        for (int n = start; n >= 0; --n)
+        {
+            const auto& h = heldBack (n);
+            const double end = n == 0 ? heardSeconds : heldBack (n - 1).start;
+            const double d = std::max (0.0, end - h.start);
+            time[(size_t) h.chord] += d;
+            total += d;
+        }
+        if (total <= 0.0) return;
+        const int first = heldBack (start).chord;
+        for (int k = 0; k < 24; ++k)
+        {
+            double outside = 0.0;
+            for (int c = 0; c < 24; ++c)
+                if (time[(size_t) c] > 0.0 && ! chordInKey (c, k)) outside += time[(size_t) c];
+            double e = -knobs.harmonyFit * outside / total;
+            if (first == k) e += knobs.harmonyFirst;
+            e += knobs.harmonyHome * time[(size_t) k] / total;
+            harmony[(size_t) k] = ramp * e;
+        }
     }
 
     void scoreKeys() noexcept
@@ -895,9 +969,12 @@ private:
 
         double heardTotal = 0.0;
         for (int i = 0; i < 12; ++i) heardTotal += trebleMemory[(size_t) i] + bassMemory[(size_t) i];
+        const double harmonyGain = source == Source::voice ? 0.0 : (response == Response::fast ? knobs.harmonyFast : knobs.harmonyStable);
+        if (harmonyGain > 0.0) hearHarmony();
         for (int k = 0; k < 24; ++k)
         {
             double s = correlate (t, keyProfile[(size_t) k]);
+            if (harmonyGain > 0.0) s += harmonyGain * harmony[(size_t) k];
             s += chordGain * chordMemory[(size_t) k];
             if (knobs.outsideWeight > 0.0 && heardTotal > 1.0e-12)
             {
@@ -1058,6 +1135,7 @@ private:
         openingBorn = 0.0;
         historyCount = 0;
         changeCount = 0;
+        heldPos = heldCount = 0;
         freshRun = repeatRun = 0; loopSettled = false;
     }
 
@@ -1094,6 +1172,9 @@ private:
     int historyPos = 0, historyCount = 0;
     double openingBorn = 0.0;
     struct ChordChange { double time = 0.0; bool fresh = false; };
+    std::array<HeldChord, numChanges> heldHistory {};
+    int heldPos = 0, heldCount = 0;
+    std::array<double, 24> harmony {};
     std::array<ChordChange, numChanges> chordChanges {};
     std::array<std::array<double, 24>, 24> transitionHeard {};
     int changePos = 0, changeCount = 0, freshRun = 0, repeatRun = 0;

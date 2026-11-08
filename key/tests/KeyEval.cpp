@@ -72,6 +72,12 @@ int main (int argc, char** argv)
         else if (k == "firstrel") knobs.firstRelativeLeadStable = v;
         else if (k == "outw") knobs.outsideWeight = v;
         else if (k == "holdstable") knobs.holdStable = v;
+        else if (k == "hfast") knobs.harmonyFast = v;
+        else if (k == "hstable") knobs.harmonyStable = v;
+        else if (k == "hfit") knobs.harmonyFit = v;
+        else if (k == "hfirst") knobs.harmonyFirst = v;
+        else if (k == "hhome") knobs.harmonyHome = v;
+        else if (k == "hramp") knobs.harmonyRamp = v;
     }
     const double sr = 48000.0;
     const auto start = std::chrono::steady_clock::now();

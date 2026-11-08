@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.4.0, 2026-11-08
+
+Fast follows a key change sooner and more often, by reading the chords as well as the notes. Stable is unchanged: every Stable reading is bit identical to 1.3.0. Both versions run on the new held out seed 20261111, which nothing was tuned on, and on 20261110:
+
+| Fast | 1.3.0, 20261111 | 1.4.0, 20261111 | 1.3.0, 20261110 | 1.4.0, 20261110 | Limit |
+|---|---|---|---|---|---|
+| Key change followed in 30 s | 83.3% | **91.7%** | 87.5% | **100%** | at least 90% |
+| Key change median | 7.23 s | 4.50 s | 9.11 s | **6.38 s** | up to 8 s |
+| Key change slowest | 15.9 s | 14.2 s | 21.9 s | 17.8 s | none |
+| Key change ended on the right key or its relative | 95.8% | 100% | 100% | 100% | none |
+| Chords exact, no key change | 98.75% | 100% | 97.50% | 99.17% | none |
+| Chords exact, relative or a fifth away | 99.17% | 100% | 98.75% | 99.58% | none |
+| Bounces, A to B and back | 32 | 8 | 39 | 19 | none |
+| Chords median time to correct | 3.07 s | 3.07 s | 3.07 s | 3.07 s | up to 5 s |
+
+Bold now passes. On dev seeds 1000 to 1005, where it was tuned: followed 94.4% to 96.5%, median 8.1 s to 5.2 s. On unseen dev seeds 1012 to 1017: 93.8% to 95.8%, median 8.4 s to 5.2 s, chords exact 98.07% to 99.25%, bounces 213 to 62.
+
+New fail, not from this change: on seed 20261111 Stable follows 83.3% of key changes within 30 s, against 90%. 1.3.0 gives exactly the same on that seed, as Stable did not change. On 20261110 Stable follows 100%.
+
+- In Fast, the chords since the current section began now count. A section starts at the first run of chord changes not heard lately. For each key: how much of the section's time is on chords outside it, whether the section opened on its home chord, and how long it stays there. A move to a close key adds only one or two new notes, but its chords show it within a chord or two, so Fast no longer waits for its 12 s memory to fade.
+- Tried and left out: also crediting the chord a dominant resolves to (made more i iv VII III loops read as the relative major), and taking the chord before the first new change as the section's first.
+- Tuned on dev seeds 1000 to 1005 only. New detection fingerprint. `PluginTest --seed N` runs the accuracy tests on another seed; `tests/results-20261110.txt` is the run on 20261110.
+
 ## 1.3.0, 2026-11-07
 
 Steadier and more often right. 1.2.0 and 1.3.0 were run on the same new held out seed, 20261110, which nothing was tuned on:

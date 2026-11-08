@@ -65,6 +65,10 @@ int main (int argc, char** argv)
         else if (k == "loopnotes") knobs.loopNotes = v;
         else if (k == "holdafter") knobs.holdAfterLetGo = v;
         else if (k == "rebuild") knobs.rebuildOnLetGo = v;
+        else if (k == "odd") knobs.oddHarmonicNotes = v;
+        else if (k == "oddpen") knobs.oddPenalty = v;
+        else if (k == "firstrel") knobs.firstRelativeLeadStable = v;
+        else if (k == "outw") knobs.outsideWeight = v;
         else if (k == "holdstable") knobs.holdStable = v;
     }
     const double sr = 48000.0;

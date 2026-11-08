@@ -108,7 +108,8 @@ public:
         double dwellStable = 4.0, dwellFast = 1.5;      // a new key must lead this long
         double marginStable = 0.04, marginFast = 0.03; // and by this much score
         double firstStable = 7.7, firstFast = 3.0;      // earliest first reading, seconds of audio
-        double firstLeadStable = 0.08, firstLeadFast = 0.03;
+        double firstLeadStable = 0.25, firstLeadFast = 0.03;
+        double firstRelativeLeadStable = 0.1;           // Stable's first reading also waits until it leads its own relative by this much
         double settleSeconds = 18.0;                    // the dwell and margin reach full size after this much audio
         double bassWeight = 0.45;
         double openingWeight = 0.4;
@@ -141,6 +142,9 @@ public:
         double holdAfterLetGo = 1.0;    // 1 shortens the hold in the seconds after a let go, while the new memory is still filling
         double rebuildOnLetGo = 1.0;    // 1 keeps the notes and chords heard since the new notes began whole when letting go, and drops only what came before
         double harmonicDecay = 0.65;
+        double oddHarmonicNotes = 1.0;  // 1 also lets each note be one with odd harmonics only, as on a clarinet or a hollow synth, so its third harmonic is not heard as a fifth
+        double oddPenalty = 0.05;       // how much more a note must explain to be heard as odd harmonics only, so chord tones are not read as harmonics of a missing root
+        double outsideWeight = 1.2;     // takes off this much times the share of notes heard that fall outside a key's scale
         double chromaPower = 0.75;      // compression of the long term chroma
         double softness = 14.0;         // turns score gaps into a probability
         int iterations = 30;
@@ -150,7 +154,7 @@ public:
         : fft (fftSize), window ((size_t) fftSize), ring ((size_t) fftSize), re ((size_t) fftSize), im ((size_t) fftSize),
           mag ((size_t) fftSize / 2 + 1), firTaps ((size_t) maxTaps), firHistory ((size_t) maxTaps * 2),
           logFreqs ((size_t) numLog), logSpec ((size_t) numLog), logClean ((size_t) numLog), notes ((size_t) numNotes),
-          wtv ((size_t) numNotes), wtw ((size_t) (numNotes * numNotes)), dict ((size_t) (numNotes * numLog)),
+          atoms ((size_t) numAtoms), wtv ((size_t) numAtoms), wtw ((size_t) (numAtoms * numAtoms)), dict ((size_t) (numAtoms * numLog)),
           shortFft (tempoFft), shortWindow ((size_t) tempoFft), shortRe ((size_t) tempoFft), shortIm ((size_t) tempoFft),
           lastShort ((size_t) tempoFft / 2), onsets ((size_t) numOnsets), onsetWork ((size_t) numOnsets)
     {
@@ -290,6 +294,7 @@ private:
     static constexpr int tempoFft = 512, tempoHop = 256, numOnsets = 1024; // about 20 s of onset curve
     static constexpr int maxDecimation = 32, maxTaps = maxDecimation * 32 + 1;
     static constexpr int lowestNote = 33, numNotes = 64;       // A1 to C7 can be sounding notes
+    static constexpr int numAtoms = 2 * numNotes;              // each note with all its harmonics, then with odd ones only
     static constexpr int binsPerNote = 3, topNote = 112;       // log spectrum runs up to about 5.3 kHz
     static constexpr int numLog = (topNote - lowestNote) * binsPerNote + 1;
     static constexpr double maxHz = 5400.0;
@@ -344,12 +349,16 @@ private:
     void buildDictionary() noexcept
     {
         std::fill (dict.begin(), dict.end(), 0.0f);
-        for (int n = 0; n < numNotes; ++n)
+        activeAtoms = knobs.oddHarmonicNotes > 0.0 ? numAtoms : numNotes;
+        for (int atom = 0; atom < activeAtoms; ++atom)
         {
-            float* col = dict.data() + n * numLog;
+            const int n = atom % numNotes;
+            const bool oddOnly = atom >= numNotes;
+            float* col = dict.data() + atom * numLog;
             double amp = 1.0;
             for (int h = 1; h <= 10; ++h, amp *= knobs.harmonicDecay)
             {
+                if (oddOnly && h % 2 == 0) continue;
                 const double pos = 12.0 * std::log2 ((double) h) * binsPerNote + n * binsPerNote;
                 const int centre = (int) std::lround (pos);
                 for (int d = -1; d <= 1; ++d)
@@ -364,14 +373,14 @@ private:
             norm = std::sqrt (norm);
             for (int b = 0; b < numLog; ++b) col[b] = (float) (col[b] / norm);
         }
-        for (int a = 0; a < numNotes; ++a)
-            for (int b = a; b < numNotes; ++b)
+        for (int a = 0; a < activeAtoms; ++a)
+            for (int b = a; b < activeAtoms; ++b)
             {
                 double s = 0.0;
                 const float* x = dict.data() + a * numLog;
                 const float* y = dict.data() + b * numLog;
                 for (int i = 0; i < numLog; ++i) s += (double) x[i] * y[i];
-                wtw[(size_t) (a * numNotes + b)] = wtw[(size_t) (b * numNotes + a)] = s;
+                wtw[(size_t) (a * numAtoms + b)] = wtw[(size_t) (b * numAtoms + a)] = s;
             }
     }
 
@@ -436,25 +445,28 @@ private:
     void solveNotes() noexcept
     {
         double scale = 0.0;
-        for (int n = 0; n < numNotes; ++n)
+        for (int n = 0; n < activeAtoms; ++n)
         {
             const float* col = dict.data() + n * numLog;
             double s = 0.0;
             for (int i = 0; i < numLog; ++i) s += (double) col[i] * logClean[(size_t) i];
             wtv[(size_t) n] = s;
-            notes[(size_t) n] = s;
+            atoms[(size_t) n] = s;
             scale = std::max (scale, s);
         }
         if (scale <= 0.0) { std::fill (notes.begin(), notes.end(), 0.0); return; }
         const double floorValue = scale * 1.0e-9;
         for (int it = 0; it < knobs.iterations; ++it)
-            for (int n = 0; n < numNotes; ++n)
+            for (int n = 0; n < activeAtoms; ++n)
             {
-                const double* row = wtw.data() + n * numNotes;
-                double denom = floorValue;
-                for (int m = 0; m < numNotes; ++m) denom += row[m] * notes[(size_t) m];
-                notes[(size_t) n] *= wtv[(size_t) n] / denom;
+                const double* row = wtw.data() + n * numAtoms;
+                double denom = floorValue + (n >= numNotes ? knobs.oddPenalty * scale : 0.0);
+                for (int m = 0; m < activeAtoms; ++m) denom += row[m] * atoms[(size_t) m];
+                atoms[(size_t) n] *= wtv[(size_t) n] / denom;
             }
+        // Both kinds of the same note are the same note.
+        for (int n = 0; n < numNotes; ++n)
+            notes[(size_t) n] = atoms[(size_t) n] + (activeAtoms > numNotes ? atoms[(size_t) (n + numNotes)] : 0.0);
     }
 
     // Tempo: how much the short spectrum rises at each moment, then which steady pulse best fits that curve.
@@ -881,10 +893,25 @@ private:
         for (auto c : chordMemory) chordTotal += c;
         const double chordGain = source == Source::voice || chordTotal <= 1.0e-9 ? 0.0 : knobs.homeChordWeight / chordTotal;
 
+        double heardTotal = 0.0;
+        for (int i = 0; i < 12; ++i) heardTotal += trebleMemory[(size_t) i] + bassMemory[(size_t) i];
         for (int k = 0; k < 24; ++k)
         {
             double s = correlate (t, keyProfile[(size_t) k]);
             s += chordGain * chordMemory[(size_t) k];
+            if (knobs.outsideWeight > 0.0 && heardTotal > 1.0e-12)
+            {
+                // The listener profiles barely mind a note from outside the scale. One clear outside note is what tells keys a fifth apart.
+                double outside = 0.0;
+                for (int i = 0; i < 12; ++i)
+                {
+                    const int step = (i - k % 12 + 12) % 12;
+                    const double away = k < 12 ? ((step == 0 || step == 2 || step == 4 || step == 5 || step == 7 || step == 9 || step == 11) ? 0.0 : 1.0)
+                                               : ((step == 0 || step == 2 || step == 3 || step == 5 || step == 7 || step == 8 || step == 10 || step == 11) ? 0.0 : (step == 9 ? 0.5 : 1.0));
+                    outside += away * (trebleMemory[(size_t) i] + bassMemory[(size_t) i]);
+                }
+                s -= knobs.outsideWeight * outside / heardTotal;
+            }
             if (bassGain > 0.0) s += bassGain * correlate (b, bassProfile[(size_t) k]);
             // The opening chord helps choose between a key and its relative, which share the same notes.
             if (openingGain > 0.0) s += openingGain * 0.5 * (correlate (o, triadProfile[(size_t) k]) - correlate (o, triadProfile[(size_t) relativeOf (k)]));
@@ -932,7 +959,9 @@ private:
             for (int k = 0; k < 24; ++k)
                 if (k != top && k != relativeOf (top)) rival = std::max (rival, scores[(size_t) k]);
             const double needLead = stable ? knobs.firstLeadStable : knobs.firstLeadFast;
-            const bool clear = scores[(size_t) top] - rival >= needLead || heardSeconds >= first * 2.0;
+            const double needRelative = stable ? knobs.firstRelativeLeadStable : 0.0;
+            const bool clear = (scores[(size_t) top] - rival >= needLead && scores[(size_t) top] - scores[(size_t) relativeOf (top)] >= needRelative)
+                               || heardSeconds >= first * 2.0;
             if (heardSeconds >= first && gate > 0.5 && clear)
             {
                 shown = top;
@@ -1043,7 +1072,8 @@ private:
     Fft fft;
     std::vector<double> window, ring, re, im, mag;
     std::vector<float> firTaps, firHistory;
-    std::vector<double> logFreqs, logSpec, logClean, notes, wtv, wtw;
+    std::vector<double> logFreqs, logSpec, logClean, notes, atoms, wtv, wtw;
+    int activeAtoms = numNotes;
     std::vector<float> dict;
     Fft shortFft;
     std::vector<double> shortWindow, shortRe, shortIm, lastShort, onsets, onsetWork;

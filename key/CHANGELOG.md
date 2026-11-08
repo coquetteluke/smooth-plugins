@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0, 2026-11-07
+
+Steadier and more often right. 1.2.0 and 1.3.0 were run on the same new held out seed, 20261110, which nothing was tuned on:
+
+| | 1.2.0 | 1.3.0 | Limit |
+|---|---|---|---|
+| Stable clips moving after 8 s | 2.50% | **0.83%** | up to 1% |
+| Chords exact | 97.5% | 99.4% | at least 90% |
+| Key change followed in 30 s, Stable | 95.8% | 100% | at least 90% |
+| Key change followed in 30 s, Fast | 87.5% | 87.5% | at least 90% |
+| Key change median, Fast | 10.30 s | 9.11 s | up to 8 s |
+| Melody only, Full Mix | 95.8% | 100% | none |
+| Chords at 44.1 and 96 kHz | 97.9% | 100% | at least 90% |
+
+Bold now passes. Fast still misses its two limits. Most of its misses are a minor loop of i, iv, VII, III, which is the same chords as vi, ii, V, I in the relative major, and Fast drifts to that reading later on.
+
+- A note can now be heard as odd harmonics only, as from a clarinet or a hollow synth. Before, its third harmonic was heard as a fifth above it, which pulled readings to the key a fifth up.
+- Notes clearly outside a key's scale now count against that key. The listener profiles barely minded them, and one outside note is often all that tells two keys a fifth apart.
+- Stable's first reading waits while the leader is close to another key, its relative included, instead of guessing at 8 s and correcting later. Most clips still read at 7.9 s.
+- Tuned on dev seeds 1000 to 1005 only, now with all 12 keys per seed. New detection fingerprint.
+- The analysis thread does about four times the note solving work. It runs off the audio thread, so audio is unchanged.
+
 ## 1.2.0, 2026-11-07
 
 Better at following a key change. Both versions were run on the same new held out seed, 20261109, which nothing was tuned on:

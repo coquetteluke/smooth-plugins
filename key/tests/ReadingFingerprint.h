@@ -1,6 +1,6 @@
 #pragma once
 // A number that changes if any reading the analyser gives changes by even one bit. Proves the window's extra read-only data does
-// not alter detection. The expected value is from the analyser as last changed on purpose: 1.2.0, for key changes and relative keys.
+// not alter detection. The expected value is from the analyser as last changed on purpose: 1.3.0, for odd harmonic notes, notes outside the scale and a surer first reading.
 // Standalone: clang++ -std=c++17 -O2 -Isrc -Itests -x c++ -DFINGERPRINT_MAIN tests/ReadingFingerprint.h -o build/ReadingFingerprint
 #include "KeyCorpus.h"
 #include <cstdint>
@@ -8,7 +8,7 @@
 
 namespace fingerprint
 {
-inline constexpr std::uint64_t expectedBefore = 0xf84e2b9cfd3e4aa3ull;
+inline constexpr std::uint64_t expectedBefore = 0xe3d6ee170b9f476aull;
 
 inline void mix (std::uint64_t& h, const void* data, size_t n)
 {

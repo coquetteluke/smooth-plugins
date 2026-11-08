@@ -143,6 +143,40 @@ Bold fails its limit. See below.
 
   Nothing beat 1.4.0 without breaking a passing test, so the plug-in is unchanged. A real fix for held notes needs a different shifter, one that keeps each harmonic's own level from the voice source instead of reading it off a grain, and the high note limits need either that or a long memory plus a test for vowel changes.
 - **A fourth held out set** (`testHeldOutFourth`, `heldout4`): children's vowels from Peterson and Barney (1952), 277 and 330 Hz, and 349 to 698 Hz, with their own bandwidths. Written and committed before it was run, then run once on 1.4.0, since nothing was changed: speaking pitches, formant move 2.29% against 4% (floor 2.50%), level 0.70 dB against 1.5, both pass. Singing pitches: first formant 12.2 dB flatter where a harmonic crosses it, against 9, a fail; held notes 3.84 dB mean against 3.5, a fail; formant move 27.9% against its floor of 33.0% plus 2%, pass; sharper 2.08 dB against 6, pass. So it agrees with the first set: the same two high voice limits fail on new speakers. Nothing was tuned on it, but it has now been seen once. `tests/results.txt` is still the full 1.4.0 run and does not include this set.
+- **A harmonic shifter, tried on 2026-11-08 and not shipped** (branch `harmonic-shifter`, commit c317202; the plug-in on `main` is still 1.4.0). The information floor above said held notes need a shifter that keeps each harmonic's level from the voice. This one does: High Quality reads four input periods at a time at a fixed number of samples per period, so each harmonic sits on one FFT bin, scales each harmonic by how the vocal tract differs between where it was and where it is going, and reads the frame back at the output period, one frame per output period. A harmonic too weak next to the noise between harmonics takes the level of the one now where it is going. The vocal tract change comes from a memory of each harmonic number's level against the pitch it was heard at, during the current voiced stretch only: harmonic k heard at the pitch it is moved to gives the change exactly, and harmonics heard at the same frequency at different pitches tie their own levels together so one can stand in for another. Each new frame is checked against what was stored at its pitch 50 ms or more before, and a mismatch over 6 dB (a new vowel) clears the memory. Where nothing was heard, straight lines through the moment's harmonics. Low Latency and Classic were left as they were.
+
+  Offline first (`tests/prototype/HarmonicPrototype.cpp`, true pitch, dev voices): handed the true vocal tract, the shifter itself reads 0.06 dB on dev held notes and 0.81 dB on dev high notes, so it loses almost nothing. With straight lines it reads 4.15 dB on held notes; with the memory, high notes read 3.5 dB. In the plug-in (`tests/prototype/EngineHarness.cpp` runs the engine without JUCE) it took several fixes for real speech: frames read before the tracker's marks arrive, voicing that flickers for a period, frames overlapping where the input is read a period apart, and the memory carrying old loudness into new notes. Every test group except the held out sets then passed on both engines, and the Low Latency null test still matched 1.4.0. A vowel change test was added with its limit set first (`testVowelChange`, `vowel`).
+
+  | High Quality | 1.4.0 | Harmonic shifter | Limit |
+  |---|---|---|---|
+  | High notes, first formant against its surroundings (dev) | 13.1 dB | **5.2 dB** | 9 |
+  | High notes, formant move against the input (dev) | 16.5% | 12.4% | 16.9 |
+  | First formant flatter than a real voice (dev) | 5.4 dB | 4.1 dB | 7 |
+  | Level change, +/-1 to +/-3 (dev) | 0.60 dB | 1.21 dB | 1.5 |
+  | Big shifts +/-7, move against a real voice (dev) | 2.5% | 6.7% | 8 |
+  | Real speech, 99th percentile frame level change | 2.52 dB | 2.88 dB | 3 |
+  | Vowel change test, move against the new vowel | 2.1% | 3.1% | 4 |
+  | CPU, voice at 180 Hz, 48 kHz stereo | 4.4% | 2.6% | 8 |
+  | Latency | 13.7 / 58.7 ms | unchanged | |
+  | First held out set, 392 to 740 Hz, first formant where crossed | 15.9 dB | **6.1 dB** | 9 |
+  | First held out set, held notes | 4.54 dB | 4.15 dB | 3.5 |
+  | First held out set, 98 to 220 Hz, move / level | 1.52% / 0.72 dB | 2.29% / 1.06 dB | 4 / 1.5 |
+  | Second held out set, move / level | 2.29% / not recorded | 3.32% / 1.36 dB | 4 / 1.5 |
+  | Third held out set, move | 3.47% | **4.77%, fails** | 4 |
+  | Third held out set, level | 0.80 dB | **1.62 dB, fails** | 1.5 |
+  | Fourth held out set, first formant where crossed | 12.2 dB | **5.0 dB** | 9 |
+  | Fourth held out set, held notes | 3.84 dB | **3.37 dB** | 3.5 |
+  | New fifth held out set, speaking, move / level | 2.09% / 0.49 dB | 2.50% / 1.08 dB | 4 / 1.5 |
+  | New fifth held out set, singing, first formant where crossed | 18.6 dB | 12.0 dB, fails | 9 |
+  | New fifth held out set, held notes | 4.02 dB | 4.38 dB, fails | 3.5 |
+
+  Bold marks a change of verdict. The fifth set (`testHeldOutFifth`, `heldout5`) is Catford's published vowel averages (A Practical Introduction to Phonetics, 2001, p. 154, via Wikipedia's Formant article): front rounded and back unrounded vowels no earlier set had, F3 to F5 and bandwidths set by hand from the vowel's class. It was written and committed with the expected result before it was run (c317202), run once on the shifter, then once on 1.4.0 for comparison. Expected: speaking passes, singing first formant passes, held notes fail. Measured: speaking passed, held notes failed as expected, but the singing first formant failed at 12.0 dB, so the high note fix does not carry over to these vowels (open back vowels with F1 and F2 close together, male formants at high pitch), although it is better than 1.4.0's 18.6 dB. Its held notes were worse than 1.4.0's.
+
+  Why it was not shipped: it fixes two of the three named failures (high notes, high held out voices) and both of the fourth set's, and improves held notes on the first and fourth sets, but the third held out set now fails two limits that 1.4.0 passes, and the fifth set's singing voices still fail. Nothing was tuned on the held out sets. On dev voices at the third set's pitches and shifts (123 to 311 Hz, +/-4) 1.4.0 reads 5.9% and 8.2% formant move and the shifter 3.5% and 6.9%, so 1.4.0's pass there was close, but a pass it was.
+
+  Held notes are still the hard part. With true phases and the test voices' own pulse shape built into the model, an all-pole fit through the harmonics finds the vocal tract exactly (0.0 dB on dev held notes), but with the pulse shape a little off it reads 4.85 dB, worse than straight lines (4.10), and assuming only that the pulse's phase is flat above the second harmonic it reads 7.9 to 11 dB. So phase only helps if the model knows the singer's pulse, which would be fitting the test synthesiser rather than a voice, and it was not used. Straight lines and every magnitude only estimate tried read 4.05 to 4.2 dB on dev held notes.
+
+  If this is picked up again: the third set's two failures and the fifth set's singing voices are where to look, on new dev voices like them (back vowels around 300 Hz moved by 4, open back vowels at high pitch), and both sets are now used, so a sixth held out set is needed.
 - **Three limits were changed after measuring, each because it could not be read:**
   1. High note formant move was 8% against the input. The input and a real voice with the same vocal tract already read 14.9% apart there, so it is now 2% beyond that floor.
   2. Big shift formant move stays 8%, but reads against a real voice, because the input against a real voice reads 10.5%.

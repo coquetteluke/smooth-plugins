@@ -98,7 +98,36 @@ int main (int argc, char** argv)
         return 0;
     }
     const std::string t = argc > 1 ? argv[1] : "h";
-    const bool word = t == "rand" || t == "styled";
+    const bool word = t == "rand" || t == "styled" || t == "heldvowel";
+    if (t == "heldvowel")
+    {
+        // A vowel change in the middle of a held note: after it, each harmonic against a real voice singing the new vowel, from 0.15 s
+        // and from 0.4 s after the change, against the same reading on the new vowel alone.
+        const std::pair<const voice::Vowel*, const voice::Vowel*> pairs[] = { { &voice::vowelA, &voice::vowelI }, { &voice::vowelI, &voice::vowelA }, { &voice::vowelU, &voice::vowelE }, { &voice::vowelO, &voice::vowelAe } };
+        for (double after : { 0.15, 0.4 })
+        {
+            double sumMixed = 0, sumAlone = 0; int count = 0;
+            for (const auto& pr : pairs) for (double c : { 440.0, 600.0 }) for (int sh : { 3, -3 })
+            {
+                const double r = std::pow (2.0, sh / 12.0), moved = c * r;
+                const auto x1 = styledVoice (voice::steady (c, 2.4, SR), *pr.first, {}), x2 = styledVoice (voice::steady (c, 2.4, SR), *pr.second, {});
+                std::vector<float> x (x1.size());
+                const size_t at = (size_t) (1.0 * SR), fade = (size_t) (0.03 * SR);
+                for (size_t i = 0; i < x.size(); ++i) { const double u = i < at ? 0.0 : i >= at + fade ? 1.0 : (double) (i - at) / fade; x[i] = (float) ((1 - u) * x1[i] + u * x2[i]); }
+                const auto real = styledVoice (voice::steady (moved, 2.4, SR), *pr.second, {});
+                auto score = [&] (const std::vector<float>& out)
+                {
+                    const long from = (long) ((1.0 + after) * SR), n = (long) (0.25 * SR);
+                    std::vector<double> d; double mean = 0;
+                    for (double hz = moved; hz <= 4000.0; hz += moved) { d.push_back (harmonicDb (out.data() + from, n, hz) - harmonicDb (real.data() + from, n, hz)); mean += d.back(); }
+                    mean /= d.size(); double s2 = 0; for (double v : d) s2 += (v - mean) * (v - mean);
+                    return std::sqrt (s2 / d.size());
+                };
+                sumMixed += score (runEngine (x, sh, gMode)); sumAlone += score (runEngine (x2, sh, gMode)); ++count;
+            }
+            std::printf ("vowel change on a held note, from %.2f s after: %.2f dB, the new vowel alone %.2f dB\n", after, sumMixed / count, sumAlone / count);
+        }
+    }
     if (getenv ("MODE")) gMode = atoi (getenv ("MODE"));
     if (! word && t.find ('f') != std::string::npos)
     {
@@ -143,7 +172,7 @@ int main (int argc, char** argv)
         }
         std::printf ("dev held notes: mean %.2f dB (3.5)\n", sum / count);
     }
-    if (word)
+    if (t == "rand" || t == "styled")
     {
         // Held notes on more dev voices: plausible vowels drawn at random (rand, seed argv[2]) or the dev vowels with breath and darker
         // sources (styled). Neither is a held out set: nothing here comes from a published table.

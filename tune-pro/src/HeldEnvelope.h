@@ -13,6 +13,14 @@
 // shapes and walks downhill from each, and the shapes it settles on are averaged by how well each fits, so where two shapes explain the
 // harmonics about equally, the change is a blend of both rather than a bet on one.
 //
+// When: only while the pitch holds (HeldTract below). Where the pitch moves, the shifter's memory of what each harmonic was heard at
+// does better, and the fit fades out. Levels are averaged over 40 ms, refitted every 40 ms from the last shapes and every 200 ms from
+// all the starting shapes, and the change glides over 100 ms. A new vowel on the same pitch starts the average again. Full strength up
+// to 7 semitones of shift, none from 12. Assumes a voice whose glottis closes in a usual way: the slope prior is a textbook voice's.
+//
+// Measured with true pitch in tests/prototype/HeldLab.cpp and in the engine with tests/prototype/EngineHarness.cpp (rand, styled,
+// heldvowel), on dev voices only.
+//
 // Real time safe: fixed size arrays, no allocation.
 #include <algorithm>
 #include <array>
@@ -29,6 +37,7 @@ struct Settings
     double tiltWeight = 5.0;
     double bandwidthScale = 1.0;
     double spreadDb2 = 3.0;         // how much worse, in squared dB summed over harmonics, a shape may fit and still count
+    int highStarts = 3;             // how many placings of the fourth and fifth resonance each start is tried with
 };
 
 class FormantFit
@@ -38,7 +47,42 @@ public:
     static constexpr double gridLowHz = 150.0, gridHighHz = 5600.0, minGapHz = 150.0;
 
     Settings settings;
-    struct Shape { std::array<int, formants> j {}; int lp = 0; double cost = 1.0e30; };
+    struct Shape { std::array<int, formants> j {}; int lp = 0, bw = 1; double cost = 1.0e30; };
+    struct Trig
+    {
+        double c1 = 1.0, s1 = 0.0, c2 = 1.0, s2 = 0.0;
+        void set (double w) noexcept { c1 = std::cos (w); s1 = std::sin (w); c2 = c1 * c1 - s1 * s1; s2 = 2.0 * s1 * c1; }
+    };
+    // A shape's filters, worked out once a fit, so the change for each harmonic costs no exponentials or cosines. power() is log10 of
+    // the tract's power gain.
+    struct Coefficients
+    {
+        std::array<double, formants> c {}, rr {}, b0 {};
+        double a = 0.0;
+        double power (const Trig& t) const noexcept
+        {
+            double num = 1.0, den = 1.0;
+            for (int i = 0; i < formants; ++i)
+            {
+                const double re = 1.0 - c[(size_t) i] * t.c1 + rr[(size_t) i] * t.c2, im = c[(size_t) i] * t.s1 - rr[(size_t) i] * t.s2;
+                num *= b0[(size_t) i] * b0[(size_t) i];
+                den *= re * re + im * im;
+            }
+            if (a > 0.0)
+            {
+                const double re = 1.0 - a * t.c1, im = a * t.s1;
+                num *= (1.0 - a) * (1.0 - a);
+                den *= re * re + im * im;
+            }
+            return std::log10 (num / std::max (den, 1.0e-300));
+        }
+        // The first resonance alone.
+        double powerOne (const Trig& t) const noexcept
+        {
+            const double re = 1.0 - c[0] * t.c1 + rr[0] * t.c2, im = c[0] * t.s1 - rr[0] * t.s2;
+            return std::log10 (b0[0] * b0[0] / std::max (re * re + im * im, 1.0e-300));
+        }
+    };
 
     FormantFit()
     {
@@ -66,7 +110,8 @@ public:
     }
 
     // lev[1..K], noise[1..K] in dB at k * f0. Returns false when there is too little to fit.
-    bool fit (const double* lev, const double* noise, int K, double f0, double sampleRate) noexcept
+    // full: also walk down from every starting shape, not only from the shapes found last time.
+    bool fit (const double* lev, const double* noise, int K, double f0, double sampleRate, bool full = true) noexcept
     {
         sr = sampleRate;
         n = 0;
@@ -85,13 +130,28 @@ public:
         for (int m = 0; m < minima; ++m) previous[(size_t) m] = found[(size_t) m];
         minima = 0;
         if (heard < 3) return false;
-        for (int j = 0; j < gridN; ++j)
+        // Each resonance's level at each harmonic, for every place on the grid. Kept while the pitch holds within 0.2%: a harmonic
+        // misplaced by that is well inside any resonance's bandwidth.
+        if (n != tableCount || sr != tableRate || settings.bandwidthScale != tableScale || std::abs (f0 / tableF0 - 1.0) > 0.002)
         {
-            const double F = gridHz[(size_t) j], B = bandwidth (F);
-            for (int h = 1; h <= n; ++h) table[(size_t) j][(size_t) h] = resonatorDb (h * f0, F, B, sr);
+            for (int j = 0; j < gridN; ++j)
+            {
+                const double F = gridHz[(size_t) j], B = bandwidth (F), r = std::exp (-M_PI * B / sr);
+                Coefficients one;
+                one.c[0] = 2.0 * r * std::cos (2.0 * M_PI * F / sr);
+                one.rr[0] = r * r;
+                one.b0[0] = 1.0 - one.c[0] + r * r;
+                for (int h = 1; h <= n; ++h)
+                {
+                    Trig t;
+                    t.set (2.0 * M_PI * h * f0 / sr);
+                    table[(size_t) j][(size_t) h] = 10.0 * one.powerOne (t);
+                }
+            }
+            for (int l = 0; l < lowPasses; ++l)
+                for (int h = 1; h <= n; ++h) lowTable[(size_t) l][(size_t) h] = lowPassDb (h * f0, lowPassHz[(size_t) l], sr);
+            tableCount = n; tableRate = sr; tableScale = settings.bandwidthScale; tableF0 = f0;
         }
-        for (int l = 0; l < lowPasses; ++l)
-            for (int h = 1; h <= n; ++h) lowTable[(size_t) l][(size_t) h] = lowPassDb (h * f0, lowPassHz[(size_t) l], sr);
 
         for (int m = 0; m < previousCount; ++m)
         {
@@ -101,21 +161,38 @@ public:
             keep (s);
         }
         // Starting shapes across the vowel space, each walked downhill.
-        static constexpr double starts1[] = { 280.0, 400.0, 550.0, 750.0, 950.0 };
-        static constexpr double starts2[] = { 900.0, 1300.0, 1800.0, 2300.0 };
-        for (double f1 : starts1)
-            for (double f2 : starts2)
+        static constexpr double starts1[] = { 250.0, 320.0, 400.0, 480.0, 570.0, 670.0, 780.0, 900.0 };
+        static constexpr double starts2[] = { 800.0, 1000.0, 1250.0, 1550.0, 1900.0, 2300.0 };
+        static constexpr double startsHigh[][2] = { { 3500.0, 4500.0 }, { 3300.0, 4200.0 }, { 3900.0, 4900.0 } };
+        const int highs = (full || previousCount == 0) ? std::clamp (settings.highStarts, 1, 3) : 0;
+        for (int hi = 0; hi < highs; ++hi)
+            for (double f1 : starts1)
+                for (double f2 : starts2)
+                {
+                    if (f2 < f1 + 250.0) continue;
+                    Shape s;
+                    s.j = { index (f1), index (f2), index (std::max (2600.0, f2 + 400.0)), index (startsHigh[hi][0]), index (startsHigh[hi][1]) };
+                    if (s.j[3] <= s.j[2] + 8) s.j[3] = std::min (gridN - 2, s.j[2] + 10);
+                    if (s.j[4] <= s.j[3] + 8) s.j[4] = std::min (gridN - 1, s.j[3] + 10);
+                    s.lp = 0;
+                    s.cost = cost (s);
+                    descend (s);
+                    keep (s);
+                }
+        for (int m = 0; m < minima; ++m)
+        {
+            const Shape& sh = found[(size_t) m];
+            Coefficients& co = coefficients[(size_t) m];
+            for (int i = 0; i < formants; ++i)
             {
-                if (f2 < f1 + 300.0) continue;
-                Shape s;
-                s.j = { index (f1), index (f2), index (std::max (2600.0, f2 + 400.0)), index (3500.0), index (4500.0) };
-                if (s.j[3] <= s.j[2]) s.j[3] = std::min (gridN - 2, s.j[2] + 10);
-                if (s.j[4] <= s.j[3]) s.j[4] = std::min (gridN - 1, s.j[3] + 10);
-                s.lp = 0;
-                s.cost = cost (s);
-                descend (s);
-                keep (s);
+                const double F = gridHz[(size_t) sh.j[(size_t) i]], B = bandwidth (F);
+                const double r = std::exp (-M_PI * B / sr);
+                co.c[(size_t) i] = 2.0 * r * std::cos (2.0 * M_PI * F / sr);
+                co.rr[(size_t) i] = r * r;
+                co.b0[(size_t) i] = 1.0 - co.c[(size_t) i] + r * r;
             }
+            co.a = lowPassHz[(size_t) sh.lp] > 0.0 ? std::exp (-2.0 * M_PI * lowPassHz[(size_t) sh.lp] / sr) : 0.0;
+        }
         return minima > 0;
     }
 
@@ -124,19 +201,30 @@ public:
     {
         double best = 1.0e30;
         for (int m = 0; m < minima; ++m) best = std::min (best, found[(size_t) m].cost);
+        std::array<int, maxMinima> use {};
         std::array<double, maxMinima> w {};
+        int used = 0;
         double wsum = 0.0;
         for (int m = 0; m < minima; ++m)
         {
-            w[(size_t) m] = std::exp (-(found[(size_t) m].cost - best) / (2.0 * settings.spreadDb2));
-            wsum += w[(size_t) m];
+            const double weight = std::exp (-(found[(size_t) m].cost - best) / (2.0 * settings.spreadDb2));
+            if (weight < 1.0e-3) continue;
+            use[(size_t) used] = m;
+            w[(size_t) used++] = weight;
+            wsum += weight;
         }
-        for (int k = 1; k <= K; ++k) g[k] = 0.0;
-        for (int m = 0; m < minima; ++m)
+        for (int k = 1; k <= K; ++k)
         {
-            if (w[(size_t) m] < 1.0e-4 * wsum) continue;
-            const Shape& s = found[(size_t) m];
-            for (int k = 1; k <= K; ++k) g[k] += w[(size_t) m] / wsum * (tractDb (s, k * fout) - tractDb (s, k * fin));
+            Trig at, to;
+            at.set (2.0 * M_PI * k * fin / sr);
+            to.set (2.0 * M_PI * k * fout / sr);
+            double sum = 0.0;
+            for (int u = 0; u < used; ++u)
+            {
+                const Coefficients& c = coefficients[(size_t) use[(size_t) u]];
+                sum += w[(size_t) u] * (c.power (to) - c.power (at));
+            }
+            g[k] = 10.0 * sum / wsum;
         }
     }
 
@@ -149,6 +237,7 @@ public:
     double hzOf (int j) const noexcept { return gridHz[(size_t) j]; }
     double lowPassOf (int l) const noexcept { return lowPassHz[(size_t) l]; }
     int count() const noexcept { return minima; }
+    void forget() noexcept { minima = 0; }
 
     double tractDb (const Shape& s, double f) const noexcept
     {
@@ -239,16 +328,22 @@ private:
         if (s.cost >= 1.0e29) return;
         for (int m = 0; m < minima; ++m)
             if (found[(size_t) m].j == s.j && found[(size_t) m].lp == s.lp) return;
-        if (minima < maxMinima) found[(size_t) minima++] = s;
+        if (minima < maxMinima) { found[(size_t) minima++] = s; return; }
+        int worst = 0;
+        for (int m = 1; m < minima; ++m) if (found[(size_t) m].cost > found[(size_t) worst].cost) worst = m;
+        if (s.cost < found[(size_t) worst].cost) found[(size_t) worst] = s;
     }
 
     std::array<double, gridN> gridHz {};
     std::array<double, lowPasses> lowPassHz { 0.0, 1500.0, 2200.0, 3200.0, 4500.0 };
     std::array<std::array<double, maxH + 1>, gridN> table {};
+    int tableCount = -1;
+    double tableRate = 0.0, tableScale = 0.0, tableF0 = 1.0;
     std::array<std::array<double, maxH + 1>, lowPasses> lowTable {};
     std::array<double, maxH + 1> db {}, x {}, cap {};
     std::array<bool, maxH + 1> good {};
     std::array<Shape, maxMinima> found {}, previous {};
+    std::array<Coefficients, maxMinima> coefficients {};
     int n = 0, minima = 0, previousCount = 0;
     double sr = 48000.0;
 };
@@ -267,34 +362,55 @@ inline double linesAt (const double* lev, int K, double x)
 class HeldTract
 {
 public:
-    static constexpr double averageSeconds = 0.04, refitSeconds = 0.02, moveSemitones = 0.5, gapSeconds = 0.1;
-    static constexpr double glideSeconds = 0.05;   // the change follows a new fit over this, so a fit that wavers does not ring
+    static constexpr double averageSeconds = 0.04, refitSeconds = 0.04, fullSeconds = 0.2, moveSemitones = 0.5, gapSeconds = 0.1;
+    static constexpr double glideSeconds = 0.1;   // the change follows a new fit over this, so a fit that wavers does not ring
+    // Only on a held pitch: where the pitch moves, the memory of what was heard does better, so the fit fades in only while the pitch
+    // stays within steadySemitones of where it has been over the last steadySeconds, and fades out again over blendSeconds.
+    static constexpr double steadySeconds = 0.05, steadySemitones = 0.1, blendSeconds = 0.05;
+    static constexpr double clearDb = 15.0, reshapeDb = 6.0;  // a frame whose clear harmonics differ in shape from the average by this starts it again
     static constexpr int maxH = FormantFit::maxH;
 
     FormantFit fitter;
 
-    void reset() noexcept { have = false; ok = false; fresh = true; smoothCount = 0; }
+    void reset() noexcept { have = false; ok = false; fresh = true; smoothCount = 0; blend = 0.0; pitchKnown = false; lastFit = lastFull = -1.0; lastTime = 0.0; fitter.forget(); }
 
-    // Fills gains[1..outCount] with tract(k f0Out / scale) - tract(k f0In) in dB. Returns false when there is no fit to give, and then
-    // gains are left alone.
+    // Fills gains[1..outCount] with tract(k f0Out / scale) - tract(k f0In) in dB, blended with straight lines while the pitch settles.
+    // Returns false when it has nothing to add, and then gains are left alone.
     bool frame (const double* lev, const double* noise, int count, double f0In, double f0Out, double scale, double time, double* gains, int outCount) noexcept
     {
         const double topHz = fitter.settings.topHz;
         if (count < 3 || topHz / f0In > maxH) { reset(); return false; }
         const int top = std::min (count, maxH);
+        const double dt = time - lastTime;
+        const bool gap = dt > gapSeconds || dt < 0.0;
         const bool moved = have && std::abs (12.0 * std::log2 (f0In / avgF0)) > moveSemitones;
-        if (! have || moved || time - lastTime > gapSeconds || time < lastTime)
+        // A new vowel on the same pitch: the harmonics that stand clear of the noise no longer match their average in shape.
+        bool reshaped = false;
+        if (have && ! moved && ! gap)
+        {
+            double sum = 0.0, sum2 = 0.0;
+            int n = 0;
+            for (int k = 1; k <= std::min (top, avgTop); ++k)
+            {
+                if (lev[k] - noise[k] < clearDb) continue;
+                const double d = lev[k] - 10.0 * std::log10 (avg[(size_t) k] + 1.0e-30);
+                sum += d; sum2 += d * d; ++n;
+            }
+            if (n >= 3) reshaped = std::sqrt (std::max (0.0, sum2 / n - (sum / n) * (sum / n))) > reshapeDb;
+        }
+        if (! have || moved || gap || reshaped)
         {
             for (int k = 1; k <= top; ++k) { avg[(size_t) k] = std::pow (10.0, 0.1 * lev[k]); avgNoise[(size_t) k] = std::pow (10.0, 0.1 * noise[k]); }
             avgF0 = f0In;
             avgTop = top;
             have = true;
             lastFit = -1.0;
+            if (reshaped) lastFull = -1.0;
             fresh = true;
         }
         else
         {
-            const double a = 1.0 - std::exp (-(time - lastTime) / averageSeconds);
+            const double a = 1.0 - std::exp (-dt / averageSeconds);
             for (int k = 1; k <= top; ++k)
             {
                 const double p = std::pow (10.0, 0.1 * lev[k]), q = std::pow (10.0, 0.1 * noise[k]);
@@ -304,27 +420,41 @@ public:
             avgTop = top;
             avgF0 += a * (f0In - avgF0);
         }
-        const double dt = time - lastTime;
         lastTime = time;
-        if (lastFit < 0.0 || time - lastFit >= refitSeconds)
+
+        // Is the pitch held?
+        const double here = std::log2 (f0In);
+        if (! pitchKnown || gap) { slowPitch = here; pitchKnown = true; blend = 0.0; }
+        else slowPitch += (1.0 - std::exp (-std::max (0.0, dt) / steadySeconds)) * (here - slowPitch);
+        const bool steady = std::abs (12.0 * (here - slowPitch)) < steadySemitones;
+        // Big shifts carry the fit far from the harmonics it was fitted on: full up to 7 semitones, none from 12.
+        const double want = f0Out / std::max (scale, 1.0e-3);
+        const double reach = std::clamp ((12.0 - std::abs (12.0 * std::log2 (want / f0In))) / 5.0, 0.0, 1.0);
+        if (gap) blend = 0.0;
+        else blend += ((steady ? reach : 0.0) - blend) * (1.0 - std::exp (-std::max (0.0, dt) / blendSeconds));
+        if (blend < 0.01) { fresh = true; return false; }
+
+        if (lastFit < 0.0 || time - lastFit >= refitSeconds || time < lastFit)
         {
             for (int k = 1; k <= avgTop; ++k) { avgDb[(size_t) k] = 10.0 * std::log10 (avg[(size_t) k] + 1.0e-30); avgNoiseDb[(size_t) k] = 10.0 * std::log10 (avgNoise[(size_t) k] + 1.0e-30); }
-            ok = fitter.fit (avgDb.data(), avgNoiseDb.data(), avgTop, avgF0, sampleRate);
+            const bool full = lastFull < 0.0 || time - lastFull >= fullSeconds || time < lastFull;
+            ok = fitter.fit (avgDb.data(), avgNoiseDb.data(), avgTop, avgF0, sampleRate, full);
             lastFit = time;
+            if (full) lastFull = time;
         }
-        if (! ok) { fresh = true; smoothCount = 0; return false; }
-        const double want = f0Out / std::max (scale, 1.0e-3);
+        if (! ok) { fresh = true; return false; }
         int inside = 0;
-        while (inside + 1 <= outCount && (inside + 1) * std::max (want, f0In) <= topHz && inside + 1 <= count) ++inside;
+        while (inside + 1 <= std::min (outCount, maxOut) && (inside + 1) * std::max (want, f0In) <= topHz && inside + 1 <= count) ++inside;
         if (inside >= 1) fitter.gains (f0In, want, inside, gains);
         const double follow = fresh ? 1.0 : 1.0 - std::exp (-std::max (0.0, dt) / glideSeconds);
-        for (int k = 1; k <= std::min (inside, maxOut); ++k)
+        for (int k = 1; k <= inside; ++k)
         {
             if (k > smoothCount) smooth[(size_t) k] = gains[k];
             smooth[(size_t) k] += follow * (gains[k] - smooth[(size_t) k]);
-            gains[k] = smooth[(size_t) k];
+            const double straight = linesAt (lev, count, k * want / f0In) - lev[k];
+            gains[k] = blend * smooth[(size_t) k] + (1.0 - blend) * straight;
         }
-        smoothCount = std::min (inside, maxOut);
+        smoothCount = inside;
         fresh = false;
         for (int k = inside + 1; k <= outCount; ++k)
             gains[k] = linesAt (lev, count, k * want / f0In) - lev[std::min (k, count)];
@@ -337,9 +467,9 @@ private:
     static constexpr int maxOut = 64;
     std::array<double, maxOut + 1> smooth {};
     int smoothCount = 0;
-    bool fresh = true;
+    bool fresh = true, pitchKnown = false;
     std::array<double, maxH + 1> avg {}, avgNoise {}, avgDb {}, avgNoiseDb {};
-    double avgF0 = 0.0, lastTime = 0.0, lastFit = -1.0;
+    double avgF0 = 0.0, lastTime = 0.0, lastFit = -1.0, lastFull = -1.0, slowPitch = 0.0, blend = 0.0;
     int avgTop = 0;
     bool have = false, ok = false;
 };

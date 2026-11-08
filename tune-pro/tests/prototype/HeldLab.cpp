@@ -250,6 +250,7 @@ struct FormantFit
     double tract (double f) const { return model (f, F); }
 };
 
+double gCostSum = 0, gShapes = 0; int gCostN = 0;
 struct Case { const voice::Vowel* v; VStyle st; double f0; int shift; };
 
 int main (int argc, char** argv)
@@ -303,6 +304,12 @@ int main (int argc, char** argv)
         static std::map<std::string, Measured> measCache;
         if (! measCache.count (key)) measCache[key] = measure (cache[key], fin, K);
         auto meas = measCache[key];
+        if (std::getenv ("NSUB"))
+            for (int k = 1; k <= K; ++k)
+            {
+                const double p = std::pow (10.0, 0.1 * meas.mean[(size_t) k]), q = std::pow (10.0, 0.1 * meas.noise[(size_t) k]);
+                meas.mean[(size_t) k] = 10.0 * std::log10 (std::max (p - q, 0.25 * p));
+            }
         if (std::getenv ("CMPLEV"))
         {
             if (sourceMag.empty()) makeSource();
@@ -328,8 +335,9 @@ int main (int argc, char** argv)
             const heldenv::Settings d;
             fitter.settings.snrNeedDb = env ("SNRF", d.snrNeedDb); fitter.settings.tiltDb = env ("TILT0", d.tiltDb); fitter.settings.tiltWeight = env ("TILTW", d.tiltWeight);
             fitter.settings.spreadDb2 = env ("SIG2", d.spreadDb2); fitter.settings.bandwidthScale = env ("BWS", d.bandwidthScale); fitter.settings.topHz = env ("TOPF", d.topHz);
+            if (std::getenv ("HIGHS")) fitter.settings.highStarts = std::atoi (std::getenv ("HIGHS"));
             bool ok = true;
-            if (lastKey != key) { ok = fitter.fit (meas.mean.data(), meas.noise.data(), K, fin, SR); lastKey = key; }
+            if (lastKey != key) { if (! std::getenv ("CARRY")) fitter.forget(); ok = fitter.fit (meas.mean.data(), meas.noise.data(), K, fin, SR); lastKey = key; if (ok) { gCostSum += fitter.bestShape().cost; gCostN++; gShapes += fitter.count(); } }
             if (ok && fitter.count() > 0) fitter.gains (fin, fout, K, g.data());
             else for (int k = 1; k <= K; ++k) g[(size_t) k] = heldenv::linesAt (meas.mean.data(), K, k * fout / fin) - meas.mean[(size_t) k];
             if (std::getenv ("BLEND1")) { const double w = env ("BLEND1", 1.0); g[1] = w * g[1] + (1 - w) * (heldenv::linesAt (meas.mean.data(), K, fout / fin) - meas.mean[1]); }
@@ -426,6 +434,7 @@ int main (int argc, char** argv)
         for (auto& [k, v] : byK) std::printf ("  harmonic %d: rms %.2f (%d)\n", k, std::sqrt (v / byKn[k]), byKn[k]);
         for (auto& [k, v] : byVowel) std::printf ("  %s: %.2f\n", k.c_str(), v / byVowelN[k]);
     }
+    if (gCostN) std::printf ("  mean best cost %.3f, mean shapes %.1f\n", gCostSum / gCostN, gShapes / gCostN);
     std::printf ("%s %s held notes: mean %.3f dB over %d\n", which.c_str(), set.c_str(), total / count, count);
     return 0;
 }

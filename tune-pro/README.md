@@ -166,4 +166,24 @@ Bold fails its limit. See below.
 
   Everything else that moved: CPU in High Quality, voice at 180 Hz, 2.8% to 3.7% of a core (limit 8); level steadiness on a sustained note 0.006 to 0.12 dB peak to peak (limit 1); non-harmonic energy at MIDI 76 -57.2 to -54.3 dB (limit -35); level across Transpose -24 to +24, a reading with no limit, 0.04 to 0.81 dB. Low Latency is bit for bit the same. The suite reads 494 pass and 3 fail; the 3 failed on the shifter before this too (third held out set move 4.77% and level 1.62 dB, fifth held out set singing first formant 12.0 dB). All five held out sets had already been run once, so these numbers do not show it generalises; a sixth set is needed for that. The source slope prior suits a voice whose glottis closes in the usual way; a very breathy or pressed real voice is untested.
 
+- **The third and fifth held out sets on the harmonic shifter (branch `hs-fix`, 2026-11-08).** Three changes, High Quality only; Low Latency and Classic are bit for bit 1.4.0.
+  1. *Octave jumps in the tracker.* Open back vowels sung around 350 Hz, with the first two formants together on the second harmonic, look almost as periodic at half their period, and the tracker jumped an octave up for about a quarter second on each pass. High Quality's tracker now keeps the period it is on while that fits at least twice as well as the half (`PitchTracker::setStrictOctaveUp`). This was the fifth set's singing failure.
+  2. *Level where the memory takes over.* The memory reads one harmonic number at two pitches, so it also carries how much louder the voice is at the higher pitch, which the straight lines do not. On a glide up the memory has nothing at first, so the level jumped when it took over and the trim drifted. On moves up the memory now takes off 3 times the pitch ratio in dB (a fit says 2; 3 also covers the lines missing a harmonic crossing a formant). On moves down it is left alone, as taking it out there read 9.8% on big shifts. The level trim averages 1 s instead of 0.6. Why the third set's formant move was close: on its worst case a perfect real voice already reads 3.1% against the input, and the shifter reads 0.5% from that real voice.
+  3. *Weak harmonics.* On a glide, high harmonics spill into the bins between them and read as weak. Their lift towards where they land is capped at 24 dB instead of 12; at 12, e at 165 Hz moved down 7 lost its fourth formant.
+
+  | High Quality | 1.4.0 | Shifter (c317202) | Now, with `hs-held` merged | Limit |
+  |---|---|---|---|---|
+  | Third held out set, formant move | 3.47% | 4.77% | 3.73% | 4 |
+  | Third held out set, level | 0.80 dB | 1.62 dB | 0.77 dB | 1.5 |
+  | Fifth held out set, singing first formant | 18.6 dB | 12.0 dB | 7.0 dB | 9 |
+  | First / fifth held out set, held notes | 4.54 / 4.02 dB | 4.15 / 4.38 dB | 2.87 / 2.94 dB | 3.5 |
+  | High notes, first formant | 13.1 dB | 5.2 dB | 4.4 dB | 9 |
+  | First held out set, high voices, first formant | 15.9 dB | 6.1 dB | 6.3 dB | 9 |
+  | First held out set, high voices, formant move (floor 28.5% + 2) | | 30.0% | 14.9% | 30.5 |
+  | Level, +/-1 to +/-3 | 0.60 dB | 1.21 dB | 0.60 dB | 1.5 |
+  | Big shifts +/-7, move against a real voice | 2.5% | 6.7% | 1.1% | 8 |
+  | Real speech, 99th percentile frame level change | 2.52 dB | 2.88 dB | 2.84 dB | 3 |
+
+  Full suite: 497 pass, 0 fail (`tests/results.txt`). The two settings chosen by measuring (3 on moves up, 1 s trim) were chosen with the third and fourth held out sets in view, and all five sets had been run before this work, so they are regression tests now and say nothing about how it generalises; a sixth set, written by someone who has not seen this tuning, is needed for that. Real speech is still close to its limit: the shifter's frames span two to four periods, so at the fast fall at the end of a word its output lags the input by up to 4 dB in a 20 ms reading. Nothing here was heard by anyone.
+
 `build/PluginTest_artefacts/Release/PluginTest demo` writes corrected `say` files for both engines to `build/demo`, to listen to outside any host.

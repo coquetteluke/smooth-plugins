@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0, 2026-11-07
+
+High Quality keeps formants in place much better. Low Latency is bit for bit the same as 1.2.1.
+
+A held note's harmonics sit either side of a narrow formant, so no one moment shows how tall it is. As the pitch moves, by a glide or vibrato, the harmonics sweep across it. High Quality now remembers each harmonic's level where it was heard, for about a fifth of a second, and draws the vocal tract model through all of those points. Below 350 Hz, up to 2.5 kHz. When the pitch moves faster than 30 semitones a second, as at the end of a spoken phrase, the harmonics smear and the memory is let go. With the peaks seen, the old fixes are turned down: sharpening from 0.5 to 0.1, and the slower grain reading when going down is off.
+
+| High Quality | 1.2.1 | 1.3.0 | Limit |
+|---|---|---|---|
+| Formant move, +/-1 to +/-3 semitones | 4.24% | **3.32%** | 4% |
+| Formant move, other vowels and pitches | 4.15% | **3.11%** | 4% |
+| First formant flatter than a real voice | 6.84 dB | 6.02 dB | 7 dB |
+| Big shifts +/-7, move against a real voice | 5.94% | 2.09% | 8% |
+| High notes, first formant against its surroundings | 13.5 dB | 13.2 dB | 9 dB |
+| First held out set, 98 to 220 Hz, formant move | 5.82% | 4.24% | 4% |
+| First held out set, level change | 1.17 dB | 1.69 dB | 1.5 dB |
+| New second held out set, women 175 to 262 Hz, formant move | 11.2% | 6.32% | 4% |
+| Second held out set, colour against a real voice | 3.08 dB | 1.79 dB | none, the input itself reads 1.71 |
+| Real speech, 99th percentile frame level change | 2.40 dB | 2.42 dB | 3 dB |
+| CPU, voice at 180 Hz, 48 kHz stereo | 2.45% | 3.24% | 8% |
+
+Bold now passes. One limit now fails that passed: on the first held out set, one case comes out 1.69 dB louder against 1.5. The first held out set was looked at while tuning this version, so it is no longer clean. A second held out set was written for 1.3.0 before any of it was run, and run once at the end, with 1.2.1 on the same voices for comparison. Neither set reaches 4%.
+
 ## 1.2.1, 2026-11-07
 
 Renamed to Tune Pro, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.

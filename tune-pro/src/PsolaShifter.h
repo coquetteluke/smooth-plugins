@@ -33,6 +33,7 @@ public:
         bool plainGrains = true;     // the grains carry the voice itself, not a whitened voice, so their formants need help
         bool centreOnPulses = false; // line grains up with the pulses in a whitened voice
         double pulseLowestHz = 0.0;  // no lining up below this pitch
+        double downReadPower = 0.2;  // whitened grains read slower by the shift to this power when going down
     };
 
     void prepare (double sampleRate, int numChannels)
@@ -433,8 +434,9 @@ private:
                 else if (c.plainGrains && planned != Plan::locked && ratio < 1.0 - 1.0e-4)
                     next.rate *= std::pow (ratio, 0.1);
                 // Whitened grains still pull the first formant up a little when going down. Measured on the test voices, as for plain grains.
+                // High Quality's sweep model does not, so it turns this off.
                 else if (! c.plainGrains && planned != Plan::locked && ratio < 1.0 - 1.0e-4)
-                    next.rate *= std::pow (ratio, 0.2);
+                    next.rate *= std::pow (ratio, c.downReadPower);
             }
         }
 

@@ -77,7 +77,7 @@ Input > pitch tracker > corrector > vocal tract model takes the tract out > grai
 - `src/TuneEngine.h`: one whole path, and the two engines' timing. `src/PluginProcessor.cpp` owns two of these and hands over between them.
 - `src/PitchTracker.h`: from Smooth Tune. Marks now slide 5 times slower towards the loudest point, a fix found while building Smooth Harmony.
 - `src/PsolaShifter.h`: from Smooth Tune. Grains now carry the whitened voice and centre on its pulses, below 400 Hz. Classic uses the old plain grains.
-- `src/EnvelopeFilter.h`: new. Linear prediction lattice filters, computed every 2.5 ms. With nothing shifted the pair cancels exactly, so consonants and uncorrected notes pass unharmed. On high voices the model is drawn through the harmonic peaks, because a direct fit locks on to single harmonics. While shifting it narrows the lowest formants, by how far the harmonics there have moved, up to half a spacing.
+- `src/EnvelopeFilter.h`: new. Linear prediction lattice filters, computed every 2.5 ms. With nothing shifted the pair cancels exactly, so consonants and uncorrected notes pass unharmed. On high voices the model is drawn through the harmonic peaks, because a direct fit locks on to single harmonics. While shifting it narrows the lowest formants, by how far the harmonics there have moved, up to half a spacing. In High Quality, below 350 Hz, it also remembers each harmonic's level where it was heard for about a fifth of a second, up to 2.5 kHz, so a glide or vibrato fills in the formant peaks that sit between harmonics. It lets that memory go when the pitch moves faster than 30 semitones a second.
 - `src/PitchCorrector.h`: target note, Retune Speed, Flex Tune, Humanize, vibrato, MIDI targets, Classic.
 - `src/TuneEditor.cpp` and `src/window/`: the window. Separate from the DSP.
 
@@ -90,13 +90,13 @@ All in `tests/results.txt`, on both engines. Limits are in `tests/PassLimits.h`.
 
 | | Smooth Tune | Low Latency | High Quality | Limit |
 |---|---|---|---|---|
-| First formant flatter than a real voice | 11.6 dB | 10.0 dB | 6.8 dB | 11.6, 7 |
-| Formant move, +/-1 to +/-3 semitones | 4.98% | 4.43% | **4.24%** | 5, 4 |
-| Level change at those shifts | 1.15 dB | 1.47 dB | 1.45 dB | 1.5 |
+| First formant flatter than a real voice | 11.6 dB | 10.0 dB | 6.0 dB | 11.6, 7 |
+| Formant move, +/-1 to +/-3 semitones | 4.98% | 4.43% | 3.32% | 5, 4 |
+| Level change at those shifts | 1.15 dB | 1.47 dB | 1.10 dB | 1.5 |
 | Output pitch at instant speed, worst | 3.44 cents | 2.53 cents | 0.89 cents | 5 |
-| Non-harmonic energy, 30 cents corrected | -47.5 dB | -46.1 dB | -44.1 dB | -35 |
-| Big shifts +/-7, move against a real voice | n/a | 6.3% | 5.9% | 8 |
-| High notes, first formant against its surroundings | 11.8 dB, plain grains | 13.6 dB | **13.5 dB** | 9 |
+| Non-harmonic energy, 30 cents corrected | -47.5 dB | -46.1 dB | -45.9 dB | -35 |
+| Big shifts +/-7, move against a real voice | n/a | 6.3% | 2.1% | 8 |
+| High notes, first formant against its surroundings | 11.8 dB, plain grains | 13.6 dB | **13.2 dB** | 9 |
 
 Bold fails its limit. See below.
 
@@ -113,16 +113,17 @@ Bold fails its limit. See below.
 
 ## What does not pass, and what the numbers do not say
 
-- **High Quality formant move is 4.24%, against a 4% limit I set.** It beats Smooth Tune's 4.98% and I did not loosen it.
-- **High notes still read flat.** Around 440 and 660 Hz the first formant reads 13.5 dB flatter than a real voice, against a 9 dB limit, and the model does not beat plain grains on this one number (11.8 dB). Harmonics there are wider apart than a formant, so on a held note the peak's height is simply not in the input. What the model does fix there: formant position read against the input goes from 45% to 16.5%, and overall colour from 6.6 to 5.7 dB.
-- **Voices held out of all tuning fail three more limits.** These tests were added after 1.2.0 and nothing was tuned on them. Low voices, 98 to 220 Hz: formant move 5.82% against 4%. High voices, 392 to 740 Hz: first formant 16.8 dB flatter than a real voice against 9 dB. Held notes, each harmonic against a real voice: 4.59 dB on average against a 3.5 dB target set for a later version.
-- **Why the formant numbers stop here, measured on 2026-11-07.** The worst normal case is the vowel u at 165 Hz moved 1 semitone. On a held note, the harmonic that lands on the second formant comes out 4.8 dB weaker than a real voice, and the one just above the first formant 4 dB louder. The input's harmonics sit either side of those narrow peaks, so the model never sees how tall they are. Low Latency reads the same there, 4.4%. Sweeping blur, sharpening, grain reading speed and where the harmonic model starts moved this case by 0.4% at most, and every setting that helped the move broke the first formant height or level limits. Getting past it needs a model that works out peak heights the harmonics don't show, the same problem as high notes. One unfinished attempt at that, a fitted formant model, read 17.4% formant move and 18.0 dB flat on high notes, so it was not kept. It is saved in `git stash list`.
+- **High notes still read flat.** Around 440 and 660 Hz the first formant reads 13.2 dB flatter than a real voice, against a 9 dB limit, and the model does not beat plain grains on this one number (11.8 dB). Harmonics there are wider apart than a formant, so on a held note the peak's height is simply not in the input. The 1.3.0 memory is off above 350 Hz, because there even vibrato does not sweep a harmonic across the whole peak. What the model does fix there: formant position read against the input goes from 45% to 16.5%, and overall colour from 6.6 to 5.7 dB.
+- **Held out voices still fail four limits.** Nothing in 1.2.0 was tuned on the first set, but it was looked at while tuning 1.3.0, so it is no longer clean. Low voices, 98 to 220 Hz: formant move 4.24% against 4% (1.2.1: 5.82%), and one case 1.69 dB louder against 1.5 dB (1.2.1: 1.17 dB, so this one got worse). High voices, 392 to 740 Hz: first formant 16.5 dB flatter than a real voice against 9 dB. Held notes, each harmonic against a real voice: 4.59 dB on average against a 3.5 dB target set for a later version.
+- **A second held out set was written for 1.3.0 and run once, at the end.** Women's vowels at 175 to 262 Hz, from the Peterson and Barney table, with their own bandwidths. Formant move 6.32% against 4%. 1.2.1 on the same voices reads 11.2%, so the change holds up on voices it never saw, but it does not reach the limit. Colour against a real voice 1.79 dB, where the input itself reads 1.71 dB.
+- **Why the formant numbers stop here.** On a held note with no vibrato at all, nothing sweeps the harmonics, so 1.3.0 behaves like 1.2.1: the input's harmonics sit either side of narrow peaks and the model never sees how tall they are. Measured on 2026-11-07 on the vowel u at 165 Hz moved 1 semitone: the harmonic that lands on the second formant came out 4.8 dB weaker than a real voice. Real singing nearly always moves a little, which is why the memory helps, but a dead straight note still needs a model that works out peak heights the harmonics don't show. One unfinished attempt at that, a fitted formant model, read 17.4% formant move and 18.0 dB flat on high notes, so it was not kept. It is saved in `git stash list`.
 - **Three limits were changed after measuring, each because it could not be read:**
   1. High note formant move was 8% against the input. The input and a real voice with the same vocal tract already read 14.9% apart there, so it is now 2% beyond that floor.
   2. Big shift formant move stays 8%, but reads against a real voice, because the input against a real voice reads 10.5%.
   3. High note and big shift peak height reads against the peak's surroundings. Smooth Tune's version compares it with half the formant's frequency, which on high notes is below the lowest harmonic.
-- The first formant numbers lean on a sharpening amount, a grain speed factor and a level trim set on these test voices, with thin margins. The vowels and pitches in the second formant set were included in that tuning, so nothing here is a clean held-out test.
-- Colour on big shifts got worse with sharpening: 3.3 dB, against 1.8 dB with a stronger fade-out. I kept the setting that meets the move limit.
+- The first formant numbers lean on a sharpening amount, a level trim and the memory's settings, all set on these test voices. The vowels and pitches in the second formant set were included in that tuning, so only the second held out set is a clean test.
+- Colour on big shifts is 1.7 dB, down from 3.3 dB in 1.2.1, because 1.3.0 needs far less sharpening.
+- Real speech with the memory on: the worst 1% of frames change level by 2.42 dB, against 2.40 dB in 1.2.1 and a 3 dB limit. Correction on speech lands 0.1 to 0.5 cents further from the note, median, on the four test voices, for example 2.5 to 3.0 cents.
 - Tests changed for honest reasons: a steady voice repeats, so delay on a voice is read only around the reported delay; the onset test moved from 40 to 25 cents sharp, because 40 lands on the far side of the note line.
 
 `build/PluginTest_artefacts/Release/PluginTest demo` writes corrected `say` files for both engines to `build/demo`, to listen to outside any host.

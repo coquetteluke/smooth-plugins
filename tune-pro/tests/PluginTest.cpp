@@ -659,6 +659,46 @@ void testHeldOut()
     chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
 }
 
+// A second held out set, written for 1.3.0 after the first set had been looked at while tuning it, and run once at the end. Women's
+// published averages (Peterson and Barney, 1952) at speaking and low singing pitches, 175 to 262 Hz, with their own bandwidths, breath
+// and source tone. Nothing was tuned on these.
+void testHeldOutSecond()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; };
+    const std::vector<Held> voices {
+        { { { 310, 2790, 3310, 4000, 5000 }, { 45, 110, 140, 180, 220 }, "i women" }, { -50.0, 3000.0 } },
+        { { { 610, 2330, 2990, 4000, 5000 }, { 70, 110, 150, 180, 220 }, "eh women" }, { -35.0, 0.0 } },
+        { { { 860, 2050, 2850, 4000, 5000 }, { 90, 120, 150, 180, 220 }, "ae women" }, { -55.0, 5000.0 } },
+        { { { 370, 950, 2670, 4000, 5000 }, { 55, 90, 140, 180, 220 }, "u women" }, { -45.0, 0.0 } },
+        { { { 500, 1640, 1960, 4000, 5000 }, { 60, 90, 110, 180, 220 }, "er women" }, { -60.0, 2000.0 } } };
+    FormantScore score;
+    double heldMean = 0.0;
+    int heldCount = 0;
+    for (const auto& h : voices)
+    {
+        gStyle = h.style;
+        for (double centre : { 175.0, 208.0, 262.0 })
+            for (int shift : { 3, -3, 2, -2, 1, -1 })
+            {
+                scoreFormants (score, h.v, centre, shift, wideRange);
+                heldMean += heldNoteError (h.v, centre, shift, wideRange).rmsDb;
+                ++heldCount;
+            }
+    }
+    gStyle = {};
+    chk (score.move <= prolimits::hqFormantMove, "second held out set, women's vowels 175 to 262 Hz, worst formant move against the input", score.move * 100.0, "%");
+    note ("  and the tool's floor there", score.floor * 100.0, "%");
+    note ("  the same output against a real voice at the new pitch, worst", score.moveReal * 100.0, "%");
+    chk (score.level <= prolimits::hqLevelChangeDb, "  level change, worst", score.level, "dB");
+    note ("  first formant against its surroundings, flatter than a real voice, worst", score.peakFlatter, "dB");
+    note ("  first formant sharper than a real voice, worst", score.peakSharper, "dB");
+    note ("  colour, worst", score.colour, "dB");
+    note ("  and the input against that real voice, worst", score.colourFloor, "dB");
+    note ("  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+}
+
 // ----------------------------------------------------------------------------------------------- Low Latency null test
 
 std::vector<float> loadWav (const char* name);
@@ -2693,6 +2733,7 @@ int main (int argc, char** argv)
     if (want ("engines")) testEngines();
     gEngine = 1;
     if (want ("heldout")) testHeldOut();
+    if (want ("heldout2")) testHeldOutSecond();
     gEngine = 0;
     if (want ("llnull")) testLowLatencyNull();
     if (want ("window")) testWindow();

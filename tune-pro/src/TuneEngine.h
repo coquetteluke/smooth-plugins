@@ -75,7 +75,9 @@ public:
             envelope.configure (lowLatencyWindowSeconds, 0.0, lowLatencyFallShare);
         // Without lookahead the direct fit can lock on to a harmonic sitting on the first formant, and its level then swings when the harmonic moves away.
         envelope.setHarmonicModelFrom (mode == highQuality ? 300.0 : 130.0);
-        envelope.setSharpen (mode == highQuality ? 0.5 : 0.35);
+        // High Quality remembers the harmonics as the pitch moves, which shows the formant peaks far better, so it needs much less sharpening.
+        envelope.setSharpen (mode == highQuality ? 0.1 : 0.35);
+        envelope.setSweepMemory (mode == highQuality ? 0.2 : 0.0, 350.0);
         ahead = envelope.getLookahead();
         levelGain = 1.0;
         passMix = 1.0;
@@ -245,6 +247,7 @@ private:
         control.centreOnPulses = true;
         // Low Latency's model lags the voice, which matters most on low voices, whose periods are long against it. It leaves those alone.
         control.pulseLowestHz = mode == highQuality ? 0.0 : 130.0;
+        control.downReadPower = mode == highQuality ? 0.0 : 0.2;
         envelope.setStrength (shared.settings.classic ? 0.0 : 1.0);
     }
 

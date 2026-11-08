@@ -90,12 +90,17 @@ public:
         formantScale = shiftRatio = gainNow = 1.0;
         kAnalysis.fill (0.0);
         kSynthesis.fill (0.0);
+        clearSweep();
+        forgetGlide();
     }
 
     int getLookahead() const noexcept { return lookahead; }
 
     // From this pitch up, the model is drawn through the harmonic peaks instead of fitted directly.
     void setHarmonicModelFrom (double hz) noexcept { harmonicModelFromHz = hz; }
+    // Below toHz, each harmonic's level is kept where it was heard for about this many seconds, and the model is drawn through all of
+    // them. 0 is off.
+    void setSweepMemory (double seconds, double toHz) noexcept { sweepSeconds = seconds; sweepToHz = toHz; clearSweep(); forgetGlide(); }
     // How much the lowest formants are narrowed once harmonics have moved half a spacing or more. 0 is not at all.
     void setSharpen (double amount) noexcept { sharpenMax = amount; }
 
@@ -232,8 +237,12 @@ private:
             std::fill (kS, kS + maxOrder, 0.0);
             return;
         }
-        const bool throughHarmonics = periodNow > 0.0 && sr / periodNow >= harmonicModelFromHz;
-        if (throughHarmonics)
+        const double f0Now = periodNow > 0.0 ? sr / periodNow : 0.0;
+        const bool sweepOn = sweepSeconds > 0.0 && f0Now > 0.0 && f0Now < sweepToHz;
+        if (! sweepOn) { clearSweep(); forgetGlide(); }
+        const bool sweeping = sweepOn && envelopeThroughSweep();
+        const bool throughHarmonics = sweeping || (f0Now > 0.0 && f0Now >= harmonicModelFromHz);
+        if (throughHarmonics && ! sweeping)
             envelopeThroughHarmonics();
 
         // Blur the power spectrum a little, so a peak follows the shape and not one harmonic. A small floor keeps it stable.
@@ -304,6 +313,110 @@ private:
             logPower[(size_t) gridAt] = previousLog;
 
         spectrumToAutocorrelation (1.0);
+    }
+
+    void clearSweep() noexcept
+    {
+        if (! sweepEmpty) { sweepNum.fill (0.0); sweepDen.fill (0.0); sweepEmpty = true; }
+    }
+    void forgetGlide() noexcept { lastSweepF0 = 0.0; sweepGlide = 0.0; }
+
+    // A held note's harmonics sit either side of a narrow formant, so no one moment shows how tall it is. As the pitch moves, by a
+    // glide or vibrato, they sweep across it, and over a fifth of a second or so they sample it far more densely. Each harmonic's level
+    // is kept where it was heard, against that moment's average level, and fades out over sweepSeconds. The model is drawn through all
+    // of those points. Returns false, leaving r alone, when this moment should use the other models instead.
+    bool envelopeThroughSweep() noexcept
+    {
+        std::fill (fftBuffer.begin(), fftBuffer.end(), 0.0f);
+        std::copy_n (windowed.data(), std::min (windowLength, fftSize), fftBuffer.data());
+        DSPSplitComplex split { fftReal.data(), fftImag.data() };
+        vDSP_ctoz ((const DSPComplex*) fftBuffer.data(), 2, &split, 1, (vDSP_Length) fftSize / 2);
+        vDSP_fft_zrip (fftSetup, &split, 1, (vDSP_Length) fftOrder, kFFTDirection_Forward);
+        fftPower[0] = fftReal[0] * fftReal[0];
+        fftPower[(size_t) fftSize / 2] = fftImag[0] * fftImag[0];
+        fftImag[0] = 0.0f;
+        vDSP_zvmags (&split, 1, fftPower.data(), 1, (vDSP_Length) fftSize / 2);
+
+        const double f0 = sr / periodNow, binsPerHz = fftSize / sr;
+        int count = 0, referenceCount = 0;
+        double reference = 0.0;
+        for (int h = 1; h * f0 < 0.5 * sr - f0 && count < maxSweepHarmonics; ++h)
+        {
+            const double centre = h * f0;
+            const int from = std::max (1, (int) ((centre - 0.3 * f0) * binsPerHz));
+            const int to = std::min (fftSize / 2, (int) ((centre + 0.3 * f0) * binsPerHz) + 1);
+            float peak = 0.0f;
+            vDSP_maxv (fftPower.data() + from, 1, &peak, (vDSP_Length) (to - from + 1));
+            heardHz[(size_t) count] = centre;
+            heardLog[(size_t) count] = std::log ((double) peak + 1.0e-12);
+            if (centre < 4000.0) { reference += heardLog[(size_t) count]; ++referenceCount; }
+            ++count;
+        }
+
+        // How fast the pitch is moving, in semitones a second. A fast fall or rise, as at the end of a spoken phrase, smears the
+        // harmonics within the window, so the levels found are not the harmonics' own. Measured on real speech: without this, a fall
+        // left a 60 ms hole of 8 dB.
+        const double moved = lastSweepF0 > 0.0 ? std::abs (12.0 * std::log2 (f0 / lastSweepF0)) * sr / hop : 0.0;
+        lastSweepF0 = f0;
+        sweepGlide += (moved > sweepGlide ? 0.5 : 0.1) * (moved - sweepGlide);
+        if (referenceCount == 0 || sweepGlide > sweepGlideMax)
+        {
+            clearSweep();
+            return false;
+        }
+        reference /= referenceCount;
+
+        const double keep = std::exp (-(double) hop / (sweepSeconds * sr));
+        for (auto& x : sweepNum) x *= keep;
+        for (auto& x : sweepDen) x *= keep;
+        for (int n = 0; n < count && heardHz[(size_t) n] < sweepTopHz; ++n)
+        {
+            const double at = heardHz[(size_t) n] / sweepBinHz;
+            const int low = (int) at;
+            if (low + 1 >= sweepBins) break;
+            const double f = at - low, value = heardLog[(size_t) n] - reference;
+            sweepNum[(size_t) low] += (1.0 - f) * value; sweepDen[(size_t) low] += 1.0 - f;
+            sweepNum[(size_t) low + 1] += f * value; sweepDen[(size_t) low + 1] += f;
+        }
+        sweepEmpty = false;
+
+        // Points: below sweepTopHz every bin heard often enough lately, at its average level. Above it this moment's harmonics as they
+        // are, as high numbered ones move too far between moments to be worth remembering. Straight lines between points, in log.
+        const double gridHz = 0.5 * sr / gridSize;
+        double previousHz = 0.0, previousLog = 0.0;
+        bool first = true;
+        int gridAt = 0, above = 0;
+        while (above < count && heardHz[(size_t) above] < sweepTopHz) ++above;
+        for (int i = 0; i < sweepBins + (count - above); ++i)
+        {
+            double hz, value;
+            if (i < sweepBins)
+            {
+                if (sweepDen[(size_t) i] < sweepMinWeight) continue;
+                hz = i * sweepBinHz;
+                value = sweepNum[(size_t) i] / sweepDen[(size_t) i] + reference;
+            }
+            else
+            {
+                hz = heardHz[(size_t) (above + i - sweepBins)];
+                value = heardLog[(size_t) (above + i - sweepBins)];
+            }
+            if (first) { previousLog = value; first = false; }
+            for (; gridAt <= gridSize && gridAt * gridHz <= hz; ++gridAt)
+            {
+                const double t = hz > previousHz ? (gridAt * gridHz - previousHz) / (hz - previousHz) : 1.0;
+                logPower[(size_t) gridAt] = previousLog + t * (value - previousLog);
+            }
+            previousHz = hz;
+            previousLog = value;
+        }
+        if (first)
+            return false;
+        for (; gridAt <= gridSize; ++gridAt)
+            logPower[(size_t) gridAt] = previousLog;
+
+        spectrumToAutocorrelation (1.0);
+        return true;
     }
 
     // logPower on the grid, read with its frequency axis scaled, to autocorrelation in r.
@@ -398,6 +511,14 @@ private:
     static constexpr double minBlurHz = 15.0, blurShare = 0.35;
 
     double harmonicModelFromHz = 300.0, sharpenMax = 0.5;
+
+    // The sweep memory: 5 Hz bins up to 2.5 kHz. Faster than sweepGlideMax semitones a second it is let go.
+    static constexpr double sweepBinHz = 5.0, sweepTopHz = 2500.0, sweepMinWeight = 0.3, sweepGlideMax = 30.0;
+    static constexpr int sweepBins = (int) (sweepTopHz / sweepBinHz), maxSweepHarmonics = 400;
+    double sweepSeconds = 0.0, sweepToHz = 0.0, lastSweepF0 = 0.0, sweepGlide = 0.0;
+    std::array<double, sweepBins> sweepNum {}, sweepDen {};
+    std::array<double, maxSweepHarmonics> heardHz {}, heardLog {};
+    bool sweepEmpty = false;
     double sr = 48000.0, strength = 1.0, formantScale = 1.0, periodNow = 0.0, shiftRatio = 1.0, gainNow = 1.0;
     int channels = 2, order = 32, hop = 120, ringSize = 32768, windowLength = 1920, lookahead = 0, numSets = 128;
     long long count = 0;

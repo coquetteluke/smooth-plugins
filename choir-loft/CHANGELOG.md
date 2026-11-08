@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.1, 2026-11-08
+
+Breaths sing less. A voice now starts only when the lead's even harmonics repeat as well: the sound plus itself half a period later cancels a lone formant's ring, and a voice's 2nd, 4th... harmonics still repeat a period later (`evenDip` in `src/PitchTracker.h`, fresh starts only).
+
+- Breaths through a closed vowel no longer make a voice sing. Worst breath now, through an open vowel: 29.8% of the time, longest 70 ms (1.4.0: 54.5%, 190 ms, limit 1% and 20 ms, still failing).
+- Voices singing another note first at the default preset: 2 to 1 of 432. Tight breathy starts, 95th percentile: 76 to 72 ms.
+- Hard starts, 95th percentile: 26 to 17 ms at the default, 28 to 20 ms on Tight. Starts after a 100 ms gap and s into the vowel are about 3 ms later at the median, under their limits. `say` starts: all 58 sound, median 21.7 ms (1.4.0: 21.3).
+
+Tried and dropped: a 30 ms periodicity check passed the breath test fully but made starts after a consonant, fry or breath 10 to 18 ms later and `say` starts 4.7 ms later. Correcting octave high readings by doubling them let more breath through.
+
+Still failing: breathy starts on high notes (72 to 73 ms against 40), breaths through an open vowel, and one wrong first note each at the default (breathy) and Tight (vibrato starting exactly between two notes). Latency unchanged. No parameter changed.
+
 ## 1.4.0, 2026-11-08
 
 Voices come in on the right note at the start of a phrase. Luke heard Choir Loft miss vocal starts on his real vocals in Logic.

@@ -752,6 +752,21 @@ inline void testNoTrigger()
                 auto p = setup (variant, type, true);
                 const Out o = run (*p, s.x);
                 const int frame = (int) (0.01 * SR);
+                if (std::getenv ("SH_NOTRIG_LIST") != nullptr)
+                {
+                    double worst = 0.0;
+                    for (int v = 0; v < 2; ++v)
+                    {
+                        int singing = 0, frames = 0;
+                        for (int at = o.latency + frame; at + frame < n; at += frame)
+                        {
+                            const double in = rms (s.x.data() + at - o.latency, frame), out = rms (o.ch[(size_t) v].data() + at, frame);
+                            ++frames; if (in > 1.0e-6 && out > in * 0.1) ++singing;
+                        }
+                        worst = std::max (worst, (double) singing / std::max (1, frames));
+                    }
+                    std::printf ("notrigger %s, %s, %s: %.3f\n", s.name, variantNames[variant], typeNames[type], worst);
+                }
                 for (int v = 0; v < 2; ++v)
                 {
                     int singing = 0, frames = 0, runNow = 0, longest = 0;

@@ -267,7 +267,14 @@ private:
         if (looksVoiced)
         {
             unvoicedVotes = 0;
-            if (! voiced)
+            // A start must repeat in its even harmonics too. Breath through a closed vowel rings one narrow formant and passes for a note: the
+            // sound plus itself half a period later cancels that ring, as it cancels a voice's fundamental and odd harmonics, but a voice's
+            // even harmonics are left and repeat a period later. A reading an octave high fails the same way, its odd multiples flipping sign.
+            if (! voiced && evenDip (tauCurrent * decimation) > evenLimit)
+            {
+                voicedVotes = 0;
+            }
+            else if (! voiced)
             {
                 const bool steady = voicedVotes == 0 || std::abs (tauCurrent / votedTau - 1.0) < 0.05;
                 voicedVotes = steady ? voicedVotes + 1 : 1;
@@ -408,6 +415,37 @@ private:
             return std::min ({ v[0], v[1], v[2] });
         return std::max (0.0f, v[1] - (v[0] - v[2]) * (v[0] - v[2]) / (8.0f * curve2));
     }
+
+    // How well the even harmonics repeat a period later, as a normalised difference over two windows at full rate. The sound plus itself half
+    // a period later cancels the fundamental and every odd harmonic, and with them a lone resonance at that frequency.
+    float evenDip (double lagExact) const noexcept
+    {
+        const int span = std::min (window * decimation * 2, fastSize / 4);
+        const int lag = (int) std::lround (lagExact), half = (int) std::lround (0.5 * lagExact);
+        const int stride = std::max (1, span / 400);
+        const long long start = now() - span + 1;
+        if (start - lag - half - 2 < 0 || lag < 6)
+            return 0.0f;
+        float best = 2.0f;
+        for (int l = lag - 1; l <= lag + 1; ++l)
+        {
+            const float* a = fastAt (start);
+            const float* ah = fastAt (start - half);
+            const float* b = fastAt (start - l);
+            const float* bh = fastAt (start - l - half);
+            float c = 0.0f, ea = 0.0f, eb = 0.0f;
+            for (int i = 0; i < span; i += stride)
+            {
+                const float x = a[i] + ah[i], y = b[i] + bh[i];
+                c += x * y; ea += x * x; eb += y * y;
+            }
+            const float den = ea + eb;
+            best = std::min (best, den > 1.0e-12f ? 1.0f - 2.0f * c / den : 1.0f);
+        }
+        return best;
+    }
+
+    static constexpr float evenLimit = 1.0f;   // a start's even harmonics must repeat at least this well (1 is no match at all)
 
     static bool isOctaveRelated (double ratio) noexcept
     {

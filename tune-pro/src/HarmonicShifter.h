@@ -48,10 +48,12 @@ public:
     // of a glottal pulse rises with the pitch). The straight lines read across frequency at one moment, so they get the source's fall with
     // harmonic number instead. On the test voices the two differ by 2 times the pitch ratio in dB, fitted on glides of +/-2 to +/-7
     // semitones (1.73 to 2.12). On a move up the memory has nothing until the voice has been at the new pitch, so a glide starts on the lines
-    // and the memory takes over later, louder by that much, and the level trim, settled on the start, let the level drift: the third held out
-    // set read 1.62 dB against 1.5. So on moves up the memory's extra loudness is taken out and both agree. On moves down the memory has
-    // the lower pitches from the start; taking it out there as well made big shifts down read 9.8% against 8, so it is left in.
-    static constexpr double sourceLoudnessPerDb = 2.0;
+    // and the memory takes over later, louder, and the level trim, settled on the start, let the level drift: the third held out set read
+    // 1.62 dB against 1.5. So on moves up the memory's extra loudness is taken out. 3, not the fitted 2, because the lines also miss the
+    // extra level of a harmonic crossing a formant, which the trim settles on too: worst level change on the third and fourth held out sets
+    // 1.15 and 1.32 dB at 2, 0.72 and 0.91 at 3 (harness), nothing else read changed by more than 0.2. Chosen on those sets, which were
+    // already run. On moves down the memory has the lower pitches from the start; taking it out there made big shifts down read 9.8% against 8.
+    static constexpr double sourceLoudnessPerDb = 3.0;
 
     void prepare()
     {

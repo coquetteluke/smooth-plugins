@@ -98,7 +98,12 @@ Latency 0 at all rates. Output bit identical over 720 blocks, including NaN and 
 Other results:
 
 - Melody only, Single Voice: 98.6% exact, 100% within related keys. Full Mix: 100% and 100%. These tunes land on the tonic often, which real melodies may not.
-- Still failing: Fast follows 87.5% of key changes within 30 s, against 90%, with a 9.11 s median against 8. Most misses are a minor loop of i, iv, VII, III, the same chords as vi, ii, V, I in the relative major, which Fast drifts to later. Fast's median moved between 6.2 and 10.3 s from one seed to the next, so one seed says little about it.
+- Still failing: Fast follows 87.5% of key changes within 30 s, against 90%, with a 9.11 s median against 8. Most misses are a minor loop of i, iv, VII, III, the same chords as vi, ii, V, I in the relative major, which Fast drifts to later. Fast's median moved between 6.2 and 10.3 s from one seed to the next, so one seed says little about it. Looked at again on 2026-11-08, with no change kept:
+  - Where the time goes, on dev seeds 1000 to 1005: key changes to a far key (2 or 3 notes shared) settle in 4.5 to 6.4 s; to a close key (5 or 6 notes shared) in 9.6 to 9.9 s, and those hold most of the misses. A close key adds one or two new notes, too few for the 30% outside share, so the old memory is never let go and Fast waits for it to fade.
+  - Test chords last 1.5 to 2.5 s, so a loop of four takes about 8 s. Telling a key from the one a fifth away often needs the whole loop, so a median of 8 s sits close to what the music shows.
+  - Tried, each for Fast only: hold, dwell, margin, memory and recent memory lengths, outside share, waiting until the new key leads its close neighbours, waiting after a let go, and letting go on one strong outside note. None moved the median reliably: results swing by 0.4 s between neighbouring settings.
+  - The best, letting go on one outside note with 6% of the recent notes, followed 93.8% to 95.8% on six unseen dev seeds (1006 to 1011), median 8.3 s both, but on clips with no key change Fast read the right key 98.1% to 95.8% and moved back and forth 82 to 122 times. At 8% that cost went away and so did the gain (94.4%). Not kept.
+  - `tests/KeyEval.cpp` now takes `fastonly 1` to skip Stable and `all 1` with `verbose 1` to print every clip's readings.
 - Key changes all ended on the right key or its relative.
 - A loop heard from its second chord: 65.0% exact, 100% within related keys. With the opening chord gone, some loops can't be told from their relative. This is the main weakness to expect on real songs joined midway.
 - Silence from the start: no key and no file. White noise: no key.

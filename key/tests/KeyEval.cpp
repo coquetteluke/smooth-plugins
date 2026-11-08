@@ -13,7 +13,7 @@ int main (int argc, char** argv)
 {
     const int every = argc > 1 ? std::atoi (argv[1]) : 3;        // keep it quick: every Nth tonic
     KeyAnalyser::Knobs knobs;
-    bool chordsOnly = false, verbose = false;
+    bool chordsOnly = false, verbose = false, fastOnly = false, allClips = false;
     unsigned seed = limits::devSeed;       // tune on dev seeds only: 1000, 1001, 1002 ...
     int seeds = 1;                         // key changes are only 24 clips a seed, so tuning looks at several
     int parts = 31;                        // 1 chords, 2 key changes, 4 Fast chords, 8 melody, 16 loop from its second chord
@@ -46,6 +46,8 @@ int main (int argc, char** argv)
         else if (k == "home") knobs.homeChordWeight = v;
         else if (k == "lead") knobs.firstLeadStable = v;
         else if (k == "verbose") verbose = v > 0.0;
+        else if (k == "fastonly") fastOnly = v > 0.0;
+        else if (k == "all") allClips = v > 0.0;
         else if (k == "seed") seed = (unsigned) v;
         else if (k == "seeds") seeds = (int) v;
         else if (k == "parts") parts = (int) v;
@@ -105,6 +107,7 @@ int main (int argc, char** argv)
 
     if (parts & 2) for (auto response : { smoothkey::Response::stable, smoothkey::Response::fast })
     {
+        if (fastOnly && response == smoothkey::Response::stable) continue;
         std::vector<double> times;
         int followed = 0, total = 0;
         for (int sd = 0; sd < seeds; ++sd)
@@ -130,7 +133,7 @@ int main (int argc, char** argv)
                 ++total;
                 const bool good = tr.settle >= 0.0 && tr.finalKey == want;
                 if (good) { ++followed; ++seedFollowed; times.push_back (std::max (0.0, tr.settle - 24.0)); seedTimes.push_back (std::max (0.0, tr.settle - 24.0)); }
-                if (verbose && (! good || (response == smoothkey::Response::fast && tr.settle - 24.0 > 8.0)))
+                if (verbose && (! good || allClips || (response == smoothkey::Response::fast && tr.settle - 24.0 > 8.0)))
                 {
                     std::printf ("  %s seed %u: %s %d>%s %s want %d:", good ? "slow" : "MISS", kcSeed, ps[p1].name, from, ps[p2].name, ts[timbre].name, want);
                     for (auto& h : tr.history) std::printf (" %.1f=%d", h.first, h.second);

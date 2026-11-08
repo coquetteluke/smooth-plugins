@@ -908,7 +908,10 @@ private:
 
     static constexpr int tapCount = 12, phases = 1024;
     static constexpr double trustDb = 10.0;   // a harmonic this far over the noise between harmonics keeps its own level
-    static constexpr double weakBoostDb = 12.0; // a weaker one is raised at most this much towards the level it should have
+    // A weaker one is raised at most this much towards the level it should have. On a glide the harmonics move within a frame, so high ones
+    // spill into the bins between them and read as weak though they are not. At 12 dB a big shift down could not lift them far enough to
+    // where they land: e at 165 Hz down 7 lost F4 entirely, 20 dB under a real voice, and big shifts read 6.7% against 8. At 24, 1.1%.
+    static constexpr double weakBoostDb = 24.0;
 
     double sr = 48000.0;
     int channels = 2, size = 32768, latency = 0;

@@ -58,6 +58,7 @@ void scoreCase (Score& s, const voice::Vowel& v, double centre, int shift, const
     s.level = std::max (s.level, std::abs (lvl));
     if (getenv ("SHOWLVL")) for (long at = 0; at + 9600 <= (long) in.size(); at += 9600) std::printf ("      t %.1f f0 %.0f out-in %+.2f real-in %+.2f\n", at / SR, f0[(size_t) at], toDb (rms (out.data() + at, 9600)) - toDb (rms (in.data() + at, 9600)), toDb (rms (control.data() + at, 9600)) - toDb (rms (in.data() + at, 9600)));
     if (getenv ("DUMP")) std::printf ("    %s %.0f %+d: move %.2f%% flat %.2f peak %.2f level %+.2f real %+.2f\n", v.name, centre, shift, 100 * mv, flatten, pf, lvl, toDb (rms (control.data() + from, n)) - toDb (rms (in.data() + from, n)));
+    if (getenv ("SMOOTHED")) for (size_t hz = 300; hz <= 4500; hz += 100) std::printf ("      %zu real %.1f out %.1f in %.1f\n", hz, want[hz], got[hz], inS[hz]);
     if (getenv ("FINE")) for (size_t hz = 300; hz <= 1300; hz += 50) std::printf ("      %zu real %.1f out %.1f\n", hz, fine[hz], fineOut[hz]);
 }
 std::vector<float> wav (const char* path)

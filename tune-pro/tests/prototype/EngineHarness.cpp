@@ -3,6 +3,8 @@
 //      3, 4, 5 (the third, fourth and fifth held out sets, already run, so regression tests), v (vowel change), one3 / one5 <voice> <centre> <shift>, wav <file> [l].
 //      Several letters run several groups. DUMP=1 prints each case, BANDS=1 each band, SHOWLVL=1 the level every 0.2 s, FROM=<s> starts the reading later.
 // Runs the plug-in's TuneEngine directly on the test voices, to read the same numbers without JUCE.
+// Also: a (non-harmonic energy on steady voices), rand <seed> (held notes on random plausible vowels), styled (dev vowels with breath and darker sources)
+#include <random>
 #include "PrototypeAnalysis.h"
 #include "TuneEngine.h"
 using namespace smoothtune;
@@ -101,8 +103,38 @@ int main (int argc, char** argv)
         return 0;
     }
     const std::string t = argc > 1 ? argv[1] : "h";
+    const bool word = t == "rand" || t == "styled" || t == "heldvowel";
+    if (t == "heldvowel")
+    {
+        // A vowel change in the middle of a held note: after it, each harmonic against a real voice singing the new vowel, from 0.15 s
+        // and from 0.4 s after the change, against the same reading on the new vowel alone.
+        const std::pair<const voice::Vowel*, const voice::Vowel*> pairs[] = { { &voice::vowelA, &voice::vowelI }, { &voice::vowelI, &voice::vowelA }, { &voice::vowelU, &voice::vowelE }, { &voice::vowelO, &voice::vowelAe } };
+        for (double after : { 0.15, 0.4 })
+        {
+            double sumMixed = 0, sumAlone = 0; int count = 0;
+            for (const auto& pr : pairs) for (double c : { 440.0, 600.0 }) for (int sh : { 3, -3 })
+            {
+                const double r = std::pow (2.0, sh / 12.0), moved = c * r;
+                const auto x1 = styledVoice (voice::steady (c, 2.4, SR), *pr.first, {}), x2 = styledVoice (voice::steady (c, 2.4, SR), *pr.second, {});
+                std::vector<float> x (x1.size());
+                const size_t at = (size_t) (1.0 * SR), fade = (size_t) (0.03 * SR);
+                for (size_t i = 0; i < x.size(); ++i) { const double u = i < at ? 0.0 : i >= at + fade ? 1.0 : (double) (i - at) / fade; x[i] = (float) ((1 - u) * x1[i] + u * x2[i]); }
+                const auto real = styledVoice (voice::steady (moved, 2.4, SR), *pr.second, {});
+                auto score = [&] (const std::vector<float>& out)
+                {
+                    const long from = (long) ((1.0 + after) * SR), n = (long) (0.25 * SR);
+                    std::vector<double> d; double mean = 0;
+                    for (double hz = moved; hz <= 4000.0; hz += moved) { d.push_back (harmonicDb (out.data() + from, n, hz) - harmonicDb (real.data() + from, n, hz)); mean += d.back(); }
+                    mean /= d.size(); double s2 = 0; for (double v : d) s2 += (v - mean) * (v - mean);
+                    return std::sqrt (s2 / d.size());
+                };
+                sumMixed += score (runEngine (x, sh, gMode)); sumAlone += score (runEngine (x2, sh, gMode)); ++count;
+            }
+            std::printf ("vowel change on a held note, from %.2f s after: %.2f dB, the new vowel alone %.2f dB\n", after, sumMixed / count, sumAlone / count);
+        }
+    }
     if (getenv ("MODE")) gMode = atoi (getenv ("MODE"));
-    if (t.find ('f') != std::string::npos)
+    if (! word && t.find ('f') != std::string::npos)
     {
         Score s, other;
         for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU }) for (double c : { 110.0, 165.0 }) for (int sh : { 3, -3, 1, -1 }) scoreCase (s, *v, c, sh);
@@ -141,7 +173,7 @@ int main (int argc, char** argv)
         return 0;
     }
     if (t == "one") { Score s; const voice::Vowel* vs[] = { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO, &voice::vowelAe }; scoreCase (s, *vs[atoi (argv[2])], atof (argv[3]), atoi (argv[4])); return 0; }
-    if (t.find ('g') != std::string::npos)
+    if (! word && t.find ('g') != std::string::npos)
     {
         // dev vowels at the pitches and shifts the third held out set uses, to see whether anything there differs from the dev tests
         Score lo, hi;
@@ -152,7 +184,7 @@ int main (int argc, char** argv)
         }
         std::printf ("dev at 123/185: move %.2f%% level %.2f; at 233/311: move %.2f%% level %.2f\n", 100 * lo.move, lo.level, 100 * hi.move, hi.level);
     }
-    if (t.find ('3') != std::string::npos)
+    if (! word && t.find ('3') != std::string::npos)
     {
         // The third held out set (Hillenbrand), copied from testHeldOutThird. It has been run, so it is a regression test now, not a held out one.
         struct H { voice::Vowel v; VStyle st; int type; std::vector<double> centres; };
@@ -169,7 +201,7 @@ int main (int argc, char** argv)
         gType = 3;
         std::printf ("set 3: move %.2f%% (4) level %.2f dB (1.5)\n", 100 * s.move, s.level);
     }
-    if (t.find ('5') != std::string::npos)
+    if (! word && t.find ('5') != std::string::npos)
     {
         // The fifth held out set's singing voices (Catford), copied from testHeldOutFifth. Run already, so a regression test now.
         struct H { voice::Vowel v; VStyle st; };
@@ -183,7 +215,7 @@ int main (int argc, char** argv)
         for (const auto& h : hs) for (double c : { 415.0, 494.0, 554.0, 784.0 }) for (int sh : { 3, -3, 2, -2 }) scoreCase (s, h.v, c, sh, h.st);
         std::printf ("set 5 singing: crossed flatter %.2f dB (9), sharper %.2f (6), move %.2f%% (floor %.2f + 2), level %.2f\n", s.peakFlatterCrossed, s.peakSharper, 100 * s.move, 100 * s.floor, s.level);
     }
-    if (t.find ('v') != std::string::npos)
+    if (! word && t.find ('v') != std::string::npos)
     {
         // testVowelChange: a vowel change in the middle of a glide, read 150 ms to 1.15 s after it against a real voice with the new vowel.
         double worst = 0.0;
@@ -210,14 +242,14 @@ int main (int argc, char** argv)
         }
         std::printf ("vowel change: worst move %.2f%% (4)\n", 100 * worst);
     }
-    if (t.find ('b') != std::string::npos)
+    if (! word && t.find ('b') != std::string::npos)
     {
         // testFormants' big shifts: +/-7 semitones at 165 and 247 Hz, read against a real voice (limit 8%), and the peak (limit 9 dB).
         Score s;
         for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelO }) for (double c : { 165.0, 247.0 }) for (int sh : { 7, -7 }) scoreCase (s, *v, c, sh);
         std::printf ("big shifts: move against a real voice %.2f%% (8), peak flatter %.2f dB (9), level %.2f\n", 100 * s.moveReal, s.peakFlatter, s.level);
     }
-    if (t.find ('4') != std::string::npos)
+    if (! word && t.find ('4') != std::string::npos)
     {
         // The fourth held out set's speaking voices (children, Peterson and Barney), copied from testHeldOutFourth. Run already: a regression test.
         struct H { voice::Vowel v; VStyle st; };
@@ -230,13 +262,13 @@ int main (int argc, char** argv)
         for (const auto& h : hs) for (double c : { 277.0, 330.0 }) for (int sh : { 4, -4, 2, -2, 1, -1 }) scoreCase (s, h.v, c, sh, h.st);
         std::printf ("set 4 speaking: move %.2f%% (4) level %.2f dB (1.5)\n", 100 * s.move, s.level);
     }
-    if (t.find ('d') != std::string::npos)
+    if (! word && t.find ('d') != std::string::npos)
     {
         Score h;
         for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO, &voice::vowelAe }) for (double c : { 440.0, 500.0, 600.0, 660.0 }) for (int sh : { 3, -3, 2, -2 }) scoreCase (h, *v, c, sh);
         std::printf ("dev high glides: crossed flatter %.2f dB (9), all %.2f, sharper %.2f (6), move %.2f%% (floor %.2f + 2), level %.2f\n", h.peakFlatterCrossed, h.peakFlatter, h.peakSharper, 100 * h.move, 100 * h.floor, h.level);
     }
-    if (t.find ('n') != std::string::npos)
+    if (! word && t.find ('n') != std::string::npos)
     {
         double sum = 0; int count = 0;
         for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO, &voice::vowelAe }) for (double c : { 440.0, 500.0, 600.0, 660.0 }) for (int sh : { 3, -3, 2, -2 })
@@ -253,7 +285,80 @@ int main (int argc, char** argv)
         }
         std::printf ("dev held notes: mean %.2f dB (3.5)\n", sum / count);
     }
-    if (t.find ('h') != std::string::npos)
+    if (t == "rand" || t == "styled")
+    {
+        // Held notes on more dev voices: plausible vowels drawn at random (rand, seed argv[2]) or the dev vowels with breath and darker
+        // sources (styled). Neither is a held out set: nothing here comes from a published table.
+        struct HC { voice::Vowel v; VStyle st; double c; };
+        std::vector<HC> cases;
+        static std::vector<std::string> names;
+        if (t == "rand")
+        {
+            std::mt19937 gen ((unsigned) (argc > 2 ? atoi (argv[2]) : 1) * 7919u);
+            std::uniform_real_distribution<double> u (0.0, 1.0);
+            names.resize (40);
+            for (int i = 0; i < 40; ++i)
+            {
+                voice::Vowel v;
+                v.f[0] = 250 + 600 * u (gen); v.f[1] = std::max (v.f[0] + 250, 700 + 1800 * u (gen)); v.f[2] = std::max (v.f[1] + 250, 2200 + 900 * u (gen));
+                v.f[3] = std::max (v.f[2] + 300, 3300 + 800 * u (gen)); v.f[4] = std::max (v.f[3] + 400, 4300 + 800 * u (gen));
+                v.bw[0] = 45 + 70 * u (gen); v.bw[1] = 60 + 70 * u (gen); v.bw[2] = 90 + 80 * u (gen); v.bw[3] = 120 + 100 * u (gen); v.bw[4] = 150 + 120 * u (gen);
+                names[(size_t) i] = "r" + std::to_string (i); v.name = names[(size_t) i].c_str();
+                VStyle st { -60.0 + 22.0 * u (gen), u (gen) < 0.5 ? 0.0 : 2000.0 + 3000.0 * u (gen) };
+                cases.push_back ({ v, st, std::round (392.0 * std::pow (2.0, u (gen))) });
+            }
+        }
+        else
+            for (VStyle st : { VStyle { -40.0, 0.0 }, VStyle { -60.0, 2500.0 }, VStyle { -45.0, 4000.0 } })
+                for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO, &voice::vowelAe })
+                    for (double c : { 440.0, 587.0, 740.0 }) cases.push_back ({ *v, st, c });
+        double sum = 0; int count = 0;
+        for (const auto& hc : cases)
+            for (int sh : { 3, -3, 2, -2 })
+            {
+                const double r = std::pow (2.0, sh / 12.0), moved = hc.c * r;
+                const auto in = styledVoice (voice::steady (hc.c, 1.6, SR), hc.v, hc.st);
+                const auto out = runEngine (in, sh, gMode);
+                const auto real = styledVoice (voice::steady (moved, 1.6, SR), hc.v, hc.st);
+                const long from = (long) (0.5 * SR), n = (long) (1.0 * SR);
+                std::vector<double> d; double mean = 0;
+                for (double hz = moved; hz <= 4000.0; hz += moved) { d.push_back (harmonicDb (out.data() + from, n, hz) - harmonicDb (real.data() + from, n, hz)); mean += d.back(); }
+                mean /= d.size(); double s2 = 0; for (double x : d) s2 += (x - mean) * (x - mean);
+                sum += std::sqrt (s2 / d.size()); ++count;
+                if (getenv ("DUMP")) std::printf ("  %s %.0f %+d: %.2f\n", hc.v.name, hc.c, sh, std::sqrt (s2 / d.size()));
+            }
+        std::printf ("%s held notes: mean %.2f dB over %d (3.5)\n", t.c_str(), sum / count, count);
+    }
+    if (! word && t.find ('a') != std::string::npos)
+    {
+        // Non-harmonic energy on steady voices corrected by 30 cents, as testArtifacts reads it (limit -35 dB).
+        auto nonHarmonic = [] (const float* x, int n, double hz)
+        {
+            int order = 1; while ((1 << order) < n) ++order; --order; const int size = 1 << order;
+            FFTSetup setup = vDSP_create_fftsetup (order, kFFTRadix2);
+            std::vector<float> buf ((size_t) size), re ((size_t) size / 2), im ((size_t) size / 2);
+            for (int i = 0; i < size; ++i) buf[(size_t) i] = x[i] * (float) (0.5 - 0.5 * std::cos (2.0 * M_PI * i / (size - 1)));
+            DSPSplitComplex sp { re.data(), im.data() };
+            vDSP_ctoz ((const DSPComplex*) buf.data(), 2, &sp, 1, size / 2);
+            vDSP_fft_zrip (setup, &sp, 1, order, kFFTDirection_Forward);
+            vDSP_destroy_fftsetup (setup);
+            const double binHz = SR / size; double total = 0, off = 0;
+            for (int k = (int) (50.0 / binHz); k < (int) (16000.0 / binHz) && k < size / 2; ++k)
+            {
+                const double f = k * binHz, e = (double) re[(size_t) k] * re[(size_t) k] + (double) im[(size_t) k] * im[(size_t) k];
+                total += e; if (std::abs (f - std::round (f / hz) * hz) > std::max (4.0 * binHz, 4.0)) off += e;
+            }
+            return 10.0 * std::log10 (std::max (off, 1e-30) / std::max (total, 1e-30));
+        };
+        struct C { double hz; int type; double low, high; };
+        for (const C c : { C { 220.0, 1, 98.0, 1000.0 }, C { 440.0, 3, 65.0, 1300.0 }, C { 659.26, 3, 65.0, 1300.0 } })
+        {
+            const auto x = styledVoice (voice::steady (c.hz * std::pow (2.0, 30.0 / 1200.0), 3.0, SR), voice::vowelA, {});
+            const auto out = runEngine (x, 0, gMode, c.low, c.high, 1.0, true, 0, c.type);
+            std::printf ("non-harmonic, %.0f Hz corrected by 30 cents: %.1f dB (-35)\n", c.hz, nonHarmonic (out.data() + (long) (0.5 * SR), 1 << 16, c.hz));
+        }
+    }
+    if (! word && t.find ('h') != std::string::npos)
     {
         Score h;
         for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelO }) for (double c : { 440.0, 660.0 }) for (int sh : { 3, -3 }) scoreCase (h, *v, c, sh);

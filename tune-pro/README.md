@@ -152,4 +152,18 @@ Bold fails its limit. See below.
 - Real speech: the worst 1% of frames change level by 2.52 dB in High Quality and 2.86 dB in Low Latency, against a 3 dB limit (1.3.0: 2.42 and 2.71). Correction on speech lands 0.1 to 0.5 cents further from the note, median, on the four test voices, for example 2.5 to 3.0 cents.
 - Tests changed for honest reasons: a steady voice repeats, so delay on a voice is read only around the reported delay; the onset test moved from 40 to 25 cents sharp, because 40 lands on the far side of the note line.
 
+- **Held notes in High Quality, a fitted vocal tract (branch `hs-held`, 2026-11-08).** With the harmonic shifter, held notes lost almost nothing in the shifter itself; the error was the guess of the vocal tract between one moment's harmonics, drawn as straight lines. `src/HeldEnvelope.h` instead fits the harmonic levels as a source slope, held near the textbook voice's -6 dB per doubling of harmonic number, plus five resonances whose bandwidths follow their frequency and a gentle low pass. It starts from a spread of vowel shapes, walks downhill from each, and averages the shapes that fit about as well. A harmonic lost in the noise only caps the fit. It is used only while the pitch holds (within 0.1 semitone of its last 50 ms) and fades out from 7 to 12 semitones of shift; where the pitch moves the shifter is as before. A new vowel on the same pitch restarts it. Tuned only on dev voices: the six dev vowels, the same with breath and darker sources, and plausible vowels drawn at random (`tests/prototype/HeldLab.cpp` with true pitch, `tests/prototype/EngineHarness.cpp n, styled, rand, heldvowel` on the engine). Tried and not kept: closed phase linear prediction (a steady note gives too few independent samples in the short closed phase at these pitches, and at 48 kHz the source is below float rounding), smoother curves through the harmonics (4.2 dB, no better than lines), a resonance through three harmonics around a peak (4.2), a choice of bandwidth scale per shape (mixed).
+
+  | High Quality, held notes, mean RMS per harmonic | Harmonic shifter, lines | With the fit | Limit |
+  |---|---|---|---|
+  | Dev vowels, 440 to 660 Hz, engine | 4.21 dB | 2.62 dB | 3.5 |
+  | Dev vowels with breath or darker sources, 440 to 740 Hz | 4.71 | 3.21 | |
+  | Random plausible vowels, seeds 1 and 2 | 4.44, 4.60 | 2.74, 2.87 | |
+  | First held out set (seen before, regression only) | 4.15 | **2.89** | 3.5 |
+  | Second, third, fourth held out sets (regression) | 2.07, 2.30, 3.37 | 1.35, 1.71, 1.85 | |
+  | Fifth held out set (seen before, regression only) | 4.38 | **2.99** | 3.5 |
+  | A vowel change on a held note, 0.15 s after it | 3.74 | 2.58 (the new vowel alone 2.46) | |
+
+  Everything else that moved: CPU in High Quality, voice at 180 Hz, 2.8% to 3.7% of a core (limit 8); level steadiness on a sustained note 0.006 to 0.12 dB peak to peak (limit 1); non-harmonic energy at MIDI 76 -57.2 to -54.3 dB (limit -35); level across Transpose -24 to +24, a reading with no limit, 0.04 to 0.81 dB. Low Latency is bit for bit the same. The suite reads 494 pass and 3 fail; the 3 failed on the shifter before this too (third held out set move 4.77% and level 1.62 dB, fifth held out set singing first formant 12.0 dB). All five held out sets had already been run once, so these numbers do not show it generalises; a sixth set is needed for that. The source slope prior suits a voice whose glottis closes in the usual way; a very breathy or pressed real voice is untested.
+
 `build/PluginTest_artefacts/Release/PluginTest demo` writes corrected `say` files for both engines to `build/demo`, to listen to outside any host.

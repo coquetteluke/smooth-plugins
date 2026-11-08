@@ -110,3 +110,19 @@ Other results:
 - key.json: 13470 writes raced against 115342 reads with no partial file seen. A blocked path shows the note and audio stays bit identical.
 - Window created, painted and destroyed 20 times offline, and 30 more times while audio ran, with audio bit identical throughout.
 - Every detection reading is bit identical to the saved 1.3.0 fingerprint over 12 clips, in `tests/ReadingFingerprint.h`, so a window change cannot alter detection unnoticed.
+
+## Held out check for the harmony change, written before it was run
+
+Written on 2026-11-08, before seed 20261111 was run. Version under test: the working tree on top of commit 3cd71b8, which adds a harmony reading to Fast only (`hearHarmony` in `src/KeyAnalyser.h`, defaults harmonyFast 1.0, harmonyFit 1.0, harmonyFirst 0.3, harmonyHome 0.2, harmonyRamp 1.0). Stable is unchanged.
+
+Tuned on dev seeds 1000 to 1005 only. Checked once on unseen dev seeds 1012 to 1017: Fast followed 95.8% of key changes (1.3.0: 93.8%), median 5.2 s (8.4 s), Fast chords exact 99.25% (98.07%), bounces 62 (213).
+
+What I expect on 20261111, run once with the same tests as PluginTest:
+
+- Stable: every number identical to 1.3.0 on the same seed, as Stable does not use the new reading.
+- Fast key change followed in 30 s: about 92 to 97%, so likely a pass, but one seed is only 24 clips and 1.3.0 fell from 94% on dev to 87.5% on 20261110.
+- Fast key change median: about 5 to 6.5 s, a pass.
+- Fast chords with no key change: exact about the same as 1.3.0 or up to a point higher, fewer bounces.
+- Loop heard from its second chord and melody tests: identical, as they run in Stable.
+
+1.3.0 and the new version will both be run on 20261111 and on 20261110, and the numbers reported whatever they are.

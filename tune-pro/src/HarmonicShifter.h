@@ -43,6 +43,15 @@ public:
     static constexpr double checkSnrDb = 10.0;      // harmonics this far over the noise take part in the check
     static constexpr int checkCount = 2;            // and at least this many of them
     static constexpr double reachDb = 2.0, slopeDbPerHz = 0.25;   // how far the memory may stray from the straight lines, for how far a harmonic moves
+    // How much louder the voice itself is at a higher pitch, per dB of pitch ratio, as the memory reads it against the straight lines.
+    // The memory reads one harmonic number at two pitches, so it also gets how much louder the source is at the higher pitch (each harmonic
+    // of a glottal pulse rises with the pitch). The straight lines read across frequency at one moment, so they get the source's fall with
+    // harmonic number instead. On the test voices the two differ by 2 times the pitch ratio in dB, fitted on glides of +/-2 to +/-7
+    // semitones (1.73 to 2.12). On a move up the memory has nothing until the voice has been at the new pitch, so a glide starts on the lines
+    // and the memory takes over later, louder by that much, and the level trim, settled on the start, let the level drift: the third held out
+    // set read 1.62 dB against 1.5. So on moves up the memory's extra loudness is taken out and both agree. On moves down the memory has
+    // the lower pitches from the start; taking it out there as well made big shifts down read 9.8% against 8, so it is left in.
+    static constexpr double sourceLoudnessPerDb = 2.0;
 
     void prepare()
     {
@@ -130,6 +139,7 @@ public:
             lastSolve = time;
         }
 
+        const double louderAtNewPitch = sourceLoudnessPerDb * std::max (0.0, 20.0 * std::log10 (std::max (1.0e-3, f0Out / f0In)));
         for (int k = 1; k <= outCount; ++k)
         {
             const double want = k * f0Out / scale;
@@ -153,7 +163,7 @@ public:
                 // No vocal tract changes level faster than its sharpest resonance allows, so the memory may differ from the straight line
                 // only by so much for how far the harmonic actually moves. A small correction cannot bring a big change.
                 const double reach = reachDb + slopeDbPerHz * std::abs (want - k * f0In);
-                gains[k] = std::clamp (then - here, straight - reach, straight + reach);
+                gains[k] = std::clamp (then - here - louderAtNewPitch, straight - reach, straight + reach);
             }
             else
                 gains[k] = straight;

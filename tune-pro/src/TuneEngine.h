@@ -39,8 +39,11 @@ public:
     // Poles in each model of the vocal tract, at 48 kHz.
     static constexpr double lowLatencyOrder = 32.0, highQualityOrder = 48.0;
     // How much corrected voice the level trim averages over, by engine. Low Latency needs longer since 1.4.0 holds the shape through a note
-    // start: at 0.6 its worst level change read 1.53 dB, at 2.0 it reads 1.45. In High Quality 2.0 moved high notes' formants past their limit.
-    static constexpr double lowLatencyLevelMemorySeconds = 2.0, highQualityLevelMemorySeconds = 0.6;
+    // start: at 0.6 its worst level change read 1.53 dB, at 2.0 it reads 1.45. In High Quality 1.4.0's grains moved high notes' formants past
+    // their limit at 2.0. The harmonic shifter takes 1.0: the trim follows the voice's own rise and fall as harmonics cross a formant, which
+    // weights some moments over others and reads as a formant move (third held out set 4.35% at 0.6, 3.73% at 1.0, limit 4), while longer
+    // lets the level drift further where a glide starts (fourth held out set 1.27 dB at 1.0, limit 1.5).
+    static constexpr double lowLatencyLevelMemorySeconds = 2.0, highQualityLevelMemorySeconds = 1.0;
     // High Quality's tracker keeps a period that fits at least this many times better than half of it. See PitchTracker::setStrictOctaveUp.
     static constexpr double highQualityStrictOctaveUp = 2.0;
     // How much input each model of the vocal tract sees.

@@ -11,6 +11,7 @@
 #include <cmath>
 #include <vector>
 #include "EnvelopeFilter.h"
+#include "HarmonicShifter.h"
 #include "PitchCorrector.h"
 #include "PitchTracker.h"
 #include "PsolaShifter.h"
@@ -55,6 +56,7 @@ public:
         channels = std::clamp (numChannels, 1, 2);
         tracker.prepare (sr);
         shifter.prepare (sr, channels);
+        harmonic.prepare (sr, channels);
         envelope.prepare (sr, channels);
         corrector.prepare (sr);
         drySize = 1;
@@ -96,6 +98,9 @@ public:
         levelRelease = 1.0 - std::exp (-1.0 / (0.003 * sr));
         shifter.reset();
         shifter.setLatency (latency - ahead);
+        harmonic.reset();
+        harmonic.setLatency (latency);
+        harmonicControl = {};
         corrector.reset();
         control = {};
         for (auto& d : dry) std::fill (d.begin(), d.end(), 0.0f);
@@ -104,6 +109,7 @@ public:
         ringAt = 0;
         ring.fill (ControlPoint {});
         const double extra = mode == highQuality ? highQualityExtraSeconds : 0.0;
+        voicedHold = 0;
         controlDelayTicks = std::clamp ((int) std::lround (extra / tickSeconds), 0, (int) ring.size() - 1);
         leadTicks = mode == highQuality ? std::min (controlDelayTicks, (int) std::lround (highQualityLeadSeconds / tickSeconds)) : 0;
     }
@@ -131,6 +137,12 @@ public:
             lastVoicingLimit = shared.voicingLimit;
         }
         tracker.push (mono);
+        if (mode == highQuality)
+        {
+            harmonic.write (0, l);
+            if (channels > 1) harmonic.write (1, r);
+            harmonic.advance (tracker);
+        }
 
         if (++tickPhase >= tickSamples)
         {
@@ -155,10 +167,24 @@ public:
                 envelope.loadSynthesisFor (at);
                 wet[0] = (float) envelope.shape (0, (double) wet[0]);
                 if (channels > 1) wet[1] = (float) envelope.shape (1, (double) wet[1]);
+                // High Quality, unless Classic: the harmonic shifter replaces the grains. It hands back to the input while not voiced, and while a
+                // voiced stretch has not been corrected at all, since then the input is exactly what it would give.
+                bool harmonicPass = false;
+                if (mode == highQuality && ! control.plainGrains)
+                {
+                    float h[2] = { 0.0f, 0.0f };
+                    const bool ok = harmonic.step (harmonicControl, dryOut, h);
+                    wet[0] = ok ? h[0] : dryOut[0];
+                    wet[1] = ok ? (channels > 1 ? h[1] : h[0]) : dryOut[1];
+                    harmonicPass = ! ok || (control.noCorrection && ! harmonic.hasCorrected());
+                }
+                else if (mode == highQuality)
+                    harmonic.restart();
                 holdLevel (wet, dryOut);
 
                 // Through a consonant the filters ring on for a few ms from the vowel before it. Nothing is being changed then, so the true input takes over.
-                const bool pass = ! control.voiced && ! control.plainGrains;
+                const bool voicedNow = mode == highQuality && ! control.plainGrains ? harmonicControl.voiced : control.voiced;
+                const bool pass = (! voicedNow && ! control.plainGrains) || harmonicPass;
                 passMix = pass ? std::min (1.0, passMix + passStep) : std::max (0.0, passMix - passStep);
                 if (passMix > 0.0)
                 {
@@ -244,6 +270,7 @@ private:
             envelope.setFormantScale (scale);
             envelope.setShift (control.outputPeriod > 0.0 ? period / control.outputPeriod : 1.0);
             control.grainRate = std::clamp (scale, 0.5, 2.0);
+            harmonicControl.formantScale = scale;
         }
         else
         {
@@ -251,17 +278,33 @@ private:
             control.noCorrection = true;
         }
         control.plainGrains = shared.settings.classic;
+        // The tracker can flicker between voiced and not for a period or two where a voice starts. Each flicker would hand over to the
+        // input and back, and the harmonic shifter's timing sits up to half a period from the input's, so the two would partly cancel.
+        // Gaps up to 6 ms or a period, whichever is longer, are bridged. High Quality decides voicing 10 ms ahead, so an S after a vowel
+        // over 100 Hz still starts untouched.
+        if (control.voiced) { voicedHold = std::max (harmonicHoldTicks, (int) std::lround (period / tickSamples)); }
+        else if (voicedHold > 0) --voicedHold;
+        harmonicControl.voiced = control.voiced || voicedHold > 0;
+        if (control.voiced) harmonicControl.outputPeriod = control.outputPeriod;
+        else if (voicedHold <= 0) harmonicControl.outputPeriod = 0.0;
+        if (control.voiced) harmonicControl.inputPeriod = control.inputPeriod;
+        else if (voicedHold <= 0) harmonicControl.inputPeriod = 0.0;
+        // Throat changes the voice even where the pitch is left alone.
+        harmonicControl.noCorrection = control.noCorrection && std::abs (harmonicControl.formantScale - 1.0) < 1.0e-4;
         control.centreOnPulses = true;
         // Low Latency's model lags the voice, which matters most on low voices, whose periods are long against it. It leaves those alone.
         control.pulseLowestHz = mode == highQuality ? 0.0 : 130.0;
         control.downReadPower = mode == highQuality ? 0.0 : 0.2;
-        envelope.setStrength (shared.settings.classic ? 0.0 : 1.0);
+        // High Quality's harmonic shifter needs no filters, and Classic has plain grains, so only Low Latency uses them.
+        envelope.setStrength (shared.settings.classic || mode == highQuality ? 0.0 : 1.0);
     }
 
     double sr = 48000.0, tickSeconds = 0.001;
     int channels = 2, tickSamples = 48, tickPhase = 0, latency = 0, inputType = 1, mode = lowLatency;
     PitchTracker tracker;
     PsolaShifter shifter;
+    HarmonicShifter harmonic;
+    HarmonicShifter::Control harmonicControl;
     EnvelopeFilter envelope;
     PitchCorrector corrector;
     PsolaShifter::Control control;
@@ -271,7 +314,8 @@ private:
     std::array<ControlPoint, 128> ring {};
     int ringAt = 0, controlDelayTicks = 0, leadTicks = 0, ahead = 0;
     float lastVoicingLimit = -1.0f;
-    int correctingFor = 0;
+    int correctingFor = 0, voicedHold = 0;
+    static constexpr int harmonicHoldTicks = 6;
     double passMix = 1.0, passStep = 0.01;
     double levelGain = 1.0, wetLevel = 0.0, dryLevel = 0.0, levelSeen = 0.0, levelMemory = 48000.0, levelFollow = 0.001, levelRelease = 0.01;
 };

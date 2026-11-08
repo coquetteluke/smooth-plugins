@@ -804,6 +804,131 @@ void testHeldOutFourth()
     chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
 }
 
+
+// A fifth held out set, written on 2026-11-08 for 1.5.0 before any of it was run, because all four sets above had been used. Run once at the end.
+// Formants from a published source none of the earlier sets used: Catford, A Practical Introduction to Phonetics, 2nd edition (2001), p. 154,
+// average F1 and F2 for a male voice, as reproduced in Wikipedia's Formant article. Vowel qualities none of the earlier sets had: front rounded
+// y, oe, the open front rounded vowel, and back unrounded vowels, besides open back ones. That table has no F3 to F5 and no bandwidths, so those
+// were set here, before running, from the vowel's class: rounding lowers F3. Breath and source tone are their own. Nothing was tuned on these.
+void testHeldOutFifth()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; };
+    // F1, F2 from Catford; F3, F4, F5 and all bandwidths set here.
+    const std::vector<Held> speaking {
+        { { { 235, 2100, 2200, 3400, 4300 }, { 62, 100, 130, 170, 220 }, "y" }, { -48.0, 0.0 } },
+        { { { 370, 1900, 2300, 3400, 4300 }, { 70, 95, 130, 170, 220 }, "o slash" }, { -58.0, 3000.0 } },
+        { { { 585, 1710, 2400, 3400, 4300 }, { 85, 100, 135, 170, 220 }, "oe" }, { -42.0, 0.0 } },
+        { { { 460, 1310, 2400, 3400, 4300 }, { 75, 90, 130, 170, 220 }, "rams horn" }, { -52.0, 5000.0 } },
+        { { { 300, 1390, 2300, 3400, 4300 }, { 65, 90, 130, 170, 220 }, "turned m" }, { -60.0, 2000.0 } } };
+    const std::vector<Held> singing {
+        { { { 820, 1530, 2450, 3400, 4300 }, { 100, 105, 140, 170, 220 }, "open front rounded" }, { -50.0, 0.0 } },
+        { { { 750, 940, 2500, 3400, 4300 }, { 95, 90, 140, 170, 220 }, "open back" }, { -38.0, 3500.0 } },
+        { { { 700, 760, 2500, 3400, 4300 }, { 90, 85, 140, 170, 220 }, "open back rounded" }, { -56.0, 0.0 } },
+        { { { 600, 1170, 2500, 3400, 4300 }, { 85, 95, 135, 170, 220 }, "turned v" }, { -44.0, 2500.0 } },
+        { { { 585, 1710, 2400, 3400, 4300 }, { 85, 100, 135, 170, 220 }, "oe" }, { -60.0, 4500.0 } } };
+
+    FormantScore low;
+    for (const auto& h : speaking)
+    {
+        gStyle = h.style;
+        for (double centre : { 105.0, 156.0, 208.0 })
+            for (int shift : { 4, -4, 2, -2, 1, -1 })
+                scoreFormants (low, h.v, centre, shift, centre < 200.0 ? lowMale : wideRange);
+    }
+    chk (low.move <= prolimits::hqFormantMove, "fifth held out set, Catford's vowels at 105 to 208 Hz, worst formant move against the input", low.move * 100.0, "%");
+    note ("  and the tool's floor there", low.floor * 100.0, "%");
+    chk (low.level <= prolimits::hqLevelChangeDb, "  level change, worst", low.level, "dB");
+    note ("  first formant against its surroundings, flatter than a real voice, worst", low.peakFlatter, "dB");
+    note ("  colour, worst", low.colour, "dB");
+
+    FormantScore high;
+    double heldMean = 0.0, heldRms = 0.0;
+    int heldCount = 0;
+    for (const auto& h : singing)
+    {
+        gStyle = h.style;
+        for (double centre : { 415.0, 494.0, 554.0, 784.0 })
+            for (int shift : { 3, -3, 2, -2 })
+            {
+                scoreFormants (high, h.v, centre, shift, wideRange);
+                const auto held = heldNoteError (h.v, centre, shift, wideRange);
+                heldMean += held.rmsDb;
+                heldRms = std::max (heldRms, held.rmsDb);
+                ++heldCount;
+            }
+    }
+    gStyle = {};
+    chk (high.peakFlatterCrossed <= prolimits::highNoteF1Flatter, "fifth held out set, 415 to 784 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst", high.peakFlatterCrossed, "dB");
+    note ("  the same with every case, including where the whole glide stays above the formant", high.peakFlatter, "dB");
+    chk (high.peakSharper <= prolimits::highNoteF1Sharper, "  first formant sharper than a real voice, worst", high.peakSharper, "dB");
+    chk (high.move <= high.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", high.move * 100.0, "%");
+    note ("  and the tool's floor there", high.floor * 100.0, "%");
+    note ("  colour, worst", high.colour, "dB");
+    note ("  level change, worst", high.level, "dB");
+    note ("  held notes, harmonics against a real voice, worst RMS", heldRms, "dB");
+    chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+}
+
+// A vowel change in the middle of a glide, added for 1.5.0 with its limit set before it was first run. High Quality remembers each
+// harmonic's level over a voiced stretch; it must not carry the old vowel into the new one. After the change, the output's formants
+// are read against a real voice singing the new vowel at the new pitch, with the same tool and limit as the formant test.
+void testVowelChange()
+{
+    if (gEngine != 1)
+        return;
+    double worst = 0.0, floor = 0.0;
+    const std::pair<const voice::Vowel*, const voice::Vowel*> pairs[] = { { &voice::vowelA, &voice::vowelI }, { &voice::vowelI, &voice::vowelA },
+                                                                          { &voice::vowelU, &voice::vowelE }, { &voice::vowelO, &voice::vowelAe } };
+    for (const auto& pr : pairs)
+        for (double centre : { 147.0, 220.0 })
+            for (int shift : { 3, -3 })
+            {
+                const double seconds = 6.0, moved = std::pow (2.0, shift / 12.0);
+                std::vector<double> f0 ((size_t) (seconds * SR)), f0Moved (f0.size());
+                for (size_t i = 0; i < f0.size(); ++i)
+                {
+                    const double u = std::fmod ((double) i / SR / 3.0, 1.0);
+                    const double tri = u < 0.5 ? 4.0 * u - 1.0 : 3.0 - 4.0 * u;
+                    f0[i] = centre * std::pow (2.0, 0.5 * tri);
+                    f0Moved[i] = f0[i] * moved;
+                }
+                const auto before = voice::synth (f0, *pr.first, SR), after = voice::synth (f0, *pr.second, SR);
+                std::vector<float> in (before.size());
+                const size_t at = (size_t) (3.0 * SR), fade = (size_t) (0.03 * SR);
+                for (size_t i = 0; i < in.size(); ++i)
+                {
+                    const double t = i < at ? 0.0 : i >= at + fade ? 1.0 : (double) (i - at) / (double) fade;
+                    in[i] = (float) ((1.0 - t) * before[i] + t * after[i]);
+                }
+                auto p = make();
+                setParam (*p, "inputType", (float) lowMale);
+                setParam (*p, "retune", 0.0f);
+                setParam (*p, "humanize", 0.0f);
+                setParam (*p, "flex", 100.0f);
+                setParam (*p, "transpose", (float) shift);
+                prepare (*p, 1, SR, 256);
+                const auto out = mono (render (*p, in, 256));
+                const auto real = voice::synth (f0Moved, *pr.second, SR);
+                const long from = (long) (3.15 * SR), n = (long) (1.0 * SR);
+                const double smoothing = std::max (centre, centre * moved);
+                const auto want = smoothSpectrumDb (real.data() + from, n, SR, smoothing), got = smoothSpectrumDb (out.data() + from, n, SR, smoothing),
+                           heard = smoothSpectrumDb (after.data() + from, n, SR, smoothing);
+                const auto& v = *pr.second;
+                for (auto band : { std::pair<double, double> { 0.7 * v.f[0], 1.3 * v.f[1] }, std::pair<double, double> { 0.8 * v.f[1], 1.2 * v.f[3] } })
+                {
+                    const double m = std::abs (shapeScale (want, got, band.first, band.second) - 1.0);
+                    worst = std::max (worst, m);
+                    floor = std::max (floor, std::abs (shapeScale (want, heard, band.first, band.second) - 1.0));
+                    if (std::getenv ("TUNE_DUMP") != nullptr)
+                        std::printf ("  vowel %s to %s around %.0f Hz, shift %d, band %.0f to %.0f Hz: against a real voice %.3f\n", pr.first->name, v.name, centre, shift, band.first, band.second, 1.0 + m);
+                }
+            }
+    chk (worst <= prolimits::hqFormantMove, "vowel change in a glide, 150 ms to 1.15 s after it, formants against a real voice with the new vowel, worst move", worst * 100.0, "%");
+    note ("  and the tool's floor: the new vowel as sung against that real voice, worst", floor * 100.0, "%");
+}
+
 // ----------------------------------------------------------------------------------------------- Low Latency null test
 
 std::vector<float> loadWav (const char* name);
@@ -2901,6 +3026,8 @@ int main (int argc, char** argv)
     if (want ("heldout2")) testHeldOutSecond();
     if (want ("heldout3")) testHeldOutThird();
     if (want ("heldout4")) testHeldOutFourth();
+    if (want ("heldout5")) testHeldOutFifth();
+    if (want ("vowel")) testVowelChange();
     gEngine = 0;
     if (want ("llnull")) testLowLatencyNull();
     if (want ("window")) testWindow();

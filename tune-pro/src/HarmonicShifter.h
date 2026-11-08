@@ -20,6 +20,7 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include "HeldEnvelope.h"
 #include "PitchTracker.h"
 
 namespace smoothtune
@@ -74,7 +75,8 @@ public:
     }
 
     // One frame: its harmonics' levels in dB (index 1 to count), the noise next to each, its pitch and time. Fills gains[1..outCount] in dB.
-    void frame (const double* levelDb, const double* noiseDb, int count, double f0In, double f0Out, double scale, double time, double* gains, int outCount, bool remember) noexcept
+    // fallback, when given, is the change to use where nothing was heard, in place of straight lines (HeldEnvelope.h).
+    void frame (const double* levelDb, const double* noiseDb, int count, double f0In, double f0Out, double scale, double time, double* gains, int outCount, bool remember, const double* fallback = nullptr) noexcept
     {
         now = time;
         if (now - reference > 20.0) renormalise();
@@ -156,7 +158,7 @@ public:
                 gains[k] = std::clamp (then - here, straight - reach, straight + reach);
             }
             else
-                gains[k] = straight;
+                gains[k] = fallback != nullptr ? fallback[k] : straight;
         }
     }
 
@@ -384,6 +386,8 @@ public:
         buildTable();
         fadeStep = 1.0 / (0.002 * sr);
         memory.prepare();
+        held.sampleRate = sr;
+        heldGains.assign (gains.size(), 0.0);
         reset();
     }
 
@@ -409,6 +413,7 @@ public:
         outPhase = 0.0;
         outPeriod = spacing;
         memory.reset();
+        held.reset();
         restart();
     }
 
@@ -763,7 +768,9 @@ private:
             const int n = std::min (outCount, (int) gains.size() - 1);
             // Only steady frames are remembered: one read while a note swells or fades would later stand for a level the voice no longer has.
             const bool steady = std::abs (10.0 * std::log10 (later / earlier)) < movingDb;
-            memory.frame (levels.data(), noise.data(), count, f0In, f0Out, scale, (double) now / sr, gains.data(), n, trusted && steady);
+            // Where nothing was heard at the pitch a harmonic goes to, the vocal tract between this moment's harmonics comes from a fit.
+            const bool fitted = held.frame (levels.data(), noise.data(), count, f0In, f0Out, scale, (double) now / sr, heldGains.data(), n);
+            memory.frame (levels.data(), noise.data(), count, f0In, f0Out, scale, (double) now / sr, gains.data(), n, trusted && steady, fitted ? heldGains.data() : nullptr);
             // Gains glide from frame to frame: a gain that jumps between frames would ring as sidebands below the voice.
             const double dt = std::max (0.0, (double) (now - lastFrameTime) / sr);
             const double follow = firstGain ? 1.0 : 1.0 - std::exp (-dt / gainSeconds);
@@ -922,5 +929,7 @@ private:
     static constexpr double gainSeconds = 0.008;
     std::array<FFTSetup, 16> setups {};
     TractMemory memory;
+    heldenv::HeldTract held;
+    std::vector<double> heldGains;
 };
 } // namespace smoothtune

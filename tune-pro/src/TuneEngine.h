@@ -41,6 +41,8 @@ public:
     // How much corrected voice the level trim averages over, by engine. Low Latency needs longer since 1.4.0 holds the shape through a note
     // start: at 0.6 its worst level change read 1.53 dB, at 2.0 it reads 1.45. In High Quality 2.0 moved high notes' formants past their limit.
     static constexpr double lowLatencyLevelMemorySeconds = 2.0, highQualityLevelMemorySeconds = 0.6;
+    // High Quality's tracker keeps a period that fits at least this many times better than half of it. See PitchTracker::setStrictOctaveUp.
+    static constexpr double highQualityStrictOctaveUp = 2.0;
     // How much input each model of the vocal tract sees.
     static constexpr double highQualityWindowSeconds = 0.040, lowLatencyWindowSeconds = 0.040, lowLatencyFallShare = 0.3;
 
@@ -74,6 +76,7 @@ public:
         latency = latencyFor (lowHz, mode, sr);
         tracker.reset();
         tracker.setRange (lowHz, highHz);
+        tracker.setStrictOctaveUp (mode == highQuality ? highQualityStrictOctaveUp : 0.0);
         lastVoicingLimit = -1.0f;
         // High Quality's sweep memory model has half as many poles again. With the memory showing it the peaks between the harmonics, the finer
         // model follows them closely, so less of the vocal tract is left in the grains to move with the pitch. Other models keep 32, see EnvelopeFilter.

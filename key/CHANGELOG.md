@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.5.0, 2026-11-08
+
+Stable follows a key change more often and sooner, by reading the chords as Fast has since 1.4.0. Fast is unchanged: every Fast reading is bit identical to 1.4.0. Run on the new held out seed 20261112, after the expected result was committed (7e219ab), and on the two before it:
+
+| Stable | 1.4.0, 20261111 | 1.5.0, 20261111 | 1.4.0, 20261110 | 1.5.0, 20261110 | 1.5.0, 20261112 | Limit |
+|---|---|---|---|---|---|---|
+| Key change followed in 30 s | 83.3% | **95.8%** | 100% | 100% | 100% | at least 90% |
+| Key change median | 10.13 s | 8.26 s | 10.82 s | 8.60 s | 8.43 s | up to 15 s |
+| Key change slowest | 24.5 s | 18.3 s | 22.1 s | 19.5 s | 25.0 s | none |
+| Key change ended on the right key or its relative | 95.8% | 100% | 100% | 100% | 100% | none |
+| Chords exact, no key change | 99.6% | 99.6% | 99.4% | 99.4% | 99.8% | at least 90% |
+| Clips moving after 8 s | 0.42% | 0% | 0.83% | 0% | 0% | up to 1% |
+| Bounces, A to B and back | 0 | 0 | 0 | 0 | 0 | 0 |
+| Chords median time to correct | 7.85 s | 7.85 s | 7.85 s | 7.85 s | 7.85 s | up to 8 s |
+| Loop heard from its second chord, exact | 65.0% | 63.8% | 65.0% | 65.6% | 61.9% | none |
+
+Bold now passes. Every test passes on all three seeds. Fast on 20261112: followed 100%, median 5.18 s, chords exact 100%, 13 bounces. 1.4.0 was not run on 20261112, so that seed has no before column.
+
+On dev seeds 1018 to 1023, where it was tuned: Stable followed 94.4% to 97.9%, median 10.8 s to 8.8 s, chords moving after 8 s 0.6% to 0%. On unseen dev seeds 1024 to 1029: followed 91.7% to 97.2%, median 11.2 s to 8.8 s, chords exact 99.3% to 99.6%, moving after 8 s 0.6% to 0.1%, bounces 0 both. The lowest single unseen seed followed 21 of 24, so another seed could still dip under 90%.
+
+- Stable now also reads the chords since the current section began, at 0.7 of Fast's weight. It mostly fixes moves to the relative minor's loop and to a close key, which add too few new notes to let go of the old memory.
+- In Stable only, the section's opening chord counts only while the section's chords all fit the key: one chord of four outside the key takes its credit away. Without that, ii V I I loops were read as the key of their ii chord, and Stable went there and back (2 bounces on dev at full weight).
+- Tried on dev seeds: without the opening chord rule, full weight gave 2 bounces and 0.6 gave 1; 0.3 to 0.5 followed the same share but slower. With the rule, full weight read 2 chord clips wrong. The rule at 8 instead of 4 gave the same results; at 2, one ii V I I clip moved after 8 s.
+- `tests/KeyEval.cpp` takes `stableonly 1`, and runs chords on every seed asked for. New detection fingerprint.
+
 ## 1.4.0, 2026-11-08
 
 Fast follows a key change sooner and more often, by reading the chords as well as the notes. Stable is unchanged: every Stable reading is bit identical to 1.3.0. Both versions run on the new held out seed 20261111, which nothing was tuned on, and on 20261110:

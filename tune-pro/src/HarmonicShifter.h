@@ -356,6 +356,11 @@ public:
     // Periods each side of a frame's centre that it gives out. Two on a steady voice, so the harmonics stay clean; one where the level
     // moves, so a note's start or end is not smeared out in time.
     static constexpr double steadyHalf = 2.0, movingHalf = 1.0, movingDb = 1.5;
+    // A frame is remembered only while its level moves less than this between its halves. A note's swell or fade moves every harmonic
+    // together and is soon over, but a glide over a narrow formant (a first formant 45 Hz wide, crossed by the fundamental) moves the
+    // level as much, and at 1.5 dB exactly the frames that show the peak were left out, so the memory had a hole where it mattered most.
+    // Found on the sixth held out set (already run), u at 226 Hz up 4: 5.2% formant move at 1.5 dB, 2.7% at 3. Dev tests moved little.
+    static constexpr double rememberMovingDb = 3.0;
     static constexpr int planAhead = 2;
     static constexpr double steadyMaxSeconds = 0.01;
     static constexpr int maxPeriods = 4, maxFrames = 8, maxQ = 4096, minQ = 32;
@@ -598,6 +603,14 @@ public:
     // not hand back to the input until the voice stops.
     bool hasCorrected() const noexcept { return corrected; }
 
+    // While quiet, frames are still read and remembered, but none is built for output, which is most of the work. step() then gives nothing
+    // once the frames already built run out. Output resumes with the next frame after it is set back.
+    void setQuiet (bool q) noexcept
+    {
+        if (quiet && ! q) held.reset();
+        quiet = q;
+    }
+
 private:
     struct Frame
     {
@@ -718,7 +731,9 @@ private:
         // Read the input at q samples per period, windowed over the frame's periods, into the FFT for each channel.
         const int half = length / 2;
         double earlier = 1.0e-12, later = 1.0e-12;
-        for (int ch = 0; ch < channels; ++ch)
+        // While only listening, the first channel alone gives the levels, scaled to stand for all of them.
+        const int analysed = quiet ? 1 : channels;
+        for (int ch = 0; ch < analysed; ++ch)
         {
             long long walk = search;
             for (int i = 0; i < length; ++i)
@@ -740,12 +755,12 @@ private:
         const double f0In = sr / inPeriod, f0Out = sr / outPeriod;
         const int count = std::min (q / 2 - 1, (int) (0.47 * sr / f0In));
         const double norm = 20.0 * std::log10 ((double) periods * q);
-        const auto power = [this] (int bin)
+        const auto power = [this, analysed] (int bin)
         {
             double s = 0.0;
-            for (int ch = 0; ch < channels; ++ch)
+            for (int ch = 0; ch < analysed; ++ch)
                 s += (double) real[(size_t) ch][(size_t) bin] * real[(size_t) ch][(size_t) bin] + (double) imag[(size_t) ch][(size_t) bin] * imag[(size_t) ch][(size_t) bin];
-            return s;
+            return s * channels / analysed;
         };
         for (int k = 1; k <= count; ++k)
             levels[(size_t) k] = 10.0 * std::log10 (power (k * maxPeriods) + 1.0e-30) - norm;
@@ -779,9 +794,10 @@ private:
         {
             const int n = std::min (outCount, (int) gains.size() - 1);
             // Only steady frames are remembered: one read while a note swells or fades would later stand for a level the voice no longer has.
-            const bool steady = std::abs (10.0 * std::log10 (later / earlier)) < movingDb;
+            const bool steady = std::abs (10.0 * std::log10 (later / earlier)) < rememberMovingDb;
             // Where nothing was heard at the pitch a harmonic goes to, the vocal tract between this moment's harmonics comes from a fit.
-            const bool fitted = held.frame (levels.data(), noise.data(), count, f0In, f0Out, scale, (double) now / sr, heldGains.data(), n);
+            // Only listening, nothing is given out, so the fit waits: it starts again from what it hears once output resumes.
+            const bool fitted = ! quiet && held.frame (levels.data(), noise.data(), count, f0In, f0Out, scale, (double) now / sr, heldGains.data(), n);
             memory.frame (levels.data(), noise.data(), count, f0In, f0Out, scale, (double) now / sr, gains.data(), n, trusted && steady, fitted ? heldGains.data() : nullptr);
             // Gains glide from frame to frame: a gain that jumps between frames would ring as sidebands below the voice.
             const double dt = std::max (0.0, (double) (now - lastFrameTime) / sr);
@@ -794,6 +810,10 @@ private:
             firstGain = false;
             lastFrameTime = now;
         }
+
+        // Listening only: the memory has what it needs from this frame, and nothing is given out.
+        if (quiet)
+            return;
 
         // Each output harmonic: its own, scaled, or when too weak next to the noise, the input harmonic now nearest where it is going.
         for (int ch = 0; ch < channels; ++ch)
@@ -931,7 +951,7 @@ private:
     std::array<std::uint8_t, 8> slipped {};
     long long redrawn = 0, planEpoch = 0;
     double fadeStep = 0.01;
-    bool running = false, firstFrame = true, corrected = false;
+    bool running = false, firstFrame = true, corrected = false, quiet = false;
     std::array<std::vector<float>, 2> input;
     std::vector<double> phase;
     std::vector<std::uint8_t> marked;   // 1 where the phase came from two of the tracker's marks

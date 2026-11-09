@@ -4,6 +4,7 @@
 //      Several letters run several groups. DUMP=1 prints each case, BANDS=1 each band, SHOWLVL=1 the level every 0.2 s, FROM=<s> starts the reading later.
 // Runs the plug-in's TuneEngine directly on the test voices, to read the same numbers without JUCE.
 // Also: a (non-harmonic energy on steady voices), rand <seed> (held notes on random plausible vowels), styled (dev vowels with breath and darker sources)
+#include <chrono>
 #include <random>
 #include "PrototypeAnalysis.h"
 #include "TuneEngine.h"
@@ -17,7 +18,7 @@ double peakOverAround (const std::vector<double>& spec, size_t f1)
 }
 std::vector<float> runEngine (const std::vector<float>& in, int shift, int mode, double lowHz = 65.0, double highHz = 1300.0, double throat = 1.0, bool preserve = true, double flex = 100, int type = 3)
 {
-    TuneEngine e; e.prepare (SR, 1); e.configure (type, lowHz, highHz, mode);
+    TuneEngine e; e.prepare (SR, getenv ("STEREO") ? 2 : 1); e.configure (type, lowHz, highHz, mode);
     TuneEngine::Shared sh; sh.settings.retuneMs = 0; sh.settings.humanize = 0; sh.settings.flexCents = flex; sh.settings.transpose = shift; sh.formantPreserve = preserve; sh.throatRate = throat; sh.voicingLimit = 0.3f;
     const int lat = e.getLatency();
     std::vector<float> out (in.size(), 0.0f);
@@ -103,7 +104,7 @@ int main (int argc, char** argv)
         return 0;
     }
     const std::string t = argc > 1 ? argv[1] : "h";
-    const bool word = t == "rand" || t == "styled" || t == "heldvowel";
+    const bool word = t == "rand" || t == "styled" || t == "heldvowel" || t == "cross" || t == "mix" || t == "cpu" || t == "switch";
     if (t == "heldvowel")
     {
         // A vowel change in the middle of a held note: after it, each harmonic against a real voice singing the new vowel, from 0.15 s
@@ -170,6 +171,25 @@ int main (int argc, char** argv)
         const H& h = hs[atoi (argv[2])];
         Score s; scoreCase (s, h.v, atof (argv[3]), atoi (argv[4]), h.st);
         std::printf ("%s %s %s: crossed flatter %.2f sharper %.2f move %.2f%% level %+.2f\n", h.v.name, argv[3], argv[4], s.peakFlatterCrossed, s.peakSharper, 100 * s.move, s.level);
+        return 0;
+    }
+    if (t == "one6")
+    {
+        // one case from the sixth set's speaking voices: index into the list below, centre, shift
+        struct H { voice::Vowel v; VStyle st; int type; };
+        const H hs[] {
+            { { { 438, 1498, 2354, 3450, 4400 }, { 55, 90, 130, 165, 215 }, "Dutch u men" }, { -54.0, 3000.0 }, 2 },
+            { { { 523, 866, 2692, 3450, 4400 }, { 65, 80, 130, 165, 215 }, "Dutch open o men" }, { -46.0, 0.0 }, 2 },
+            { { { 388, 2003, 2571, 3450, 4400 }, { 50, 100, 130, 165, 215 }, "Dutch short i men" }, { -58.0, 5500.0 }, 2 },
+            { { { 795, 1301, 2565, 3450, 4400 }, { 95, 90, 130, 165, 215 }, "Dutch aa men" }, { -50.0, 2200.0 }, 2 },
+            { { { 407, 2017, 2554, 3450, 4400 }, { 50, 100, 130, 165, 215 }, "Dutch ee men" }, { -62.0, 0.0 }, 2 },
+            { { { 288, 1832, 2520, 4050, 4950 }, { 45, 115, 145, 185, 225 }, "Dutch uu women" }, { -44.0, 0.0 }, 3 },
+            { { { 669, 1905, 2788, 4050, 4950 }, { 80, 115, 145, 185, 225 }, "Dutch open e women" }, { -40.0, 4000.0 }, 3 },
+            { { { 506, 961, 2608, 4050, 4950 }, { 60, 90, 145, 185, 225 }, "Dutch oo women" }, { -52.0, 2800.0 }, 3 },
+            { { { 476, 1690, 2512, 4050, 4950 }, { 60, 115, 145, 185, 225 }, "Dutch eu women" }, { -47.0, 0.0 }, 3 } };
+        const H& h = hs[atoi (argv[2])];
+        gType = h.type; Score s; scoreCase (s, h.v, atof (argv[3]), atoi (argv[4]), h.st);
+        std::printf ("%s %s %s: move %.2f%% level %+.2f\n", h.v.name, argv[3], argv[4], 100 * s.move, s.level);
         return 0;
     }
     if (t == "one") { Score s; const voice::Vowel* vs[] = { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO, &voice::vowelAe }; scoreCase (s, *vs[atoi (argv[2])], atof (argv[3]), atoi (argv[4])); return 0; }
@@ -261,6 +281,108 @@ int main (int argc, char** argv)
         Score s;
         for (const auto& h : hs) for (double c : { 277.0, 330.0 }) for (int sh : { 4, -4, 2, -2, 1, -1 }) scoreCase (s, h.v, c, sh, h.st);
         std::printf ("set 4 speaking: move %.2f%% (4) level %.2f dB (1.5)\n", 100 * s.move, s.level);
+    }
+    if (! word && t.find ('6') != std::string::npos)
+    {
+        // The sixth held out set's speaking voices (Dutch, Pols and van Nierop), copied from testHeldOutSixth. Run already: a regression test.
+        struct H { voice::Vowel v; VStyle st; int type; std::vector<double> centres; };
+        const std::vector<H> hs {
+            { { { 438, 1498, 2354, 3450, 4400 }, { 55, 90, 130, 165, 215 }, "Dutch u men" }, { -54.0, 3000.0 }, 2, { 95.0, 117.0, 139.0 } },
+            { { { 523, 866, 2692, 3450, 4400 }, { 65, 80, 130, 165, 215 }, "Dutch open o men" }, { -46.0, 0.0 }, 2, { 95.0, 117.0, 139.0 } },
+            { { { 388, 2003, 2571, 3450, 4400 }, { 50, 100, 130, 165, 215 }, "Dutch short i men" }, { -58.0, 5500.0 }, 2, { 95.0, 117.0, 139.0 } },
+            { { { 795, 1301, 2565, 3450, 4400 }, { 95, 90, 130, 165, 215 }, "Dutch aa men" }, { -50.0, 2200.0 }, 2, { 95.0, 117.0, 139.0 } },
+            { { { 407, 2017, 2554, 3450, 4400 }, { 50, 100, 130, 165, 215 }, "Dutch ee men" }, { -62.0, 0.0 }, 2, { 95.0, 117.0, 139.0 } },
+            { { { 288, 1832, 2520, 4050, 4950 }, { 45, 115, 145, 185, 225 }, "Dutch uu women" }, { -44.0, 0.0 }, 3, { 192.0, 226.0 } },
+            { { { 669, 1905, 2788, 4050, 4950 }, { 80, 115, 145, 185, 225 }, "Dutch open e women" }, { -40.0, 4000.0 }, 3, { 192.0, 226.0 } },
+            { { { 506, 961, 2608, 4050, 4950 }, { 60, 90, 145, 185, 225 }, "Dutch oo women" }, { -52.0, 2800.0 }, 3, { 192.0, 226.0 } },
+            { { { 476, 1690, 2512, 4050, 4950 }, { 60, 115, 145, 185, 225 }, "Dutch eu women" }, { -47.0, 0.0 }, 3, { 192.0, 226.0 } } };
+        Score s;
+        for (const auto& h : hs) for (double c : h.centres) for (int sh : { 4, -4, 3, -3, 1, -1 }) { gType = h.type; scoreCase (s, h.v, c, sh, h.st); }
+        gType = 3;
+        std::printf ("set 6 speaking: move %.2f%% (4) floor %.2f%% level %.2f dB (1.5)\n", 100 * s.move, 100 * s.floor, s.level);
+    }
+    if (t == "cross")
+    {
+        // Where each path is better, on the dev vowels only: for each centre pitch, the glide readings and held notes, worst and mean over
+        // the six dev vowels at +/-2 and +/-3. Run once with the grains (X_LO/X_HI high) and once with the harmonic shifter.
+        for (double c : { 110.0, 147.0, 196.0, 247.0, 294.0, 349.0, 415.0, 494.0, 587.0 })
+        {
+            Score s; double heldSum = 0, moveSum = 0; int n = 0;
+            for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO, &voice::vowelAe }) for (int sh : { 3, -3, 2, -2 })
+            {
+                Score one; scoreCase (one, *v, c, sh); moveSum += one.move;
+                s.move = std::max (s.move, one.move); s.moveReal = std::max (s.moveReal, one.moveReal); s.floor = std::max (s.floor, one.floor);
+                s.peakFlatter = std::max (s.peakFlatter, one.peakFlatter); s.level = std::max (s.level, one.level);
+                const double r = std::pow (2.0, sh / 12.0), moved = c * r;
+                const auto in = styledVoice (voice::steady (c, 1.6, SR), *v, {});
+                const auto out = runEngine (in, sh, gMode);
+                const auto real = styledVoice (voice::steady (moved, 1.6, SR), *v, {});
+                const long from = (long) (0.5 * SR), len = (long) (1.0 * SR);
+                std::vector<double> d; double mean = 0;
+                for (double hz = moved; hz <= 4000.0; hz += moved) { d.push_back (harmonicDb (out.data() + from, len, hz) - harmonicDb (real.data() + from, len, hz)); mean += d.back(); }
+                mean /= d.size(); double s2 = 0; for (double x : d) s2 += (x - mean) * (x - mean);
+                heldSum += std::sqrt (s2 / d.size()); ++n;
+            }
+            std::printf ("centre %.0f: glide move worst %.2f%% mean %.2f%%, against real %.2f%%, floor %.2f%%, peak flatter %.2f dB, level %.2f, held notes %.2f dB\n", c, 100 * s.move, 100 * moveSum / n, 100 * s.moveReal, 100 * s.floor, s.peakFlatter, s.level, heldSum / n);
+        }
+    }
+    if (t == "mix")
+    {
+        // A held note and a slow glide at one pitch, to compare a blend of the two paths with each alone: level against the input and
+        // each harmonic against a real voice. argv[2] = pitch.
+        const double c = atof (argv[2]);
+        double heldSum = 0, lvlWorst = 0; int n = 0;
+        for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO, &voice::vowelAe }) for (int sh : { 3, -3, 1, -1 })
+        {
+            const double r = std::pow (2.0, sh / 12.0), moved = c * r;
+            const auto in = styledVoice (voice::steady (c, 1.6, SR), *v, {});
+            const auto out = runEngine (in, sh, gMode);
+            const auto real = styledVoice (voice::steady (moved, 1.6, SR), *v, {});
+            const long from = (long) (0.5 * SR), len = (long) (1.0 * SR);
+            std::vector<double> d; double mean = 0;
+            for (double hz = moved; hz <= 4000.0; hz += moved) { d.push_back (harmonicDb (out.data() + from, len, hz) - harmonicDb (real.data() + from, len, hz)); mean += d.back(); }
+            mean /= d.size(); double s2 = 0; for (double x : d) s2 += (x - mean) * (x - mean);
+            heldSum += std::sqrt (s2 / d.size()); ++n;
+            lvlWorst = std::max (lvlWorst, std::abs (toDb (rms (out.data() + from, len)) - toDb (rms (in.data() + from, len))));
+        }
+        std::printf ("held at %.0f Hz: harmonics against a real voice %.2f dB mean, level change worst %.2f dB\n", c, heldSum / n, lvlWorst);
+    }
+    if (t == "cpu")
+    {
+        // Time the engine on 10 s of voice at argv[2] Hz with vibrato, corrected at Retune 0, against real time.
+        const double hz = argc > 2 ? atof (argv[2]) : 180.0;
+        const auto x = voice::synth (voice::vibrato (hz, 10.0, SR, 30.0, 5.5), voice::vowelA, SR, -30.0);
+        const auto start = std::chrono::steady_clock::now();
+        const auto out = runEngine (x, 3, gMode, 65.0, 1300.0, 1.0, true, 100, 3);
+        const double secs = std::chrono::duration<double> (std::chrono::steady_clock::now() - start).count();
+        std::printf ("cpu at %.0f Hz: %.2f%% of one core (mono)\n", hz, 100.0 * secs / 10.0);
+    }
+    if (t == "switch")
+    {
+        // Glides across the crossover between the grains and the harmonic shifter, up and down, dev vowels: the deepest 5 ms dip and highest
+        // 5 ms rise of output against input, and the same reading at a pitch far from the crossover for comparison.
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            double worstDip = 0, worstRise = 0;
+            for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO, &voice::vowelAe }) for (int sh : { 2, -2 })
+            {
+                std::vector<double> f0 ((size_t) (3.0 * SR));
+                for (size_t i = 0; i < f0.size(); ++i) { const double u = (double) i / f0.size(); const double tri = u < 0.5 ? 2 * u : 2 - 2 * u; f0[i] = pass == 0 ? 160.0 * std::pow (2.0, tri * 0.8) : 330.0 * std::pow (2.0, tri * 0.8); }
+                const auto in = styledVoice (f0, *v, {});
+                const auto out = runEngine (in, sh, gMode);
+                std::vector<double> f0m (f0); for (auto& x : f0m) x *= std::pow (2.0, sh / 12.0);
+                const auto real = styledVoice (f0m, *v, {});
+                const int frame = 480; std::vector<double> d;
+                for (int at = (int) (0.3 * SR); at + frame < (int) in.size() - 4800; at += frame) d.push_back (toDb (rms (out.data() + at, frame)) - toDb (rms (real.data() + at, frame)));
+                double mean = 0; for (double x : d) mean += x; mean /= d.size();
+                for (size_t i = 0; i < d.size(); ++i)
+                {
+                    if (getenv ("DUMP") && mean - d[i] > 6.0) std::printf ("    %s %+d: dip %.1f dB at %.3f s, input %.0f Hz\n", v->name, sh, mean - d[i], 0.3 + i * frame / SR, f0[(size_t) (0.3 * SR + i * frame)]);
+                    worstDip = std::max (worstDip, mean - d[i]); worstRise = std::max (worstRise, d[i] - mean);
+                }
+            }
+            std::printf ("%s: deepest 10 ms dip against a real voice %.2f dB, highest rise %.2f dB, against the stretch's mean\n", pass == 0 ? "glides 160 to 279 Hz, across the crossover" : "glides 330 to 574 Hz, harmonic shifter only", worstDip, worstRise);
+        }
     }
     if (! word && t.find ('d') != std::string::npos)
     {

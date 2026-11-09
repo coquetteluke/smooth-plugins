@@ -95,11 +95,12 @@ public:
         envelope.setSweepMemory (mode == highQuality ? 0.2 : 0.0, 400.0);
         ahead = envelope.getLookahead();
         levelGain = 1.0;
+        wetLevel = dryLevel = levelSeen = 0.0;
         passMix = 1.0;
         passStep = 1.0 / (0.003 * sr);
-        wetLevel = dryLevel = levelSeen = 0.0;
         correctingFor = 0;
         levelMemory = (mode == highQuality ? highQualityLevelMemorySeconds : lowLatencyLevelMemorySeconds) * sr;
+        matchEase = 1.0 / levelMemory;
         levelFollow = 1.0 - std::exp (-1.0 / (0.03 * sr));
         levelRelease = 1.0 - std::exp (-1.0 / (0.003 * sr));
         shifter.reset();
@@ -116,6 +117,18 @@ public:
         ring.fill (ControlPoint {});
         const double extra = mode == highQuality ? highQualityExtraSeconds : 0.0;
         voicedHold = 0;
+        harmonicShare = 1.0;
+        harmonicShareFresh = true;
+        useHarmonic = true;
+        grainsIdle = harmonicIdle = false;
+        grainsAwake = harmonicAwake = 1 << 20;   // both run from the start
+        grainsRestFor = harmonicRestFor = 0;
+        pastLineFor = 0;
+        grainsPower = harmonicPower = 0.0;
+        grainsMatch = harmonicMatch = 1.0;
+        matchedForHarmonic = true;
+        bothRunning = 0;
+        pathFollow = 1.0 - std::exp (-1.0 / (0.1 * sr));
         controlDelayTicks = std::clamp ((int) std::lround (extra / tickSeconds), 0, (int) ring.size() - 1);
         leadTicks = mode == highQuality ? std::min (controlDelayTicks, (int) std::lround (highQualityLeadSeconds / tickSeconds)) : 0;
     }
@@ -161,35 +174,85 @@ public:
         const long long index = dryAt - ahead;
         if (index >= 0)
         {
-            envelope.loadAnalysisFor (index);
-            shifter.write (0, (float) envelope.whiten (0, (double) dry[0][(size_t) (index & last)]));
-            if (channels > 1) shifter.write (1, (float) envelope.whiten (1, (double) dry[1][(size_t) (index & last)]));
-            shifter.advance();
-            shifter.step (tracker, control, wet);
+            if (grainsIdle)
+            {
+                // Not heard and not about to be: the grains' delay line is kept filled, nothing more.
+                shifter.write (0, dry[0][(size_t) (index & last)]);
+                if (channels > 1) shifter.write (1, dry[1][(size_t) (index & last)]);
+                shifter.advance();
+            }
+            else
+            {
+                envelope.loadAnalysisFor (index);
+                shifter.write (0, (float) envelope.whiten (0, (double) dry[0][(size_t) (index & last)]));
+                if (channels > 1) shifter.write (1, (float) envelope.whiten (1, (double) dry[1][(size_t) (index & last)]));
+                shifter.advance();
+                shifter.step (tracker, control, wet);
+            }
 
             const long long at = dryAt - latency;
             if (at >= 0)
             {
-                envelope.loadSynthesisFor (at);
-                wet[0] = (float) envelope.shape (0, (double) wet[0]);
-                if (channels > 1) wet[1] = (float) envelope.shape (1, (double) wet[1]);
-                // High Quality, unless Classic: the harmonic shifter replaces the grains. It hands back to the input while not voiced, and while a
-                // voiced stretch has not been corrected at all, since then the input is exactly what it would give.
+                if (grainsIdle)
+                {
+                    wet[0] = dryOut[0];
+                    wet[1] = dryOut[1];
+                }
+                else
+                {
+                    envelope.loadSynthesisFor (at);
+                    wet[0] = (float) envelope.shape (0, (double) wet[0]);
+                    if (channels > 1) wet[1] = (float) envelope.shape (1, (double) wet[1]);
+                }
+                // High Quality, unless Classic: below about 220 Hz the grains, above it the harmonic shifter, see harmonicShare. Both always run,
+                // so either is ready the moment it is wanted. The harmonic shifter hands back to the input while not voiced, and while a voiced
+                // stretch has not been corrected at all, since then the input is exactly what it would give.
                 bool harmonicPass = false;
                 if (mode == highQuality && ! control.plainGrains)
                 {
                     float h[2] = { 0.0f, 0.0f };
                     const bool ok = harmonic.step (harmonicControl, dryOut, h);
-                    wet[0] = ok ? h[0] : dryOut[0];
-                    wet[1] = ok ? (channels > 1 ? h[1] : h[0]) : dryOut[1];
-                    harmonicPass = ! ok || (control.noCorrection && ! harmonic.hasCorrected());
+                    const double w = harmonicShare;
+                    float hw[2] = { ok ? h[0] : dryOut[0], ok ? (channels > 1 ? h[1] : h[0]) : dryOut[1] };
+                    if (channels < 2) wet[1] = wet[0];
+                    // The two paths do not give quite the same level, and the level trim follows only slowly, so where one hands over to the
+                    // other the level stepped, up to 10 dB for 150 ms on a glide across the crossover. Both paths' levels are followed over
+                    // 0.1 s while both run, and at a hand over the incoming one is matched to the outgoing one; the match then eases back to
+                    // 1 as the trim catches up.
+                    if (! grainsIdle && ok && control.voiced)
+                    {
+                        grainsPower += pathFollow * ((double) wet[0] * wet[0] + (double) wet[1] * wet[1] - grainsPower);
+                        harmonicPower += pathFollow * ((double) hw[0] * hw[0] + (double) hw[1] * hw[1] - harmonicPower);
+                        bothRunning = std::min (bothRunning + 1, 1 << 30);
+                    }
+                    else
+                        bothRunning = 0;
+                    if (useHarmonic != matchedForHarmonic)
+                    {
+                        matchedForHarmonic = useHarmonic;
+                        // Only from levels both paths have given for a while; otherwise no match.
+                        if (bothRunning > (int) (0.1 * sr) && grainsPower > 1.0e-12 && harmonicPower > 1.0e-12)
+                        {
+                            const double r = std::sqrt (grainsPower / harmonicPower);
+                            // Keep the output where it is: the incoming path takes the outgoing one's level.
+                            if (useHarmonic) { harmonicMatch = std::clamp (r * grainsMatch, 0.5, 2.0); grainsMatch = 1.0; }
+                            else { grainsMatch = std::clamp (harmonicMatch / r, 0.5, 2.0); harmonicMatch = 1.0; }
+                        }
+                        else
+                            grainsMatch = harmonicMatch = 1.0;
+                    }
+                    harmonicMatch += matchEase * (1.0 - harmonicMatch);
+                    grainsMatch += matchEase * (1.0 - grainsMatch);
+                    wet[0] = (float) (w * harmonicMatch * hw[0] + (1.0 - w) * grainsMatch * wet[0]);
+                    wet[1] = (float) (w * harmonicMatch * hw[1] + (1.0 - w) * grainsMatch * wet[1]);
+                    harmonicPass = w >= 1.0 && (! ok || (control.noCorrection && ! harmonic.hasCorrected()));
                 }
                 else if (mode == highQuality)
                     harmonic.restart();
                 holdLevel (wet, dryOut);
 
                 // Through a consonant the filters ring on for a few ms from the vowel before it. Nothing is being changed then, so the true input takes over.
-                const bool voicedNow = mode == highQuality && ! control.plainGrains ? harmonicControl.voiced : control.voiced;
+                const bool voicedNow = mode == highQuality && ! control.plainGrains && harmonicShare > 0.0 ? harmonicControl.voiced : control.voiced;
                 const bool pass = (! voicedNow && ! control.plainGrains) || harmonicPass;
                 passMix = pass ? std::min (1.0, passMix + passStep) : std::max (0.0, passMix - passStep);
                 if (passMix > 0.0)
@@ -301,8 +364,75 @@ private:
         // Low Latency's model lags the voice, which matters most on low voices, whose periods are long against it. It leaves those alone.
         control.pulseLowestHz = mode == highQuality ? 0.0 : 130.0;
         control.downReadPower = mode == highQuality ? 0.0 : 0.2;
-        // High Quality's harmonic shifter needs no filters, and Classic has plain grains, so only Low Latency uses them.
-        envelope.setStrength (shared.settings.classic || mode == highQuality ? 0.0 : 1.0);
+        // Which path High Quality gives out. The grains read the shape of each period, which holds the vocal tract's ring as long as a
+        // period outlasts it: a first formant 70 Hz wide rings for about 1 / (pi x 70) = 4.5 ms, the period at 220 Hz. Above that a grain cuts the
+        // ring short and the harmonic shifter does better. Measured on the dev vowels, +/-2 and +/-3, glides and held notes (EngineHarness
+        // cross): grains better at 110 and 147 Hz (held notes 0.95 and 1.21 dB against 3.24 and 1.95), about even at 196 and 247, the harmonic
+        // shifter better from 294 up (first formant 2.6 dB flatter than a real voice against 7.5). The two give the same pitch but not the same
+        // timing within a period, so a lasting blend partly cancels (held notes 6.5 dB at an even blend): the choice switches with 1.2 semitones
+        // either side of 220 Hz to spare, so vibrato does not flip it, and crosses over in 20 ms. On dev glides across the crossover the deepest
+        // 10 ms dip against a real voice reads 8.6 dB, as on glides that never cross (8.7), with the level match in process(). A faster
+        // cross over dips less (5.6 dB at 5 ms) but the jump between two waveforms then reads as noise in a quiet upper band (formant move 7.6%
+        // on a regression voice at 5 ms, 2.9% at 10 ms, 1.9% at 20 ms). A voiced stretch starts on whichever side it is.
+        //
+        // Running both costs about 7% of a core. So a path that is not heard and is well away from being wanted rests: the grains above
+        // 280 Hz stop entirely, and below 190 Hz the harmonic shifter only listens, so its memory of the voiced stretch is kept. Each wakes
+        // when the pitch comes back inside that, and is only switched to once it has been awake long enough to give out something whole:
+        // the grains a latency's worth, the harmonic shifter 30 ms.
+        if (mode == highQuality && ! shared.settings.classic)
+        {
+            if (control.voiced)
+            {
+                const double f0 = sr / period;
+                if (harmonicShareFresh)
+                {
+                    useHarmonic = f0 > std::sqrt (grainsBelowHz * harmonicAboveHz);
+                    pastLineFor = 0;
+                    // A path that has only just woken has nothing whole to give yet: start on the other one.
+                    if (! useHarmonic && grainsAwake < latency / tickSamples) useHarmonic = true;
+                    else if (useHarmonic && harmonicAwake < harmonicWakeTicks && grainsAwake >= latency / tickSamples) useHarmonic = false;
+                    harmonicShare = useHarmonic ? 1.0 : 0.0;
+                    matchedForHarmonic = useHarmonic;
+                    grainsMatch = harmonicMatch = 1.0;
+                    harmonicShareFresh = false;
+                }
+                else
+                {
+                    // Only once the pitch has stayed past the line for a while: a tracker that jumps an octave for a few ms, as on some
+                    // real recordings, would otherwise flip the path back and forth, and each flip blends the two for a moment.
+                    pastLineFor = (useHarmonic ? f0 < grainsBelowHz : f0 > harmonicAboveHz) ? pastLineFor + 1 : 0;
+                    if (pastLineFor >= switchAfterTicks)
+                    {
+                        if (useHarmonic && grainsAwake >= latency / tickSamples) { useHarmonic = false; pastLineFor = 0; }
+                        else if (! useHarmonic && harmonicAwake >= harmonicWakeTicks) { useHarmonic = true; pastLineFor = 0; }
+                    }
+                    const double step = tickSeconds / pathSwitchSeconds;
+                    harmonicShare = useHarmonic ? std::min (1.0, harmonicShare + step) : std::max (0.0, harmonicShare - step);
+                }
+                // Only once it has held for a while, so a moment's misreading does not put a path to rest.
+                grainsRestFor = harmonicShare >= 1.0 && f0 > grainsRestAboveHz ? grainsRestFor + 1 : 0;
+                harmonicRestFor = harmonicShare <= 0.0 && f0 < harmonicRestBelowHz ? harmonicRestFor + 1 : 0;
+                const bool grainsRest = grainsRestFor >= restAfterTicks, harmonicRest = harmonicRestFor >= restAfterTicks;
+                if (grainsIdle && ! grainsRest) envelope.forgetHistory();
+                grainsIdle = grainsRest;
+                harmonicIdle = harmonicRest;
+            }
+            else
+            {
+                if (voicedHold <= 0)
+                    harmonicShareFresh = true;
+                if (grainsIdle) envelope.forgetHistory();
+                grainsIdle = harmonicIdle = false;
+                grainsRestFor = harmonicRestFor = 0;
+            }
+            grainsAwake = grainsIdle ? 0 : std::min (grainsAwake + 1, 1 << 20);
+            harmonicAwake = harmonicIdle ? 0 : std::min (harmonicAwake + 1, 1 << 20);
+        }
+        else
+            grainsIdle = harmonicIdle = false;
+        harmonic.setQuiet (harmonicIdle);
+        // Classic has plain grains, so it needs no filters. The harmonic shifter needs none either, but High Quality's grains do.
+        envelope.setStrength (shared.settings.classic || grainsIdle ? 0.0 : 1.0);
     }
 
     double sr = 48000.0, tickSeconds = 0.001;
@@ -322,6 +452,17 @@ private:
     float lastVoicingLimit = -1.0f;
     int correctingFor = 0, voicedHold = 0;
     static constexpr int harmonicHoldTicks = 6;
+    static constexpr double grainsBelowHz = 205.0, harmonicAboveHz = 235.0, pathSwitchSeconds = 0.02;
+    double harmonicShare = 1.0;   // High Quality: 0 gives out the grains, 1 the harmonic shifter
+    bool harmonicShareFresh = true, useHarmonic = true, grainsIdle = false, harmonicIdle = false;
+    static constexpr double grainsRestAboveHz = 280.0, harmonicRestBelowHz = 190.0;
+    static constexpr int harmonicWakeTicks = 30;
+    static constexpr int restAfterTicks = 100, switchAfterTicks = 40;
+    int pastLineFor = 0;
+    int grainsAwake = 0, harmonicAwake = 0, grainsRestFor = 0, harmonicRestFor = 0;
+    double grainsPower = 0.0, harmonicPower = 0.0, grainsMatch = 1.0, harmonicMatch = 1.0, pathFollow = 0.001, matchEase = 0.001;
+    bool matchedForHarmonic = true;
+    int bothRunning = 0;
     double passMix = 1.0, passStep = 0.01;
     double levelGain = 1.0, wetLevel = 0.0, dryLevel = 0.0, levelSeen = 0.0, levelMemory = 48000.0, levelFollow = 0.001, levelRelease = 0.01;
 };

@@ -105,6 +105,16 @@ public:
     }
 
     int getLookahead() const noexcept { return lookahead; }
+    // Forgets what the model carries from moment to moment (the sweep memory, the glide speed, the shape held through a note start, what
+    // is still ringing in the two filters), for when it has been left unused for a while and all of that is from another part of the voice.
+    void forgetHistory() noexcept
+    {
+        clearSweep();
+        forgetGlide();
+        heardSilence();
+        for (auto& c : analysis) c = {};
+        for (auto& c : synthesis) c = {};
+    }
 
     // From this pitch up, the model is drawn through the harmonic peaks instead of fitted directly.
     void setHarmonicModelFrom (double hz) noexcept { harmonicModelFromHz = hz; }

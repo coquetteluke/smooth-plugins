@@ -171,20 +171,27 @@ Bold fails its limit. See below.
   2. *Level where the memory takes over.* The memory reads one harmonic number at two pitches, so it also carries how much louder the voice is at the higher pitch, which the straight lines do not. On a glide up the memory has nothing at first, so the level jumped when it took over and the trim drifted. On moves up the memory now takes off 3 times the pitch ratio in dB (a fit says 2; 3 also covers the lines missing a harmonic crossing a formant). On moves down it is left alone, as taking it out there read 9.8% on big shifts. The level trim averages 1 s instead of 0.6. Why the third set's formant move was close: on its worst case a perfect real voice already reads 3.1% against the input, and the shifter reads 0.5% from that real voice.
   3. *Weak harmonics.* On a glide, high harmonics spill into the bins between them and read as weak. Their lift towards where they land is capped at 24 dB instead of 12; at 12, e at 165 Hz moved down 7 lost its fourth formant.
 
-  | High Quality | 1.4.0 | Shifter (c317202) | Now, with `hs-held` merged | Limit |
+  4. *Grains below 220 Hz, the harmonic shifter above (after the sixth held out set).* The sixth set, written blind, showed the same pattern set 3 had: singing passed (first formant 7.0 dB, 1.4.0 12.1) but speaking failed (formant move 5.19% against 4, 1.4.0 3.73%). Two changes. First, a frame is now remembered while its level moves up to 3 dB between its halves, not 1.5: a glide over a narrow first formant moves the level that fast, and the frames that show the peak were being left out (found on the sixth set's u at 226 Hz up 4, 5.2% to 2.7%). Second, High Quality now gives out 1.4.0's grains below about 220 Hz and the harmonic shifter above. The crossover comes from dev vowels and the physics, not from the held out sets: on the six dev vowels the grains are better at 110 and 147 Hz (held notes 0.95 and 1.21 dB against 3.24 and 1.95), about even at 196 and 247, and the harmonic shifter is better from 294 Hz up (first formant 2.6 dB flatter than a real voice against 7.5); and a first formant 70 Hz wide rings for about 4.5 ms, the period at 220 Hz, so above that a grain cuts the ring short. The two paths give the same pitch but not the same timing within a period, so a lasting blend partly cancels (held notes 6.5 dB at an even blend). So it is a switch, not a slow blend: it moves at 205 Hz going down and 235 Hz going up, only after the pitch has stayed past the line for 40 ms (a tracker jumping an octave for a few ms on a real recording flipped it otherwise), crosses over in 20 ms, and the incoming path is matched to the outgoing one's level, easing back over 1 s. Both paths always run, except that a path well away from being used rests (grains above 280 Hz, the harmonic shifter only listening below 190 Hz) to keep CPU near 5%.
+
+  | High Quality | 1.4.0 | Shifter (c317202) | Now | Limit |
   |---|---|---|---|---|
-  | Third held out set, formant move | 3.47% | 4.77% | 3.73% | 4 |
-  | Third held out set, level | 0.80 dB | 1.62 dB | 0.77 dB | 1.5 |
+  | Sixth held out set, speaking, formant move | 3.73% | 5.19% (887fac4) | 2.70% | 4 |
+  | Sixth held out set, speaking, level | 0.81 dB | 0.92 dB | 1.12 dB | 1.5 |
+  | Sixth held out set, singing, first formant | 12.06 dB | 7.03 dB | 7.03 dB | 9 |
+  | Sixth held out set, held notes | 3.74 dB | 2.01 dB | 2.01 dB | 3.5 |
+  | Third held out set, formant move | 3.47% | 4.77% | 2.90% | 4 |
+  | Third held out set, level | 0.80 dB | 1.62 dB | 0.80 dB | 1.5 |
   | Fifth held out set, singing first formant | 18.6 dB | 12.0 dB | 7.0 dB | 9 |
   | First / fifth held out set, held notes | 4.54 / 4.02 dB | 4.15 / 4.38 dB | 2.87 / 2.94 dB | 3.5 |
-  | High notes, first formant | 13.1 dB | 5.2 dB | 4.4 dB | 9 |
+  | High notes, first formant | 13.1 dB | 5.2 dB | 4.0 dB | 9 |
   | First held out set, high voices, first formant | 15.9 dB | 6.1 dB | 6.3 dB | 9 |
-  | First held out set, high voices, formant move (floor 28.5% + 2) | | 30.0% | 14.9% | 30.5 |
-  | Level, +/-1 to +/-3 | 0.60 dB | 1.21 dB | 0.60 dB | 1.5 |
-  | Big shifts +/-7, move against a real voice | 2.5% | 6.7% | 1.1% | 8 |
-  | Real speech, 99th percentile frame level change | 2.52 dB | 2.88 dB | 2.84 dB | 3 |
+  | Formant move, +/-1 to +/-3 (dev) | 2.29% | 2.29% | 2.11% | 4 |
+  | Level, +/-1 to +/-3 (dev) | 0.60 dB | 1.21 dB | 0.78 dB | 1.5 |
+  | Big shifts +/-7, move against a real voice | 2.5% | 6.7% | 1.5% | 8 |
+  | Real speech, 99th percentile frame level change | 2.52 dB | 2.88 dB | 2.59 dB | 3 |
+  | CPU, voice at 180 Hz, 48 kHz stereo | 4.4% | 2.6% | 5.3% | 8 |
 
-  Full suite: 497 pass, 0 fail (`tests/results.txt`). The two settings chosen by measuring (3 on moves up, 1 s trim) were chosen with the third and fourth held out sets in view, and all five sets had been run before this work, so they are regression tests now and say nothing about how it generalises; a sixth set, written by someone who has not seen this tuning, is needed for that. Real speech is still close to its limit: the shifter's frames span two to four periods, so at the fast fall at the end of a word its output lags the input by up to 4 dB in a 20 ms reading. Nothing here was heard by anyone.
+  Full suite: 503 pass, 0 fail (`tests/results.txt`), Low Latency bit for bit 1.4.0, latency unchanged. The chosen settings (3 on moves up, the 1 s trim, the 3 dB rule) were chosen with held out sets in view, and all six sets had been run before, so they are regression tests now and say nothing about how it generalises; a seventh set, written by someone who has not seen this tuning, is needed for that. Where the path switches on a glide, the deepest 10 ms dip against a real voice reads 8.6 dB on dev glides, the same as on glides that never cross (8.7); without the level match it read 11.4. Nothing here was heard by anyone.
 
 `build/PluginTest_artefacts/Release/PluginTest demo` writes corrected `say` files for both engines to `build/demo`, to listen to outside any host.
 

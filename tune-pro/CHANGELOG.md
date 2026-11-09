@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.5.0, 2026-11-08
+
+High Quality gets a new shifter for high and sung notes. Low Latency and Classic are bit for bit 1.4.0, and latency is unchanged.
+
+**A harmonic shifter above about 220 Hz.** High Quality reads the voice one period at a time so each harmonic sits on its own frequency bin, and moves each harmonic by how the vocal tract differs between where it was and where it is going. The vocal tract comes from a memory of each harmonic's level against the pitch it was heard at, and on held notes from a fit of the voice source plus five resonances (`src/HeldEnvelope.h`). Below about 220 Hz the grains from 1.4.0 do better and are kept. The switch is at 205 Hz going down and 235 Hz going up, after the pitch stays past it for 40 ms, with a 20 ms level-matched crossfade.
+
+**The level trim trusts its average only as far as its 1 s memory has filled.** In the first part of a glide across a narrow formant it had been pushing the gain up to 8 dB the wrong way.
+
+| High Quality | 1.4.0 | 1.5.0 | Limit |
+|---|---|---|---|
+| Formant move, +/-1 to +/-3 | 2.29% | 2.11% | 4% |
+| First formant flatter than a real voice | 5.38 dB | 3.80 dB | 7 dB |
+| Level change, +/-1 to +/-3 | 0.60 dB | 0.67 dB | 1.5 dB |
+| Big shifts +/-7, formant move | 2.50% | 1.48% | 8% |
+| High notes, formant move | 16.48% | 11.42% | 16.89% |
+| High notes, first formant against its surroundings | **13.14 dB** | 4.01 dB | 9 dB |
+| Held notes, harmonics against a real voice | **4.54 dB** | 2.87 dB | 3.5 dB |
+| First held out set, 392 to 740 Hz, first formant | **15.93 dB** | 6.36 dB | 9 dB |
+| Seventh held out set (Korean), speaking level | 1.12 dB | 1.04 dB | 1.5 dB |
+| Seventh held out set, singing first formant | **13.83 dB** | 6.78 dB | 9 dB |
+| Seventh held out set, held notes | **3.65 dB** | 2.41 dB | 3.5 dB |
+| Eighth held out set (Japanese, Cantonese, Greek), singing first formant | **11.63 dB** | 6.41 dB | 9 dB |
+| Eighth held out set, held notes | **4.16 dB** | 2.39 dB | 3.5 dB |
+| Eighth held out set, speaking formant move | **6.32%** | **6.32%** | 4% |
+| CPU, voice at 180 Hz, 48 kHz stereo | 4.41% | 5.33% | 8% |
+
+Bold fails. The main suite is 509 pass, 0 fail (1.4.0: 481 and 3, on fewer tests). Nothing that passed in 1.4.0 fails now.
+
+How clean the held out numbers are: sets 1 to 6 were all seen while choosing settings, so they are regression tests now. The seventh set was written blind and run once, failed speaking level (1.587 dB), and was then used to fix that, so it is no longer clean either. The eighth set was written blind and run once at the end. It shows one fail, speaking formant move on low men's voices, 6.32% against 4, and 1.4.0 reads exactly the same there because below 205 Hz both run the same grains. So that is an old weakness, not a new one.
+
+Trade-off: the trim now takes a full second to settle, so on a held note transposed by up to 24 semitones the level 0.5 to 1.0 s in reads 2.64 dB (was 0.82). That line has no limit and is back to its old number by 1 s. Nobody has listened to 1.5.0 yet.
+
 ## 1.4.0, 2026-11-08
 
 Two fixes. Low Latency changes on purpose for the first one, so its null test now holds 1.4.0's output.

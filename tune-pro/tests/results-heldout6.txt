@@ -1,0 +1,33 @@
+Sixth held out set, run once on 2026-11-08 on hs-fix 549a261 (harmonic shifter, held note fit, set 3 and 5 fixes):
+FAIL  [HQ] sixth held out set, Dutch men 95 to 139 Hz and women 192 and 226 Hz, worst formant move against the input = 5.192 %
+INFO  [HQ]   and the tool's floor there = 2.495 %
+PASS  [HQ]   level change, worst = 0.916 dB
+INFO  [HQ]   first formant against its surroundings, flatter than a real voice, worst = 4.008 dB
+INFO  [HQ]   colour, worst = 2.653 dB
+PASS  [HQ] sixth held out set, Dutch women 370 to 762 Hz and men 370 and 453 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst = 7.028 dB
+INFO  [HQ]   the same with every case, including where the whole glide stays above the formant = 7.028 dB
+PASS  [HQ]   first formant sharper than a real voice, worst = -0.326 dB
+PASS  [HQ]   formant move against the input, worst, against the floor plus 2% = 17.410 %
+INFO  [HQ]   and the tool's floor there = 40.000 %
+INFO  [HQ]   colour, worst = 3.413 dB
+INFO  [HQ]   level change, worst = 1.062 dB
+INFO  [HQ]   held notes, harmonics against a real voice, worst RMS = 4.910 dB
+PASS  [HQ]   held notes, harmonics against a real voice, mean of the RMS = 2.007 dB
+RESULT FAIL  1 failures
+
+For comparison, the same test on 1.4.0's code (main 3c1efcb plus this test):
+PASS  [HQ] sixth held out set, Dutch men 95 to 139 Hz and women 192 and 226 Hz, worst formant move against the input = 3.731 %
+INFO  [HQ]   and the tool's floor there = 2.495 %
+PASS  [HQ]   level change, worst = 0.813 dB
+INFO  [HQ]   first formant against its surroundings, flatter than a real voice, worst = 4.684 dB
+INFO  [HQ]   colour, worst = 1.404 dB
+FAIL  [HQ] sixth held out set, Dutch women 370 to 762 Hz and men 370 and 453 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst = 12.062 dB
+INFO  [HQ]   the same with every case, including where the whole glide stays above the formant = 12.675 dB
+PASS  [HQ]   first formant sharper than a real voice, worst = 2.777 dB
+PASS  [HQ]   formant move against the input, worst, against the floor plus 2% = 40.000 %
+INFO  [HQ]   and the tool's floor there = 40.000 %
+INFO  [HQ]   colour, worst = 6.339 dB
+INFO  [HQ]   level change, worst = 0.901 dB
+INFO  [HQ]   held notes, harmonics against a real voice, worst RMS = 7.848 dB
+FAIL  [HQ]   held notes, harmonics against a real voice, mean of the RMS = 3.744 dB
+RESULT FAIL  2 failures

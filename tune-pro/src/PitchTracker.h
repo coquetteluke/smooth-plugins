@@ -160,6 +160,9 @@ public:
     bool isVoiced() const noexcept { return voiced; }
     bool isFricative() const noexcept { return envFull > 3.0 * envLow + 1.0e-12 && envFull > 1.0e-9; }
     double coarsePeriod() const noexcept { return tauCurrent * decimation; }
+    // 0, the default, leaves the octave rule as it always was (Low Latency and Classic keep it, so their output does not change).
+    // Above 0: see trackContinuity. High Quality sets 2.
+    void setStrictOctaveUp (double times) noexcept { strictOctaveUp = std::max (0.0, times); }
     float difference() const noexcept { return dipCurrent; }    // 0 = perfectly periodic
 
     // Best period right now in input samples, 0 when not voiced.
@@ -327,7 +330,14 @@ private:
         {
             const bool related = isOctaveRelated (ratio);
             if (ratio < 1.0)
+            {
                 stay = related ? dip > nearDip + 0.015f : nearDip <= dip + 0.01f; // the new period is shorter
+                // A voice whose first two formants sit together on its second harmonic, as an open back vowel sung around 350 Hz, looks
+                // almost as periodic at half its period, and both fits are close to 0, so the margin above lets it jump an octave up.
+                // With strictOctaveUp set, the period we are on is kept while it still fits that many times better than the half.
+                if (strictOctaveUp > 0.0 && related && dip > (float) strictOctaveUp * nearDip + strictOctaveMargin)
+                    stay = true;
+            }
             else
             {
                 // The new period is longer. A rough sound can look that way for a moment, so stay put, unless a clean sound
@@ -562,6 +572,8 @@ private:
         addMark (position, lagExact, bestMatch);
     }
 
+    double strictOctaveUp = 0.0;
+    static constexpr float strictOctaveMargin = 0.001f;
     double sr = 48000.0, slowRate = 12000.0, lowHz = 70.0, highHz = 1300.0, envAttack = 0.01;
     int decimation = 4, hop = 16, slowSize = 8192, fastSize = 16384;
     int tauMin = 8, tauMax = 180, window = 180;

@@ -871,6 +871,270 @@ void testHeldOutFifth()
     chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
 }
 
+// A sixth held out set, written on 2026-11-08 blind to the tuning going on at the same time, and committed before any of it was run. All five sets
+// above have been used. Formants from a published source and a language none of the earlier sets used: Dutch vowels in h_t words.
+//   Men:   Pols, L. C. W., Tromp, H. R. C. and Plomp, R. (1973), Frequency analysis of Dutch vowels from 50 male speakers,
+//          J. Acoust. Soc. Am. 53 (4), 1093 to 1101, Table I, mean F1, F2, F3.
+//   Women: van Nierop, D. J. P. J., Pols, L. C. W. and Plomp, R. (1973), Frequency analysis of Dutch vowels from 25 female speakers,
+//          Acustica 29, 110 to 118.
+// The numbers below are the means over speakers of the per speaker F1 to F3 of both studies, as distributed with Praat ("Create formant table
+// (Pols & Van Nierop 1973)", dwtools/Table_dataSets.cpp, which corrects one female F3 misprint), rounded to the hertz. The men's means agree with those usually quoted from Table I.
+// Speaker groups none of the earlier sets used: Dutch men and women, and men's vowels at tenor singing pitches. Vowels taken from Dutch's
+// own set: u (front rounded, short), open o, short i, long a and e for the men; y, open e, long o and eu for the women; long a, short a, open o,
+// short u and long e for women singing. Pitches none of the earlier sets used: 95, 117 and 139 Hz for men speaking, 192 and 226 Hz for women
+// speaking, 370 and 453 Hz for men singing, and 370, 453, 572 and 762 Hz for women singing, some between notes on purpose.
+// That table has no F4, F5 or bandwidths, so they were set here, before running, by the earlier sets' conventions: F4 and F5 between what those
+// sets used for each sex; the first formant's bandwidth about an eighth of its frequency, 45 Hz at least; F2 bandwidth rising with F2;
+// women's bandwidths wider than men's. Women's sources a little breathier than men's, as the literature on women's voices reports (Klatt
+// and Klatt, 1990). Breath and source tone otherwise vary from voice to voice. Nothing was tuned on these, and none of it was chosen by looking at output.
+void testHeldOutSixth()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; int type; std::vector<double> centres; };
+    // F1, F2, F3 from Pols and others (men) and van Nierop and others (women); F4, F5 and all bandwidths set here.
+    const std::vector<Held> speaking {
+        { { { 438, 1498, 2354, 3450, 4400 }, { 55, 90, 130, 165, 215 }, "Dutch u men" }, { -54.0, 3000.0 }, lowMale, { 95.0, 117.0, 139.0 } },
+        { { { 523, 866, 2692, 3450, 4400 }, { 65, 80, 130, 165, 215 }, "Dutch open o men" }, { -46.0, 0.0 }, lowMale, { 95.0, 117.0, 139.0 } },
+        { { { 388, 2003, 2571, 3450, 4400 }, { 50, 100, 130, 165, 215 }, "Dutch short i men" }, { -58.0, 5500.0 }, lowMale, { 95.0, 117.0, 139.0 } },
+        { { { 795, 1301, 2565, 3450, 4400 }, { 95, 90, 130, 165, 215 }, "Dutch aa men" }, { -50.0, 2200.0 }, lowMale, { 95.0, 117.0, 139.0 } },
+        { { { 407, 2017, 2554, 3450, 4400 }, { 50, 100, 130, 165, 215 }, "Dutch ee men" }, { -62.0, 0.0 }, lowMale, { 95.0, 117.0, 139.0 } },
+        { { { 288, 1832, 2520, 4050, 4950 }, { 45, 115, 145, 185, 225 }, "Dutch uu women" }, { -44.0, 0.0 }, wideRange, { 192.0, 226.0 } },
+        { { { 669, 1905, 2788, 4050, 4950 }, { 80, 115, 145, 185, 225 }, "Dutch open e women" }, { -40.0, 4000.0 }, wideRange, { 192.0, 226.0 } },
+        { { { 506, 961, 2608, 4050, 4950 }, { 60, 90, 145, 185, 225 }, "Dutch oo women" }, { -52.0, 2800.0 }, wideRange, { 192.0, 226.0 } },
+        { { { 476, 1690, 2512, 4050, 4950 }, { 60, 115, 145, 185, 225 }, "Dutch eu women" }, { -47.0, 0.0 }, wideRange, { 192.0, 226.0 } } };
+    const std::vector<Held> singing {
+        { { { 986, 1443, 2778, 4050, 4950 }, { 120, 100, 145, 185, 225 }, "Dutch aa women" }, { -42.0, 0.0 }, wideRange, { 370.0, 453.0, 572.0, 762.0 } },
+        { { { 762, 1117, 2860, 4050, 4950 }, { 90, 100, 145, 185, 225 }, "Dutch short a women" }, { -48.0, 3500.0 }, wideRange, { 370.0, 453.0, 572.0, 762.0 } },
+        { { { 578, 934, 2852, 4050, 4950 }, { 70, 90, 145, 185, 225 }, "Dutch open o women" }, { -38.0, 0.0 }, wideRange, { 370.0, 453.0, 572.0, 762.0 } },
+        { { { 490, 1688, 2568, 4050, 4950 }, { 60, 115, 145, 185, 225 }, "Dutch u women" }, { -53.0, 5000.0 }, wideRange, { 370.0, 453.0, 572.0, 762.0 } },
+        { { { 472, 2352, 2896, 4050, 4950 }, { 55, 115, 145, 185, 225 }, "Dutch ee women" }, { -45.0, 2400.0 }, wideRange, { 370.0, 453.0, 572.0, 762.0 } },
+        { { { 679, 1051, 2619, 3450, 4400 }, { 80, 90, 130, 165, 215 }, "Dutch short a men" }, { -56.0, 0.0 }, wideRange, { 370.0, 453.0 } },
+        { { { 583, 1725, 2471, 3450, 4400 }, { 70, 100, 130, 165, 215 }, "Dutch open e men" }, { -50.0, 4500.0 }, wideRange, { 370.0, 453.0 } } };
+
+    FormantScore low;
+    for (const auto& h : speaking)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 4, -4, 3, -3, 1, -1 })
+                scoreFormants (low, h.v, centre, shift, h.type);
+    }
+    chk (low.move <= prolimits::hqFormantMove, "sixth held out set, Dutch men 95 to 139 Hz and women 192 and 226 Hz, worst formant move against the input", low.move * 100.0, "%");
+    note ("  and the tool's floor there", low.floor * 100.0, "%");
+    chk (low.level <= prolimits::hqLevelChangeDb, "  level change, worst", low.level, "dB");
+    note ("  first formant against its surroundings, flatter than a real voice, worst", low.peakFlatter, "dB");
+    note ("  colour, worst", low.colour, "dB");
+
+    FormantScore high;
+    double heldMean = 0.0, heldRms = 0.0;
+    int heldCount = 0;
+    for (const auto& h : singing)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 3, -3, 2, -2 })
+            {
+                scoreFormants (high, h.v, centre, shift, h.type);
+                const auto held = heldNoteError (h.v, centre, shift, h.type);
+                heldMean += held.rmsDb;
+                heldRms = std::max (heldRms, held.rmsDb);
+                ++heldCount;
+                if (std::getenv ("TUNE_DUMP") != nullptr)
+                    std::printf ("  held note, vowel %s, %.0f Hz, shift %d: harmonics against a real voice %.2f dB RMS, %.2f dB worst\n", h.v.name, centre, shift, held.rmsDb, held.worstDb);
+            }
+    }
+    gStyle = {};
+    chk (high.peakFlatterCrossed <= prolimits::highNoteF1Flatter, "sixth held out set, Dutch women 370 to 762 Hz and men 370 and 453 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst", high.peakFlatterCrossed, "dB");
+    note ("  the same with every case, including where the whole glide stays above the formant", high.peakFlatter, "dB");
+    chk (high.peakSharper <= prolimits::highNoteF1Sharper, "  first formant sharper than a real voice, worst", high.peakSharper, "dB");
+    chk (high.move <= high.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", high.move * 100.0, "%");
+    note ("  and the tool's floor there", high.floor * 100.0, "%");
+    note ("  colour, worst", high.colour, "dB");
+    note ("  level change, worst", high.level, "dB");
+    note ("  held notes, harmonics against a real voice, worst RMS", heldRms, "dB");
+    chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+}
+
+// A seventh held out set, written on 2026-11-08 blind to the tuning going on at the same time, and committed before any of it was run. All six sets
+// above have been used or written. Formants from a published source and a language none of the earlier sets used: Seoul Korean monophthongs in h_da words.
+//   Yang, B. (1996), A comparative study of American English and Korean vowels produced by male and female speakers,
+//   Journal of Phonetics 24, 245 to 261, mean F1, F2, F3 for Korean men and women.
+// The paper itself could not be reached here. The numbers below are the men's and women's means as bundled with the phonTools R package
+// (Santiago Barreda, version 0.2-2.2, dataset y96, "Yang (1996) Korean Vowel Data"), copied as they are, in hertz. That package's help page
+// describes them as averaged across 60 male and female speakers, while the paper is usually described as 10 men and 10 women; either way
+// they are group means for each sex, not one speaker's. Two of the values (u: men 369 and 981, women 422 and 1021) agree with what later
+// Korean papers quote from Yang (1996).
+// Speaker groups none of the earlier sets used: Korean men and women. Vowels from Korean's own set, named in the Revised Romanisation:
+// i, eu (high central or back unrounded), ae, o and eo (open mid back unrounded) for men speaking; wi (front rounded), oe (front rounded mid),
+// u and e for women speaking; a, eo, ae, o and eu for women singing; a and e for men singing at tenor pitches. Pitches none of the earlier
+// sets or the tuning voices used: men speaking at 93, 102, 113, 128 and 146 Hz, three of the five below 115 Hz because low male speech matters
+// most (93 Hz glides down to 66 Hz, still inside Low Male's 65 Hz floor); women speaking at 183, 204 and 237 Hz; women singing at 405, 508,
+// 618 and 776 Hz; men singing at 294 and 405 Hz.
+// That table has no F4, F5 or bandwidths, so they were set here, before running, by the earlier sets' conventions: F4 and F5 inside the range
+// those sets used for each sex (men 3500 and 4400, women 4100 and 5000); the first formant's bandwidth about an eighth of its frequency,
+// rounded to 5 Hz, 45 Hz at least; F2 bandwidth rising with F2 (men 80, 90, 100; women 90 to 100, 100, 115); F3 to F5 bandwidths as the sixth
+// set's; women's wider than men's. Women's sources a little breathier than men's (Klatt and Klatt, 1990). Breath and source tone otherwise
+// vary from voice to voice, chosen to differ from the sixth set's. Nothing was tuned on these, and none of it was chosen by looking at output.
+void testHeldOutSeventh()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; int type; std::vector<double> centres; };
+    // F1, F2, F3 from Yang (1996) as bundled with phonTools; F4, F5 and all bandwidths set here.
+    const std::vector<Held> speaking {
+        { { { 341, 2219, 3047, 3500, 4400 }, { 45, 100, 130, 165, 215 }, "Korean i men" }, { -56.0, 2600.0 }, lowMale, { 93.0, 102.0, 113.0, 128.0, 146.0 } },
+        { { { 405, 1488, 2497, 3500, 4400 }, { 50, 90, 130, 165, 215 }, "Korean eu men" }, { -48.0, 0.0 }, lowMale, { 93.0, 102.0, 113.0, 128.0, 146.0 } },
+        { { { 591, 1849, 2597, 3500, 4400 }, { 75, 100, 130, 165, 215 }, "Korean ae men" }, { -60.0, 4200.0 }, lowMale, { 93.0, 102.0, 113.0, 128.0, 146.0 } },
+        { { { 448, 945, 2674, 3500, 4400 }, { 55, 80, 130, 165, 215 }, "Korean o men" }, { -52.0, 0.0 }, lowMale, { 93.0, 102.0, 113.0, 128.0, 146.0 } },
+        { { { 608, 1121, 2683, 3500, 4400 }, { 75, 90, 130, 165, 215 }, "Korean eo men" }, { -45.0, 3200.0 }, lowMale, { 93.0, 102.0, 113.0, 128.0, 146.0 } },
+        { { { 373, 2704, 3222, 4100, 5000 }, { 45, 115, 145, 185, 225 }, "Korean wi women" }, { -46.0, 0.0 }, wideRange, { 183.0, 204.0, 237.0 } },
+        { { { 602, 2195, 3013, 4100, 5000 }, { 75, 115, 145, 185, 225 }, "Korean oe women" }, { -41.0, 3700.0 }, wideRange, { 183.0, 204.0, 237.0 } },
+        { { { 422, 1021, 3024, 4100, 5000 }, { 55, 100, 145, 185, 225 }, "Korean u women" }, { -50.0, 2300.0 }, wideRange, { 183.0, 204.0, 237.0 } },
+        { { { 650, 2377, 3068, 4100, 5000 }, { 80, 115, 145, 185, 225 }, "Korean e women" }, { -43.0, 0.0 }, wideRange, { 183.0, 204.0, 237.0 } } };
+    const std::vector<Held> singing {
+        { { { 986, 1794, 2957, 4100, 5000 }, { 120, 115, 145, 185, 225 }, "Korean a women" }, { -44.0, 0.0 }, wideRange, { 405.0, 508.0, 618.0, 776.0 } },
+        { { { 765, 1371, 3009, 4100, 5000 }, { 95, 100, 145, 185, 225 }, "Korean eo women" }, { -49.0, 3000.0 }, wideRange, { 405.0, 508.0, 618.0, 776.0 } },
+        { { { 677, 2285, 3063, 4100, 5000 }, { 85, 115, 145, 185, 225 }, "Korean ae women" }, { -39.0, 4800.0 }, wideRange, { 405.0, 508.0, 618.0, 776.0 } },
+        { { { 499, 1029, 3068, 4100, 5000 }, { 60, 100, 145, 185, 225 }, "Korean o women" }, { -47.0, 0.0 }, wideRange, { 405.0, 508.0, 618.0, 776.0 } },
+        { { { 447, 1703, 2997, 4100, 5000 }, { 55, 115, 145, 185, 225 }, "Korean eu women" }, { -42.0, 2600.0 }, wideRange, { 405.0, 508.0, 618.0, 776.0 } },
+        { { { 738, 1372, 2573, 3500, 4400 }, { 90, 90, 130, 165, 215 }, "Korean a men" }, { -55.0, 0.0 }, wideRange, { 294.0, 405.0 } },
+        { { { 490, 1968, 2644, 3500, 4400 }, { 60, 100, 130, 165, 215 }, "Korean e men" }, { -51.0, 3800.0 }, wideRange, { 294.0, 405.0 } } };
+
+    FormantScore low;
+    for (const auto& h : speaking)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 4, -4, 3, -3, 1, -1 })
+                scoreFormants (low, h.v, centre, shift, h.type);
+    }
+    chk (low.move <= prolimits::hqFormantMove, "seventh held out set, Korean men 93 to 146 Hz and women 183 to 237 Hz, worst formant move against the input", low.move * 100.0, "%");
+    note ("  and the tool's floor there", low.floor * 100.0, "%");
+    chk (low.level <= prolimits::hqLevelChangeDb, "  level change, worst", low.level, "dB");
+    note ("  first formant against its surroundings, flatter than a real voice, worst", low.peakFlatter, "dB");
+    note ("  colour, worst", low.colour, "dB");
+
+    FormantScore high;
+    double heldMean = 0.0, heldRms = 0.0;
+    int heldCount = 0;
+    for (const auto& h : singing)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 3, -3, 2, -2 })
+            {
+                scoreFormants (high, h.v, centre, shift, h.type);
+                const auto held = heldNoteError (h.v, centre, shift, h.type);
+                heldMean += held.rmsDb;
+                heldRms = std::max (heldRms, held.rmsDb);
+                ++heldCount;
+                if (std::getenv ("TUNE_DUMP") != nullptr)
+                    std::printf ("  held note, vowel %s, %.0f Hz, shift %d: harmonics against a real voice %.2f dB RMS, %.2f dB worst\n", h.v.name, centre, shift, held.rmsDb, held.worstDb);
+            }
+    }
+    gStyle = {};
+    chk (high.peakFlatterCrossed <= prolimits::highNoteF1Flatter, "seventh held out set, Korean women 405 to 776 Hz and men 294 and 405 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst", high.peakFlatterCrossed, "dB");
+    note ("  the same with every case, including where the whole glide stays above the formant", high.peakFlatter, "dB");
+    chk (high.peakSharper <= prolimits::highNoteF1Sharper, "  first formant sharper than a real voice, worst", high.peakSharper, "dB");
+    chk (high.move <= high.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", high.move * 100.0, "%");
+    note ("  and the tool's floor there", high.floor * 100.0, "%");
+    note ("  colour, worst", high.colour, "dB");
+    note ("  level change, worst", high.level, "dB");
+    note ("  held notes, harmonics against a real voice, worst RMS", heldRms, "dB");
+    chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+}
+
+// An eighth held out set, written on 2026-11-08 blind to the tuning going on at the same time, and committed before any of it was run. All seven
+// sets above have been used or written. Formants from a published source and languages none of the earlier sets used: Tokyo Japanese, Hong Kong
+// Cantonese and Thessaloniki Greek, the corner vowels a, i and u in real words that begin with a lingual obstruent.
+//   Chung, H., Kong, E. J., Edwards, J., Weismer, G., Fourakis, M. and Hwang, Y. (2012), Cross-linguistic studies of children's and adults'
+//   vowel spaces, J. Acoust. Soc. Am. 131 (1), 442 to 454, doi 10.1121/1.3651823 (PMC3283902), Appendix B, adult male and adult female
+//   mean F1, F2, F3 in hertz, 5 men and 5 women for each language, measured at the vowel midpoint in Praat.
+// The numbers below are copied as Appendix B prints them, read twice from the PMC copy of the paper and the same both times. The Korean and
+// English rows of that table were left out, since earlier sets used both languages. Each language has only those three vowels, so the set
+// takes all three languages to get nine vowels for each sex. Japanese u is the unrounded, fronted Japanese vowel (F2 near 1700 Hz in both
+// sexes), Cantonese u is back and rounded (F2 721 and 872 Hz), Greek u sits between.
+// Speaker groups none of the earlier sets used: Japanese, Cantonese and Greek men and women. Vowels: Japanese u and a, Cantonese u and a,
+// Greek i for men speaking; Japanese i and u, Cantonese i, Greek u for women speaking; a in all three languages, Cantonese u and Greek i for
+// women singing; Greek a and u for men singing at tenor pitches. Pitches none of the earlier sets or the tuning voices used: men speaking at
+// 94, 107, 121, 136 and 149 Hz (94 Hz glides down to 66 Hz, inside Low Male's 65 Hz floor); women speaking at 187, 214 and 231 Hz; women
+// singing at 427, 536, 653 and 795 Hz; men singing at 317 and 438 Hz.
+// That table has no F4, F5 or bandwidths, so they were set here, before running, by the earlier sets' conventions: F4 and F5 inside the range
+// those sets used for each sex (men 3500 and 4350, women 4100 and 4950); the first formant's bandwidth about an eighth of its frequency,
+// rounded to 5 Hz, 45 Hz at least; F2 bandwidth rising with F2 (men 80 below 1000 Hz, 90 to 1600, 100 above; women 90, 100, 115 on the same
+// steps); F3 to F5 bandwidths as the sixth and seventh sets'; women's wider than men's. Women's sources a little breathier than men's (Klatt
+// and Klatt, 1990). Breath and source tone otherwise vary from voice to voice, chosen to differ from the sixth and seventh sets'. Nothing was
+// tuned on these, and none of it was chosen by looking at output.
+void testHeldOutEighth()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; int type; std::vector<double> centres; };
+    // F1, F2, F3 from Chung and others (2012), Appendix B; F4, F5 and all bandwidths set here.
+    const std::vector<Held> speaking {
+        { { { 345, 1704, 2848, 3500, 4350 }, { 45, 100, 130, 165, 215 }, "Japanese u men" }, { -57.0, 2900.0 }, lowMale, { 94.0, 107.0, 121.0, 136.0, 149.0 } },
+        { { { 353, 721, 2728, 3500, 4350 }, { 45, 80, 130, 165, 215 }, "Cantonese u men" }, { -49.0, 0.0 }, lowMale, { 94.0, 107.0, 121.0, 136.0, 149.0 } },
+        { { { 347, 2058, 2642, 3500, 4350 }, { 45, 100, 130, 165, 215 }, "Greek i men" }, { -53.0, 4600.0 }, lowMale, { 94.0, 107.0, 121.0, 136.0, 149.0 } },
+        { { { 779, 1296, 2713, 3500, 4350 }, { 95, 90, 130, 165, 215 }, "Cantonese a men" }, { -61.0, 0.0 }, lowMale, { 94.0, 107.0, 121.0, 136.0, 149.0 } },
+        { { { 634, 1363, 2857, 3500, 4350 }, { 80, 90, 130, 165, 215 }, "Japanese a men" }, { -47.0, 3400.0 }, lowMale, { 94.0, 107.0, 121.0, 136.0, 149.0 } },
+        { { { 375, 2729, 3447, 4100, 4950 }, { 45, 115, 145, 185, 225 }, "Japanese i women" }, { -45.0, 0.0 }, wideRange, { 187.0, 214.0, 231.0 } },
+        { { { 443, 1126, 2801, 4100, 4950 }, { 55, 100, 145, 185, 225 }, "Greek u women" }, { -40.0, 3300.0 }, wideRange, { 187.0, 214.0, 231.0 } },
+        { { { 375, 2851, 3467, 4100, 4950 }, { 45, 115, 145, 185, 225 }, "Cantonese i women" }, { -48.0, 2100.0 }, wideRange, { 187.0, 214.0, 231.0 } },
+        { { { 380, 1714, 2841, 4100, 4950 }, { 50, 115, 145, 185, 225 }, "Japanese u women" }, { -42.0, 0.0 }, wideRange, { 187.0, 214.0, 231.0 } } };
+    const std::vector<Held> singing {
+        { { { 942, 1641, 3125, 4100, 4950 }, { 120, 115, 145, 185, 225 }, "Cantonese a women" }, { -43.0, 0.0 }, wideRange, { 427.0, 536.0, 653.0, 795.0 } },
+        { { { 929, 1603, 2825, 4100, 4950 }, { 115, 115, 145, 185, 225 }, "Greek a women" }, { -46.0, 2700.0 }, wideRange, { 427.0, 536.0, 653.0, 795.0 } },
+        { { { 708, 1533, 2903, 4100, 4950 }, { 90, 100, 145, 185, 225 }, "Japanese a women" }, { -40.0, 4400.0 }, wideRange, { 427.0, 536.0, 653.0, 795.0 } },
+        { { { 397, 872, 2886, 4100, 4950 }, { 50, 90, 145, 185, 225 }, "Cantonese u women" }, { -51.0, 0.0 }, wideRange, { 427.0, 536.0, 653.0, 795.0 } },
+        { { { 406, 2456, 3029, 4100, 4950 }, { 50, 115, 145, 185, 225 }, "Greek i women" }, { -44.0, 3600.0 }, wideRange, { 427.0, 536.0, 653.0, 795.0 } },
+        { { { 720, 1372, 2457, 3500, 4350 }, { 90, 90, 130, 165, 215 }, "Greek a men" }, { -54.0, 0.0 }, wideRange, { 317.0, 438.0 } },
+        { { { 401, 1011, 2393, 3500, 4350 }, { 50, 90, 130, 165, 215 }, "Greek u men" }, { -50.0, 2500.0 }, wideRange, { 317.0, 438.0 } } };
+
+    FormantScore low;
+    for (const auto& h : speaking)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 4, -4, 3, -3, 1, -1 })
+                scoreFormants (low, h.v, centre, shift, h.type);
+    }
+    chk (low.move <= prolimits::hqFormantMove, "eighth held out set, Japanese, Cantonese and Greek men 94 to 149 Hz and women 187 to 231 Hz, worst formant move against the input", low.move * 100.0, "%");
+    note ("  and the tool's floor there", low.floor * 100.0, "%");
+    chk (low.level <= prolimits::hqLevelChangeDb, "  level change, worst", low.level, "dB");
+    note ("  first formant against its surroundings, flatter than a real voice, worst", low.peakFlatter, "dB");
+    note ("  colour, worst", low.colour, "dB");
+
+    FormantScore high;
+    double heldMean = 0.0, heldRms = 0.0;
+    int heldCount = 0;
+    for (const auto& h : singing)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 3, -3, 2, -2 })
+            {
+                scoreFormants (high, h.v, centre, shift, h.type);
+                const auto held = heldNoteError (h.v, centre, shift, h.type);
+                heldMean += held.rmsDb;
+                heldRms = std::max (heldRms, held.rmsDb);
+                ++heldCount;
+                if (std::getenv ("TUNE_DUMP") != nullptr)
+                    std::printf ("  held note, vowel %s, %.0f Hz, shift %d: harmonics against a real voice %.2f dB RMS, %.2f dB worst\n", h.v.name, centre, shift, held.rmsDb, held.worstDb);
+            }
+    }
+    gStyle = {};
+    chk (high.peakFlatterCrossed <= prolimits::highNoteF1Flatter, "eighth held out set, Japanese, Cantonese and Greek women 427 to 795 Hz and men 317 and 438 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst", high.peakFlatterCrossed, "dB");
+    note ("  the same with every case, including where the whole glide stays above the formant", high.peakFlatter, "dB");
+    chk (high.peakSharper <= prolimits::highNoteF1Sharper, "  first formant sharper than a real voice, worst", high.peakSharper, "dB");
+    chk (high.move <= high.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", high.move * 100.0, "%");
+    note ("  and the tool's floor there", high.floor * 100.0, "%");
+    note ("  colour, worst", high.colour, "dB");
+    note ("  level change, worst", high.level, "dB");
+    note ("  held notes, harmonics against a real voice, worst RMS", heldRms, "dB");
+    chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+}
+
 // A vowel change in the middle of a glide, added for 1.5.0 with its limit set before it was first run. High Quality remembers each
 // harmonic's level over a voiced stretch; it must not carry the old vowel into the new one. After the change, the output's formants
 // are read against a real voice singing the new vowel at the new pitch, with the same tool and limit as the formant test.
@@ -3027,6 +3291,9 @@ int main (int argc, char** argv)
     if (want ("heldout3")) testHeldOutThird();
     if (want ("heldout4")) testHeldOutFourth();
     if (want ("heldout5")) testHeldOutFifth();
+    if (want ("heldout6")) testHeldOutSixth();
+    if (want ("heldout7")) testHeldOutSeventh();
+    if (want ("heldout8")) testHeldOutEighth();
     if (want ("vowel")) testVowelChange();
     gEngine = 0;
     if (want ("llnull")) testLowLatencyNull();

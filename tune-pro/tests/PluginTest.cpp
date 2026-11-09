@@ -1135,6 +1135,96 @@ void testHeldOutEighth()
     chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
 }
 
+// A ninth held out set, written on 2026-11-09 blind to the tuning going on at the same time, and committed before any of it was run. All eight
+// sets above have been used or written. Formants from a published source and a language none of the earlier sets used: Standard Chinese
+// (Mandarin, Putonghua), the ten monophthongs spoken on the first tone by students being trained as broadcasters.
+//   Meng, Z., Chen, Y. and Li, X. (2006), Statistical survey of monophthong formants in Mandarin for students being trained as broadcasters,
+//   Proceedings of the 20th Pacific Asia Conference on Language, Information and Computation (PACLIC 20), Wuhan, Tsinghua University Press,
+//   280 to 286, ACL Anthology Y06-1037, hdl 2065/29074, Table 3, mean F1, F2, F3 in hertz for 212 women and 126 men aged 19 to 21, by LPC.
+// The numbers below are copied as Table 3 prints them, read twice from the ACL Anthology PDF in two separate fetches and the same both times.
+// That table also gives F4 and F5, which were not used, so that this set builds its voices the same way as the sixth to eighth sets.
+// Vowels from Mandarin's own set, named as the paper tags them: i, u, u umlaut (front rounded y), o, e (back unrounded, IPA ram's horns),
+// a, the two apical vowels after dental and retroflex sibilants (the finals of zi and zhi), the neutral schwa (the final of de) and e circumflex
+// (open mid front). Speaker groups none of the earlier sets used: Mandarin men and women. Vowels: u, o, u umlaut, e and e circumflex for
+// men speaking; i, u and both apical vowels for women speaking; a, o, e, e circumflex and u umlaut for women singing; a and the schwa for men
+// singing at tenor pitches. Pitches none of the earlier sets or the tuning voices used: men speaking at 92, 97, 111, 126 and 148 Hz, two below
+// 100 Hz because low male speech matters most (the glide reaches 0.71 of its centre, so 92 Hz goes down to 65.1 Hz, just inside Low Male's 65 Hz
+// floor, and no centre can go lower); women speaking at 182, 212 and 238 Hz; women singing at 416, 521, 643 and 787 Hz; men singing at 303 and 424 Hz.
+// F4, F5 and bandwidths were set here, before running, by the earlier sets' conventions: F4 and F5 inside the range those sets used for each sex
+// (men 3500 and 4350, women 4100 and 5000); the first formant's bandwidth about an eighth of its frequency, rounded to 5 Hz, 45 Hz at least;
+// F2 bandwidth rising with F2 (men 80 below 1000 Hz, 90 to 1600, 100 above; women 90, 100, 115 on the same steps); F3 to F5 bandwidths as
+// the sixth to eighth sets'; women's wider than men's. Women's sources a little breathier than men's (Klatt and Klatt, 1990). Breath and source
+// tone otherwise vary from voice to voice, chosen to differ from every earlier set's. Nothing was tuned on these, and none of it was chosen by
+// looking at output.
+void testHeldOutNinth()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; int type; std::vector<double> centres; };
+    // F1, F2, F3 from Meng and others (2006), Table 3; F4, F5 and all bandwidths set here.
+    const std::vector<Held> speaking {
+        { { { 342, 701, 2800, 3500, 4350 }, { 45, 80, 130, 165, 215 }, "Mandarin u men" }, { -59.0, 0.0 }, lowMale, { 92.0, 97.0, 111.0, 126.0, 148.0 } },
+        { { { 532, 817, 2949, 3500, 4350 }, { 65, 80, 130, 165, 215 }, "Mandarin o men" }, { -51.0, 3100.0 }, lowMale, { 92.0, 97.0, 111.0, 126.0, 148.0 } },
+        { { { 280, 1992, 2331, 3500, 4350 }, { 45, 100, 130, 165, 215 }, "Mandarin u umlaut men" }, { -57.0, 0.0 }, lowMale, { 92.0, 97.0, 111.0, 126.0, 148.0 } },
+        { { { 501, 1163, 2736, 3500, 4350 }, { 65, 90, 130, 165, 215 }, "Mandarin e men" }, { -47.0, 4300.0 }, lowMale, { 92.0, 97.0, 111.0, 126.0, 148.0 } },
+        { { { 705, 1789, 2656, 3500, 4350 }, { 90, 100, 130, 165, 215 }, "Mandarin e circumflex men" }, { -61.0, 3900.0 }, lowMale, { 92.0, 97.0, 111.0, 126.0, 148.0 } },
+        { { { 311, 2871, 3882, 4100, 5000 }, { 45, 115, 145, 185, 225 }, "Mandarin i women" }, { -46.0, 3900.0 }, wideRange, { 182.0, 212.0, 238.0 } },
+        { { { 354, 762, 3432, 4100, 5000 }, { 45, 90, 145, 185, 225 }, "Mandarin u women" }, { -39.0, 0.0 }, wideRange, { 182.0, 212.0, 238.0 } },
+        { { { 399, 1762, 3271, 4100, 5000 }, { 50, 115, 145, 185, 225 }, "Mandarin apical zi women" }, { -43.0, 2900.0 }, wideRange, { 182.0, 212.0, 238.0 } },
+        { { { 416, 2092, 2805, 4100, 5000 }, { 50, 115, 145, 185, 225 }, "Mandarin apical zhi women" }, { -50.0, 4100.0 }, wideRange, { 182.0, 212.0, 238.0 } } };
+    const std::vector<Held> singing {
+        { { { 952, 1371, 3444, 4100, 5000 }, { 120, 100, 145, 185, 225 }, "Mandarin a women" }, { -41.0, 0.0 }, wideRange, { 416.0, 521.0, 643.0, 787.0 } },
+        { { { 654, 947, 3410, 4100, 5000 }, { 80, 90, 145, 185, 225 }, "Mandarin o women" }, { -47.0, 2200.0 }, wideRange, { 416.0, 521.0, 643.0, 787.0 } },
+        { { { 622, 1334, 3358, 4100, 5000 }, { 80, 100, 145, 185, 225 }, "Mandarin e women" }, { -44.0, 4100.0 }, wideRange, { 416.0, 521.0, 643.0, 787.0 } },
+        { { { 856, 2119, 3159, 4100, 5000 }, { 105, 115, 145, 185, 225 }, "Mandarin e circumflex women" }, { -39.0, 3400.0 }, wideRange, { 416.0, 521.0, 643.0, 787.0 } },
+        { { { 305, 2411, 2813, 4100, 5000 }, { 45, 115, 145, 185, 225 }, "Mandarin u umlaut women" }, { -49.0, 2600.0 }, wideRange, { 416.0, 521.0, 643.0, 787.0 } },
+        { { { 795, 1168, 2945, 3500, 4350 }, { 100, 90, 130, 165, 215 }, "Mandarin a men" }, { -56.0, 3300.0 }, wideRange, { 303.0, 424.0 } },
+        { { { 525, 1179, 2735, 3500, 4350 }, { 65, 90, 130, 165, 215 }, "Mandarin schwa men" }, { -53.0, 0.0 }, wideRange, { 303.0, 424.0 } } };
+
+    FormantScore low;
+    for (const auto& h : speaking)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 4, -4, 3, -3, 1, -1 })
+                scoreFormants (low, h.v, centre, shift, h.type);
+    }
+    chk (low.move <= prolimits::hqFormantMove, "ninth held out set, Mandarin men 92 to 148 Hz and women 182 to 238 Hz, worst formant move against the input", low.move * 100.0, "%");
+    note ("  and the tool's floor there", low.floor * 100.0, "%");
+    chk (low.level <= prolimits::hqLevelChangeDb, "  level change, worst", low.level, "dB");
+    note ("  first formant against its surroundings, flatter than a real voice, worst", low.peakFlatter, "dB");
+    note ("  colour, worst", low.colour, "dB");
+
+    FormantScore high;
+    double heldMean = 0.0, heldRms = 0.0;
+    int heldCount = 0;
+    for (const auto& h : singing)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 3, -3, 2, -2 })
+            {
+                scoreFormants (high, h.v, centre, shift, h.type);
+                const auto held = heldNoteError (h.v, centre, shift, h.type);
+                heldMean += held.rmsDb;
+                heldRms = std::max (heldRms, held.rmsDb);
+                ++heldCount;
+                if (std::getenv ("TUNE_DUMP") != nullptr)
+                    std::printf ("  held note, vowel %s, %.0f Hz, shift %d: harmonics against a real voice %.2f dB RMS, %.2f dB worst\n", h.v.name, centre, shift, held.rmsDb, held.worstDb);
+            }
+    }
+    gStyle = {};
+    chk (high.peakFlatterCrossed <= prolimits::highNoteF1Flatter, "ninth held out set, Mandarin women 416 to 787 Hz and men 303 and 424 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst", high.peakFlatterCrossed, "dB");
+    note ("  the same with every case, including where the whole glide stays above the formant", high.peakFlatter, "dB");
+    chk (high.peakSharper <= prolimits::highNoteF1Sharper, "  first formant sharper than a real voice, worst", high.peakSharper, "dB");
+    chk (high.move <= high.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", high.move * 100.0, "%");
+    note ("  and the tool's floor there", high.floor * 100.0, "%");
+    note ("  colour, worst", high.colour, "dB");
+    note ("  level change, worst", high.level, "dB");
+    note ("  held notes, harmonics against a real voice, worst RMS", heldRms, "dB");
+    chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+}
+
 // A vowel change in the middle of a glide, added for 1.5.0 with its limit set before it was first run. High Quality remembers each
 // harmonic's level over a voiced stretch; it must not carry the old vowel into the new one. After the change, the output's formants
 // are read against a real voice singing the new vowel at the new pitch, with the same tool and limit as the formant test.
@@ -3294,6 +3384,7 @@ int main (int argc, char** argv)
     if (want ("heldout6")) testHeldOutSixth();
     if (want ("heldout7")) testHeldOutSeventh();
     if (want ("heldout8")) testHeldOutEighth();
+    if (want ("heldout9")) testHeldOutNinth();
     if (want ("vowel")) testVowelChange();
     gEngine = 0;
     if (want ("llnull")) testLowLatencyNull();

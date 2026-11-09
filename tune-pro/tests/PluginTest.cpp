@@ -1045,6 +1045,96 @@ void testHeldOutSeventh()
     chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
 }
 
+// An eighth held out set, written on 2026-11-08 blind to the tuning going on at the same time, and committed before any of it was run. All seven
+// sets above have been used or written. Formants from a published source and languages none of the earlier sets used: Tokyo Japanese, Hong Kong
+// Cantonese and Thessaloniki Greek, the corner vowels a, i and u in real words that begin with a lingual obstruent.
+//   Chung, H., Kong, E. J., Edwards, J., Weismer, G., Fourakis, M. and Hwang, Y. (2012), Cross-linguistic studies of children's and adults'
+//   vowel spaces, J. Acoust. Soc. Am. 131 (1), 442 to 454, doi 10.1121/1.3651823 (PMC3283902), Appendix B, adult male and adult female
+//   mean F1, F2, F3 in hertz, 5 men and 5 women for each language, measured at the vowel midpoint in Praat.
+// The numbers below are copied as Appendix B prints them, read twice from the PMC copy of the paper and the same both times. The Korean and
+// English rows of that table were left out, since earlier sets used both languages. Each language has only those three vowels, so the set
+// takes all three languages to get nine vowels for each sex. Japanese u is the unrounded, fronted Japanese vowel (F2 near 1700 Hz in both
+// sexes), Cantonese u is back and rounded (F2 721 and 872 Hz), Greek u sits between.
+// Speaker groups none of the earlier sets used: Japanese, Cantonese and Greek men and women. Vowels: Japanese u and a, Cantonese u and a,
+// Greek i for men speaking; Japanese i and u, Cantonese i, Greek u for women speaking; a in all three languages, Cantonese u and Greek i for
+// women singing; Greek a and u for men singing at tenor pitches. Pitches none of the earlier sets or the tuning voices used: men speaking at
+// 94, 107, 121, 136 and 149 Hz (94 Hz glides down to 66 Hz, inside Low Male's 65 Hz floor); women speaking at 187, 214 and 231 Hz; women
+// singing at 427, 536, 653 and 795 Hz; men singing at 317 and 438 Hz.
+// That table has no F4, F5 or bandwidths, so they were set here, before running, by the earlier sets' conventions: F4 and F5 inside the range
+// those sets used for each sex (men 3500 and 4350, women 4100 and 4950); the first formant's bandwidth about an eighth of its frequency,
+// rounded to 5 Hz, 45 Hz at least; F2 bandwidth rising with F2 (men 80 below 1000 Hz, 90 to 1600, 100 above; women 90, 100, 115 on the same
+// steps); F3 to F5 bandwidths as the sixth and seventh sets'; women's wider than men's. Women's sources a little breathier than men's (Klatt
+// and Klatt, 1990). Breath and source tone otherwise vary from voice to voice, chosen to differ from the sixth and seventh sets'. Nothing was
+// tuned on these, and none of it was chosen by looking at output.
+void testHeldOutEighth()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; int type; std::vector<double> centres; };
+    // F1, F2, F3 from Chung and others (2012), Appendix B; F4, F5 and all bandwidths set here.
+    const std::vector<Held> speaking {
+        { { { 345, 1704, 2848, 3500, 4350 }, { 45, 100, 130, 165, 215 }, "Japanese u men" }, { -57.0, 2900.0 }, lowMale, { 94.0, 107.0, 121.0, 136.0, 149.0 } },
+        { { { 353, 721, 2728, 3500, 4350 }, { 45, 80, 130, 165, 215 }, "Cantonese u men" }, { -49.0, 0.0 }, lowMale, { 94.0, 107.0, 121.0, 136.0, 149.0 } },
+        { { { 347, 2058, 2642, 3500, 4350 }, { 45, 100, 130, 165, 215 }, "Greek i men" }, { -53.0, 4600.0 }, lowMale, { 94.0, 107.0, 121.0, 136.0, 149.0 } },
+        { { { 779, 1296, 2713, 3500, 4350 }, { 95, 90, 130, 165, 215 }, "Cantonese a men" }, { -61.0, 0.0 }, lowMale, { 94.0, 107.0, 121.0, 136.0, 149.0 } },
+        { { { 634, 1363, 2857, 3500, 4350 }, { 80, 90, 130, 165, 215 }, "Japanese a men" }, { -47.0, 3400.0 }, lowMale, { 94.0, 107.0, 121.0, 136.0, 149.0 } },
+        { { { 375, 2729, 3447, 4100, 4950 }, { 45, 115, 145, 185, 225 }, "Japanese i women" }, { -45.0, 0.0 }, wideRange, { 187.0, 214.0, 231.0 } },
+        { { { 443, 1126, 2801, 4100, 4950 }, { 55, 100, 145, 185, 225 }, "Greek u women" }, { -40.0, 3300.0 }, wideRange, { 187.0, 214.0, 231.0 } },
+        { { { 375, 2851, 3467, 4100, 4950 }, { 45, 115, 145, 185, 225 }, "Cantonese i women" }, { -48.0, 2100.0 }, wideRange, { 187.0, 214.0, 231.0 } },
+        { { { 380, 1714, 2841, 4100, 4950 }, { 50, 115, 145, 185, 225 }, "Japanese u women" }, { -42.0, 0.0 }, wideRange, { 187.0, 214.0, 231.0 } } };
+    const std::vector<Held> singing {
+        { { { 942, 1641, 3125, 4100, 4950 }, { 120, 115, 145, 185, 225 }, "Cantonese a women" }, { -43.0, 0.0 }, wideRange, { 427.0, 536.0, 653.0, 795.0 } },
+        { { { 929, 1603, 2825, 4100, 4950 }, { 115, 115, 145, 185, 225 }, "Greek a women" }, { -46.0, 2700.0 }, wideRange, { 427.0, 536.0, 653.0, 795.0 } },
+        { { { 708, 1533, 2903, 4100, 4950 }, { 90, 100, 145, 185, 225 }, "Japanese a women" }, { -40.0, 4400.0 }, wideRange, { 427.0, 536.0, 653.0, 795.0 } },
+        { { { 397, 872, 2886, 4100, 4950 }, { 50, 90, 145, 185, 225 }, "Cantonese u women" }, { -51.0, 0.0 }, wideRange, { 427.0, 536.0, 653.0, 795.0 } },
+        { { { 406, 2456, 3029, 4100, 4950 }, { 50, 115, 145, 185, 225 }, "Greek i women" }, { -44.0, 3600.0 }, wideRange, { 427.0, 536.0, 653.0, 795.0 } },
+        { { { 720, 1372, 2457, 3500, 4350 }, { 90, 90, 130, 165, 215 }, "Greek a men" }, { -54.0, 0.0 }, wideRange, { 317.0, 438.0 } },
+        { { { 401, 1011, 2393, 3500, 4350 }, { 50, 90, 130, 165, 215 }, "Greek u men" }, { -50.0, 2500.0 }, wideRange, { 317.0, 438.0 } } };
+
+    FormantScore low;
+    for (const auto& h : speaking)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 4, -4, 3, -3, 1, -1 })
+                scoreFormants (low, h.v, centre, shift, h.type);
+    }
+    chk (low.move <= prolimits::hqFormantMove, "eighth held out set, Japanese, Cantonese and Greek men 94 to 149 Hz and women 187 to 231 Hz, worst formant move against the input", low.move * 100.0, "%");
+    note ("  and the tool's floor there", low.floor * 100.0, "%");
+    chk (low.level <= prolimits::hqLevelChangeDb, "  level change, worst", low.level, "dB");
+    note ("  first formant against its surroundings, flatter than a real voice, worst", low.peakFlatter, "dB");
+    note ("  colour, worst", low.colour, "dB");
+
+    FormantScore high;
+    double heldMean = 0.0, heldRms = 0.0;
+    int heldCount = 0;
+    for (const auto& h : singing)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 3, -3, 2, -2 })
+            {
+                scoreFormants (high, h.v, centre, shift, h.type);
+                const auto held = heldNoteError (h.v, centre, shift, h.type);
+                heldMean += held.rmsDb;
+                heldRms = std::max (heldRms, held.rmsDb);
+                ++heldCount;
+                if (std::getenv ("TUNE_DUMP") != nullptr)
+                    std::printf ("  held note, vowel %s, %.0f Hz, shift %d: harmonics against a real voice %.2f dB RMS, %.2f dB worst\n", h.v.name, centre, shift, held.rmsDb, held.worstDb);
+            }
+    }
+    gStyle = {};
+    chk (high.peakFlatterCrossed <= prolimits::highNoteF1Flatter, "eighth held out set, Japanese, Cantonese and Greek women 427 to 795 Hz and men 317 and 438 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst", high.peakFlatterCrossed, "dB");
+    note ("  the same with every case, including where the whole glide stays above the formant", high.peakFlatter, "dB");
+    chk (high.peakSharper <= prolimits::highNoteF1Sharper, "  first formant sharper than a real voice, worst", high.peakSharper, "dB");
+    chk (high.move <= high.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", high.move * 100.0, "%");
+    note ("  and the tool's floor there", high.floor * 100.0, "%");
+    note ("  colour, worst", high.colour, "dB");
+    note ("  level change, worst", high.level, "dB");
+    note ("  held notes, harmonics against a real voice, worst RMS", heldRms, "dB");
+    chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+}
+
 // A vowel change in the middle of a glide, added for 1.5.0 with its limit set before it was first run. High Quality remembers each
 // harmonic's level over a voiced stretch; it must not carry the old vowel into the new one. After the change, the output's formants
 // are read against a real voice singing the new vowel at the new pitch, with the same tool and limit as the formant test.
@@ -3203,6 +3293,7 @@ int main (int argc, char** argv)
     if (want ("heldout5")) testHeldOutFifth();
     if (want ("heldout6")) testHeldOutSixth();
     if (want ("heldout7")) testHeldOutSeventh();
+    if (want ("heldout8")) testHeldOutEighth();
     if (want ("vowel")) testVowelChange();
     gEngine = 0;
     if (want ("llnull")) testLowLatencyNull();

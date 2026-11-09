@@ -1,0 +1,15 @@
+FAIL  [HQ] eighth held out set, Japanese, Cantonese and Greek men 94 to 149 Hz and women 187 to 231 Hz, worst formant move against the input = 6.319 %
+INFO  [HQ]   and the tool's floor there = 3.275 %
+PASS  [HQ]   level change, worst = 1.160 dB
+INFO  [HQ]   first formant against its surroundings, flatter than a real voice, worst = 4.366 dB
+INFO  [HQ]   colour, worst = 2.804 dB
+PASS  [HQ] eighth held out set, Japanese, Cantonese and Greek women 427 to 795 Hz and men 317 and 438 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst = 6.410 dB
+INFO  [HQ]   the same with every case, including where the whole glide stays above the formant = 6.410 dB
+PASS  [HQ]   first formant sharper than a real voice, worst = 1.495 dB
+PASS  [HQ]   formant move against the input, worst, against the floor plus 2% = 25.550 %
+INFO  [HQ]   and the tool's floor there = 33.564 %
+INFO  [HQ]   colour, worst = 3.178 dB
+INFO  [HQ]   level change, worst = 1.538 dB
+INFO  [HQ]   held notes, harmonics against a real voice, worst RMS = 5.234 dB
+PASS  [HQ]   held notes, harmonics against a real voice, mean of the RMS = 2.391 dB
+RESULT FAIL  1 failures

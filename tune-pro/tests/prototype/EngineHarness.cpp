@@ -1,10 +1,12 @@
 // Build against the branch harmonic-shifter (or main, for 1.4.0): clang++ -O2 -std=c++17 -I tests/prototype -I tests -I src tests/prototype/EngineHarness.cpp -framework Accelerate -o build/EngineHarness
 // Run: build/EngineHarness h (high notes), d (dev high glides), n (dev held notes), f (formants), g (dev vowels at the third set's pitches), b (big shifts),
 //      3, 4, 5 (the third, fourth and fifth held out sets, already run, so regression tests), v (vowel change), one3 / one5 <voice> <centre> <shift>, wav <file> [l].
-//      speak7 [style] (dev vowels at the seventh held out set's speaking pitches and shifts). Several letters run several groups. DUMP=1 prints each case, BANDS=1 each band, SHOWLVL=1 the level every 0.2 s, FROM=<s> starts the reading later.
+//      speak7 [style] (dev vowels at the seventh held out set's speaking pitches and shifts), speak8 <style | r<seed>> (dev vowels or random plausible vowels at the eighth set's speaking pitches; MEN=1 or WOMEN=1 for one half),
+//      onedev <vowel> <centre> <shift> [style] [type], onerand <seed> <index> <centre> <shift> [type], one8 <voice> <centre> <shift> (the eighth set's men, for diagnosis; that set has been run). Several letters run several groups. DUMP=1 prints each case, BANDS=1 each band, SHOWLVL=1 the level every 0.2 s, FROM=<s> starts the reading later.
 // Runs the plug-in's TuneEngine directly on the test voices, to read the same numbers without JUCE.
 // Also: a (non-harmonic energy on steady voices), rand <seed> (held notes on random plausible vowels), styled (dev vowels with breath and darker sources)
 #include <chrono>
+#include <cstring>
 #include <random>
 #include "PrototypeAnalysis.h"
 #include "TuneEngine.h"
@@ -104,7 +106,7 @@ int main (int argc, char** argv)
         return 0;
     }
     const std::string t = argc > 1 ? argv[1] : "h";
-    const bool word = t == "speak7" || t == "rand" || t == "styled" || t == "heldvowel" || t == "cross" || t == "mix" || t == "cpu" || t == "switch";
+    const bool word = t == "speak7" || t == "speak8" || t == "rand" || t == "styled" || t == "heldvowel" || t == "cross" || t == "mix" || t == "cpu" || t == "switch";
     if (t == "heldvowel")
     {
         // A vowel change in the middle of a held note: after it, each harmonic against a real voice singing the new vowel, from 0.15 s
@@ -190,6 +192,63 @@ int main (int argc, char** argv)
         const H& h = hs[atoi (argv[2])];
         gType = h.type; Score s; scoreCase (s, h.v, atof (argv[3]), atoi (argv[4]), h.st);
         std::printf ("%s %s %s: move %.2f%% level %+.2f\n", h.v.name, argv[3], argv[4], 100 * s.move, s.level);
+        return 0;
+    }
+    if (t == "one8")
+    {
+        // Diagnosis only: one case from the eighth set's speaking voices (index, centre, shift). Set 8 has been run, so it is a regression test.
+        struct H { voice::Vowel v; VStyle st; int type; };
+        const H hs[] {
+            { { { 345, 1704, 2848, 3500, 4350 }, { 45, 100, 130, 165, 215 }, "Japanese u men" }, { -57.0, 2900.0 }, 2 },
+            { { { 353, 721, 2728, 3500, 4350 }, { 45, 80, 130, 165, 215 }, "Cantonese u men" }, { -49.0, 0.0 }, 2 },
+            { { { 347, 2058, 2642, 3500, 4350 }, { 45, 100, 130, 165, 215 }, "Greek i men" }, { -53.0, 4600.0 }, 2 },
+            { { { 779, 1296, 2713, 3500, 4350 }, { 95, 90, 130, 165, 215 }, "Cantonese a men" }, { -61.0, 0.0 }, 2 },
+            { { { 634, 1363, 2857, 3500, 4350 }, { 80, 90, 130, 165, 215 }, "Japanese a men" }, { -47.0, 3400.0 }, 2 } };
+        const H& h = hs[atoi (argv[2])];
+        gType = h.type; Score s; scoreCase (s, h.v, atof (argv[3]), atoi (argv[4]), h.st);
+        std::printf ("%s %s %s: move %.2f%% against real %.2f%% floor %.2f%% level %+.2f\n", h.v.name, argv[3], argv[4], 100 * s.move, 100 * s.moveReal, 100 * s.floor, s.level);
+        return 0;
+    }
+    if (t == "onedev")
+    {
+        // One dev case: vowel index (a e i u o ae), centre, shift, style (as speak7), input type (2 Low Male, 3 Wide Range)
+        const VStyle styles[] = { VStyle {}, VStyle { -40.0, 0.0 }, VStyle { -60.0, 2500.0 }, VStyle { -45.0, 4000.0 } };
+        const voice::Vowel* vs[] = { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO, &voice::vowelAe };
+        gType = argc > 6 ? atoi (argv[6]) : 2; Score s; scoreCase (s, *vs[atoi (argv[2])], atof (argv[3]), atoi (argv[4]), styles[argc > 5 ? atoi (argv[5]) : 0]);
+        std::printf ("%s %s %s style %s: move %.2f%% against real %.2f%% floor %.2f%% level %+.2f\n", vs[atoi (argv[2])]->name, argv[3], argv[4], argc > 5 ? argv[5] : "0", 100 * s.move, 100 * s.moveReal, 100 * s.floor, s.level);
+        return 0;
+    }
+    if (t == "onerand")
+    {
+        // One case from speak8's random vowels: seed, index, centre, shift, input type (default 2, Low Male)
+        std::mt19937 gen ((unsigned) atoi (argv[2]) * 7919u + 17u);
+        std::uniform_real_distribution<double> u (0.0, 1.0);
+        voice::Vowel v; VStyle st;
+        for (int i = 0; i <= atoi (argv[3]); ++i)
+        {
+            v.f[0] = 250 + 600 * u (gen); v.f[1] = std::max (v.f[0] + 250, 700 + 1800 * u (gen)); v.f[2] = std::max (v.f[1] + 250, 2200 + 900 * u (gen));
+            v.f[3] = std::max (v.f[2] + 300, 3300 + 800 * u (gen)); v.f[4] = std::max (v.f[3] + 400, 4300 + 800 * u (gen));
+            v.bw[0] = 45 + 70 * u (gen); v.bw[1] = 60 + 70 * u (gen); v.bw[2] = 90 + 80 * u (gen); v.bw[3] = 120 + 100 * u (gen); v.bw[4] = 150 + 120 * u (gen);
+            st = VStyle { -60.0 + 22.0 * u (gen), u (gen) < 0.5 ? 0.0 : 2000.0 + 3000.0 * u (gen) };
+        }
+        v.name = "rand";
+        gType = argc > 6 ? atoi (argv[6]) : 2; Score s; scoreCase (s, v, atof (argv[4]), atoi (argv[5]), st);
+        std::printf ("r%s.%s(%.0f,%.0f,%.0f bw %.0f,%.0f breath %.0f soft %.0f) %s %s: move %.2f%% against real %.2f%% floor %.2f%% level %+.2f\n", argv[2], argv[3], v.f[0], v.f[1], v.f[2], v.bw[0], v.bw[1], st.breathDb, st.softAboveHz, argv[4], argv[5], 100 * s.move, 100 * s.moveReal, 100 * s.floor, s.level);
+        return 0;
+    }
+    if (t == "hash")
+    {
+        // A hash of the engine's output, mode (0 Low Latency, 1 High Quality) and classic (0 or 1), on dev glides and a few shifts, to check a change leaves a path bit for bit alone.
+        const int mode = atoi (argv[2]); const bool classic = atoi (argv[3]) != 0;
+        unsigned long long h = 1469598103934665603ULL;
+        for (auto* v : { &voice::vowelA, &voice::vowelU }) for (double c : { 110.0, 220.0, 440.0 }) for (int sh : { 3, -4, 0 })
+        {
+            const auto in = styledVoice (glideF0 (c), *v, VStyle { -45.0, 0.0 });
+            TuneEngine e; e.prepare (SR, 2); e.configure (c < 150 ? 2 : 3, 65.0, 1300.0, mode);
+            TuneEngine::Shared sh2; sh2.settings.retuneMs = 0; sh2.settings.humanize = 0; sh2.settings.flexCents = 100; sh2.settings.transpose = sh; sh2.settings.classic = classic;
+            for (size_t i = 0; i < in.size(); ++i) { float w[2], d[2]; e.process (in[i], in[i], sh2, w, d); unsigned int bits; std::memcpy (&bits, &w[0], 4); h = (h ^ bits) * 1099511628211ULL; std::memcpy (&bits, &w[1], 4); h = (h ^ bits) * 1099511628211ULL; }
+        }
+        std::printf ("mode %d classic %d hash %016llx\n", mode, (int) classic, h);
         return 0;
     }
     if (t == "one") { Score s; const voice::Vowel* vs[] = { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO, &voice::vowelAe }; scoreCase (s, *vs[atoi (argv[2])], atof (argv[3]), atoi (argv[4])); return 0; }
@@ -321,6 +380,47 @@ int main (int argc, char** argv)
                 }
         gType = 3;
         std::printf ("dev voices at the seventh set's speaking pitches: men move %.2f%% (4) level %.2f dB (1.5); women move %.2f%% (4) level %.2f dB (1.5)\n", 100 * men.move, men.level, 100 * women.move, women.level);
+    }
+    if (t == "speak8")
+    {
+        // Dev voices like the eighth held out set's speakers: men at 94, 107, 121, 136 and 149 Hz on Low Male, women at 187, 214 and
+        // 231 Hz on Wide Range, shifts of 1, 3 and 4 both ways. argv[2] picks the voices: 0 to 3 the six dev vowels plain or with one of the
+        // styled sources (as speak7), r<seed> twelve plausible vowels drawn at random the way rand draws them, each with a random breath and
+        // source tone. No formant here comes from that set. MEN=1 or WOMEN=1 runs only one of the two.
+        const VStyle styles[] = { VStyle {}, VStyle { -40.0, 0.0 }, VStyle { -60.0, 2500.0 }, VStyle { -45.0, 4000.0 } };
+        struct C { voice::Vowel v; VStyle st; };
+        std::vector<C> cs;
+        static std::vector<std::string> names;
+        const std::string pick = argc > 2 ? argv[2] : "0";
+        if (pick[0] == 'r')
+        {
+            std::mt19937 gen ((unsigned) atoi (pick.c_str() + 1) * 7919u + 17u);
+            std::uniform_real_distribution<double> u (0.0, 1.0);
+            names.resize (12);
+            for (int i = 0; i < 12; ++i)
+            {
+                voice::Vowel v;
+                v.f[0] = 250 + 600 * u (gen); v.f[1] = std::max (v.f[0] + 250, 700 + 1800 * u (gen)); v.f[2] = std::max (v.f[1] + 250, 2200 + 900 * u (gen));
+                v.f[3] = std::max (v.f[2] + 300, 3300 + 800 * u (gen)); v.f[4] = std::max (v.f[3] + 400, 4300 + 800 * u (gen));
+                v.bw[0] = 45 + 70 * u (gen); v.bw[1] = 60 + 70 * u (gen); v.bw[2] = 90 + 80 * u (gen); v.bw[3] = 120 + 100 * u (gen); v.bw[4] = 150 + 120 * u (gen);
+                char nm[64]; std::snprintf (nm, sizeof nm, "%s.%d(%.0f,%.0f)", pick.c_str(), i, v.f[0], v.f[1]);
+                names[(size_t) i] = nm; v.name = names[(size_t) i].c_str();
+                cs.push_back ({ v, VStyle { -60.0 + 22.0 * u (gen), u (gen) < 0.5 ? 0.0 : 2000.0 + 3000.0 * u (gen) } });
+            }
+        }
+        else
+            for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO, &voice::vowelAe }) cs.push_back ({ *v, styles[atoi (pick.c_str())] });
+        Score men, women;
+        for (const auto& c : cs)
+            for (int sh : { 4, -4, 3, -3, 1, -1 })
+            {
+                gType = 2;
+                if (! getenv ("WOMEN")) for (double hz : { 94.0, 107.0, 121.0, 136.0, 149.0 }) scoreCase (men, c.v, hz, sh, c.st);
+                gType = 3;
+                if (! getenv ("MEN")) for (double hz : { 187.0, 214.0, 231.0 }) scoreCase (women, c.v, hz, sh, c.st);
+            }
+        gType = 3;
+        std::printf ("speak8 %s: men move %.2f%% (4) level %.2f dB (1.5); women move %.2f%% (4) level %.2f dB (1.5)\n", pick.c_str(), 100 * men.move, men.level, 100 * women.move, women.level);
     }
     if (t == "cross")
     {

@@ -297,7 +297,16 @@ private:
             dryLevel += (d - dryLevel) / levelSeen;
             }
             if (wetLevel > 1.0e-12 && dryLevel > 1.0e-12 && levelSeen > 0.05 * sr)
+            {
                 wanted = std::clamp (std::sqrt (dryLevel / wetLevel), 0.25, 4.0);
+                // High Quality trusts the average only as far as its memory has filled: a fraction of a second says little about it. Where
+                // harmonics cross a narrow first formant, the input and a real voice at the new pitch swing up to 12 dB in opposite directions
+                // within 0.3 s. Fully trusted, the first 0.2 s of a glide, input loud and output rightly quiet, set the gain 8 dB up, and it
+                // stayed up through the next second, when the input went quiet (seventh held out set, Korean wi at 237 Hz up 4: 1.59 dB louder).
+                // So the correction in dB is scaled by how full the memory is.
+                if (mode == highQuality)
+                    wanted = std::pow (wanted, levelSeen / levelMemory);
+            }
         }
         levelGain += (correcting ? levelFollow : levelRelease) * (wanted - levelGain);
         if (! correcting && std::abs (levelGain - 1.0) < 1.0e-5)

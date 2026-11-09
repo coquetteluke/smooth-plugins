@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.5.1, 2026-11-09
+
+High Quality's grains, used below about 220 Hz, now sit on the tracker's pitch marks instead of on a pulse position found once at the start of each voiced stretch. Low Latency, Classic and latency are bit for bit 1.5.0.
+
+The held pulse position drifted up to half a period away from the real pulses on low voices, so each grain cut a pulse in two and the output from 800 to 1800 Hz came out 4 to 9 dB low. It showed on vowels whose first two formants sit close together, such as Cantonese u (353 and 721 Hz) at 149 Hz moved down 3.
+
+| High Quality | 1.5.0 | 1.5.1 | Limit |
+|---|---|---|---|
+| Eighth held out set, speaking formant move | **6.32%** | 3.28% | 4% |
+| Eighth held out set, speaking level | 1.16 dB | 1.10 dB | 1.5 dB |
+| Ninth held out set (Mandarin), speaking formant move | **5.94%** | **4.62%** | 4% |
+| Ninth held out set, speaking level | 1.49 dB | 0.94 dB | 1.5 dB |
+| Formant move, +/-1 to +/-3 | 2.11% | 2.30% | 4% |
+| First formant flatter than a real voice | 3.80 dB | 4.17 dB | 7 dB |
+| Seventh held out set, speaking level | 1.04 dB | 1.22 dB | 1.5 dB |
+| CPU, voice at 180 Hz, 48 kHz stereo | 5.36% | 5.43% | 8% |
+
+Bold fails. Nothing that passed in 1.5.0 fails now.
+
+How clean the held out numbers are: the eighth set was read to find the cause, so it is a regression test now. The fix was chosen on new dev voices (`EngineHarness speak8`). The ninth set, Mandarin men and women from Meng, Chen and Li (2006), was written blind and run once at the end. It still fails speaking formant move, 4.62% against 4, but less than 1.5.0's 5.94%; singing is identical on both. On close-formant vowels like these, a perfect real voice at the new pitch already reads about 3 to 3.7% against the input, so the room under 4% is small. Nobody has listened to 1.5.1 yet.
+
 ## 1.5.0, 2026-11-08
 
 High Quality gets a new shifter for high and sung notes. Low Latency and Classic are bit for bit 1.4.0, and latency is unchanged.

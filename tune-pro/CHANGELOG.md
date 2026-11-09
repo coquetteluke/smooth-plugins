@@ -26,7 +26,7 @@ High Quality gets a new shifter for high and sung notes. Low Latency and Classic
 | Eighth held out set, speaking formant move | **6.32%** | **6.32%** | 4% |
 | CPU, voice at 180 Hz, 48 kHz stereo | 4.41% | 5.33% | 8% |
 
-Bold fails. The main suite is 509 pass, 0 fail (1.4.0: 481 and 3, on fewer tests). Nothing that passed in 1.4.0 fails now.
+Bold fails. The full suite, with all eight held out sets, is 514 pass, 1 fail, the eighth set's speaking formant move (1.4.0: 481 pass and 3 fail, on fewer tests). Nothing that passed in 1.4.0 fails now.
 
 How clean the held out numbers are: sets 1 to 6 were all seen while choosing settings, so they are regression tests now. The seventh set was written blind and run once, failed speaking level (1.587 dB), and was then used to fix that, so it is no longer clean either. The eighth set was written blind and run once at the end. It shows one fail, speaking formant move on low men's voices, 6.32% against 4, and 1.4.0 reads exactly the same there because below 205 Hz both run the same grains. So that is an old weakness, not a new one.
 

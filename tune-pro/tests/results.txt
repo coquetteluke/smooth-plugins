@@ -284,9 +284,9 @@ PASS  [LL] hard and natural presets are both there, presets = 12.000
 PASS  [LL] preset Hard Tune flattens vibrato, kept = 3.807 %
 PASS  [LL] preset Natural Pop keeps more vibrato, kept = 97.378 %
 PASS  [LL] presets leave Key, Scale and Input Type alone
-PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 3.390 %
-INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.492 %
-INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 8.327 %
+PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 3.373 %
+INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.367 %
+INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 8.014 %
 PASS  [LL] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.258 cents
 PASS  [LL] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.258 cents
 PASS  [LL] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.126 cents
@@ -489,9 +489,9 @@ PASS  [HQ] hard and natural presets are both there, presets = 12.000
 PASS  [HQ] preset Hard Tune flattens vibrato, kept = 1.143 %
 PASS  [HQ] preset Natural Pop keeps more vibrato, kept = 97.924 %
 PASS  [HQ] presets leave Key, Scale and Input Type alone
-PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 5.331 %
-INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.154 %
-INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 5.742 %
+PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 5.355 %
+INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.161 %
+INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 5.760 %
 PASS  [HQ] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.040 cents
 PASS  [HQ] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.010 cents
 PASS  [HQ] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.010 cents
@@ -658,6 +658,20 @@ INFO  [HQ]   colour, worst = 2.692 dB
 INFO  [HQ]   level change, worst = 1.431 dB
 INFO  [HQ]   held notes, harmonics against a real voice, worst RMS = 6.483 dB
 PASS  [HQ]   held notes, harmonics against a real voice, mean of the RMS = 2.411 dB
+FAIL  [HQ] eighth held out set, Japanese, Cantonese and Greek men 94 to 149 Hz and women 187 to 231 Hz, worst formant move against the input = 6.319 %
+INFO  [HQ]   and the tool's floor there = 3.275 %
+PASS  [HQ]   level change, worst = 1.160 dB
+INFO  [HQ]   first formant against its surroundings, flatter than a real voice, worst = 4.366 dB
+INFO  [HQ]   colour, worst = 2.804 dB
+PASS  [HQ] eighth held out set, Japanese, Cantonese and Greek women 427 to 795 Hz and men 317 and 438 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst = 6.410 dB
+INFO  [HQ]   the same with every case, including where the whole glide stays above the formant = 6.410 dB
+PASS  [HQ]   first formant sharper than a real voice, worst = 1.495 dB
+PASS  [HQ]   formant move against the input, worst, against the floor plus 2% = 25.550 %
+INFO  [HQ]   and the tool's floor there = 33.564 %
+INFO  [HQ]   colour, worst = 3.178 dB
+INFO  [HQ]   level change, worst = 1.538 dB
+INFO  [HQ]   held notes, harmonics against a real voice, worst RMS = 5.234 dB
+PASS  [HQ]   held notes, harmonics against a real voice, mean of the RMS = 2.391 dB
 PASS  [HQ] vowel change in a glide, 150 ms to 1.15 s after it, formants against a real voice with the new vowel, worst move = 2.694 %
 INFO  [HQ]   and the tool's floor: the new vowel as sung against that real voice, worst = 1.717 %
 PASS  [LL] null test against 1.4.0: output, parameters and latency bit for bit the same, cases = 24.000 
@@ -694,6 +708,6 @@ PASS  it paints at the smallest, largest and in between sizes
 PASS  with no audio arriving the display asks for no frames
 PASS  null test, window open against no window, largest sample difference = 0.000 
 PASS  25 opens and closes with no audio
-PASS  25 opens and closes with audio running, blocks = 594.000 
+PASS  25 opens and closes with audio running, blocks = 453.000 
 PASS  closing the window leaves audio running
-RESULT PASS  0 failures
+RESULT FAIL  1 failures

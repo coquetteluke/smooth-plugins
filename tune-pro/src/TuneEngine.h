@@ -369,7 +369,14 @@ private:
         else if (voicedHold <= 0) harmonicControl.inputPeriod = 0.0;
         // Throat changes the voice even where the pitch is left alone.
         harmonicControl.noCorrection = control.noCorrection && std::abs (harmonicControl.formantScale - 1.0) < 1.0e-4;
-        control.centreOnPulses = true;
+        // High Quality's grains sit on the tracker's marks, not on the pulses. The pulse offset is found once where a voiced stretch starts, before
+        // the model has settled, and then held: on a glide across a narrow first formant it sat 0.27 to 0.49 of a period off the pulses found
+        // later, so each grain split a pulse in two and the voice above the second formant lost 4 to 9 dB (a u with F1 and F2 close, 149 Hz
+        // moved down 3). Following the new readings instead did worse than no centring. Since 1.5.0 these grains only run below about 220 Hz.
+        // Measured on dev voices (EngineHarness speak8, men 94 to 149 Hz and women 187 to 231 Hz, shifts of 1, 3 and 4 both ways, the six dev
+        // vowels plain and styled and 36 random plausible vowels): worst men's formant move 6.51% to 5.76%, cases over 3.5% 20 to 7, women's
+        // 6.32% to 4.77%; dev formant test 2.11% to 2.30%, first formant flatter 3.92 to 4.32 dB, big shifts and held notes as before.
+        control.centreOnPulses = mode != highQuality;
         // Low Latency's model lags the voice, which matters most on low voices, whose periods are long against it. It leaves those alone.
         control.pulseLowestHz = mode == highQuality ? 0.0 : 130.0;
         control.downReadPower = mode == highQuality ? 0.0 : 0.2;

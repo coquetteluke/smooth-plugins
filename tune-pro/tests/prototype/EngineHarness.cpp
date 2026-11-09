@@ -1,7 +1,7 @@
 // Build against the branch harmonic-shifter (or main, for 1.4.0): clang++ -O2 -std=c++17 -I tests/prototype -I tests -I src tests/prototype/EngineHarness.cpp -framework Accelerate -o build/EngineHarness
 // Run: build/EngineHarness h (high notes), d (dev high glides), n (dev held notes), f (formants), g (dev vowels at the third set's pitches), b (big shifts),
 //      3, 4, 5 (the third, fourth and fifth held out sets, already run, so regression tests), v (vowel change), one3 / one5 <voice> <centre> <shift>, wav <file> [l].
-//      Several letters run several groups. DUMP=1 prints each case, BANDS=1 each band, SHOWLVL=1 the level every 0.2 s, FROM=<s> starts the reading later.
+//      speak7 [style] (dev vowels at the seventh held out set's speaking pitches and shifts). Several letters run several groups. DUMP=1 prints each case, BANDS=1 each band, SHOWLVL=1 the level every 0.2 s, FROM=<s> starts the reading later.
 // Runs the plug-in's TuneEngine directly on the test voices, to read the same numbers without JUCE.
 // Also: a (non-harmonic energy on steady voices), rand <seed> (held notes on random plausible vowels), styled (dev vowels with breath and darker sources)
 #include <chrono>
@@ -104,7 +104,7 @@ int main (int argc, char** argv)
         return 0;
     }
     const std::string t = argc > 1 ? argv[1] : "h";
-    const bool word = t == "rand" || t == "styled" || t == "heldvowel" || t == "cross" || t == "mix" || t == "cpu" || t == "switch";
+    const bool word = t == "speak7" || t == "rand" || t == "styled" || t == "heldvowel" || t == "cross" || t == "mix" || t == "cpu" || t == "switch";
     if (t == "heldvowel")
     {
         // A vowel change in the middle of a held note: after it, each harmonic against a real voice singing the new vowel, from 0.15 s
@@ -300,6 +300,27 @@ int main (int argc, char** argv)
         for (const auto& h : hs) for (double c : h.centres) for (int sh : { 4, -4, 3, -3, 1, -1 }) { gType = h.type; scoreCase (s, h.v, c, sh, h.st); }
         gType = 3;
         std::printf ("set 6 speaking: move %.2f%% (4) floor %.2f%% level %.2f dB (1.5)\n", 100 * s.move, 100 * s.floor, s.level);
+    }
+    if (t == "speak7")
+    {
+        // Dev voices like the seventh held out set's speakers: the six dev vowels, plain and with the styled sources' breath and darker
+        // tone, at the same pitches and shifts (men 93 to 146 Hz on Low Male, women 183, 204 and 237 Hz on Wide Range, shifts of 1, 3 and
+        // 4 both ways). The women's glides cross the switch between the grains and the harmonic shifter. No formant here comes from that set.
+        // argv[2] picks one style (0 plain, 1 to 3 styled) so the styles can run side by side; without it all four run.
+        const VStyle styles[] = { VStyle {}, VStyle { -40.0, 0.0 }, VStyle { -60.0, 2500.0 }, VStyle { -45.0, 4000.0 } };
+        const int firstStyle = argc > 2 ? atoi (argv[2]) : 0, lastStyle = argc > 2 ? firstStyle : 3;
+        Score men, women;
+        for (int si = firstStyle; si <= lastStyle; ++si)
+            for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU, &voice::vowelO, &voice::vowelAe })
+                for (int sh : { 4, -4, 3, -3, 1, -1 })
+                {
+                    gType = 2;
+                    for (double c : { 93.0, 102.0, 113.0, 128.0, 146.0 }) scoreCase (men, *v, c, sh, styles[si]);
+                    gType = 3;
+                    for (double c : { 183.0, 204.0, 237.0 }) scoreCase (women, *v, c, sh, styles[si]);
+                }
+        gType = 3;
+        std::printf ("dev voices at the seventh set's speaking pitches: men move %.2f%% (4) level %.2f dB (1.5); women move %.2f%% (4) level %.2f dB (1.5)\n", 100 * men.move, men.level, 100 * women.move, women.level);
     }
     if (t == "cross")
     {

@@ -1,0 +1,15 @@
+FAIL  [HQ] ninth held out set, Mandarin men 92 to 148 Hz and women 182 to 238 Hz, worst formant move against the input = 5.944 %
+INFO  [HQ]   and the tool's floor there = 4.772 %
+PASS  [HQ]   level change, worst = 1.489 dB
+INFO  [HQ]   first formant against its surroundings, flatter than a real voice, worst = 3.220 dB
+INFO  [HQ]   colour, worst = 2.389 dB
+PASS  [HQ] ninth held out set, Mandarin women 416 to 787 Hz and men 303 and 424 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst = 3.905 dB
+INFO  [HQ]   the same with every case, including where the whole glide stays above the formant = 5.255 dB
+PASS  [HQ]   first formant sharper than a real voice, worst = 1.049 dB
+PASS  [HQ]   formant move against the input, worst, against the floor plus 2% = 12.471 %
+INFO  [HQ]   and the tool's floor there = 32.763 %
+INFO  [HQ]   colour, worst = 2.631 dB
+INFO  [HQ]   level change, worst = 1.723 dB
+INFO  [HQ]   held notes, harmonics against a real voice, worst RMS = 6.984 dB
+PASS  [HQ]   held notes, harmonics against a real voice, mean of the RMS = 2.603 dB
+RESULT FAIL  1 failures

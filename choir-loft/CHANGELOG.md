@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.4, 2026-11-10
+
+Your own voice has a card. Luke asked why he could not see his voice in the row of voice cards: only the added singers had one.
+
+- A Lead card comes first in the row, in the lead's warm white: its name with the same switch dot as a voice, the note you are singing, Level and Pan. Where a voice says its interval, it says "You, as sung", because the lead is not changed.
+- Lead and Lead Pan moved into that card, so each is still in the window once. The bottom row is now Humanize, Vibrato, Harmony and Mix, on the same four columns as Advanced. In Advanced, "Consonants and lead" is now "Consonants", and Follow Key or Chord Hold moves up into the row Lead Pan left.
+- The voice cards are a little narrower to make room: 240 wide up to four voices (was 272), 120 at eight (was 132). The longest interval, "Octave down", still fits: at eight voices its letters are narrowed by 1.7%, and a test now checks every interval at every voice count and Mode.
+- No change to the sound, the parameters or saved sessions.
+
+Tests: 10 new window checks (the card shows at every voice count, sits left of voice 1, lines up with a voice's rows, each lead control is in the window once, the switch and the note, every interval's words fit).
+
 ## 1.4.3, 2026-11-10
 
 Picking a Key or Scale in the window now turns Follow Key off. Luke had Follow Key on, picked E Major, and the window kept showing A Minor and the voices kept singing in it: with Follow Key on, the key comes from Key's last reading and a pick by hand changed nothing you could see or hear.

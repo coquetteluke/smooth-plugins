@@ -279,7 +279,7 @@ HarmonyEditor::Panel::Panel (HarmonyEditor& e, PluginProcessor& p)
       stage (p),
       voicesCount (p.apvts, "How many voices sing with the lead. Above 4, the voices turn down together so it stays about as loud."),
       modePicker (p.apvts, "mode", { "In Key", "MIDI Chord", "Fixed", "Chord Tones", "MIDI Channel" }, 0, "Where the voices get their notes."),
-      leadSwitch (p.apvts, "leadOn", "", "Click to hear the lead or not. With it off you hear only the harmonies.", tone::text),
+      leadSwitch (p.apvts, "leadOn", "Lead", "Your own voice. Click to hear it or not. With it off you hear only the harmonies.", tone::text),
       bypass (p.apvts, "bypass", "Bypass", "Hear your vocal with nothing done to it. The timing stays the same."),
       keyField (p.apvts, "key", "Key", "The key of your song. Voices stay on its notes in In Key mode."),
       scaleField (p.apvts, "scale", "Scale", "The scale of your song. Rows on the display show its notes."),
@@ -290,7 +290,7 @@ HarmonyEditor::Panel::Panel (HarmonyEditor& e, PluginProcessor& p)
       chordHold (p.apvts, "chordHold", "Chord Hold", "Keeps a MIDI chord after the keys come up, until the next new note."),
       humanize (p.apvts, "humanize", "Humanize", "How much each voice differs from a machine, note by note. 0 is exact.", neutralBar),
       vibrato (p.apvts, "vibrato", "Vibrato", "How much the voices shake in pitch. They start it a moment into each note.", neutralBar),
-      leadLevel (p.apvts, "leadLevel", "Lead", "How loud your own voice is. All the way down leaves only the harmonies.", neutralBar),
+      leadLevel (p.apvts, "leadLevel", "Level", "How loud your own voice is. All the way down leaves only the harmonies.", tone::text),
       harmonyLevel (p.apvts, "harmonyLevel", "Harmony", "How loud all the voices are together.", neutralBar),
       mix (p.apvts, "mix", "Mix", "0 is your vocal alone, 100 is the lead and voices.", neutralBar),
       vibratoRate (p.apvts, "vibratoRate", "Vibrato Rate", "How fast the vibrato is. Each voice runs a little apart from the others.", neutralBar),
@@ -299,7 +299,7 @@ HarmonyEditor::Panel::Panel (HarmonyEditor& e, PluginProcessor& p)
       breath (p.apvts, "breath", "Breath", "Adds each voice's own breathiness.", neutralBar),
       consonants (p.apvts, "consonants", "Consonants", "How much of your S and T sounds each voice carries.", neutralBar),
       scatter (p.apvts, "consonantScatter", "Scatter", "0 copies your consonants. Higher gives each voice its own, a little later and softer.", neutralBar),
-      leadPan (p.apvts, "leadPan", "Lead Pan", "Where your own voice sits, left to right. You can also drag it on the stage.", neutralBar),
+      leadPan (p.apvts, "leadPan", "Pan", "Where your own voice sits, left to right. You can also drag it on the stage.", tone::text),
       tracking (p.apvts, "tracking", "Tracking", "Which sounds count as singing. Low is choosy, high lets rough or breathy sound in.", neutralBar),
       reference (p.apvts, "reference", "Reference A4", "The tuning of A. Leave it at 440 unless your song is tuned differently.", neutralBar)
 {
@@ -329,11 +329,12 @@ HarmonyEditor::Panel::Panel (HarmonyEditor& e, PluginProcessor& p)
         addChildComponent (*throat[v]);
     }
 
-    for (auto* c : { (juce::Component*) &humanize, (juce::Component*) &vibrato, (juce::Component*) &leadLevel, (juce::Component*) &harmonyLevel, (juce::Component*) &mix })
+    for (auto* c : { (juce::Component*) &humanize, (juce::Component*) &vibrato, (juce::Component*) &harmonyLevel, (juce::Component*) &mix,
+                     (juce::Component*) &leadLevel, (juce::Component*) &leadPan })
         addAndMakeVisible (c);
 
     for (auto* c : { (juce::Component*) &vibratoRate, (juce::Component*) &glide, (juce::Component*) &followLead, (juce::Component*) &breath, (juce::Component*) &consonants,
-                     (juce::Component*) &scatter, (juce::Component*) &leadPan, (juce::Component*) &tracking, (juce::Component*) &reference, (juce::Component*) &inputType })
+                     (juce::Component*) &scatter, (juce::Component*) &tracking, (juce::Component*) &reference, (juce::Component*) &inputType })
         addChildComponent (c);
 
     // These change places with the Mode. See placeForMode.
@@ -387,12 +388,38 @@ void HarmonyEditor::Panel::paint (juce::Graphics& g)
     if (advancedAmount > 0.01f)
     {
         const int top = stage.getBottom() + 16 + stripHeight + 12;
-        const juce::StringArray titles { "Throat", "How they sing", "Consonants and lead", "Input and chords" };
+        const juce::StringArray titles { "Throat", "How they sing", "Consonants", "Input and chords" };
         g.setFont (font (Weight::medium, 13.0f));
         g.setColour (tone::muted.withMultipliedAlpha (advancedAmount));
 
         for (int c = 0; c < 4; ++c)
             g.drawText (titles[c], juce::Rectangle<int> (columnX (c), top, columnWidth(), advancedTitle - 4), juce::Justification::centredLeft, false);
+    }
+
+    // The lead's card says who it is where a voice says its interval, set like an interval so the rows line up.
+    {
+        const float dim = leadHeardShown ? 1.0f : 0.5f;
+        auto b = leadCaption.toFloat();
+
+        if (cardsShown > 4)
+        {
+            g.setFont (font (Weight::regular, 17.0f));
+            g.setColour (tone::text.withMultipliedAlpha (dim));
+            g.drawText ("You", b.removeFromTop (b.getHeight() * 0.56f).withTrimmedTop (2.0f), juce::Justification::bottomLeft, false);
+            g.setFont (font (Weight::regular, 12.0f));
+            g.setColour (tone::muted.withMultipliedAlpha (dim));
+            g.drawText ("as sung", b, juce::Justification::topLeft, false);
+        }
+        else
+        {
+            g.setFont (font (Weight::regular, 27.0f));
+            const float bigWidth = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), "You");
+            g.setColour (tone::text.withMultipliedAlpha (dim));
+            g.drawText ("You", b.removeFromLeft (bigWidth + 2.0f), juce::Justification::centredLeft, false);
+            g.setFont (font (Weight::regular, 13.0f));
+            g.setColour (tone::muted.withMultipliedAlpha (dim));
+            g.drawText ("as sung", b.withTrimmedLeft (8.0f).withTrimmedTop (5.0f), juce::Justification::centredLeft, false);
+        }
     }
 }
 
@@ -433,7 +460,7 @@ void HarmonyEditor::Panel::placeForMode (int mode)
 
     const int top = stage.getBottom() + 16 + stripHeight + 12 + advancedTitle;
     const int rowStep = barHeight + barGap;
-    restC->setBounds (columnX (2), top + 3 * rowStep, columnWidth(), barHeight);
+    restC->setBounds (columnX (2), top + 2 * rowStep, columnWidth(), barHeight);
     restA->setBounds (columnX (3), top + 3 * rowStep, columnWidth(), barHeight);
     restB->setBounds (columnX (3), top + 4 * rowStep, columnWidth(), barHeight);
 }
@@ -454,14 +481,27 @@ void HarmonyEditor::Panel::resized()
 
     const int stripsY = stage.getBottom() + 16;
 
-    // Four cards up to four voices, with the spare ones dimmed. Above that, one card for each singer, in narrower columns, so all of them stay in view.
+    // The lead's card comes first, narrower than a voice's because it has less to say. Then four cards up to four voices, with the spare ones
+    // dimmed. Above that, one card for each singer, in narrower columns, so all of them stay in view.
     cardsShown = juce::jmax (4, processor.voiceCount());
-    const int cardGap = cardsShown > 4 ? 14 : gap;
-    const float cardWidth = (float) (designWidth - 2 * margin - (cardsShown - 1) * cardGap) / (float) cardsShown;
+    const bool compact = cardsShown > 4;
+    // Sized so the longest interval, "Octave down" with its semitones, still fits beside a voice's arrows (WindowTests checks every one).
+    const int cardGap = compact ? 12 : 16;
+    const int leadWidth = compact ? 96 : 128;
+    const float cardWidth = (float) (designWidth - 2 * margin - leadWidth - cardsShown * cardGap) / (float) cardsShown;
+
+    // Same rows as VoiceStrip::resized, so Level and Pan line up with every voice's.
+    auto lead = juce::Rectangle<int> (margin, stripsY, leadWidth, stripHeight);
+    leadSwitch.setBounds (lead.removeFromTop (30));
+    leadCaption = lead.removeFromTop (46);
+    lead.removeFromTop (6);
+    leadLevel.setBounds (lead.removeFromTop (barHeight));
+    lead.removeFromTop (barGap);
+    leadPan.setBounds (lead.removeFromTop (barHeight));
 
     for (int v = 0; v < PluginProcessor::maxVoices; ++v)
     {
-        const int x = margin + juce::roundToInt ((float) v * (cardWidth + (float) cardGap));
+        const int x = margin + leadWidth + cardGap + juce::roundToInt ((float) v * (cardWidth + (float) cardGap));
         strips[v]->setBounds (x, stripsY, juce::roundToInt (cardWidth), stripHeight);
         strips[v]->setVisible (v < cardsShown);
     }
@@ -500,7 +540,6 @@ void HarmonyEditor::Panel::resized()
     place (breath, 1, 3);
     place (consonants, 2, 0);
     place (scatter, 2, 1);
-    place (leadPan, 2, 2);
     place (inputType, 3, 0);
     place (tracking, 3, 1);
     place (reference, 3, 2);
@@ -509,22 +548,11 @@ void HarmonyEditor::Panel::resized()
 
     // The overall controls and the hint keep their place at the bottom.
     const int globalY = designHeight - 18 - bottomHeight - 12 - globalHeight;
-    int x = margin;
-    const int fifth = (designWidth - 2 * margin - 4 * 12) / 5;
+    int column = 0;
 
-    for (auto* c : { (juce::Component*) &humanize, (juce::Component*) &vibrato, (juce::Component*) &leadLevel, (juce::Component*) &harmonyLevel, (juce::Component*) &mix })
-    {
-        c->setBounds (x, globalY, fifth, globalHeight);
-
-        // The lead's own switch, the same dot a voice has, just ahead of its level.
-        if (c == &leadLevel)
-        {
-            leadSwitch.setBounds (x, globalY, 16, globalHeight - 10);
-            c->setBounds (x + 18, globalY, fifth - 18, globalHeight);
-        }
-
-        x += fifth + 12;
-    }
+    // On the same four columns as Advanced. The lead's level and switch are on its card.
+    for (auto* c : { (juce::Component*) &humanize, (juce::Component*) &vibrato, (juce::Component*) &harmonyLevel, (juce::Component*) &mix })
+        c->setBounds (columnX (column++), globalY, columnWidth(), globalHeight);
 
     const int bottomY = globalY + globalHeight + 12;
     advancedHeader->setBounds (margin, bottomY, 110, bottomHeight);
@@ -700,8 +728,25 @@ void HarmonyEditor::tick (double dtSeconds)
     for (int v = 0; v < panel.cardsShown; ++v)
         panel.strips[v]->setSinging (panel.stage.noteFor (v), panel.stage.isLive(), v < count, panel.cardsShown > 4);
 
-    // The lead's dim follows its dot.
-    panel.leadLevel.setAlpha (panel.stage.isHeard (StageView::leadIndex) ? 1.0f : 0.5f);
+    // The lead's card: the note it is on, and a dim that follows its dot.
+    {
+        const bool heard = panel.stage.isHeard (StageView::leadIndex), compact = panel.cardsShown > 4;
+
+        if (heard)
+            panel.leadSwitch.setRight (panel.stage.noteFor (StageView::leadIndex), panel.stage.isLive() ? tone::text : tone::text.withAlpha (0.8f), compact ? 17.0f : 20.0f);
+        else
+            panel.leadSwitch.setRight ("Off", tone::muted, 14.0f);
+
+        panel.leadSwitch.setCompact (compact);
+        panel.leadLevel.setAlpha (heard ? 1.0f : 0.5f);
+        panel.leadPan.setAlpha (heard ? 1.0f : 0.5f);
+
+        if (heard != panel.leadHeardShown)
+        {
+            panel.leadHeardShown = heard;
+            panel.repaint (panel.leadCaption);
+        }
+    }
 
     // With Follow Key on and a key to follow, the fields say what is really in use.
     const bool following = processorRef.apvts.getRawParameterValue ("followKey")->load (std::memory_order_relaxed) >= 0.5f && processorRef.getPitchHistoryCount() > 0;

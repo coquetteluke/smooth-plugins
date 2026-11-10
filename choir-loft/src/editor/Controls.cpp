@@ -348,14 +348,10 @@ namespace ui
         param.endChangeGesture();
     }
 
-    void IntervalField::paint (juce::Graphics& g)
+    void IntervalField::words (juce::String& big, juce::String& small) const
     {
-        const auto b = getLocalBounds().toFloat();
-        const bool lit = isMouseOverOrDragging() || forcedHover;
         const bool fromMidi = mode == modeMidi || mode == modeChannel;
         const int semitones = juce::roundToInt (getValue());
-
-        juce::String big, small;
 
         if (fromMidi)
         {
@@ -372,12 +368,49 @@ namespace ui
             big = intervalWords (semitones);
             small = semitoneText (semitones);
         }
+    }
 
-        auto text = b.withTrimmedRight (compact ? 22.0f : 30.0f);
+    float IntervalField::bigScale() const
+    {
+        if (! compact)
+            return 1.0f;
+
+        // With eight voices and the lead in the row, "Octave down" is a hair wider than its card. Narrow the letters by up to 5% before cutting any off.
+        juce::String big, small;
+        words (big, small);
+        const float width = juce::GlyphArrangement::getStringWidth (font (Weight::regular, 17.0f), big);
+        return width > 0.0f ? juce::jlimit (0.95f, 1.0f, ((float) getWidth() - textTrim()) / width) : 1.0f;
+    }
+
+    float IntervalField::wordsOverflow() const
+    {
+        juce::String big, small;
+        words (big, small);
+        const float room = (float) getWidth() - textTrim();
+
+        if (compact)
+            return juce::jmax (juce::GlyphArrangement::getStringWidth (font (Weight::regular, 17.0f), big) * bigScale(),
+                               juce::GlyphArrangement::getStringWidth (font (Weight::regular, 12.0f), small)) - room;
+
+        // The big words, then the small ones 8 to their right. See paint.
+        return juce::GlyphArrangement::getStringWidth (font (Weight::regular, 27.0f), big) + 2.0f + 8.0f
+               + juce::GlyphArrangement::getStringWidth (font (Weight::regular, 13.0f), small) - room;
+    }
+
+    void IntervalField::paint (juce::Graphics& g)
+    {
+        const auto b = getLocalBounds().toFloat();
+        const bool lit = isMouseOverOrDragging() || forcedHover;
+        const bool fromMidi = mode == modeMidi || mode == modeChannel;
+
+        juce::String big, small;
+        words (big, small);
+
+        auto text = b.withTrimmedRight (textTrim());
 
         if (compact)
         {
-            g.setFont (font (Weight::regular, 17.0f));
+            g.setFont (font (Weight::regular, 17.0f).withHorizontalScale (bigScale()));
             g.setColour (fromMidi ? tone::muted : tone::text);
             g.drawText (big, text.removeFromTop (b.getHeight() * 0.56f).withTrimmedTop (2.0f), juce::Justification::bottomLeft, false);
             g.setFont (font (Weight::regular, 12.0f));

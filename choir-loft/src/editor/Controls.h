@@ -86,9 +86,17 @@ namespace ui
         void startTyping();
         void applyTyped (const juce::String&);
 
+        /** How much wider the words are than the room beside the arrows, in pixels, at this size and Mode. 0 or less means they fit. */
+        float wordsOverflow() const;
+        /** How much a narrow card narrows its words to make them fit, 0 to 0.05. 0 is as designed. */
+        float wordsSqueeze() const  { return 1.0f - bigScale(); }
+
     private:
         void timerCallback() override;
         int arrowAt (juce::Point<float>) const;
+        void words (juce::String& big, juce::String& small) const;
+        float bigScale() const;
+        float textTrim() const noexcept  { return compact ? 16.0f : 30.0f; }   // the arrows' side
 
         juce::RangedAudioParameter& param;
         const int index;
@@ -185,6 +193,7 @@ namespace ui
         void mouseDown (const juce::MouseEvent&) override;
 
         void setRight (const juce::String& text, juce::Colour colour, float size);
+        const juce::String& getRight() const noexcept  { return rightText; }
         void setCompact (bool shouldBe)  { if (compact != shouldBe) { compact = shouldBe; repaint(); } }
         bool isHeard() const noexcept    { return heard; }
         void toggle();

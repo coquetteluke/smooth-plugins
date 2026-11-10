@@ -143,6 +143,111 @@ void testWindow()
         check (outside == 0, std::string ("everything fits and is reachable, Advanced ") + (open ? "open" : "closed"), (double) outside, "misplaced");
     }
 
+    // The lead has a card of its own, first in the row of singers, at every voice count
+    {
+        auto p = make();
+        auto e = openWindow (*p);
+        auto& panel = e->getPanel();
+        int misplaced = 0, misaligned = 0, hidden = 0, doubled = 0;
+
+        for (int voices = 1; voices <= 8; ++voices)
+        {
+            setParam (*p, "voices", (float) juce::jmin (voices, 4));
+            setParam (*p, "moreVoices", (float) juce::jmax (0, voices - 4));
+            e->tick (1.0 / 30.0);
+
+            auto* on = findById<ui::SingerSwitch> (panel, "leadOn");
+            auto* level = findById<ui::BarSlider> (panel, "leadLevel");
+            auto* pan = findById<ui::BarSlider> (panel, "leadPan");
+            auto* v1Head = findById<ui::SingerSwitch> (panel, "voice1On");
+            auto* v1Level = findById<ui::BarSlider> (panel, "voice1Level");
+            auto* v1Pan = findById<ui::BarSlider> (panel, "voice1Pan");
+            const auto in = [&] (juce::Component* c) { return panel.getLocalArea (c->getParentComponent(), c->getBounds()); };
+
+            for (auto* c : { (juce::Component*) on, (juce::Component*) level, (juce::Component*) pan })
+            {
+                if (! c->isVisible() || c->getAlpha() < 0.99f || c->getWidth() < 80)   // isShowing needs a window on screen, which a test has not got
+                    ++hidden;
+                if (in (c).getRight() > in (v1Head).getX() || in (c).getX() < 0)
+                    ++misplaced;
+            }
+
+            if (in (on).getY() != in (v1Head).getY() || in (level).getY() != in (v1Level).getY() || in (pan).getY() != in (v1Pan).getY()
+                || in (level).getHeight() != in (v1Level).getHeight())
+                ++misaligned;
+
+            // One control for each of the lead's parameters, not a second copy somewhere else in the window.
+            for (const char* id : { "leadOn", "leadLevel", "leadPan" })
+            {
+                int count = 0;
+                std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+                {
+                    if (c.getComponentID() == id)
+                        ++count;
+                    for (auto* child : c.getChildren())
+                        walk (*child);
+                };
+                walk (*e);
+                if (count != 1)
+                    ++doubled;
+            }
+        }
+
+        check (hidden == 0, "the lead's switch, Level and Pan show at every voice count, Advanced closed", (double) hidden, "hidden");
+        check (misplaced == 0, "the lead's card sits left of voice 1 at every voice count", (double) misplaced, "misplaced");
+        check (misaligned == 0, "the lead's name, Level and Pan line up with a voice's", (double) misaligned, "misaligned");
+        check (doubled == 0, "each lead control is in the window once", (double) doubled, "doubled");
+
+        auto* on = findById<ui::SingerSwitch> (panel, "leadOn");
+        auto* leadOn = p->apvts.getParameter ("leadOn");
+        on->mouseDown (mouseAt (*on, { 40.0f, 10.0f }));
+        e->tick (1.0 / 30.0);
+        check (leadOn->getValue() < 0.5f && on->getRight() == "Off", "a click on the lead's name turns it off and the card says Off, " + on->getRight().toStdString());
+        check (findById<ui::BarSlider> (panel, "leadLevel")->getAlpha() < 0.9f && findById<ui::BarSlider> (panel, "leadPan")->getAlpha() < 0.9f, "and its Level and Pan dim");
+        on->mouseDown (mouseAt (*on, { 40.0f, 10.0f }));
+        e->tick (1.0 / 30.0);
+        check (leadOn->getValue() >= 0.5f && on->getRight() != "Off", "a second click brings it back");
+    }
+
+    // With the lead's card in the row the voice cards are narrower. Every interval's words still fit beside the arrows.
+    {
+        auto p = make();
+        auto e = openWindow (*p);
+        auto& panel = e->getPanel();
+        double worst = -1.0e9, squeeze = 0.0;
+        std::string where;
+
+        for (int voices = 1; voices <= 8; ++voices)
+            for (const int mode : { (int) modeScale, (int) modeFixed, (int) modeMidi, (int) modeChannel })
+            {
+                setParam (*p, "voices", (float) juce::jmin (voices, 4));
+                setParam (*p, "moreVoices", (float) juce::jmax (0, voices - 4));
+                setParam (*p, "mode", (float) mode);
+
+                for (int semitones = -24; semitones <= 24; ++semitones)
+                {
+                    for (int v = 0; v < voices; ++v)
+                        setParam (*p, "voice" + juce::String (v + 1) + "Interval", (float) semitones);
+                    e->tick (1.0 / 30.0);
+
+                    for (int v = 0; v < voices; ++v)
+                    {
+                        auto* field = findById<ui::IntervalField> (panel, "voice" + juce::String (v + 1) + "Interval");
+                        const double over = field->wordsOverflow();
+                        squeeze = std::max (squeeze, (double) field->wordsSqueeze());
+                        if (over > worst)
+                        {
+                            worst = over;
+                            where = std::to_string (voices) + " voices, mode " + std::to_string (mode) + ", " + std::to_string (semitones) + " st";
+                        }
+                    }
+                }
+            }
+
+        check (worst <= 0.01, "every interval's words fit in its card at every voice count and Mode, worst at " + where, worst, "px over");
+        check (squeeze <= 0.03, "and the letters are narrowed by 3% at most to do it", 100.0 * squeeze, "%");
+    }
+
     // A Key or Scale picked by hand wins over Follow Key
     {
         auto p = make();
@@ -396,6 +501,7 @@ void testWindow()
         check (e->getStage().isLive(), "the singers follow a voice that is singing");
         const auto note = e->getStage().noteFor (StageView::leadIndex);
         check (note == "A3", "the lead reads the note it is on, " + note.toStdString());
+        check (findById<ui::SingerSwitch> (*e, "leadOn")->getRight() == "A3", "and its card shows that note, " + findById<ui::SingerSwitch> (*e, "leadOn")->getRight().toStdString());
         // A3 in C major, a 3rd up from defaults is C4, and a 5th up is E4.
         check (e->getStage().noteFor (0) == "C4", "voice 1 reads the note it sings, " + e->getStage().noteFor (0).toStdString());
         check (e->getStage().noteFor (1) == "E4", "voice 2 reads the note it sings, " + e->getStage().noteFor (1).toStdString());

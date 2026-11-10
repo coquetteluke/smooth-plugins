@@ -96,6 +96,10 @@ private:
         float advancedAmount = 0.0f;   // 0 closed, 1 open
         int modeShown = -1, cardsShown = 4;
 
+        // The lead's card, first in the row of singers: its switch, what it sings, Level and Pan. Where a voice says its interval, this says it is you.
+        juce::Rectangle<int> leadCaption;
+        bool leadHeardShown = true;
+
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Panel)
     };
 

@@ -341,6 +341,19 @@ HarmonyEditor::Panel::Panel (HarmonyEditor& e, PluginProcessor& p)
                      (juce::Component*) &followKey, (juce::Component*) &chordHold })
         addChildComponent (c);
 
+    // While Follow Key is on, the key comes from Key and a pick here would change nothing you can see or hear.
+    // So a Key or Scale picked by hand turns Follow Key off: the last thing you chose is what the voices use.
+    auto* followParam = p.apvts.getParameter ("followKey");
+    keyField.onUserPick = scaleField.onUserPick = [followParam]
+    {
+        if (followParam->getValue() >= 0.5f)
+        {
+            followParam->beginChangeGesture();
+            followParam->setValueNotifyingHost (0.0f);
+            followParam->endChangeGesture();
+        }
+    };
+
     hintLine.setFont (font (Weight::regular, 13.0f));
     hintLine.setColour (juce::Label::textColourId, tone::muted);
     hintLine.setJustificationType (juce::Justification::centredRight);

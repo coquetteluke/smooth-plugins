@@ -468,14 +468,21 @@ namespace ui
                             [safe = juce::Component::SafePointer<ChoiceField> (this)] (int result)
                             {
                                 if (safe != nullptr && result > 0)
-                                    safe->attachment.setValueAsCompleteGesture ((float) (result - 1));
+                                    safe->pick (result - 1);
                             });
+    }
+
+    void ChoiceField::pick (int index)
+    {
+        attachment.setValueAsCompleteGesture ((float) juce::jlimit (0, choices.size() - 1, index));
+        if (onUserPick)
+            onUserPick();
     }
 
     void ChoiceField::mouseDoubleClick (const juce::MouseEvent&)
     {
         juce::PopupMenu::dismissAllActiveMenus();
-        attachment.setValueAsCompleteGesture (param.convertFrom0to1 (param.getDefaultValue()));
+        pick (juce::roundToInt (param.convertFrom0to1 (param.getDefaultValue())));
     }
 
     // ----------------------------------------------------------------------------------------------------------

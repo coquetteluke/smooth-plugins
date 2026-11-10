@@ -143,6 +143,39 @@ void testWindow()
         check (outside == 0, std::string ("everything fits and is reachable, Advanced ") + (open ? "open" : "closed"), (double) outside, "misplaced");
     }
 
+    // A Key or Scale picked by hand wins over Follow Key
+    {
+        auto p = make();
+        auto e = openWindow (*p);
+        auto* follow = p->apvts.getParameter ("followKey");
+        auto* keyP = p->apvts.getParameter ("key");
+        auto* scaleP = p->apvts.getParameter ("scale");
+
+        setParam (*p, "followKey", 1.0f);
+        setParam (*p, "key", 9.0f);
+        check (follow->getValue() >= 0.5f, "automation of Key leaves Follow Key on");
+
+        GestureCount watch;
+        follow->addListener (&watch);
+        findById<ui::ChoiceField> (*e, "key")->pick (4);
+        check (juce::roundToInt (keyP->convertFrom0to1 (keyP->getValue())) == 4, "picking a Key in the window sets Key");
+        check (follow->getValue() < 0.5f, "picking a Key in the window turns Follow Key off");
+        check (watch.begins == 1 && watch.ends == 1, "and Follow Key goes off as one gesture", (double) watch.begins, "gestures");
+
+        setParam (*p, "followKey", 1.0f);
+        findById<ui::ChoiceField> (*e, "scale")->pick (scaleMajor);
+        check (juce::roundToInt (scaleP->convertFrom0to1 (scaleP->getValue())) == scaleMajor, "picking a Scale in the window sets Scale");
+        check (follow->getValue() < 0.5f, "picking a Scale in the window turns Follow Key off");
+
+        findById<ui::ChoiceField> (*e, "key")->pick (7);
+        check (watch.begins == 2 && watch.ends == 2, "a pick with Follow Key already off leaves it alone", (double) watch.begins, "gestures");
+
+        setParam (*p, "followKey", 1.0f);
+        findById<ui::ChoiceField> (*e, "chordRoot")->pick (2);
+        check (follow->getValue() >= 0.5f, "picking a Chord leaves Follow Key on");
+        follow->removeListener (&watch);
+    }
+
     // Automation moves the window, and the window moves the parameter with a gesture
     {
         auto p = make();

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.3, 2026-11-10
+
+Picking a Key or Scale in the window now turns Follow Key off. Luke had Follow Key on, picked E Major, and the window kept showing A Minor and the voices kept singing in it: with Follow Key on, the key comes from Key's last reading and a pick by hand changed nothing you could see or hear.
+
+- A pick from the Key or Scale list, or a double-click reset of either, switches Follow Key off as one gesture, so the last thing chosen is what the voices use. Automation of Key or Scale does not touch Follow Key, and picking a Chord or Type does not either.
+- No change to the sound, the parameters or saved sessions.
+
+Tests: 8 new window checks for this.
+
 ## 1.4.2, 2026-11-09
 
 Breaths no longer make the voices sing, and voices come in sooner at the start of a word. Measured on Luke's own dry takes as well as the tests (`realvox/`, see its README).

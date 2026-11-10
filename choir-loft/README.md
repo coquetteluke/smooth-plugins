@@ -20,7 +20,7 @@ Every control is a real AU parameter that a host can find by name.
 |---|---|
 | Mode | Where voice pitch comes from. See below. |
 | Key, Scale | Used by Scale Interval. Chromatic, Major, Minor, Harmonic Minor, Melodic Minor, Major Pentatonic, Minor Pentatonic, Blues, Dorian, Mixolydian. |
-| Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key, on a background thread. Missing, broken, stale (over 10 minutes old), future dated or low confidence (under 0.5) data is ignored: the last good key holds, and with none it uses Key and Scale. |
+| Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key, on a background thread. Missing, broken, stale (over 10 minutes old), future dated or low confidence (under 0.5) data is ignored: the last good key holds, and with none it uses Key and Scale. Picking a Key or Scale by hand in the window turns Follow Key off. |
 | Voices | 1 to 4. Voices fade in and out. |
 | More Voices | 0 to 4, added to Voices: Voices 4 and More Voices 4 is eight singers. Two controls because a host stores automation of Voices as a position in its range, and widening that range would have moved old automation. The window shows them as one row, 1 to 8. |
 | Voice N On, Lead On | Whether you hear that singer. Off fades over 15 ms, and it stops using CPU while its note logic keeps going, so it comes back on the right note. Voices 1 to 8. |

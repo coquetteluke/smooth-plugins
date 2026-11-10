@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <functional>
 
 #include "Theme.h"
 
@@ -117,6 +118,11 @@ namespace ui
         void setOverride (const juce::String&);
         void setForcedHover (bool shouldShow)  { hovered = shouldShow; repaint(); }
         int getSelected() const noexcept  { return selected; }
+
+        /** What a pick from the list does: sets the parameter as one gesture, then calls onUserPick. */
+        void pick (int index);
+        /** Called after the user picks a value or resets it by hand. Never called by automation. */
+        std::function<void()> onUserPick;
 
     private:
         juce::RangedAudioParameter& param;

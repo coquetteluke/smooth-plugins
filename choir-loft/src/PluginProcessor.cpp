@@ -327,7 +327,9 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     tickSamples = juce::jmax (1, juce::roundToInt (sr * 0.001));
     tickSeconds = tickSamples / sr;
     rewriteTicks = juce::roundToInt (0.03 / tickSeconds);
+    maxLateTicks = juce::roundToInt (0.05 / tickSeconds);
     leadRunTicks = 0;
+    lateTicks = 0;
     levelRing.fill (0.0);
     levelAt = 0;
     tickPower = 0.0;
@@ -428,6 +430,7 @@ void PluginProcessor::applyInputType (int type) noexcept
     pitchRing.fill (0.0);
     voicedRing.fill (false);
     leadRunTicks = 0;
+    lateTicks = 0;
 }
 
 void PluginProcessor::readSettings() noexcept
@@ -504,17 +507,40 @@ void PluginProcessor::tick() noexcept
     const bool voiced = period > 0.0;
     const double reference_ = settings.referenceHz;
     const double semitones = voiced ? 69.0 + 12.0 * std::log2 ((sr / period) / reference_) : 0.0;
+    const bool startNow = voiced && ! leadVoiced;
     currentPeriod = period;
     leadVoiced = voiced;
 
     pitchRingAt = (pitchRingAt + 1) & (pitchRingSize - 1);
     pitchRing[(size_t) pitchRingAt] = semitones;
 
+    // A start is written back to where the tracker says it began: where nearly periodic sound began, or where the plain tests would have
+    // called it, since a start is now also checked for breath, which costs a breathy or gliding start a few ms. A voice standing behind the
+    // lead reads that far back, so it comes in on time. Only a start that passed counts, so breath that never does stays out.
+    if (startNow)
+    {
+        lateTicks = juce::jlimit (0, juce::jmin (maxLateTicks, pitchRingSize - 2), (int) (tracker.startedLateBy() / tickSamples));
+        // Only back over the stretch without pitch: never over the last stretch's own pitch.
+        int written = 0;
+        for (int k = 1; k <= lateTicks; ++k)
+        {
+            const size_t at = (size_t) ((pitchRingAt - k) & (pitchRingSize - 1));
+            if (voicedRing[at]) break;
+            pitchRing[at] = semitones;
+            voicedRing[at] = true;
+            written = k;
+        }
+        lateTicks = written;
+        leadRunTicks = lateTicks;
+    }
+    else if (! voiced)
+        lateTicks = 0;
+
     // The tracker's first ms of a stretch of pitch are its least sure: at a note's start it can read an octave high until its window has filled,
     // and voices look back that far, by their lag, so they would sing the wrong note later on as well. So for the first 30 ms of each stretch the
     // pitch kept for looking back is rewritten with the newest.
     leadRunTicks = voiced ? juce::jmin (leadRunTicks + 1, 1 << 20) : 0;
-    if (voiced && leadRunTicks <= rewriteTicks)
+    if (voiced && leadRunTicks <= rewriteTicks + lateTicks)
         for (int k = 1; k < leadRunTicks; ++k)
             pitchRing[(size_t) ((pitchRingAt - k) & (pitchRingSize - 1))] = semitones;
 

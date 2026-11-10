@@ -219,6 +219,7 @@ private:
     std::array<bool, pitchRingSize> voicedRing {};
     int pitchRingAt = 0;
     int leadRunTicks = 0, rewriteTicks = 30;   // ticks the lead has had pitch for, and how many of a stretch's first ticks get rewritten
+    int lateTicks = 0, maxLateTicks = 50;      // how far back the newest start was written, and the most it may be
     static constexpr int levelRingSize = 32;   // input power per tick, for telling a reattack
     std::array<double, levelRingSize> levelRing {};
     int levelAt = 0;

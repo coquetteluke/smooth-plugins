@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.4.2, 2026-11-09
+
+Breaths no longer make the voices sing, and voices come in sooner at the start of a word. Measured on Luke's own dry takes as well as the tests (`realvox/`, see its README).
+
+- A start must also repeat once its formants are taken out (`residualDip` in `src/PitchTracker.h`): linear prediction over the last 24 ms, then whether what is left repeats a period later. A voice leaves a train of pulses; breath through a vowel is noise again. Plainly periodic sound (dip under 0.05) and a run that has stayed clean for 10 ms skip the check.
+- A start is written back to where nearly periodic sound began, or to where the plain tests would have called it, whichever is earlier, but never over the last stretch's pitch. A voice standing behind the lead reads that far back, so it comes in on time.
+- On a breathy high note (reading over 600 Hz) the true period wins over half of it when it is 0.015 deeper over three windows. Fixes the octave high first note on breathy A4 starts.
+- While a start settles, a voice changes note 3 cents past the half way point instead of 12, so a vibrato that starts on the line between two notes does not hold the wrong one for 20 ms.
+
+Tests, 1.4.1 to 1.4.2: breaths, s, sh, noise and room tone, worst share of time a voice sings 29.8% to 0, longest 70 ms to 0. Voices singing another note first: default 1 to 0, Tight 1 to 0, Humanize 0 stays 0. Hard starts 95th percentile 17 to 14 ms. `say` starts median 21.7 to 21.4 ms. 563 pass, 3 fail (559, 7).
+
+Luke's takes, 1.4.2 against 1.4.1, measured by `realvox/RealVox.cpp` (default preset, key and tuning found from each take):
+- Dev takes (01 02 03 04 06 07 09): breath leak 9.7% to 2.6% of breath frames, wrong first notes at phrase starts 29 to 24 of 424, phrase starts median 26.4 to 24.5 ms, word starts median 24.0 to 21.8 ms, leak inside phrases 3.1% to 1.0%. Worse: phrase starts never reaching level 8 to 11 of 424, fry phrase starts 90th percentile 41.7 to 48.2 ms.
+- Held out takes (05 08 10 11), run once each after the tool was committed: breath leak 12.0% to 3.1%, phrase starts median 22.7 to 22.0 ms and 90th percentile 46.4 to 41.8 ms, word starts median 22.5 to 19.9 ms, leak inside phrases 8.6% to 2.7%. Worse: wrong first notes at phrase starts 5 to 6 of 190 and at word starts 28 to 32 of 476; breathy starts 90th percentile 52.0 to 52.6 ms.
+
+Still failing: breathy starts on high notes, 95th percentile 67.9 ms (default), 72.0 (Tight) and 67.1 (Humanize 0) against 40 (1.4.1: 73.5, 72.0, 73.3). The aspiration sits at the voice's own level for the first 50 ms and the tracker cannot tell the note from it sooner.
+
+The 22 null tests now pin 1.4.2's sound, since starts changed on purpose, as in 1.4.0. Latency unchanged, 13.7 ms at the default. No parameter changed.
+
 ## 1.4.1, 2026-11-08
 
 Breaths sing less. A voice now starts only when the lead's even harmonics repeat as well: the sound plus itself half a period later cancels a lone formant's ring, and a voice's 2nd, 4th... harmonics still repeat a period later (`evenDip` in `src/PitchTracker.h`, fresh starts only).

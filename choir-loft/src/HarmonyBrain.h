@@ -266,8 +266,9 @@ public:
             const int oldChromatic = voiceChromaticNote[(size_t) v];
             if (hasLead)
             {
-                voiceScaleNote[(size_t) v] = followWithMargin (voiceScaleNote[(size_t) v], p, s.scale);
-                voiceChromaticNote[(size_t) v] = followWithMargin (voiceChromaticNote[(size_t) v], p, 0x0FFF);
+                const double margin = startAge < startSettleSeconds + 0.001 * singers[(size_t) v].lagMilliseconds() ? 0.06 : 0.24;
+                voiceScaleNote[(size_t) v] = followWithMargin (voiceScaleNote[(size_t) v], p, s.scale, margin);
+                voiceChromaticNote[(size_t) v] = followWithMargin (voiceChromaticNote[(size_t) v], p, 0x0FFF, margin);
             }
             const int scaleNote = voiceScaleNote[(size_t) v], chromaticNote = voiceChromaticNote[(size_t) v];
             const bool inCount = v < s.voices;
@@ -405,13 +406,14 @@ public:
     }
 
 private:
-    // Past the half way point by 12 cents before changing, so a note on the line does not flip.
-    static int followWithMargin (int current, double p, std::uint16_t mask) noexcept
+    // Past the half way point by 12 cents before changing, so a note on the line does not flip. While a start settles, by 3 cents: a lead
+    // that starts on the line, as a vibrato from the first moment can, should not hold its first reading's side for 20 ms.
+    static int followWithMargin (int current, double p, std::uint16_t mask, double margin = 0.24) noexcept
     {
         const int nearest = nearestInMask (p, mask);
         if (current < 0 || ! inMask (current, mask))
             return nearest;
-        if (nearest != current && std::abs (p - (double) current) - std::abs (p - (double) nearest) > 0.24)
+        if (nearest != current && std::abs (p - (double) current) - std::abs (p - (double) nearest) > margin)
             return nearest;
         return current;
     }

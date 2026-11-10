@@ -82,6 +82,8 @@ public:
         while (fastSize < (int) (sr * 0.25)) fastSize *= 2;
         fast.assign ((size_t) fastSize * 2, 0.0f);
         curve.assign (1024, 1.0f);
+        lpcIn.assign (2 * 1024 + 64, 0.0f);
+        lpcOut.assign (2 * 1024 + 64, 0.0f);
         rumble.highPass (50.0, sr, 0.707);
         presence.lowPass (std::min (5500.0, sr * 0.45), sr, 0.707);
         coarseA.lowPass (3000.0, sr, 0.541);
@@ -162,6 +164,10 @@ public:
     double coarsePeriod() const noexcept { return tauCurrent * decimation; }
     float difference() const noexcept { return dipCurrent; }    // 0 = perfectly periodic
 
+    // How far back the newest start reaches: to where nearly periodic sound began, or to when the plain periodicity tests alone would have
+    // called it, whichever is earlier. In input samples, counted back from the moment it was called.
+    long long startedLateBy() const noexcept { return lateSamples; }
+
     // Best period right now in input samples, 0 when not voiced.
     double period() const noexcept { return ! voiced ? 0.0 : (markValid ? finePeriod : coarsePeriod()); }
 
@@ -176,11 +182,14 @@ private:
     {
         tauCurrent = 0.0; dipCurrent = 1.0f; voiced = false; voicedAnalyses = 0; voicedVotes = 0; unvoicedVotes = 0; pendingVotes = 0; pendingTau = 0.0;
         markValid = false; finePeriod = 0.0; weakMarks = 0; markSeq = 0; lastMarkPosition = -1.0e12; mismatchVotes = 0;
+        plainVotes = 0; plainTau = 1.0; plainVotedAt = -1; plainDipSum = 0.0f; lateSamples = 0; nearSince = -1;
     }
 
     void setUnvoiced() noexcept
     {
         voiced = false;
+        plainVotes = 0;
+        plainVotedAt = -1;
         voicedAnalyses = 0;
         voicedVotes = 0;
         markValid = false;
@@ -256,11 +265,27 @@ private:
                     break;
                 }
             }
+        // On breathy sound a high note's period and half of it can look about as good, the noise filling both dips alike. See noisyOctave.
+        else
+            for (int i = chosen + 1; i < numDips; ++i)
+                if (std::abs (dipTau[(size_t) i] / dipTau[(size_t) chosen] / 2.0 - 1.0) < 0.06)
+                {
+                    if (noisyOctave (dipTau[(size_t) chosen], dipTau[(size_t) i]))
+                        chosen = i;
+                    break;
+                }
 
         double tau = dipTau[(size_t) chosen];
         float dip = dipValue[(size_t) chosen];
         if (voiced) ++voicedAnalyses;
         trackContinuity (tau, dip, numDips);
+
+        // Where the current run of nearly periodic sound began, for a start to be written back to.
+        if (! voiced)
+        {
+            if (dipCurrent < nearlyPeriodic && ! isFricative()) { if (nearSince < 0) nearSince = slowCount; }
+            else nearSince = -1;
+        }
 
         // Voiced or not, with votes so one lucky frame of noise does nothing.
         const bool looksVoiced = dipCurrent < (voiced ? voicedOff : voicedOn) && ! isFricative();
@@ -273,22 +298,47 @@ private:
             if (! voiced && evenDip (tauCurrent * decimation) > evenLimit)
             {
                 voicedVotes = 0;
+                plainVotes = 0;
+                plainVotedAt = -1;
             }
             else if (! voiced)
             {
-                const bool steady = voicedVotes == 0 || std::abs (tauCurrent / votedTau - 1.0) < 0.05;
-                voicedVotes = steady ? voicedVotes + 1 : 1;
-                votedTau = tauCurrent;
-                if (voicedVotes >= 3)
+                // The plain tests: three steady votes. 1.4.1 called a start here.
+                const bool plainSteady = plainVotes == 0 || std::abs (tauCurrent / plainTau - 1.0) < 0.05;
+                plainVotes = plainSteady ? plainVotes + 1 : 1;
+                plainTau = tauCurrent;
+                plainDipSum = plainVotes == 1 ? dipCurrent : plainDipSum + dipCurrent;
+                if (plainVotes == 3) plainVotedAt = slowCount;
+
+                // And once its formants are taken out it must still repeat (residualDip). Breath through a vowel passes every test above for a
+                // few ms at a time; a voice leaves a train of pulses. Not asked of plainly periodic sound, nor of a run that has stayed clean for
+                // 10 ms, since what prediction leaves of a gliding or breathy voice repeats poorly at first.
+                const bool plainlyPeriodic = dipCurrent < plainlyPeriodicDip;
+                const bool heldClean = plainVotes * hop >= (int) (0.01 * slowRate) && plainDipSum / (float) plainVotes < heldCleanDip;
+                if (! plainlyPeriodic && ! heldClean && residualDip (tauCurrent) > residualLimit)
                 {
-                    voiced = true;
-                    markValid = false;
+                    voicedVotes = 0;
+                }
+                else
+                {
+                    const bool steady = voicedVotes == 0 || std::abs (tauCurrent / votedTau - 1.0) < 0.05;
+                    voicedVotes = steady ? voicedVotes + 1 : 1;
+                    votedTau = tauCurrent;
+                    if (voicedVotes >= 3)
+                    {
+                        voiced = true;
+                        markValid = false;
+                        lateSamples = plainVotes >= 3 && plainVotedAt >= 0 ? (slowCount - plainVotedAt) * decimation : 0;
+                        if (nearSince >= 0) lateSamples = std::max (lateSamples, (slowCount - nearSince) * decimation);
+                    }
                 }
             }
         }
         else
         {
             voicedVotes = 0;
+            plainVotes = 0;
+            plainVotedAt = -1;
             if (voiced && ++unvoicedVotes >= 3)
                 setUnvoiced();
         }
@@ -344,9 +394,10 @@ private:
                 // A multiple of the current period always fits wherever the current one does, so on breathy or noisy sound one short window can
                 // make two or three periods look deepest for a few ms, and the voices would jump an octave or a twelfth down and glide back.
                 // So a move to a multiple must also hold over a stretch three windows long.
-                const bool plainlyBetter = nearDip < 0.15f && dip < 0.35f * nearDip && clearlyDeeper (tau, nearTau);
+                const bool noisy = std::abs (ratio / 2.0 - 1.0) < 0.06 && noisyOctave (nearTau, tau);
+                const bool plainlyBetter = (nearDip < 0.15f && dip < 0.35f * nearDip && clearlyDeeper (tau, nearTau)) || noisy;
                 const bool established = voicedAnalyses * hop >= 3 * window;   // not in a note's first moments, where an octave-high start still needs correcting
-                stay = related ? ((nearDip <= dip + 0.15f && ! plainlyBetter) || (established && ! clearlyDeeper (tau, nearTau, 3))) : nearDip <= dip + 0.02f;
+                stay = related ? ((nearDip <= dip + 0.15f && ! plainlyBetter) || (established && ! clearlyDeeper (tau, nearTau, 3) && ! noisy)) : nearDip <= dip + 0.02f;
             }
         }
 
@@ -387,6 +438,20 @@ private:
     {
         const float a = fineDip (longTau * decimation, windows), b = fineDip (shortTau * decimation, windows);
         return a < 0.35f * b - 0.002f;
+    }
+
+    // A breathy high note: aspiration at about the voice's own level fills the dips at its period and at half of it alike, and with a strong 2nd
+    // harmonic the half period wins the first deep dip rule, an octave high for the first 60 ms. The odd harmonics still make the true period
+    // a little deeper, and over three windows that little holds. Asked only of readings over 600 Hz, where the octave high error lands.
+    bool noisyOctave (double shortTau, double longTau) const noexcept
+    {
+        if (slowRate / shortTau < 600.0)
+            return false;
+        const float shortDip = fineDip (shortTau * decimation, 3);
+        float longDip = 2.0f;
+        for (double f = 0.96; f <= 1.0401; f += 0.02)   // the coarse period of a noisy high note can be a few % off
+            longDip = std::min (longDip, fineDip (longTau * f * decimation, 3));
+        return longDip < shortDip - 0.015f;
     }
 
     float fineDip (double lagExact, int windows = 1) const noexcept
@@ -446,6 +511,85 @@ private:
     }
 
     static constexpr float evenLimit = 1.0f;   // a start's even harmonics must repeat at least this well (1 is no match at all)
+    static constexpr float residualLimit = 0.45f, plainlyPeriodicDip = 0.05f, heldCleanDip = 0.12f, nearlyPeriodic = 0.35f;
+
+    // How well the newest window repeats a period later once its formants are taken out: linear prediction (order 10, Hann window, fitted over
+    // at least 24 ms so a narrow first formant is resolved), then what prediction leaves, smoothed over 7 samples so a pulse that moves by a
+    // sample still lines up, then the normalised difference at the period. Only asked at a start, so its cost stays out of a held note.
+    float residualDip (double tauSlow) noexcept
+    {
+        const int tauI = (int) std::lround (tauSlow);
+        const int n = window + tauI + 2;
+        const int total = std::max (n + lpcOrder, (int) (0.024 * slowRate));
+        if (slowCount < total + 2 || tauI < 2 || total > (int) lpcIn.size())
+            return 0.0f;
+        const int end = (int) ((slowCount - 1) & (long long) (slowSize - 1)) + slowSize + 1;
+        const float* src = slow.data() + end - total;
+        float mean = 0.0f;
+        vDSP_meanv (src, 1, &mean, (vDSP_Length) total);
+        const float negMean = -mean;
+        vDSP_vsadd (src, 1, &negMean, lpcIn.data(), 1, (vDSP_Length) total);
+
+        // Hann window by a rotating phasor, then autocorrelation and Levinson
+        const double step = 2.0 * M_PI / total, cs = std::cos (step), sn = std::sin (step);
+        double re = std::cos (0.5 * step), im = std::sin (0.5 * step);
+        for (int i = 0; i < total; ++i)
+        {
+            lpcOut[(size_t) i] = lpcIn[(size_t) i] * (float) (0.5 - 0.5 * re);
+            const double r2 = re * cs - im * sn;
+            im = re * sn + im * cs;
+            re = r2;
+        }
+        std::array<double, lpcOrder + 1> r {}, a {}, before {};
+        for (int lag = 0; lag <= lpcOrder; ++lag)
+            r[(size_t) lag] = dotProduct (lpcOut.data() + lag, lpcOut.data(), total - lag);
+        if (r[0] <= 1.0e-12)
+            return 1.0f;
+        r[0] *= 1.0001;   // a little white noise, so a pure tone cannot make it unstable
+        a[0] = 1.0;
+        double err = r[0];
+        for (int i = 1; i <= lpcOrder; ++i)
+        {
+            double acc = r[(size_t) i];
+            for (int j = 1; j < i; ++j) acc += a[(size_t) j] * r[(size_t) (i - j)];
+            const double k = -acc / err;
+            before = a;
+            for (int j = 1; j < i; ++j) a[(size_t) j] = before[(size_t) j] + k * before[(size_t) (i - j)];
+            a[(size_t) i] = k;
+            err *= 1.0 - k * k;
+            if (err <= 0.0)
+                return 1.0f;
+        }
+        std::array<float, lpcOrder + 1> reversed {};
+        for (int j = 0; j <= lpcOrder; ++j) reversed[(size_t) j] = (float) a[(size_t) (lpcOrder - j)];
+        // What prediction leaves, the newest n samples, on the unwindowed signal
+        for (int i = total - n; i < total; ++i)
+            lpcOut[(size_t) (i - (total - n))] = dotProduct (lpcIn.data() + i - lpcOrder, reversed.data(), lpcOrder + 1);
+        // Triangle smoothing, weights 1 2 3 4 3 2 1
+        for (int i = 0; i < n; ++i)
+        {
+            float acc = 0.0f, weights = 0.0f;
+            for (int k = -3; k <= 3; ++k)
+            {
+                const int j = i + k;
+                if (j < 0 || j >= n) continue;
+                const float w = (float) (4 - std::abs (k));
+                acc += w * lpcOut[(size_t) j];
+                weights += w;
+            }
+            lpcIn[(size_t) i] = acc / weights;
+        }
+        const float* e0 = lpcIn.data() + n - window;
+        const float ea = dotProduct (e0, e0, window);
+        float best = 2.0f;
+        for (int lag = tauI - 1; lag <= tauI + 1; ++lag)
+        {
+            const float c = dotProduct (e0, e0 - lag, window), eb = dotProduct (e0 - lag, e0 - lag, window);
+            const float den = ea + eb;
+            best = std::min (best, den > 1.0e-18f ? 1.0f - 2.0f * c / den : 1.0f);
+        }
+        return best;
+    }
 
     static bool isOctaveRelated (double ratio) noexcept
     {
@@ -459,6 +603,9 @@ private:
     {
         dipCurrent = 1.0f;
         voicedVotes = 0;
+        plainVotes = 0;
+        plainVotedAt = -1;
+        nearSince = -1;
         if (voiced && ++unvoicedVotes >= 3)
             setUnvoiced();
     }
@@ -494,7 +641,7 @@ private:
         const double position = (double) (start + best);
 
         // The window that proved this sound periodic reaches back, so grains can use marks from all of it.
-        const double back = (double) (window + tauCurrent) * decimation;
+        const double back = (double) (window + tauCurrent) * decimation + (double) lateSamples;   // and a start written back reads that far
         int steps = (int) (back / period);
         steps = std::clamp (steps, 0, 16);
         for (int k = steps; k >= 1; --k)
@@ -624,6 +771,12 @@ private:
     float dipCurrent = 1.0f;
     int pendingVotes = 0, voicedVotes = 0, unvoicedVotes = 0, mismatchVotes = 0, voicedAnalyses = 0;
     bool voiced = false;
+    int plainVotes = 0;
+    double plainTau = 1.0;
+    float plainDipSum = 0.0f;
+    long long plainVotedAt = -1, lateSamples = 0, nearSince = -1;
+    static constexpr int lpcOrder = 10;
+    std::vector<float> lpcIn, lpcOut;
 
     std::array<Mark, maxMarks> marks {};
     long long markSeq = 0;

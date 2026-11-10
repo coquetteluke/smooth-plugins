@@ -84,7 +84,21 @@ All in `tests/results.txt`, from `tests/PluginTest.cpp`, on synthetic signals. L
 - Window CPU: 2.4% to 4.4% of one core with Loose Gang playing, nothing drawn when silent. See `docs/window-cpu.md`.
 - Window: every parameter has a control, automation moves each one, each drag is one gesture, double-click resets, typing works. Singers stay on their real delay and inside their lanes. 30 opens and closes with audio running.
 
+## Level
+
+Duo adds voices, so it is louder than the dry: at the default about +1.7 dB over sung parts, which is the power sum the level controls set (+1.77 dB). That is on purpose and stays. The lead at Lead Level 0 dB is the input exactly, sample for sample, and turning it down to make room would change every session already saved. Peaks can pass 0 dBFS when the input is already near it (take 06: dry at 0 dBFS, Duo +4.4 dBFS), never more than every voice adding in phase allows. Logic mixes in floating point, so nothing clips inside the channel; pull the fader or a Lead or Double level down if the track runs hot. There is no limiter.
+
+## On real singing
+
+Measured on Luke's working set takes (01, 02, 03, 04, 06, 07, 09) by `_shared/realvox/src/extra/duo.cpp`, 2026-11-10, version 0.3.1:
+
+- Timing swing and pitch offset of each double, measured from its audio: about +/-1.2 ms and 2 cents at Tightness 0, +/-4.1 ms and 7 cents at 30, +/-11 ms and 17 to 19 cents at 100. With Timing and Pitch Amount at 0 nothing moves.
+- At Vibrato Variation 0 the doubles follow the lead's vibrato (depth 1.00, no lag) and its scoops (1.00), breathy singing included.
+- Clicks: every click the shared tool counted as Duo's own (79) is a delayed copy of a sharp step already in the take, except one, 0.45 s after one of the take's own clicks, to be checked again on the new takes.
+- Mono at full Width: 0.5 to 0.9 dB quieter, no lasting comb.
+- Timbre Variation moves formants by 2.8 semitones at 100 (claim 3), level within 0.2 dB.
+
 ## Not done
 
-- Formant movement is measured on noise and a sawtooth with a formant shape, not on a singer.
-- The pitch follower for vibrato is measured on clean notes. Breathy or noisy singing may follow less well.
+- Vibrato Variation on real vibrato does much less than on the test tone: at 100, double 1 keeps 0.91 of the lead's depth (claim: almost straight) and double 2 sings 1.08 times as wide (claim: 1.5). It bends, but mostly out of step with the vibrato. Needs its own fix.
+- Timbre Variation at 60 and 100 leaves pitch alone on most frames (median under 1 cent), but 5% of frames read 29 to 31 cents off, against 5 cents for a static filter read the same way. Needs ears.

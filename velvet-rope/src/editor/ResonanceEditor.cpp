@@ -529,7 +529,7 @@ ResonanceEditor::Panel::Panel (ResonanceEditor& e, SmoothResonanceProcessor& p)
       release (p.parameters, "release", "Release", "How fast it lets go.", Kind::dial, Unit::ms),
       mode (p.parameters, "mode", "Mode", "Soft compares each spot to its neighbours. Hard uses a fixed level."),
       quality (p.parameters, "quality", "Quality", "Low Latency 11 ms, for recording. Normal 43 ms. High 85 ms, finest detail, slower to react."),
-      heldNotes (p.parameters, "heldNotes", "Held notes", "Also takes down one harmonic that rings on a held note. Soft mode only.", tone::text),
+      heldNotes (p.parameters, "heldNotes", "Held notes", "Also takes down one harmonic that rings on a held note, shown in rose on the graph. Soft mode only.", tone::text),
       hardThreshold (p.parameters, "hardThreshold", "Threshold", "In Hard mode, the level where it starts working.", Kind::row, Unit::db),
       stereoMode (p.parameters, "stereoMode", "Stereo", "Stereo treats left and right. Mid/Side treats center and sides."),
       link (p.parameters, "link", "Link", "At 100% both sides move together. Lower treats them apart.", Kind::row, Unit::percent),

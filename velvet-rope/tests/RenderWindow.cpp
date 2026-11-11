@@ -375,7 +375,7 @@ int main (int argc, char** argv)
         return runLive (argc > 2 ? atoi (argv[2]) : 5, argc > 3 ? atoi (argv[3]) : 6, ! (argc > 4 && juce::String (argv[4]) == "silent"), argc > 4 && juce::String (argv[4]) == "background");
 
     const bool cpuOnly = argc > 1 && juce::String (argv[1]) == "--cpu";
-    const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 && ! cpuOnly ? argv[1] : "docs/window-v4");
+    const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 && ! cpuOnly ? argv[1] : "docs/window-v5");
     folder.createDirectory();
 
     auto voice = loadVoice();
@@ -597,6 +597,43 @@ int main (int argc, char** argv)
         s.play (voice, 0, bestFrame + 1);
         s.editor->previewHover ("heldNotes");
         s.saveBoth (folder, "held-notes-on-hovered");
+    }
+
+    // State 13c and 13d: a sung note that rings, the default settings, with Held notes off and then on. One harmonic near
+    // 3 kHz stands 12 dB over the ones beside it, with a taller formant either side, as on Luke's takes. The rose gold at the
+    // bottom of the gold is the part Held Notes adds.
+    if (! cpuOnly)
+    {
+        std::vector<float> note ((size_t) (1.5 * kRate), 0.0f);
+        const double f0 = 180.0, twoPi = juce::MathConstants<double>::twoPi;
+        std::vector<double> phases (51, 0.0);
+
+        for (size_t i = 0; i < note.size(); ++i)
+        {
+            const double t = (double) i / kRate, f = f0 * (1.0 + 0.012 * std::sin (twoPi * 5.5 * t));
+            double y = 0.0;
+
+            for (int h = 1; h <= 50; ++h)
+            {
+                phases[(size_t) h] += twoPi * h * f / kRate;
+                const double hz = h * f0;
+                y += std::sin (phases[(size_t) h]) / (hz < 1500.0 ? std::pow (hz / 1500.0, 0.7) * 6.0 : (hz < 5000.0 ? 6.0 : 6.0 * std::pow (hz / 5000.0, 2.0)));
+            }
+
+            note[i] = (float) (0.09 * std::min (1.0, t / 0.02) * y);
+        }
+
+        addResonance (note, 2200.0, 5.0, 12.0);
+        addResonance (note, 4100.0, 5.0, 12.0);
+        addResonance (note, 3060.0, 20.0, 17.0);
+
+        for (bool on : { false, true })
+        {
+            Session s;
+            setParam (s.processor, "heldNotes", on ? 1.0f : 0.0f);
+            s.play (note, 0, 66);   // 1.1 s into the note
+            s.saveBoth (folder, on ? "held-notes-ring-on" : "held-notes-ring-off");
+        }
     }
 
     // State 14 and 15: surround layouts, closed and with Advanced open, on real speech with a different resonance in each pair.

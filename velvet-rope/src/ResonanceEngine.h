@@ -68,7 +68,8 @@ struct Params
     int     bandListen = 0;          // 0 off. 1 to 8 solos that dot's region. With Delta, only what is being taken out of it
 
     // Added in 0.6.0. Off is the sound of 0.5.1 to the sample. On, Soft mode also takes down a single harmonic that rings on
-    // a held note: each bin is judged a second time, against the two harmonics below it and the two above. Hard mode ignores it.
+    // a held note: each bin is judged a second time, against the two harmonics below it and the two above, and by how long
+    // it has stood out (0.7.0). Hard mode ignores it.
     bool    heldNotes  = false;
 
     SensitivityBand bands[numBands] = { { 300.0f, 0.0f, 1.0f, true }, { 3000.0f, 0.0f, 1.0f, true }, { 7000.0f, 0.0f, 1.0f, true },
@@ -110,9 +111,10 @@ struct GraphFrame
         -> weighed by how long it has been sticking out
         -> threshold, slope, Depth limit               = raw reduction per bin
            (Hard mode: detector against a fixed level instead)
-        -> with Held Notes on, in Soft mode, on a voice with clear harmonics: the same again with the two harmonics
-           below and the two above as the reference, with a shorter long view that follows a wandering note, and
-           the deeper of the two reductions is kept. With it off none of this runs
+        -> with Held Notes on, in Soft mode, on a voice with clear harmonics: each bin is also measured against the two
+           harmonics below and the two above, and counts how long something within a 24th of an octave has stood well
+           over them. From 110 ms it is turned down, in full from 170 ms, as narrowly as the harmonic itself; this
+           joins after the widening below, and the deeper of the two reductions is kept. With it off none of this runs
         -> Link between the channels: at 100% every channel takes the deepest of them all
         -> widened and smoothed across frequency
         -> attack and release per bin
@@ -256,7 +258,8 @@ private:
         float bandGlide[Params::numBands][3] {}, bandBuilt[Params::numBands][3] {};
         int listenBuiltBand = -1;
         float listenBuiltHz = 0.0f, listenBuiltWidth = 0.0f;
-        float hopMs = 5.0f;
+        float hopMs = 5.0f, heldGateRatio = 1.0e-5f;
+        int heldWiden = 2;
         float detectorCoeff = 1.0f, rangeCoeff = 1.0f, persistenceCoeff = 1.0f, loudestFallCoeff = 1.0f, focusNow = 0.0f, maxCutNow = 24.0f, cutLimit = 1.0e9f;
         float builtAttackMs = -1.0f, builtReleaseMs = -1.0f, builtAttackTilt = -9.0f, builtReleaseTilt = -9.0f;
         std::array<float, maxChannels> channelMost {};

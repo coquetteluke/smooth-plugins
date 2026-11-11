@@ -2308,6 +2308,66 @@ void testHumanOption()
     check (most.interval <= 15.0, "Human 100: the interval between the two voices holds, spread inside 0.6 s, median", most.interval, "cents");
     check (std::abs (most.levelDb - robot.levelDb) <= 1.0, "Human 100: the voices are as loud as at 0", most.levelDb - robot.levelDb, "dB");
     check (most.jump <= limits::clickJumpRatio * robot.jump, "Human 100: no clicks, biggest step against Human 0", most.jump / std::max (robot.jump, 1.0e-12), "times");
+
+    // 1.5.2: each voice's own note end. Eight held notes, each followed by silence: where each voice's level has fallen 20 dB under its
+    // note. At Human 100 the two default voices let go at their own moments (8 ms apart or more, the goal V4 of the real takes); no voice
+    // holds on for long, and nothing is left of it soon after.
+    {
+        const std::vector<int> notes { 57, 60, 62, 64, 59, 62, 60, 57 };
+        const int noteLen = (int) (0.5 * SR), gapLen = (int) (0.4 * SR), fade = (int) (0.004 * SR);
+        std::vector<float> x;
+        std::vector<int> ends;
+        for (size_t i = 0; i < notes.size(); ++i)
+        {
+            auto one = voice::synth (voice::steady (noteHz (notes[i]), 0.5, SR), voice::vowelA, SR, -60.0, -18.0, 3u + (unsigned) i);
+            one.resize ((size_t) noteLen, 0.0f);
+            for (int k = 0; k < fade; ++k) { one[(size_t) k] *= (float) k / (float) fade; one[(size_t) (noteLen - 1 - k)] *= (float) k / (float) fade; }
+            x.insert (x.end(), one.begin(), one.end());
+            ends.push_back ((int) x.size());
+            x.insert (x.end(), (size_t) gapLen, 0.0f);
+        }
+        const auto endsOf = [&] (float amount, int v, double& latest, double& leftOver)
+        {
+            auto p = human::defaultsSolo (v, [&] (PluginProcessor& q)
+            {
+                human::setIf (q, "mode", (float) modeScale);
+                human::setIf (q, "key", 0.0f);
+                human::setIf (q, "scale", (float) scaleMajor);
+                human::setIf (q, "consonants", 0.0f);
+                human::setIf (q, "breath", 0.0f);
+                human::setIf (q, "human", amount);
+            });
+            const int lat = p->getLatencySamples();
+            const auto out = mono (render (*p, x, 256));
+            std::vector<double> t;
+            const int win = (int) (0.01 * SR);
+            for (int e : ends)
+            {
+                const double body = rms (out.data() + e + lat - (int) (0.3 * SR), (int) (0.2 * SR));
+                int last = e + lat - (int) (0.1 * SR);
+                for (int i = last; i + win < (int) out.size() && i < e + lat + (int) (0.3 * SR); i += 48)
+                    if (rms (out.data() + i, win) >= 0.1 * body) last = i + win / 2;
+                t.push_back (1000.0 * (last - e - lat) / SR);
+                latest = std::max (latest, t.back());
+                leftOver = std::max (leftOver, toDb (rms (out.data() + e + lat + (int) (0.15 * SR), (int) (0.1 * SR)) / std::max (body, 1.0e-12)));
+            }
+            return t;
+        };
+        const auto apartAt = [&] (float amount, double& latest, double& leftOver)
+        {
+            const auto a = endsOf (amount, 0, latest, leftOver), b = endsOf (amount, 1, latest, leftOver);
+            std::vector<double> d;
+            for (size_t i = 0; i < a.size(); ++i) d.push_back (std::abs (a[i] - b[i]));
+            std::sort (d.begin(), d.end());
+            return 0.5 * (d[d.size() / 2 - 1] + d[d.size() / 2]);
+        };
+        double latest0 = -1.0e9, left0 = -200.0, latest100 = -1.0e9, left100 = -200.0;
+        const double apart0 = apartAt (0.0f, latest0, left0), apart100 = apartAt (100.0f, latest100, left100);
+        info ("Human 0: the two voices' note ends apart, median", apart0, "ms");
+        check (apart100 >= 8.0, "Human 100: each voice lets go of a note at its own moment, the two voices' ends apart, median", apart100, "ms");
+        check (latest100 <= latest0 + 50.0, "Human 100: no voice holds a note more than 50 ms longer than at 0, the longest", latest100 - latest0, "ms longer");
+        check (left100 <= -50.0, "Human 100: 150 ms after a note nothing is left of a voice", left100, "dB against the note");
+    }
 }
 
 // A fingerprint of the output on one preset: every sample of real sung material, both channels, bit for bit.
@@ -2581,6 +2641,7 @@ int main (int argc, char** argv)
     if (want ("window")) testWindow();
     if (want ("eight")) testEightVoices();
     if (want ("onsets")) { onsets::testPhraseStarts(); onsets::testCorpusStarts(); }
+    if (want ("realstarts")) onsets::testRealShapedStarts();
     if (want ("notrigger")) onsets::testNoTrigger();
     if (want ("aftercreak")) testAfterCreak();
     if (want ("ceiling")) testCeiling();

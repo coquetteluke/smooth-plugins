@@ -34,7 +34,7 @@ public:
 
     void reset() noexcept
     {
-        random = 0x9E3779B9u * (std::uint32_t) (voice + 1) + 12345u;
+        random = 0x9E3779B9u * (std::uint32_t) (voice + 1) + 12345u + seedOffset;
         clock = 0.0;
         // Each voice wanders on its own slow, unrelated sines. Bounded, so the range of Drift is exact, and never periodic in practice.
         for (int i = 0; i < 3; ++i)
@@ -119,6 +119,9 @@ private:
     int voice = 0;
     double tick = 0.001, clock = 0.0, age = 1.0e6;
     std::uint32_t random = 1;
+public:
+    std::uint32_t seedOffset = 0;   // measuring tools only: another run of the same random choices. 0 in the plug-in.
+private:
     std::array<double, 3> pitchPhase {}, lagPhase {}, levelPhase {};
     double vibratoPhase = 0.0, scoop = 0.0, settle = 0.0, detune = 0.0, extraLagMs = 0.0, cents = 0.0, lagMs = 0.0, level = 1.0;
     double scoopSeconds = 0.045, glideScale = 1.0, delayNow = vibratoDelay, depthScale = 1.0, humanizeNow = 0.0;
@@ -158,7 +161,7 @@ public:
 
     void reset() noexcept
     {
-        random = 0xC2B2AE35u * (std::uint32_t) (voice + 1) + 0x27D4EB2Fu;
+        random = 0xC2B2AE35u * (std::uint32_t) (voice + 1) + 0x27D4EB2Fu + seedOffset;
         slow = slowMean = fast = fastMean = level = rate = depth = followed = leadMean = 0.0;
         lagDraw = 0.0;
         landed = 1.0;
@@ -264,6 +267,9 @@ private:
     int voice = 0;
     double tick = 0.001;
     std::uint32_t random = 1;
+public:
+    std::uint32_t seedOffset = 0;   // measuring tools only: another run of the same random choices. 0 in the plug-in.
+private:
     double slow = 0.0, slowMean = 0.0, fast = 0.0, fastMean = 0.0, level = 0.0, rate = 0.0, depth = 0.0, followed = 0.0, leadMean = 0.0;
     double lagDraw = 0.0, cents = 0.0, gain = 1.0, amountNow = 0.0, landed = 1.0, trail = 0.0, trailDraw = 0.0, noteAge = 0.0;
     double endHoldDraw = 0.85, endFadeDraw = 0.75;
@@ -300,6 +306,8 @@ public:
         int note = -1;                  // the note it is on, -1 if none
     };
 
+    std::uint32_t seedOffset = 0;   // measuring tools only, see PluginProcessor::Options::randomSeed
+
     void prepare (double sampleRate, double tickSeconds) noexcept
     {
         sr = sampleRate;
@@ -308,6 +316,7 @@ public:
         scoopRelease = std::exp (-tick / 0.02);
         for (int v = 0; v < maxVoices; ++v)
         {
+            singers[(size_t) v].seedOffset = humans[(size_t) v].seedOffset = seedOffset * 0x85EBCA6Bu;
             singers[(size_t) v].prepare (v, tick);
             humans[(size_t) v].prepare (v, tick);
         }

@@ -45,6 +45,11 @@
 //   O5 word starts: median at most +1 ms, 90th percentile at most +2 ms, missed share at most +0.002, wrong first note share at most +0.005
 //   O6 dropout share at most +0.002                    O7 in phrase leak share at most +0.002
 //   O8 breath leak longest run no longer               O9 breath leak energy at most +0.5 dB
+//
+// 1.5.2: that rule stays as written, and at the default it sits under its own noise (one version against itself, with the take slid by a
+// few ms, fails 9 or 10 of its rules). Beside it there is a rule that can be decided: every one of the same measures no worse than the
+// reference by more than that measure's own noise, the noise measured from slid and reseeded runs of one version. See decidable.py in
+// this folder; the measured noise is in NOISE-default.txt and NOISE-plain.txt.
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -82,11 +87,17 @@ std::vector<float> loadMono (const juce::File& f)
     return out;
 }
 
+// REALVOX_SEED=<n>: another run of every random choice of the plug-in (1.5.2 on; an older tree has no such option and ignores it). With
+// REALVOX_SHIFT this gives the noise floor of every number: see decidable.py.
+template <typename O> auto seedIfThere (O& o, unsigned seed, int) -> decltype (o.randomSeed, void()) { o.randomSeed = seed; }
+template <typename O> void seedIfThere (O&, unsigned, long) {}
+
 std::unique_ptr<PluginProcessor> makeProcessor()
 {
     PluginProcessor::Options o;
     o.keyFilePath = "/nonexistent/choir-loft-realvox.json";
     o.hostLatencyUpdates = false;
+    if (const char* seed = std::getenv ("REALVOX_SEED")) seedIfThere (o, (unsigned) std::atoi (seed), 0);
     return std::make_unique<PluginProcessor> (o);
 }
 
@@ -2227,6 +2238,69 @@ int main (int argc, char** argv)
                 std::printf ("C %s %.3f %d %ld %ld %s %d\n", d.take.c_str(), s.onset / SR, gapFrames * 5, right < 0 ? 999L : right - onsetMs,
                              any < 0 ? 999L : any - onsetMs, stateNames[firstState], before);
             }
+        }
+        return 0;
+    }
+    if (mode == "onsetshape" && argc >= 5)
+    {
+        // The shape of real starts of one kind, for building a synthetic start like them: RealVox onsetshape <S records> <kind> <take.wav> ...
+        // For every start of that kind in the records (clean, consonant, fry, breathy): the level every 10 ms from 80 ms before the onset to
+        // 150 ms after, against the note's level 100 to 250 ms in; the reference pitch against the note's (cents); and the tracker's
+        // difference (0 is a pure repeat, 1 is noise). Prints the median and the quartiles of each, and the note's pitch.
+        std::map<std::string, std::vector<double>> wantOnsets;
+        {
+            std::ifstream in (argv[2]);
+            std::string line;
+            while (std::getline (in, line))
+            {
+                std::istringstream ls (line);
+                std::string tag, take, onset, pw, kind, voice;
+                ls >> tag >> take >> onset >> pw >> kind >> voice;
+                if (tag == "S" && kind == argv[3] && voice == "1") wantOnsets[take].push_back (std::atof (onset.c_str()));
+            }
+        }
+        const RenderInfo info = renderInfo();
+        constexpr int steps = 24;   // -80 ms to +150 ms in 10 ms steps
+        std::vector<double> level[steps], cents[steps], dip[steps], noteHz, before;
+        for (int a = 4; a < argc; ++a)
+        {
+            Dry d;
+            if (! d.load (cwd.getChildFile (argv[a]))) return 1;
+            const TrackerTrace tr = traceTracker (d.x, info.inputType, info.tracking);
+            for (const auto& s : d.stretches)
+            {
+                bool wanted = false;
+                for (double t : wantOnsets[d.take]) if (std::abs (t - s.onset / SR) < 0.002) wanted = true;
+                if (! wanted || s.onset < (long) (0.1 * SR) || s.onset + (long) (0.3 * SR) >= (long) d.x.size()) continue;
+                const double body = rmsOf (d.x, s.onset + (long) (0.1 * SR), (long) (0.15 * SR));
+                std::vector<double> hz;
+                for (int f = s.a + 20; f <= std::min (s.b, s.a + 50); ++f) if (d.track[(size_t) f] > 0.0) hz.push_back (d.track[(size_t) f]);
+                if (hz.empty() || body <= 0.0) continue;
+                const double note = measure::median (hz);
+                noteHz.push_back (note);
+                before.push_back (toDb (rmsOf (d.x, s.onset - (long) (0.08 * SR), (long) (0.07 * SR)) / body));
+                for (int k = 0; k < steps; ++k)
+                {
+                    const long at = s.onset + (long) ((k - 8) * 0.01 * SR);
+                    level[k].push_back (toDb (rmsOf (d.x, at, (long) (0.01 * SR)) / body));
+                    const double ref = d.leadHzAt (at + 240);
+                    if (ref > 0.0) cents[k].push_back (measure::cents (ref, note));
+                    const long tick = (at + 240) / 48 + 12;
+                    if (tick >= 0 && tick < (long) tr.dip.size()) dip[k].push_back (tr.dip[(size_t) tick]);
+                }
+            }
+        }
+        if (noteHz.empty()) { std::printf ("no starts of that kind\n"); return 1; }
+        std::printf ("%d %s starts. Note: median %.0f Hz, quartiles %.0f and %.0f. Level 80 to 10 ms before the onset against the note: median %.1f dB, quartiles %.1f and %.1f\n",
+                     (int) noteHz.size(), argv[3], measure::median (noteHz), measure::percentile (noteHz, 25.0), measure::percentile (noteHz, 75.0),
+                     measure::median (before), measure::percentile (before, 25.0), measure::percentile (before, 75.0));
+        std::printf ("   ms   level dB (25%%, median, 75%%)   pitch cents (25%%, median, 75%%, share with pitch)   tracker difference (25%%, median, 75%%)\n");
+        for (int k = 0; k < steps; ++k)
+        {
+            std::printf ("%+5d  %6.1f %6.1f %6.1f   ", (k - 8) * 10, measure::percentile (level[k], 25.0), measure::median (level[k]), measure::percentile (level[k], 75.0));
+            if (cents[k].size() >= 3) std::printf ("%7.0f %7.0f %7.0f  %4.2f   ", measure::percentile (cents[k], 25.0), measure::median (cents[k]), measure::percentile (cents[k], 75.0), (double) cents[k].size() / (double) level[k].size());
+            else std::printf ("      -       -       -  %4.2f   ", (double) cents[k].size() / (double) level[k].size());
+            std::printf ("%5.2f %5.2f %5.2f\n", measure::percentile (dip[k], 25.0), measure::median (dip[k]), measure::percentile (dip[k], 75.0));
         }
         return 0;
     }

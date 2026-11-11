@@ -320,6 +320,20 @@ inline Lead makeKind (int kind, int midi, unsigned seed, std::vector<int>& measu
         case 14: reverb = true; ps.push_back (note (0.4, midi, voice::vowelA)); ps.push_back (silence (0.1)); ps.push_back (note (0.6, third, voice::vowelE)); measured = { 0, 1 }; break; // reverb
         case 15: level = -40.0; ps.push_back (note (0.6, midi, voice::vowelA)); break;                   // quiet
         case 16: bright = true; ps.push_back (note (0.6, midi, voice::vowelI)); break;                    // bright
+        case 17:                                                                                         // breathy, real shape (1.5.2)
+        {
+            // From Luke's 89 breathy starts on the working set (RealVox onsetshape, medians). Level against the note: -17 dB 80 ms before
+            // the onset, -15 at 30 ms, -7.5 at 20 ms, -4.6 at 10 ms, -1.7 at the onset, -0.8 at 10 ms after. How well it repeats (the
+            // tracker's difference): 0.6 until 10 ms before the onset, 0.36 at it, 0.08 at 10 ms after, 0.04 at 20 ms. Pitch: 67 cents
+            // under at 20 ms, home after 110 ms. His notes there: median 155 Hz, half of them between 137 and 193. So: breath, then
+            // 30 ms of loud breath with no pitch in it yet, then the note at once at nearly its level, clean within 20 ms, in from
+            // below. Unlike case 4 the note itself is not breathy: the way in is.
+            Piece air = silence (0.05); air.noiseFrom = 0.14; air.noiseTo = 0.2; air.vowel = &voice::vowelA; ps.push_back (air);
+            Piece rise = silence (0.03); rise.noiseFrom = 0.25; rise.noiseTo = 0.6; rise.vowel = &voice::vowelA; ps.push_back (rise);
+            auto in = note (0.02, midi, voice::vowelA, 0.8, 1.0); in.noiseFrom = 0.45; in.noiseTo = 0.1; in.scoopCents = -80.0; in.scoopSec = 0.12; ps.push_back (in);
+            auto body = note (0.5, midi, voice::vowelA); body.noiseFrom = 0.1; body.noiseTo = 0.03; body.scoopCents = -55.6; body.scoopSec = 0.10; ps.push_back (body);
+            break;
+        }
         default: break;
     }
     ps.push_back (silence (0.25));
@@ -579,6 +593,59 @@ inline void testPhraseStarts()
         check (totalWrong <= limits::onsetWrongNotes, name + ": voices that sang another note first", totalWrong);
         check (worstP95 <= limits::onsetSoundP95Ms, name + ": time to sound past the voice's lag, 95th percentile, worst kind (" + worstP95Kind + ")", worstP95, "ms");
         check (worstAny <= limits::onsetSoundWorstMs, name + ": time to sound past the voice's lag, worst start (" + worstAnyText + ")", worstAny, "ms");
+    }
+}
+
+// 1.5.2. A breathy start shaped like Luke's real ones (case 17 of makeKind), beside the breathy kind above, which stays as it is. That
+// one is a high note with breath all through its first 80 ms, which his takes do not have: 1.5.1 brought it from 68 to 39 ms and his
+// real breathy starts did not move. This one is at his pitches, in the three Input Types that reach them, with the same limits as
+// every other kind of start.
+inline void testRealShapedStarts()
+{
+    const char* typeNames[] = { "Soprano", "Alto/Tenor", "Low Male", "Wide Range" };
+    const int steps[2] = { 2, 4 };
+    const int kind = 17;
+    for (int variant = 0; variant < 3; ++variant)
+    {
+        std::vector<double> past;
+        int misses = 0, wrong = 0, starts = 0;
+        double worst = 0.0;
+        std::string worstText;
+        for (const int type : { altoTenor, lowMale, wideRange })
+        {
+            int pi = 0;
+            for (const int midi : { 48, 52, 55 })   // 131, 165 and 196 Hz
+            {
+                std::vector<int> measured;
+                const Lead L = makeKind (kind, midi, seedFor (kind, pi++), measured);
+                const auto runs = runsOf (L);
+                auto p = setup (variant, type);
+                const Out o = run (*p, L.x);
+                for (int v = 0; v < 2; ++v)
+                {
+                    if (runs.empty()) { check (false, "real shaped breathy start: could not find the note"); continue; }
+                    const Run& r = runs[0];
+                    const auto res = measure (o, v, L, r, noteHz (diatonic (r.midi, steps[v])), steadyDb (o, v, L, runs.back()));
+                    ++starts;
+                    if (! res.sounded) { ++misses; continue; }
+                    past.push_back (res.past);
+                    if (res.wrong) ++wrong;
+                    if (res.past > worst)
+                    {
+                        worst = res.past;
+                        worstText = std::string (typeNames[type]) + ", note " + std::to_string (r.midi) + ", voice " + std::to_string (v + 1);
+                    }
+                }
+            }
+        }
+        const double p95 = past.empty() ? 1.0e9 : percentile (past, 95.0);
+        const std::string name = std::string ("breathy start of the real shape, ") + variantNames[variant];
+        std::printf ("INFO  %s: %d starts, missed %d, wrong first note %d, time to sound past lag median %.1f p95 %.1f worst %.1f ms\n", name.c_str(), starts, misses, wrong,
+                     past.empty() ? -1.0 : median (past), p95, worst);
+        check (misses <= limits::onsetMisses, name + ": first notes where a voice never sounded, of " + std::to_string (starts), misses);
+        check (wrong <= limits::onsetWrongNotes, name + ": voices that sang another note first", wrong);
+        check (p95 <= limits::onsetSoundP95Ms, name + ": time to sound past the voice's lag, 95th percentile", p95, "ms");
+        check (worst <= limits::onsetSoundWorstMs, name + ": worst start (" + worstText + ")", worst, "ms");
     }
 }
 

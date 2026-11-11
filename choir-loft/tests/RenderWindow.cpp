@@ -380,6 +380,20 @@ int main (int argc, char** argv)
         s.saveBoth (folder, "human");
     }
 
+    // 1.5.2: a loud lead on Full Stack with the Ceiling on. The output light reads the ceiling and says it is near full scale.
+    {
+        Session s;
+        s.processor.setCurrentProgram (3);
+        setParam (s.processor, "ceiling", 1.0f);
+        auto loud = sung;
+        float top = 0.0f;
+        for (float v : loud) top = std::max (top, std::abs (v));
+        for (auto& v : loud) v *= 0.89f / std::max (top, 1.0e-6f);   // peaks at -1 dBFS
+        s.play (loud, 0, sungEnd);
+        s.editor->previewHover ("ceiling");
+        s.saveBoth (folder, "ceiling");
+    }
+
     // Bypassed.
     {
         Session s;

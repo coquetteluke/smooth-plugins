@@ -50,6 +50,7 @@ public:
     {
         juce::String keyFilePath;           // empty means the real shared file
         bool hostLatencyUpdates = true;     // tests turn this off, since nothing pumps messages there
+        unsigned randomSeed = 0;            // measuring tools only: another run of every random choice. The plug-in itself always uses 0.
     };
 
     PluginProcessor() : PluginProcessor (Options{}) {}
@@ -172,7 +173,7 @@ private:
         double scatterLag = 0.0;                 // where the voice's own consonant reads, held from a start until that consonant has faded out
         bool scatterHeld = false;
         bool endHolding = false;                 // Human: holding the end of a note (1.5.2)
-        double endHeldMs = 0.0, endHoldMs = 0.0, endFadeMs = 0.0;
+        double endHeldMs = 0.0, endHoldMs = 0.0, endFadeMs = 0.0, endNoteLevel = 0.0, endLowest = 0.0;
         // Human (1.5.0): the lead's level, quick and slow, where this voice reads it, and the smoothed gain made from them. Unused with Human at 0.
         double leadFast = 0.0, leadSlow = 0.0, wanderNow = 1.0;
 
@@ -235,7 +236,7 @@ private:
     int pitchRingAt = 0;
     int leadRunTicks = 0, rewriteTicks = 30;   // ticks the lead has had pitch for, and how many of a stretch's first ticks get rewritten
     int lateTicks = 0, maxLateTicks = 50;      // how far back the newest start was written, and the most it may be
-    static constexpr int levelRingSize = 32;   // input power per tick, for telling a reattack
+    static constexpr int levelRingSize = 128;  // input power per tick, for telling a reattack, and with Human for knowing what came after a note
     std::array<double, levelRingSize> levelRing {};
     int levelAt = 0;
     double tickPower = 0.0;
@@ -266,6 +267,7 @@ private:
 
     std::atomic<double> preparedRate { 0.0 };
     bool hostLatencyUpdates = true;
+    const unsigned randomSeed = 0;   // Options::randomSeed
     int currentProgram = 0;
     std::unique_ptr<Worker> worker;
 

@@ -53,3 +53,19 @@ not, so causes read `rough` for every reason; verdicts and shares are the same c
 
 The key of each take is found from its own pitch on the A440 grid, since the key column of `TAKES.txt` was never filled in (it reads KEY_01
 and so on). Reference A4 stays at 440, as in Logic.
+
+## The decidable start and breath rule, and the tracker census (added for 1.5.2)
+
+`RealVox compare` and its 1.4.2 rule (T1 to T3, O1 to O9) are unchanged. At the default that rule cannot be passed or failed meaningfully:
+1.4.4 against itself with the take slid by 21 or 42 ms fails 9 or 10 of its rules. `decidable.py` measures how far each measure moves by
+itself and asks that a new version be no worse than the reference by more than that:
+
+    decidable.py noise <RealVox> NOISE-default.txt <base records>=<slid or reseeded records of the same version>,<...> ...
+    decidable.py rule <RealVox> NOISE-default.txt <new records> <reference records>
+
+Slid runs: `REALVOX_SHIFT=<samples>`. Reseeded runs: `REALVOX_SEED=<n>` (1.5.2 on), which gives every random choice of the plug-in another
+run without touching the take. `NOISE-default.txt` (defaults) and `NOISE-plain.txt` (Humanize and Drift 0) hold the measured noise of the
+working set; the header of each says which runs it came from.
+
+    RealVox calls <take.wav> ...                        when the tracker alone calls each start, and its time on the note by pitch; no render, 30 s for 11 takes
+    RealVox onsetshape <S records> <kind> <take.wav> ...   level, pitch and periodicity through the real starts of one kind (breathy, fry, clean, consonant)

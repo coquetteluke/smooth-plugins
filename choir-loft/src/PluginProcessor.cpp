@@ -249,7 +249,8 @@ PluginProcessor::PluginProcessor (const Options& options)
     : AudioProcessor (BusesProperties().withInput ("Input", juce::AudioChannelSet::stereo(), true)
                                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "STATE", makeLayout()),
-      hostLatencyUpdates (options.hostLatencyUpdates)
+      hostLatencyUpdates (options.hostLatencyUpdates),
+      randomSeed (options.randomSeed)
 {
     modeParam = apvts.getRawParameterValue ("mode");
     keyParam = apvts.getRawParameterValue ("key");
@@ -358,11 +359,12 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     levelRing.fill (0.0);
     levelAt = 0;
     tickPower = 0.0;
+    brain.seedOffset = randomSeed;
     brain.prepare (sr, tickSeconds);
     for (int v = 0; v < maxVoices; ++v)
     {
         auto& voice = voices[(size_t) v];
-        voice.shifter.prepare (sr, 0x51EDu * (unsigned) (v + 3) + 77u);
+        voice.shifter.prepare (sr, 0x51EDu * (unsigned) (v + 3) + 77u + randomSeed * 0x2545F491u);
         for (int a = 0; a < 3; ++a)
             voice.allpass[(size_t) a].set (juce::jmin (allPassHz[v][a], sr * 0.45), 0.8, sr);
         voice.control = {};
@@ -383,7 +385,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
         voice.consonantMix = voice.consonantSoft = voice.consonantLow = voice.unvoicedFor = 0.0;
         voice.consonantLevel = 1.0;
         voice.toneLow = voice.breathEnv = voice.breathHigh = voice.breathLow = voice.breathTrack = 0.0;
-        voice.noiseState = 0xABCD1234u + 977u * (std::uint32_t) v;
+        voice.noiseState = 0xABCD1234u + 977u * (std::uint32_t) v + randomSeed * 0x632BE5ABu;
 
         // A fixed scatter of short delays with random signs: this voice's own waveform for every consonant, same spectrum, nothing in common with the others.
         juce::Random tapRandom (1000 + v);
@@ -656,14 +658,36 @@ void PluginProcessor::tick() noexcept
         double endGain = 1.0, endLagMs = 0.0;
         if (brain.humanOn())
         {
+            // Only while the lead is not singing again. The voice reads the lead from a while ago, so by now it is known what came
+            // after the note. The hold is over the moment the lead is pitched again or about to be, or has not fallen 2 dB under the
+            // end of the note 10 ms in (a gap of a few ms that the tracker left inside a note, a creak).
+            // Without this a held end ran into the next note and was a wrong note there: at Human 100 it cost 5 octave verdicts and 3
+            // held notes from 98 to 130 Hz on the working set.
+            double leadNow = 0.0;
+            for (int k = 0; k < 3; ++k) leadNow += levelRing[(size_t) ((levelAt - k) & (levelRingSize - 1))] / 3.0;
             if (sungRaw)
                 voice.endHolding = false;
-            else if (voice.voicedNow && ! voice.endHolding && wanted.on)
+            else if (voice.voicedNow && ! voice.endHolding && wanted.on && ! voiced)
             {
+                // The level of the end of the note as this voice reads it: the 20 ms up to its read point
+                const int back = juce::jlimit (3, levelRingSize - 24, juce::roundToInt (readsMs));
+                double noteEnd = 0.0;
+                for (int k = 0; k < 20; ++k) noteEnd += levelRing[(size_t) ((levelAt - back - k) & (levelRingSize - 1))] / 20.0;
+                voice.endNoteLevel = noteEnd;
+                voice.endLowest = leadNow;
                 voice.endHolding = true;
                 voice.endHeldMs = 0.0;
                 voice.endHoldMs = brain.endHoldMs (v);
                 voice.endFadeMs = brain.endFadeMs (v);
+            }
+            if (voice.endHolding)
+            {
+                voice.endLowest = std::min (voice.endLowest, leadNow);
+                // Pitched again, or about to be: sound that nearly repeats has begun (the tracker calls a note some 20 ms after that)
+                const bool pitchedAgain = voiced || (tracker.difference() < 0.35f && ! tracker.isFricative());
+                const bool notDying = voice.endHeldMs >= 10.0 && voice.endLowest > 0.6 * voice.endNoteLevel;
+                if (pitchedAgain || notDying)
+                    voice.endHolding = false;
             }
             if (voice.endHolding)
             {
@@ -734,6 +758,8 @@ void PluginProcessor::tick() noexcept
             if (voice.leadFast > 1.0e-10 && voice.leadSlow > 1.0e-10)
                 voice.wander *= juce::jlimit (0.631, 1.585, std::pow (voice.leadSlow / voice.leadFast, 0.6 * keep));
         }
+        // (While a voice holds the end of a note the tracker is not voiced, or the hold would be over, so the period it reads at stays
+        // the old note's; its pitch keeps moving the way the voice itself moves, which is what keeps two held ends from sounding alike.)
         if (sungNow)
         {
             if (voiced)

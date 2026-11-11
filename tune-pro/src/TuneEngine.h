@@ -266,7 +266,15 @@ public:
 
                 // Through a consonant the filters ring on for a few ms from the vowel before it. Nothing is being changed then, so the true input takes over.
                 const bool voicedNow = mode == highQuality && ! control.plainGrains && harmonicShare > 0.0 ? harmonicControl.voiced : control.voiced;
-                const bool pass = (! voicedNow && ! control.plainGrains) || harmonicPass;
+                bool pass = (! voicedNow && ! control.plainGrains) || harmonicPass;
+                // High Quality with nothing to correct and nothing corrected yet in this voiced stretch: the input itself. The grains
+                // alone already gave exactly that, and so did the harmonic shifter alone; but where one hands over to the other the
+                // output was for 20 ms a blend of the grains and the harmonic shifter's own rebuild of the voice, and the level match
+                // then eased back over a second. On real takes with every note set to Bypass that left the output only 34 dB under
+                // the input at the worst take (a comb at any Mix under 100).
+                if (exactPassHighQuality && mode == highQuality && ! control.plainGrains && control.voiced && control.noCorrection
+                    && harmonicControl.noCorrection && shifter.readOffset() == 0.0 && ! harmonic.hasCorrected())
+                    pass = true;
                 passMix = pass ? std::min (1.0, passMix + passStep) : std::max (0.0, passMix - passStep);
                 if (passMix > 0.0)
                 {
@@ -479,11 +487,31 @@ private:
         // How old the reported pitch is by the time it is heard, in periods, measured on a voice with vibrato at 147, 196 and 262 Hz
         // (testTiming): 1.89 to 1.94 for the grains in Low Latency and Classic, 1.67 to 1.83 for High Quality's grains, 1.39 to 1.41
         // for its harmonic shifter, which reads a whole period at once.
-        const double age = mode != highQuality ? grainPitchAge : (harmonicShare > 0.5 && ! control.plainGrains ? harmonicPitchAge : highQualityGrainPitchAge);
+        double age = mode != highQuality ? grainPitchAge : (harmonicShare > 0.5 && ! control.plainGrains ? harmonicPitchAge : highQualityGrainPitchAge);
+        // On long periods the reading is a little younger, counted in periods: 1.77 to 1.88 on the test voice at 71 to 124 Hz (testTiming 1b).
+        if (mode != highQuality && readAheadOnLowNotes)
+            age -= (grainPitchAge - lowNotePitchAge) * std::clamp ((period - lowNoteAgeFrom) / (lowNoteAgeTo - lowNoteAgeFrom), 0.0, 1.0);
         const double lead = ((double) baseLatency - age * period) / (double) tickSamples;
-        if (lead <= 0.0)
-            return period;
         const int size = (int) ring.size();
+        if (lead <= 0.0)
+        {
+            // The reading is older than the whole delay: every note under about 147 Hz in Alto/Tenor (2.02 periods against 659
+            // samples), under 98 Hz in Low Male and Wide Range. Nothing can be read from further ahead, so up to 1.6.0 the pitch
+            // movement on such a note came late, by 6 ms at 100 Hz, and Alto/Tenor's contour sat 54 samples late at the median of
+            // Luke's takes. The voice's own movement over its last period and a half is now carried on for the time that is
+            // missing. Only while it moves the way a held note does: under 60 cents in 25 ms. A step or a slide is left as
+            // read, and the reading is never moved by more than 15 cents.
+            if (! readAheadOnLowNotes)
+                return period;
+            const int back = std::clamp ((int) std::lround (1.5 * period / (double) tickSamples), 12, 32);
+            const double older = ring[(size_t) ((nominal + 2 * size - back) % size)].period;
+            if (older <= 0.0)
+                return period;
+            const double moved = std::log (period / older);
+            if (std::abs (moved) > lowNoteHeldMost * (double) back / 25.0)
+                return period;
+            return period * std::exp (std::clamp (moved * (-lead) / (double) back, -lowNoteAheadMost, lowNoteAheadMost));
+        }
         const int whole = (int) lead;
         const double part = lead - whole;
         const double a = ring[(size_t) ((nominal + 2 * size - whole) % size)].period;
@@ -503,12 +531,18 @@ private:
     }
 
     static constexpr bool modelFollowsGrains = MODEL_FOLLOWS_GRAINS;
+    static constexpr bool exactPassHighQuality = true;
+    static constexpr bool readAheadOnLowNotes = true;
+    // Periods in samples at 48 kHz between which the age goes from grainPitchAge to lowNotePitchAge (141 Hz to 120 Hz)
+    static constexpr double lowNotePitchAge = 1.85, lowNoteAgeFrom = 340.0, lowNoteAgeTo = 400.0;
+    // 60 and 15 cents as ratios of the period
+    static constexpr double lowNoteHeldMost = 0.034657, lowNoteAheadMost = 0.008664;
     static constexpr bool alignPitch = true;
     // High Quality is left as it was, for now. Its control runs ahead in the same way (73 samples at the median of Luke's takes in
     // Alto/Tenor, 261 in Low Male), and reading it in line fixes that (20 samples late in Low Male), but High Quality's vocal tract
     // settings were all tuned with the lead in place: with it gone the ninth held out set's speaking formant move reads 5.00% against
     // 4.62% (limit 4). So that needs High Quality's settings looked at again, on a held out set that has not been seen.
-    static constexpr bool alignHighQuality = false;
+    static constexpr bool alignHighQuality = true;
     // On Luke's real takes the readings are a little older than on the steady test voice (weak marks hold their period, and under
     // about 140 Hz in Alto/Tenor the reading is older than the whole latency, which nothing can make up for): with the test voice's
     // 1.92 the pitch came 68 samples late at the median of 11 takes in Alto/Tenor and 19 in Low Male. 2.02 keeps the test voice

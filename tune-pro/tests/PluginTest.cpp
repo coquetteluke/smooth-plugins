@@ -1439,6 +1439,129 @@ void testVowelChange()
     note ("  and the tool's floor: the new vowel as sung against that real voice, worst", floor * 100.0, "%");
 }
 
+// ------------------------------------------------------------------------------------------- entries shaped like a real singer's
+
+// Added 2026-11-11. On Luke's takes the time from a phrase start until the output is on a note read 105 ms at the median and 285 ms at the
+// 90th percentile, against limits of Retune + 30 ms and 2 x Retune + 80 ms (50 and 120 at the default). Of his 64 clean starts on four takes
+// only 8 hold their pitch from the first 20 ms; the rest slide up into the note, at the median from 70 cents under it at 50 ms and 35 under
+// at 100 ms, and are within 50 cents of where they end up after 196 ms (90th percentile 289 ms). So the question is whether the plug-in is
+// slow or the entries are. Here the entries are built: the same rule as the real vocal check (time from the first voiced sample until the
+// output stays within 15 cents of a note for 15 ms, read every 5 ms), at the plug-in's default settings. Limits, set before this was run,
+// are the real vocal check's own and are judged on every entry that holds its pitch from the start: a clean start, a soft one rising over
+// 60 ms, and a breathy one (breath alone for 80 ms, then the voice rising over 40 ms under breath at -22 dB). Slides shaped like his and
+// starts out of fry are given, not judged: there the voice itself is not on one note yet, and the output rightly follows it.
+void testEntries()
+{
+    const double onset = 0.3;
+    // style 0 clean, 1 soft, 2 breathy. slideCents under the note at the start, gone after slideSeconds. fry: 70 ms of pulses near half the pitch first.
+    const auto lagMs = [onset] (double hz, int style, double slideCents, double slideSeconds, bool fry, double* afterSettle = nullptr)
+    {
+        const size_t lead = (size_t) (onset * SR), fryLength = fry ? (size_t) (0.07 * SR) : 0;
+        std::vector<double> f0 (lead, 0.0);
+        std::mt19937 gen (11);
+        std::uniform_real_distribution<double> jitter (0.85, 1.15);
+        double fryHz = 0.5 * hz * jitter (gen);
+        for (size_t i = 0; i < fryLength; ++i)
+        {
+            if (i % 480 == 0) fryHz = 0.5 * hz * jitter (gen);
+            f0.push_back (fryHz);
+        }
+        const size_t voiced = f0.size();
+        for (size_t i = 0; i < (size_t) (1.2 * SR); ++i)
+        {
+            const double t = (double) i / SR;
+            const double under = slideSeconds > 0.0 && t < slideSeconds ? slideCents * (1.0 - t / slideSeconds) : 0.0;
+            f0.push_back (hz * std::pow (2.0, -under / 1200.0));
+        }
+        auto x = voice::synth (f0, voice::vowelA, SR, style == 2 ? -22.0 : -50.0);
+        const size_t rise = (size_t) ((style == 0 ? 0.005 : style == 1 ? 0.06 : 0.04) * SR);
+        if (style == 2)
+        {
+            // Breath alone first: soft noise, a one pole low pass on white noise, about -45 dBFS, rising over the 80 ms
+            std::normal_distribution<double> gauss (0.0, 1.0);
+            const size_t before = (size_t) (0.08 * SR);
+            double state = 0.0;
+            for (size_t i = 0; i < lead; ++i)
+            {
+                state += 0.3 * (0.012 * gauss (gen) - state);
+                x[i] = i + before >= lead ? (float) (state * (double) (i + before - lead) / (double) before) : 0.0f;
+            }
+        }
+        else
+            for (size_t i = 0; i < lead; ++i) x[i] = 0.0f;
+        for (size_t i = 0; i < rise && lead + i < x.size(); ++i) x[lead + i] *= (float) i / (float) rise;
+        auto p = make();   // the default preset: Alto/Tenor, Retune 20, Humanize 30, C Chromatic
+        prepare (*p, 1, SR, 256);
+        const auto out = mono (render (*p, x, 256));
+        const long delay = p->getLatencySamples();
+        const auto offNote = [] (double f) { const double st = 12.0 * std::log2 (f / 440.0); return std::abs (st - std::round (st)) * 100.0; };
+        const double from = (double) voiced / SR;
+        const auto firstOnNote = [&] (double start)
+        {
+            for (int f = 0; f <= 80; ++f)
+            {
+                bool ok = true;
+                for (int k = 0; k < 3 && ok; ++k)
+                {
+                    const double t = start + 0.005 * (f + k);
+                    const double want = f0[std::min (f0.size() - 1, (size_t) (t * SR))];
+                    const double got = pitchNear (out.data(), (long) out.size(), (long) (t * SR) + delay, want, SR, 0.15, 2.5);
+                    ok = got > 0.0 && offNote (got) <= 15.0;
+                }
+                if (ok) return f * 5.0;
+            }
+            return 400.0;
+        };
+        if (afterSettle != nullptr)
+            *afterSettle = firstOnNote (from + std::max (0.0, slideSeconds * (1.0 - 50.0 / std::max (50.0, slideCents))));
+        return firstOnNote (from);
+    };
+    std::vector<double> held;
+    double worst = 0.0;
+    std::string worstName;
+    const char* styles[] = { "clean", "soft", "breathy" };
+    for (double hz : { 104.0, 131.0, 147.0, 175.0, 196.0, 233.0 })
+        for (double off : { 35.0, -30.0, 45.0, -22.0 })
+            for (int style : { 0, 1, 2 })
+            {
+                const double note = 440.0 * std::pow (2.0, std::round (12.0 * std::log2 (hz / 440.0)) / 12.0);
+                const double ms = lagMs (note * std::pow (2.0, off / 1200.0), style, 0.0, 0.0, false);
+                held.push_back (ms);
+                if (ms > worst) { worst = ms; worstName = std::string (styles[style]) + ", " + std::to_string ((int) hz) + " Hz, " + std::to_string ((int) off) + " cents off"; }
+            }
+    std::sort (held.begin(), held.end());
+    const double median = held[held.size() / 2], p90 = held[(size_t) (0.9 * (double) (held.size() - 1) + 0.5)];
+    chk (median <= 50.0, "entries that hold their pitch from the start (72: clean, soft, breathy; 104 to 233 Hz; 22 to 45 cents off), time until the output is on the note, median", median, "ms");
+    chk (p90 <= 120.0, "  90th percentile", p90, "ms");
+    chk (worst <= 120.0, "  the slowest of them, " + worstName, worst, "ms");
+
+    std::vector<double> slides, settled;
+    for (double hz : { 104.0, 147.0, 196.0 })
+        for (double off : { 35.0, -30.0 })
+            for (auto shape : { std::pair<double, double> { 105.0, 0.15 }, std::pair<double, double> { 250.0, 0.2 }, std::pair<double, double> { 60.0, 0.1 } })
+            {
+                const double note = 440.0 * std::pow (2.0, std::round (12.0 * std::log2 (hz / 440.0)) / 12.0);
+                double after = 0.0;
+                slides.push_back (lagMs (note * std::pow (2.0, off / 1200.0), 0, shape.first, shape.second, false, &after));
+                settled.push_back (after);
+            }
+    std::sort (slides.begin(), slides.end()); std::sort (settled.begin(), settled.end());
+    note ("entries that slide up into the note as his do (18: 60, 105 and 250 cents under, over 100 to 200 ms), not judged: time until the output is on a note, median", slides[slides.size() / 2], "ms");
+    note ("  the slowest", slides.back(), "ms");
+    note ("  the same from the moment the voice itself is within 50 cents of where it ends, median", settled[settled.size() / 2], "ms");
+    note ("  the slowest", settled.back(), "ms");
+    std::vector<double> fries;
+    for (double hz : { 104.0, 147.0, 196.0 })
+        for (double off : { 35.0, -30.0 })
+        {
+            const double note = 440.0 * std::pow (2.0, std::round (12.0 * std::log2 (hz / 440.0)) / 12.0);
+            fries.push_back (lagMs (note * std::pow (2.0, off / 1200.0), 0, 0.0, 0.0, true));
+        }
+    std::sort (fries.begin(), fries.end());
+    note ("entries out of 70 ms of fry near half the pitch (6), not judged: time from the first true period until the output is on the note, median", fries[fries.size() / 2], "ms");
+    note ("  the slowest", fries.back(), "ms");
+}
+
 // ------------------------------------------------------------------------------------------- a tick inside a corrected note
 
 // Added 2026-11-11 from real takes (02 at 7.085 s, 01 at 163.325 s), with both limits set before the fix was run. In Low Latency a grain is
@@ -1662,12 +1785,67 @@ void testTiming()
                 note (std::string ("  pitch movement against the sound, ") + names[type] + " at " + std::to_string ((int) hz) + " Hz", ms, "ms");
                 if (std::abs (ms) > std::abs (worst)) { worst = ms; worstName = std::string (names[type]) + " at " + std::to_string ((int) hz) + " Hz"; }
             }
-        // High Quality is not fixed yet and is given, not judged: reading its control in line moves the ninth held out set's speaking
-        // formant move from 4.62% to 5.00%, so its vocal tract settings have to be looked at again first (TuneEngine.h, alignHighQuality).
-        if (gEngine == 0)
-            chk (std::abs (worst) <= prolimits::pitchInLineMs, "pitch movement arrives with the sound it belongs to, 147 to 262 Hz, three Input Types, worst (negative is early), " + worstName, worst, "ms");
-        else
-            note ("pitch movement against the sound it belongs to, High Quality, not fixed yet, worst (negative is early), " + worstName, worst, "ms");
+        // High Quality was given, not judged, up to 1.6.0, because reading its control in line moved the ninth held out set's old reading
+        // (output against the input) from 4.62% to 5.00%. That reading turned out to be one a perfect shifter cannot meet (see
+        // testHeldOutNinth), so since 2026-11-11 High Quality is judged here like Low Latency.
+        chk (std::abs (worst) <= prolimits::pitchInLineMs, "pitch movement arrives with the sound it belongs to, 147 to 262 Hz, three Input Types, worst (negative is early), " + worstName, worst, "ms");
+    }
+
+    // 1b. The same on low notes, added 2026-11-11 with its limit (the same 1 ms) set before the fix was run. On a note whose reading is
+    // older than the whole delay (2.02 periods against 659 samples in Alto/Tenor: every note under about 147 Hz; in Low Male and Wide
+    // Range every note under 98 Hz) the pitch movement arrived late, by up to 6 ms at 100 Hz. On Luke's takes that put Alto/Tenor's
+    // pitch contour 54 samples late at the median against a 48 sample limit. Notes under Alto/Tenor's range are given, not judged.
+    if (gEngine == 0)
+    {
+        const auto lagMs = [] (int type, double hz)
+        {
+            auto p = make();
+            setParam (*p, "inputType", (float) type);
+            setParam (*p, "retune", 0.0f);
+            setParam (*p, "humanize", 0.0f);
+            setParam (*p, "transpose", 1.0f);
+            for (int i = 0; i < 12; ++i) setParam (*p, ("note" + juce::String (i)).toRawUTF8(), 2.0f);
+            prepare (*p, 1, SR, 256);
+            const auto x = voice::synth (voice::vibrato (hz, 3.0, SR, 50.0, 5.5), voice::vowelA, SR);
+            const auto out = mono (render (*p, x, 256));
+            const double delay = p->getLatencySamples() / SR, hop = 0.0005, up = std::pow (2.0, 1.0 / 12.0);
+            const auto in = pitchTrace (x.data(), (long) x.size(), SR, hz, 0.5, 2.7, hop, 0.1);
+            const auto moved = pitchTrace (out.data(), (long) out.size(), SR, hz * up, 0.5 + delay - 0.04, 2.7 + delay + 0.04, hop, 0.1);
+            const int reach = (int) std::lround (0.04 / hop);
+            double best = -1.0e30; int bestK = 0; std::vector<double> score ((size_t) (2 * reach + 1), 0.0);
+            for (int k = -reach; k <= reach; ++k)
+            {
+                double sum = 0.0;
+                for (size_t i = 0; i < in.size(); ++i)
+                {
+                    const size_t j = (size_t) ((int) i + reach + k);
+                    if (j >= moved.size() || in[i] <= 0.0 || moved[j] <= 0.0) continue;
+                    sum += cents (in[i], hz) * cents (moved[j], hz * up);
+                }
+                score[(size_t) (k + reach)] = sum;
+                if (sum > best) { best = sum; bestK = k; }
+            }
+            double lag = bestK;
+            if (bestK > -reach && bestK < reach)
+            {
+                const double a = score[(size_t) (bestK + reach - 1)], b = score[(size_t) (bestK + reach)], c = score[(size_t) (bestK + reach + 1)], den = a - 2.0 * b + c;
+                if (den < -1.0e-12) lag += 0.5 * (a - c) / den;
+            }
+            return lag * hop * 1000.0;
+        };
+        double worst = 0.0;
+        std::string worstName;
+        const auto judge = [&] (int type, double hz, const char* name)
+        {
+            const double ms = lagMs (type, hz);
+            note (std::string ("  pitch movement against the sound, ") + name + " at " + std::to_string ((int) hz) + " Hz", ms, "ms");
+            if (std::abs (ms) > std::abs (worst)) { worst = ms; worstName = std::string (name) + " at " + std::to_string ((int) hz) + " Hz"; }
+        };
+        for (double hz : { 101.0, 112.0, 124.0, 138.0 }) judge (altoTenor, hz, "Alto/Tenor");
+        for (double hz : { 71.0, 84.0, 95.0 }) judge (lowMale, hz, "Low Male");
+        chk (std::abs (worst) <= prolimits::pitchInLineMs, "pitch movement arrives with the sound it belongs to on low notes, Alto/Tenor 101 to 138 Hz and Low Male 71 to 95 Hz, worst (negative is early), " + worstName, worst, "ms");
+        for (double hz : { 78.0, 90.0 })
+            note ("  under Alto/Tenor's range, not judged: pitch movement against the sound at " + std::to_string ((int) hz) + " Hz", lagMs (altoTenor, hz), "ms");
     }
 
     // 2. A voice that is not being corrected comes out at the reported delay, also after a correction. A voice 40 cents sharp is
@@ -1702,6 +1880,41 @@ void testTiming()
         chk (worst <= prolimits::uncorrectedNullDb, std::string ("a voice left uncorrected after a correction, ") + (gEngine == 1 ? "147 and 196 Hz (the grains)" : "147 to 262 Hz")
              + ": output against the input at the reported delay, from 4.5 s on, worst", worst, "dB");
         if (gEngine == 1) note ("  the same at 262 Hz, where the harmonic shifter gives the output (not judged)", harmonicWorst, "dB");
+    }
+
+    // 2b. Added 2026-11-11 with its limit (the same -90 dB) before the fix was run. A voice that is never corrected at all, every note
+    // Bypass from the start, gliding back and forth across the pitch where High Quality hands over between its two paths (205 and 235 Hz).
+    // On Luke's takes High Quality's output with every note Bypass was only -33.6 dB from the input at the worst take, in a handful of
+    // 100 ms blocks a take (the worst -10 dB): each one a hand over, where for 20 ms the output was a blend of the grains and the
+    // harmonic shifter's own rebuild of the voice, and the level match between them then eased back over a second.
+    {
+        std::vector<double> f0 ((size_t) (6.0 * SR));
+        for (size_t i = 0; i < f0.size(); ++i)
+        {
+            const double u = std::fmod ((double) i / SR / 1.5, 1.0);
+            f0[i] = 220.0 * std::pow (2.0, 0.3 * (u < 0.5 ? 4.0 * u - 1.0 : 3.0 - 4.0 * u));   // 179 to 271 Hz and back, every 1.5 s
+        }
+        const auto x = voice::synth (f0, voice::vowelA, SR);
+        auto p = make();
+        setParam (*p, "inputType", (float) altoTenor);
+        for (int i = 0; i < 12; ++i) setParam (*p, ("note" + juce::String (i)).toRawUTF8(), 2.0f);
+        prepare (*p, 1, SR, 256);
+        const auto out = mono (render (*p, x, 256));
+        const long delay = p->getLatencySamples();
+        double worstBlock = -200.0, err = 0.0, ref = 0.0;
+        for (long a = (long) (0.5 * SR); a + 4800 + delay < (long) out.size(); a += 4800)
+        {
+            double e = 0.0, r = 0.0;
+            for (long i = a; i < a + 4800; ++i)
+            {
+                const double d = (double) out[(size_t) (i + delay)] - x[(size_t) i];
+                e += d * d; r += (double) x[(size_t) i] * x[(size_t) i];
+            }
+            err += e; ref += r;
+            worstBlock = std::max (worstBlock, 10.0 * std::log10 (e / r + 1.0e-30));
+        }
+        chk (10.0 * std::log10 (err / ref + 1.0e-30) <= prolimits::uncorrectedNullDb, "a voice that is never corrected, gliding 179 to 271 Hz and back: output against the input at the reported delay", 10.0 * std::log10 (err / ref + 1.0e-30), "dB");
+        chk (worstBlock <= prolimits::uncorrectedNullDb, "  the worst 100 ms of it", worstBlock, "dB");
     }
 }
 
@@ -3900,6 +4113,7 @@ int main (int argc, char** argv)
         if (want ("mix")) testMix();
         if (want ("low")) testLowNotes();
         if (want ("tick")) testTickInNote();
+        if (want ("entry")) testEntries();
         if (want ("timing")) testTiming();
         if (want ("hold")) testTargetHold();
     }

@@ -70,7 +70,7 @@ public:
 
     void reset() noexcept
     {
-        correction = 0.0; target = -1; pendingTarget = -1; pastFor = 0.0; recentCount = 0; recentAt = 0; recent.fill (0.0); haveAverage = false; steadyFor = 0.0; holdAverage = 0.0; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
+        correction = 0.0; target = -1; pendingTarget = -1; pastFor = 0.0; evidence = 0.0; recentCount = 0; recentAt = 0; recent.fill (0.0); haveAverage = false; steadyFor = 0.0; holdAverage = 0.0; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
         offCents = 0.0; identity = true; hasPitch = false; silentFor = 0.0; vibratoPhase = 0.0;
     }
 
@@ -230,6 +230,35 @@ private:
             targetStillGood = target >= 0 && isAllowed (target, s.allowed);
         }
 
+        if (targetStillGood && weighMode == 2 && ! s.classic)
+        {
+            // The note's own average decides, not the moment: see noteMean.
+            const double tau = std::clamp (0.5 * age, meanFastest, meanSlowest);
+            noteMean += (1.0 - std::exp (-tickSeconds / tau)) * (p - noteMean);
+            int to = -1;
+            if (nearest != target)
+            {
+                const double past = std::abs (p - (double) target) - std::abs (p - (double) nearest);
+                const double before = recent[(size_t) ((recentAt + recentSize - std::min (recentCount, moveTicks)) % recentSize)];
+                const bool jumped = recentCount > 0 && (p - before) * (nearest > target ? 1.0 : -1.0) >= 0.45;
+                if (past > 0.70 || (jumped && past > 0.24))
+                    to = nearest;
+            }
+            if (to < 0)
+            {
+                const int nearestMean = s.midiTargets && ! s.midiAllOctaves ? held.nearest (noteMean)
+                                                                             : nearestAllowed (noteMean, s.midiTargets ? held.pitchClasses() : s.allowed);
+                if (nearestMean >= 0 && nearestMean != target && std::abs (noteMean - (double) target) - std::abs (noteMean - (double) nearestMean) > 0.24)
+                    to = nearestMean;
+            }
+            if (to >= 0)
+            {
+                target = to;
+                startNote (p);
+            }
+            pastFor = 0.0; evidence = 0.0; pendingTarget = -1;
+            return true;
+        }
         if (! targetStillGood)
         {
             target = nearest;
@@ -249,28 +278,40 @@ private:
                 // the last 60 ms. A step moves like that; a vibrato of +/-20 cents moves 34 cents in 60 ms at most. So a step is taken
                 // as fast as it always was, and only a waver has to wait.
                 pastFor = nearest == pendingTarget ? pastFor + tickSeconds : tickSeconds;
+                evidence = nearest == pendingTarget ? evidence + (past - 0.24) * tickSeconds : (past - 0.24) * tickSeconds;
                 pendingTarget = nearest;
                 const double before = recent[(size_t) ((recentAt + recentSize - std::min (recentCount, moveTicks)) % recentSize)];
                 const bool jumped = recentCount > 0 && (p - before) * (nearest > target ? 1.0 : -1.0) >= 0.45;
                 // Only a held note is held on to: a voice that slides, as speech does, changes target where it always did. (Holding on
                 // through a slide made the corrections bigger: real speech, worst 1% of 20 ms frames, level change 2.86 to 3.23 dB.)
-                if (! holdTargets || s.classic || steadyFor < steadySeconds || past > 0.70 || jumped || pastFor >= holdSeconds)
+                // Tried on 2026-11-11 and left switched off (weighMode 0 is 1.6.0's rule): on Luke's takes 17 of 739 held notes are still
+                // pulled one way and then the other and come out where they were sung, and 3 end on the wrong note; in nearly all of them
+                // his pitch crosses the line between two notes of the scale inside the note and the target changes 1 to 8 times. Two rules
+                // that make the target wait were measured on the 11 working takes (engine traces, 714 held notes): adding up the cents
+                // past the 12 cent mark until they reach 0.8, 1.5 or 2.5 cent seconds (mode 1), and letting the note's own average decide
+                // (mode 2). Both left fewer notes as sung (10 to 7) and put more on the wrong note (3 to 8, 10, 12 and 12). A target that
+                // waits is late when he really has moved. So neither ships.
+                const bool decided = weighTargets ? evidence >= targetEvidence : (steadyFor < steadySeconds || pastFor >= holdSeconds);
+                if (! holdTargets || s.classic || past > 0.70 || jumped || decided)
                 {
                     target = nearest;
                     startNote (p);
                     pastFor = 0.0;
+                    evidence = 0.0;
                     pendingTarget = -1;
                 }
             }
             else
             {
                 pastFor = 0.0;
+                evidence = 0.0;
                 pendingTarget = -1;
             }
         }
         else
         {
             pastFor = 0.0;
+            evidence = 0.0;
             pendingTarget = -1;
         }
         return true;
@@ -280,12 +321,25 @@ private:
     {
         age = 0.0;
         slowPitch = p;
+        noteMean = p;
     }
 
     double sr = 48000.0;
     double correction = 0.0, age = 0.0, slowPitch = 0.0, output = 0.0, input = 0.0, offCents = 0.0, silentFor = 0.0, vibratoPhase = 0.0;
     int target = -1, pendingTarget = -1;
-    double pastFor = 0.0;
+    double pastFor = 0.0, evidence = 0.0;
+#ifndef TARGET_EVIDENCE
+ #define TARGET_EVIDENCE 0.015
+#endif
+#ifndef WEIGH_TARGETS
+ #define WEIGH_TARGETS 0
+#endif
+    static constexpr int weighMode = WEIGH_TARGETS;   // 0: 1.6.0's rule. 1: cents past the line added up. 2: the note's own average decides.
+    static constexpr bool weighTargets = weighMode == 1;
+    // Mode 2: an average of the voice since the target was chosen, over the newer half of the note so far, 30 ms at least, 120 at most
+    static constexpr double meanFastest = 0.03, meanSlowest = 0.12;
+    double noteMean = 0.0;
+    static constexpr double targetEvidence = TARGET_EVIDENCE;   // semitone seconds
     // The last 64 readings of the voice's pitch, one a tick, for telling a step from a waver
     static constexpr int recentSize = 64, moveTicks = 60;
     std::array<double, recentSize> recent {};

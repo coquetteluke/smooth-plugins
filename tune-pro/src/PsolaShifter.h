@@ -34,6 +34,7 @@ public:
         bool centreOnPulses = false; // line grains up with the pulses in a whitened voice
         double pulseLowestHz = 0.0;  // no lining up below this pitch
         double downReadPower = 0.2;  // whitened grains read slower by the shift to this power when going down
+        double upReadPower = 0.0;    // and slower by the shift to this power when going up
     };
 
     void prepare (double sampleRate, int numChannels)
@@ -70,6 +71,7 @@ public:
         firstGrain = true;
         pulseOffset = 0.0;
         pulseGrains = 0;
+        heardOffset = 0.0;
     }
 
     // Store one input sample for one channel.
@@ -87,6 +89,10 @@ public:
         const long long index = written - 1 - latency;
         return index < 0 ? 0.0f : delay[(size_t) channel][(size_t) (index & (long long) (size - 1))];
     }
+
+    // Where the sound in the last output sample was read from, against the reported delay, in samples: the grains' read offsets,
+    // weighted by their windows. 0 on a pass. Negative: read from earlier in the input.
+    double readOffset() const noexcept { return heardOffset; }
 
     // One output sample per channel. tracker indexes count the same input samples as written.
     void step (const PitchTracker& tracker, const Control& control, float* out) noexcept
@@ -117,7 +123,7 @@ public:
         }
 
         double sum[2] = { 0.0, 0.0 };
-        double weight = 0.0;
+        double weight = 0.0, offsetSum = 0.0;
         int keep = 0;
         for (int k = 0; k < numActive; ++k)
         {
@@ -142,11 +148,13 @@ public:
             if (w <= 0.0)
                 continue;
             weight += w;
+            offsetSum += w * h.offset;
             const double scaled = w * h.gain;
             for (int ch = 0; ch < channels; ++ch)
                 sum[ch] += scaled * read (ch, h, n, t, newest);
         }
         numActive = keep;
+        heardOffset = weight > 0.0 ? offsetSum / weight : 0.0;
 
         // Plain grains are the voice itself, so overlaps are kept to its level. Whitened grains hold one pulse each and their overlaps are nearly empty.
         const double divide = weight > 1.0 && plain ? 1.0 / weight : 1.0;
@@ -466,6 +474,12 @@ private:
                 // High Quality's sweep model does not, so it turns this off.
                 else if (! c.plainGrains && planned != Plan::locked && ratio < 1.0 - 1.0e-4)
                     next.rate *= std::pow (ratio, c.downReadPower);
+                // And going up they carry the formants up with them a little: 5.2% at +3 semitones on women's voices around 200 Hz
+                // (tenth held out set, Low Latency). Read slower by the shift to this power.
+                else if (! c.plainGrains && planned != Plan::locked && ratio > 1.0 + 1.0e-4 && c.upReadPower != 0.0)
+                    // No further than an octave's worth, and fading out to nothing at two octaves: read slower there, four overlapping
+                    // grains lose level (Transpose +24: 2.6 to 7.7 dB down for the first second).
+                    next.rate *= std::pow (std::min (ratio, 2.0), -c.upReadPower * std::clamp ((4.0 - ratio) / 2.0, 0.0, 1.0));
             }
         }
 
@@ -538,7 +552,7 @@ private:
     Grain pending;
     bool havePending = false, needDecision = true, firstGrain = true;
     Plan planned = Plan::pass;
-    double peakOfNewest = 0.0, lastOffset = 0.0, plannedOffset = 0.0, pulseOffset = 0.0;
+    double peakOfNewest = 0.0, lastOffset = 0.0, plannedOffset = 0.0, pulseOffset = 0.0, heardOffset = 0.0;
     static constexpr bool walkLockedOffset = true;
     static constexpr double lockedWalkShare = 0.001;
     int pulseGrains = 0;

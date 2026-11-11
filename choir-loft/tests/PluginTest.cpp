@@ -2373,6 +2373,165 @@ void demo()
 }
 } // namespace
 
+// 1.5.2. The output ceiling: a real parameter, added last and off by default. On, no sample passes -0.3 dBFS, and what is between the samples
+// stays under full scale; a quiet take is not touched; bypass is still clean; a held note keeps its shape. The limits here were written
+// before the ceiling was first run.
+double truePeakOf (const std::vector<float>& x)
+{
+    // Four times oversampled with a 48 tap windowed sinc, as a true peak meter does
+    const int taps = 24;
+    double worst = 0.0;
+    for (int i = taps; i + taps < (int) x.size(); ++i)
+    {
+        worst = std::max (worst, (double) std::abs (x[(size_t) i]));
+        if (std::abs (x[(size_t) i]) < 0.5f) continue;   // only near the peaks: the rest cannot be the highest
+        for (int k = 1; k < 4; ++k)
+        {
+            const double frac = 0.25 * k;
+            double acc = 0.0;
+            for (int t = -taps + 1; t <= taps; ++t)
+            {
+                const double d = (double) t - frac, w = 0.5 + 0.5 * std::cos (M_PI * d / taps);
+                acc += x[(size_t) (i + t)] * w * (std::abs (d) < 1.0e-9 ? 1.0 : std::sin (M_PI * d) / (M_PI * d));
+            }
+            worst = std::max (worst, std::abs (acc));
+        }
+    }
+    return worst;
+}
+
+void testCeiling()
+{
+    const double ceilingLinear = std::pow (10.0, -0.3 / 20.0);
+    int fullStack = -1;
+    {
+        auto p = make();
+        for (int i = 0; i < p->getNumPrograms(); ++i)
+            if (p->getProgramName (i) == "Full Stack") fullStack = i;
+        auto* prm = p->apvts.getParameter ("ceiling");
+        check (prm != nullptr, "Ceiling is a real parameter");
+        if (prm == nullptr) return;
+        check (dynamic_cast<juce::AudioParameterBool*> (prm) != nullptr && prm->getDefaultValue() == 0.0f && prm->getValue() == 0.0f, "Ceiling is a switch and starts off");
+        auto params = p->getParameters();
+        int at = -1, humanAt = -1, controlsAfter = 0;
+        for (int i = 0; i < params.size(); ++i)
+            if (auto* w = dynamic_cast<juce::AudioProcessorParameterWithID*> (params[i]))
+            {
+                if (w->paramID == "ceiling") at = i;
+                else if (w->paramID == "human") humanAt = i;
+                else if (at >= 0 && ! (w->paramID.endsWith ("Note") || w->paramID == "detectedPitch" || w->paramID == "voicesSounding" || w->paramID == "activeKey")) ++controlsAfter;
+            }
+        check (at >= 0 && humanAt == at - 1 && controlsAfter == 0, "Ceiling is the last control, right after Human (only the read-outs follow), so every older one keeps its place", (double) at, "index");
+
+        setParam (*p, "ceiling", 1.0f);
+        juce::MemoryBlock saved;
+        p->getStateInformation (saved);
+        auto q = make();
+        q->setStateInformation (saved.getData(), (int) saved.getSize());
+        check (q->apvts.getRawParameterValue ("ceiling")->load() >= 0.5f, "Ceiling comes back with the session");
+        auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+        int removed = 0;
+        for (auto* child = xml->getFirstChildElement(); child != nullptr;)
+        {
+            auto* next = child->getNextElement();
+            if (child->getStringAttribute ("id") == "ceiling") { xml->removeChildElement (child, true); ++removed; }
+            child = next;
+        }
+        juce::MemoryBlock older;
+        juce::AudioProcessor::copyXmlToBinary (*xml, older);
+        auto o = make();
+        setParam (*o, "ceiling", 1.0f);
+        o->setStateInformation (older.getData(), (int) older.getSize());
+        check (removed == 1 && o->apvts.getRawParameterValue ("ceiling")->load() < 0.5f, "a session from before 1.5.2 opens with Ceiling off");
+        auto t = make();
+        setParam (*t, "ceiling", 1.0f);
+        t->setCurrentProgram (std::max (0, fullStack));
+        check (t->apvts.getRawParameterValue ("ceiling")->load() >= 0.5f, "a preset leaves Ceiling where it is");
+    }
+    check (fullStack >= 0, "there is a Full Stack preset to test the ceiling on");
+
+    // A loud lead: a sung phrase peaking at -1 dBFS
+    auto x = voice::synth (voice::phrase ({ 196.0, 220.0, 246.9, 220.0, 196.0, 261.6 }, 0.5, SR), voice::vowelA, SR, -40.0, -12.0);
+    {
+        const double pk = peak (x.data(), (int) x.size());
+        for (auto& v : x) v = (float) (v * std::pow (10.0, -1.0 / 20.0) / pk);
+    }
+    const auto run = [&] (int preset, bool ceilingOn, const std::vector<float>& in, bool bypassed = false)
+    {
+        auto p = make();
+        prepare (*p, 2, SR, 256);
+        if (preset >= 0) p->setCurrentProgram (preset);
+        setParam (*p, "ceiling", ceilingOn ? 1.0f : 0.0f);
+        if (bypassed) setParam (*p, "bypass", 1.0f);
+        return render (*p, in, 256);
+    };
+    const auto peakOf = [] (const juce::AudioBuffer<float>& b) { return std::max (peak (b.getReadPointer (0), b.getNumSamples()), peak (b.getReadPointer (1), b.getNumSamples())); };
+
+    for (const int preset : { -1, fullStack })
+    {
+        const std::string name = preset < 0 ? "the default" : "Full Stack";
+        const auto off = run (preset, false, x), on = run (preset, true, x);
+        info ("lead at -1 dBFS, " + name + ", Ceiling off: output peak", toDb (peakOf (off)), "dBFS");
+        check (peakOf (on) <= ceilingLinear, "lead at -1 dBFS, " + name + ", Ceiling on: no sample over -0.3 dBFS", toDb (peakOf (on)), "dBFS");
+        const double tp = std::max (truePeakOf (mono (on, 0)), truePeakOf (mono (on, 1)));
+        check (tp <= 1.0, "and between the samples it stays under full scale (true peak, 4 times oversampled)", toDb (tp), "dBTP");
+        if (preset == fullStack)
+            check (peakOf (off) > 1.0, "the fault it is for: with Ceiling off the same take goes over full scale on Full Stack", toDb (peakOf (off)), "dBFS");
+
+        // A held note keeps its shape: once the gain has come down, what is left after the best single gain is taken out
+        const int from = (int) (0.25 * SR), len = (int) (0.2 * SR);
+        double worst = -200.0;
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            const float* a = on.getReadPointer (ch) + from;
+            const float* b = off.getReadPointer (ch) + from;
+            double ab = 0.0, bb = 0.0;
+            for (int i = 0; i < len; ++i) { ab += (double) a[i] * b[i]; bb += (double) b[i] * b[i]; }
+            const double g = bb > 0.0 ? ab / bb : 1.0;
+            double err = 0.0, ref = 0.0;
+            for (int i = 0; i < len; ++i) { const double e = a[i] - g * b[i]; err += e * e; ref += (double) a[i] * a[i]; }
+            worst = std::max (worst, 10.0 * std::log10 (std::max (err, 1.0e-30) / std::max (ref, 1.0e-30)));
+        }
+        check (worst <= -40.0, "inside a held note the ceiling is a steady gain, " + name + ": what it adds beside a plain turn down", worst, "dB");
+    }
+
+    // A take with room to spare is not touched at all
+    {
+        auto quiet = x;
+        for (auto& v : quiet) v *= 0.125f;   // -19 dBFS peak
+        const auto off = run (fullStack, false, quiet), on = run (fullStack, true, quiet);
+        bool same = true;
+        for (int ch = 0; ch < 2 && same; ++ch)
+            same = std::memcmp (off.getReadPointer (ch), on.getReadPointer (ch), sizeof (float) * (size_t) off.getNumSamples()) == 0;
+        check (same, "a lead at -19 dBFS on Full Stack comes out bit for bit the same with Ceiling on as off", toDb (peakOf (on)), "dBFS peak");
+    }
+
+    // Bypass stays clean with the ceiling on, however hot the vocal
+    {
+        auto hot = x;
+        for (auto& v : hot) v *= 1.11f;   // -0.1 dBFS peak, over the ceiling
+        const auto out = run (-1, true, hot, true);
+        auto p = make();
+        prepare (*p, 2, SR, 256);
+        const int lat = p->getLatencySamples();
+        double worst = 0.0;
+        for (int i = lat + 4800; i < out.getNumSamples(); ++i)
+            worst = std::max (worst, (double) std::abs (out.getSample (0, i) - hot[(size_t) (i - lat)]));
+        check (worst == 0.0, "bypassed with Ceiling on, a vocal peaking at -0.1 dBFS comes out untouched", worst, "largest difference");
+    }
+
+    // The reading the window's light uses
+    {
+        auto p = make();
+        prepare (*p, 2, SR, 256);
+        p->setCurrentProgram (fullStack);
+        const auto out = render (*p, x, 256);
+        const float seen = p->takeOutputPeak();
+        check (std::abs ((double) seen - peakOf (out)) < 1.0e-6, "the output reading is the highest sample that came out", toDb (seen), "dBFS");
+        check (p->takeOutputPeak() == 0.0f, "and it starts again once read");
+    }
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -2424,5 +2583,6 @@ int main (int argc, char** argv)
     if (want ("onsets")) { onsets::testPhraseStarts(); onsets::testCorpusStarts(); }
     if (want ("notrigger")) onsets::testNoTrigger();
     if (want ("aftercreak")) testAfterCreak();
+    if (want ("ceiling")) testCeiling();
     return finish();
 }

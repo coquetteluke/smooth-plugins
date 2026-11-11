@@ -238,6 +238,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     // 1.5.0. From the robot sound at 0, which is exactly the sound before this control existed, to voices that move the way a singer does.
     // A new parameter with a later version hint, so every older one keeps its place and its AU address.
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "human", 2 }, "Human", percent, 0.0f, fixedText (0, "%")));
+
+    // 1.5.2. The voices add level (1.8 dB at the default, 3.4 to 6.2 dB on Full Stack) and nothing held the output under full scale, so a lead
+    // peaking over about -4.5 dBFS clipped. Off by default, so nothing saved changes; added last, with a later version hint again.
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "ceiling", 3 }, "Ceiling", false));
     return layout;
 }
 
@@ -255,6 +259,7 @@ PluginProcessor::PluginProcessor (const Options& options)
     moreVoices = apvts.getRawParameterValue ("moreVoices");
     leadOn = apvts.getRawParameterValue ("leadOn");
     human = apvts.getRawParameterValue ("human");
+    ceilingParam = apvts.getRawParameterValue ("ceiling");
     for (int v = 0; v < maxVoices; ++v)
     {
         auto& vp = voiceParams[(size_t) v];
@@ -410,6 +415,11 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     matchGain = 1.0 - std::exp (-1.0 / (0.03 * sr));
     envelopeStep = 1.0 / (0.008 * sr);
     humanFastK = 1.0 - std::exp (-1.0 / (0.015 * sr));
+    ceilingHoldSamples = juce::roundToInt (0.03 * sr);
+    ceilingRelease = 1.0 - std::exp (-1.0 / (0.2 * sr));
+    ceilingGain = 1.0;
+    ceilingHold = 0;
+    outputPeak.store (0.0f, std::memory_order_relaxed);
     humanSlowK = 1.0 - std::exp (-1.0 / (0.3 * sr));
     fadeGain = 1.0f;
     fading = false;
@@ -740,6 +750,9 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     if (wantedType != typeNow)
         fading = true;
     const float bypassTarget = (forceBypass || bypass->get()) ? 0.0f : 1.0f;
+    const bool ceilingOn = ceilingParam->load (std::memory_order_relaxed) >= 0.5f;
+    if (! ceilingOn) { ceilingGain = 1.0; ceilingHold = 0; }
+    float blockPeak = 0.0f;
 
     float* left = buffer.getWritePointer (0);
     float* right = numOut > 1 ? buffer.getWritePointer (1) : nullptr;
@@ -956,7 +969,39 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         left[i] = (float) ((double) fadeGain * ((double) dryL + on * (wetL - (double) dryL)));
         if (right != nullptr)
             right[i] = (float) ((double) fadeGain * ((double) dryR + on * (wetR - (double) dryR)));
+
+        // The ceiling (1.5.2), with no look ahead, so no delay: a gain that comes down at once when a sample would pass the ceiling, on both
+        // channels alike, holds for 30 ms (longer than a period of any note, so it does not move inside a wave) and comes back over 200 ms.
+        // What it must come down to follows a soft knee from 2.5 dB under the ceiling, so the first peak is rounded, not cut, and can never
+        // reach the ceiling. Bypassed, the gain is 1: the vocal comes out untouched.
+        float peak = std::abs (left[i]);
+        if (right != nullptr) peak = std::max (peak, std::abs (right[i]));
+        if (ceilingOn)
+        {
+            if (ceilingHold > 0) --ceilingHold;
+            else ceilingGain += ceilingRelease * (1.0 - ceilingGain);
+            const double level = (double) peak;
+            if (level > ceilingKnee)
+            {
+                const double span = ceilingLevel - ceilingKnee;
+                const double allowed = ceilingKnee + span * std::tanh ((level - ceilingKnee) / span);
+                if (level * ceilingGain > allowed)
+                {
+                    ceilingGain = allowed / level;
+                    ceilingHold = ceilingHoldSamples;
+                }
+            }
+            const float g = (float) (1.0 + (double) bypassMix * (ceilingGain - 1.0));
+            left[i] *= g;
+            if (right != nullptr) right[i] *= g;
+            peak *= g;
+        }
+        blockPeak = std::max (blockPeak, peak);
     }
+
+    // For the window's output light: the highest sample since the window last looked
+    if (blockPeak > outputPeak.load (std::memory_order_relaxed))
+        outputPeak.store (blockPeak, std::memory_order_relaxed);
 
     publishReadings();
 }

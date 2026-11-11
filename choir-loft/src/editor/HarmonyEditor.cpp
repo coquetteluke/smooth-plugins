@@ -288,6 +288,7 @@ HarmonyEditor::Panel::Panel (HarmonyEditor& e, PluginProcessor& p)
       inputType (p.apvts, "inputType", "Voice range", "Your voice's range. Lower ranges take a little longer to read."),
       followKey (p.apvts, "followKey", "Follow Key", "Takes the key from Key on the same song, when it is sure of it."),
       chordHold (p.apvts, "chordHold", "Chord Hold", "Keeps a MIDI chord after the keys come up, until the next new note."),
+      ceiling (p.apvts, "ceiling", "Ceiling", "Keeps what comes out under full scale, so a loud lead with its voices does not clip. Off, nothing is touched."),
       humanize (p.apvts, "humanize", "Humanize", "How much each voice differs from a machine, note by note. 0 is exact.", neutralBar),
       vibrato (p.apvts, "vibrato", "Vibrato", "How much the voices shake in pitch. They start it a moment into each note.", neutralBar),
       leadLevel (p.apvts, "leadLevel", "Level", "How loud your own voice is. All the way down leaves only the harmonies.", tone::text),
@@ -313,6 +314,8 @@ HarmonyEditor::Panel::Panel (HarmonyEditor& e, PluginProcessor& p)
     addAndMakeVisible (leadSwitch);
     addAndMakeVisible (modePicker);
     addAndMakeVisible (bypass);
+    addAndMakeVisible (ceiling);
+    addAndMakeVisible (outputLight);
     addAndMakeVisible (*advancedHeader);
 
     modePicker.setCellHints ({ "Voices stay in your key, counting the interval on its notes.",
@@ -475,6 +478,9 @@ void HarmonyEditor::Panel::resized()
     presets->setBounds (margin + 134, rowOneY, 270, rowOneHeight);
     bypass.setBounds (right - 84, rowOneY, 84, rowOneHeight);
     voicesCount.setBounds (right - 84 - 16 - 232, rowOneY, 232, rowOneHeight);
+    // The ceiling and the output's level sit between the presets and the voice count, in the same row as Bypass
+    ceiling.setBounds (voicesCount.getX() - 16 - 84, rowOneY, 84, rowOneHeight);
+    outputLight.setBounds (presets->getRight() + 16, rowOneY, ceiling.getX() - 12 - presets->getRight() - 16, rowOneHeight);
 
     modePicker.setBounds (margin, rowTwoY, 468, rowTwoHeight);
 
@@ -711,6 +717,7 @@ void HarmonyEditor::setAdvancedOpen (bool shouldBeOpen, bool animate)
 void HarmonyEditor::tick (double dtSeconds)
 {
     panel.stage.advance (dtSeconds);
+    panel.outputLight.feed (processorRef.takeOutputPeak(), dtSeconds);
     panel.presets->refresh();
 
     const int mode = panel.modePicker.getSelectedValue();

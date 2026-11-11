@@ -830,4 +830,54 @@ namespace ui
         g.setFont (font (Weight::medium, 13.0f));
         g.drawText (getButtonText(), b, juce::Justification::centred, false);
     }
+
+    OutputLight::OutputLight()
+    {
+        hint = "The loudest moment of what comes out. Lit when it is within 1 dB of full scale: turn Ceiling on, or the lead down.";
+        setTitle ("Output level");
+    }
+
+    void OutputLight::feed (float peak, double dtSeconds)
+    {
+        const float db = peak > 1.0e-10f ? 20.0f * std::log10 (peak) : -200.0f;
+        const juce::String before = text();
+        const bool wasHot = isHot();
+        if (db >= shownDb)
+        {
+            shownDb = db;
+            heldFor = 0.0;
+        }
+        else if ((heldFor += dtSeconds) > 1.5)
+        {
+            shownDb = juce::jmax (db, shownDb - 20.0f * (float) dtSeconds);
+        }
+        if (text() != before || isHot() != wasHot)
+            repaint();
+    }
+
+    juce::String OutputLight::textFor (float db)
+    {
+        if (db < quietDb)
+            return {};
+        const juce::String level = (db > 0.0f ? "+" : "") + juce::String (db, 1) + " dB";
+        if (db > 0.0f)
+            return "Out " + level + ", over full scale";
+        return db >= hotFromDb ? "Out " + level + ", near full scale" : "Out " + level;
+    }
+
+    float OutputLight::widestText()
+    {
+        return juce::GlyphArrangement::getStringWidth (font (Weight::medium, 13.0f), textFor (28.8f));
+    }
+
+    void OutputLight::paint (juce::Graphics& g)
+    {
+        const auto words = text();
+        if (words.isEmpty())
+            return;
+        const bool hot = isHot();
+        g.setColour (hot ? tone::text : tone::muted);
+        g.setFont (font (hot ? Weight::medium : Weight::regular, 13.0f));
+        g.drawText (words, getLocalBounds().toFloat(), juce::Justification::centredRight, false);
+    }
 }

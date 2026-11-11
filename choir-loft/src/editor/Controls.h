@@ -259,4 +259,31 @@ namespace ui
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PillToggle)
     };
+
+    /** The output's highest level of the last moments, in words, lit when it is within 1 dB of full scale (1.5.2). Neutral like every
+        control that is not a singer: muted when there is room, warm white when there is not. */
+    class OutputLight final : public juce::Component,
+                              public Hinted
+    {
+    public:
+        OutputLight();
+
+        /** The highest sample since the last call, 1 is full scale, and the time since then. The reading holds for 1.5 s, then falls. */
+        void feed (float peak, double dtSeconds);
+        bool isHot() const noexcept            { return shownDb >= hotFromDb; }
+        float peakDb() const noexcept          { return shownDb; }
+        juce::String text() const              { return textFor (shownDb); }
+        void paint (juce::Graphics&) override;
+
+        static juce::String textFor (float db);
+        /** Width of the widest thing it can say, in its own type. */
+        static float widestText();
+        static constexpr float hotFromDb = -1.0f, quietDb = -60.0f;
+
+    private:
+        float shownDb = -200.0f;
+        double heldFor = 0.0;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OutputLight)
+    };
 }

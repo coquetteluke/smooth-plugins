@@ -121,6 +121,11 @@ public:
     // Sets a tracker up for an Input Type, exactly as the processor sets up its own.
     static void prepareTrackerLike (smoothharmony::PitchTracker&, int inputType) noexcept;
 
+    // The highest output sample since the last call, as a plain value (1 is full scale), and the mark starts again. For the window's
+    // output light; one reader.
+    float takeOutputPeak() noexcept { return outputPeak.exchange (0.0f, std::memory_order_relaxed); }
+    static constexpr float ceilingDb = -0.3f;
+
     // Tests only: what the worker thread and message thread do.
     void applyPendingLatencyNow() { handleAsyncUpdate(); }
     void pollKeyFileNow();
@@ -200,7 +205,7 @@ private:
                        *humanize = nullptr, *vibrato = nullptr, *vibratoRate = nullptr, *leadLevel = nullptr, *leadPan = nullptr, *mix = nullptr,
                        *harmonyLevel = nullptr, *glide = nullptr, *followLead = nullptr, *consonants = nullptr, *inputType = nullptr,
                        *tracking = nullptr, *reference = nullptr, *chordRoot = nullptr, *chordType = nullptr, *chordHold = nullptr,
-                       *breath = nullptr, *consonantScatter = nullptr, *moreVoices = nullptr, *leadOn = nullptr, *human = nullptr;
+                       *breath = nullptr, *consonantScatter = nullptr, *moreVoices = nullptr, *leadOn = nullptr, *human = nullptr, *ceilingParam = nullptr;
     struct VoiceParams { std::atomic<float>* interval = nullptr, *level = nullptr, *pan = nullptr, *drift = nullptr, *throat = nullptr, *tone = nullptr, *on = nullptr; };
     std::array<VoiceParams, maxVoices> voiceParams {};
     juce::AudioParameterBool* bypass = nullptr;
@@ -245,6 +250,11 @@ private:
     bool fading = false, leadVoiced = false;
     double currentPeriod = 0.0, lastTickPeriod = 0.0;
     float fadeGain = 1.0f, fadeStep = 1.0f / 64.0f, bypassMix = 1.0f, bypassStep = 0.001f;
+    // The output ceiling (1.5.2): -0.3 dBFS, a soft knee from 2.5 dB under it
+    static constexpr double ceilingLevel = 0.96605, ceilingKnee = 0.72443;
+    double ceilingGain = 1.0, ceilingRelease = 0.0001;
+    int ceilingHold = 0, ceilingHoldSamples = 1440;
+    std::atomic<float> outputPeak { 0.0f };
     float lastVoicingLimit = -1.0f;
     int activeKeyNow = 0, activeScaleNow = 0;
 

@@ -83,6 +83,8 @@ private:
         ui::PillToggle bypass;
         ui::ChoiceField keyField, scaleField, chordRootField, chordTypeField, inputType;
         ui::PillToggle followKey, chordHold;
+        ui::PillToggle ceiling;        // 1.5.2: holds the output under full scale
+        ui::OutputLight outputLight;   // and says when it is near it, with the ceiling on or off
 
         std::unique_ptr<VoiceStrip> strips[PluginProcessor::maxVoices];
 

@@ -54,6 +54,15 @@ struct GestureCount final : juce::AudioProcessorParameter::Listener
     void parameterGestureChanged (int, bool starting) override { (starting ? begins : ends)++; }
 };
 
+// The output light is a reading, not a control, so it has no parameter id to be found by
+inline ui::OutputLight* outputLightIn (juce::Component& panel)
+{
+    for (auto* c : panel.getChildren())
+        if (auto* light = dynamic_cast<ui::OutputLight*> (c))
+            return light;
+    return nullptr;
+}
+
 inline std::unique_ptr<HarmonyEditor> openWindow (PluginProcessor& p)
 {
     std::unique_ptr<HarmonyEditor> e (dynamic_cast<HarmonyEditor*> (p.createEditor()));
@@ -151,6 +160,68 @@ void testWindow()
         }
         check (overlaps == 0, std::string ("nothing overlaps in any Mode, Advanced ") + (open ? "open" : "closed"), (double) overlaps, "overlaps");
         check (outside == 0, std::string ("everything fits and is reachable, Advanced ") + (open ? "open" : "closed"), (double) outside, "misplaced");
+    }
+
+    // 1.5.2. The Ceiling switch and the output light: in the window at every voice count with Advanced open or closed, nothing cut off,
+    // nothing overlapped, and the light lit when the output is within 1 dB of full scale whether the ceiling is on or off.
+    {
+        int misplaced = 0, cut = 0;
+        for (const bool open : { false, true })
+            for (int count = 1; count <= PluginProcessor::maxVoices; ++count)
+            {
+                auto p = make();
+                p->advancedOpen.store (open);
+                setParam (*p, "voices", (float) std::min (count, 4));
+                setParam (*p, "moreVoices", count > 4 ? (float) (count - 4) : 0.0f);
+                auto e = openWindow (*p);
+                e->tick (1.0 / 30.0);
+                auto& panel = e->getPanel();
+                auto* toggle = findById<ui::PillToggle> (panel, "ceiling");
+                auto* light = outputLightIn (panel);
+                if (toggle == nullptr || light == nullptr || ! toggle->isVisible() || ! light->isVisible()) { ++misplaced; continue; }
+                if (! panel.getLocalBounds().contains (toggle->getBounds()) || ! panel.getLocalBounds().contains (light->getBounds())) ++misplaced;
+                for (auto* c : panel.getChildren())
+                    if (c->isVisible() && c != toggle && c != light && (c->getBounds().intersects (toggle->getBounds()) || c->getBounds().intersects (light->getBounds())))
+                        ++misplaced;
+                if (toggle->getBounds().intersects (light->getBounds())) ++misplaced;
+                if (juce::GlyphArrangement::getStringWidth (ui::font (ui::Weight::medium, 13.0f), toggle->getButtonText()) > (float) toggle->getWidth() - 16.0f) ++cut;
+                if (ui::OutputLight::widestText() > (float) light->getWidth()) ++cut;
+            }
+        check (misplaced == 0, "Ceiling and the output light are in the window and clear of everything else, 1 to 8 voices, Advanced open and closed", (double) misplaced, "misplaced");
+        check (cut == 0, "and neither is cut off: the switch's word and the longest thing the light can say fit", (double) cut, "cut off");
+        info ("the light's longest words against its width", 100.0 * ui::OutputLight::widestText() / 288.0, "%");
+
+        ui::OutputLight light;
+        light.feed (std::pow (10.0f, -3.0f / 20.0f), 0.033);
+        check (! light.isHot() && light.text() == "Out -3.0 dB", "the light at -3 dBFS is not lit and reads " + light.text().toStdString());
+        light.feed (std::pow (10.0f, -0.9f / 20.0f), 0.033);
+        check (light.isHot() && light.text() == "Out -0.9 dB, near full scale", "at -0.9 dBFS it is lit and reads " + light.text().toStdString());
+        light.feed (std::pow (10.0f, 2.5f / 20.0f), 0.033);
+        check (light.isHot() && light.text() == "Out +2.5 dB, over full scale", "over full scale it reads " + light.text().toStdString());
+        light.feed (0.0f, 1.0);
+        check (light.isHot(), "it holds its reading for a moment after the peak");
+        for (int i = 0; i < 300; ++i) light.feed (0.0f, 0.033);
+        check (! light.isHot() && light.text().isEmpty(), "and goes out when nothing comes out");
+        for (const juce::String& words : { ui::OutputLight::textFor (-3.0f), ui::OutputLight::textFor (-0.5f), ui::OutputLight::textFor (4.0f) })
+            check (! hasEmDash (words), "no em dash in " + words.toStdString());
+
+        // In the window itself: a loud take lights it with the ceiling off, and with it on (the ceiling holds -0.3 dBFS, which is within 1 dB)
+        for (const bool ceilingOn : { false, true })
+        {
+            auto p = make();
+            prepare (*p, 2, 48000.0, 256);
+            setParam (*p, "ceiling", ceilingOn ? 1.0f : 0.0f);
+            auto e = openWindow (*p);
+            auto x = voice::synth (voice::steady (220.0, 1.0, 48000.0), voice::vowelA, 48000.0, -40.0, -12.0);
+            const double pk = peak (x.data(), (int) x.size());
+            for (auto& v : x) v = (float) (v * 0.89 / pk);
+            render (*p, x, 256);
+            e->tick (1.0 / 30.0);
+            auto* light = outputLightIn (e->getPanel());
+            check (light != nullptr && light->isHot(), std::string ("a lead at -1 dBFS lights the output light, Ceiling ") + (ceilingOn ? "on" : "off"), light != nullptr ? light->peakDb() : 0.0, "dBFS");
+            if (ceilingOn)
+                check (light != nullptr && light->peakDb() <= -0.3f + 0.001f, "and with Ceiling on the light reads no higher than the ceiling", light != nullptr ? light->peakDb() : 0.0, "dBFS");
+        }
     }
 
     // The lead has a card of its own, first in the row of singers, at every voice count

@@ -25,6 +25,7 @@ Audio Units > Luke Garito > Tape Chorus. AU code: `aufx STch Luke`. Works mono i
 | Random Rate | 0.1 to 20 Hz | How fast Random wanders. The swing does not change with speed. |
 | Unsync | off, on | Off: left and right wander together. On: each side wanders on its own, which widens the sound without Spread. |
 | Saturation | 0 to 100 % | Soft tape clipping on the chorus voices only. A -12 dBFS signal stays at about the same level. The dry signal is never saturated. |
+| Clean | off, on | Off: the sound of every version up to 0.3.1. On: nothing folds back from Saturation, Saturation never lifts quiet sound or S sounds, Wow and Flutter lose their hash, and low notes are on time. See Clean below. |
 | Degrade | 0 to 100 % | Random level dips in each voice, like worn tape. Dips reach -20 dB at most, and only at 100. |
 | Degrade Rate | 0.2 to 20 Hz | How fast the dips come and go. |
 | Noise | 0 to 100 % | Tape hiss on the chorus voices. 100 is -40 dBFS, 50 is -52, 25 is -64. 0 adds nothing. |
@@ -36,17 +37,30 @@ Audio Units > Luke Garito > Tape Chorus. AU code: `aufx STch Luke`. Works mono i
 | Mix | 0 to 100 % | Equal power blend of dry and chorus. 0 gives back the input exactly. |
 | Input Gain | -24 to +24 dB | Before everything, dry included. Not made up afterwards, so it hits Saturation harder and comes out louder. |
 | Output Gain | -24 to +24 dB | After everything. |
-| Bypass | on or off | Fades to the exact dry signal in 20 ms, ignoring both gains. Latency stays 0. |
+| Bypass | on or off | Fades to the exact dry signal in 20 ms, ignoring both gains, with no tick even on a steady tone. Latency stays 0. |
 
 Readings, which cannot be set and write no automation: **Input Level** (after Input Gain), **Output Level**, **Pitch Swing** (largest pitch movement from Rate and Depth, in cents).
 
+A control you move arrives exactly where you put it: a few seconds after a move, the sound is the sound of that setting held from the start.
+
 If Delay Time is too short to hold the modulation you asked for, Depth, Wow, Flutter, Random and the voice offsets all shrink together, so the delay never falls below about 1.3 ms.
+
+## Clean
+
+Clean is a switch in Advanced, under Saturation. It is off by default, and with it off every preset and setting sounds as it did in 0.3.1, sample for sample. It exists because four things could not be put right without changing that sound, so they are yours to switch on:
+
+- **Fold back.** The standard filters around Saturation leave a little of what the clipper makes just above half the sample rate, and it folds back to just under it: a 5 kHz tone at Saturation 100 leaves a line at 23 kHz, 52 dB under the tone. Nobody hears 23 kHz, but it is there. Clean has its own filters that stop at half the sample rate: 119 dB under. They give up the band above about 20 kHz to do it (18.6 kHz at 44.1 kHz).
+- **Saturation and level.** The standard curve keeps a -12 dBFS tone at its level. A voice is mostly quieter than that, so Saturation makes the voices louder: about 3.5 dB at 100, 1.2 dB at 50, 0.2 dB at the default 20, and S sounds and consonants come up by the same amount. With Clean, quiet sound keeps its level exactly and only the peaks are rounded off, so Saturation can only take level away.
+- **Hash from Wow and Flutter.** Their irregular part leaves a fine noise around a held note: 42 dB under a 3 kHz tone at the default Wow 15 and Flutter 10, 30 dB under at Flutter 50, 23 dB under with both at 100. With Clean it is 69 dB under at the default and 49 dB under with both at 100, and they swing as far as before.
+- **Low notes.** The filter that keeps DC out of the voices sits at 6 Hz, which brings a 100 Hz note in 4.6 samples early. With Clean it sits at 1 Hz.
+
+Switching it fades from one to the other in 30 ms. The delay and the latency do not change.
 
 ## The window
 
 Two reels with one line per voice running between them. Each line is that voice's read head, read from the engine about 250 times a second: it sweeps with Rate and Depth, shakes with Wow, Flutter and Random, breaks where Degrade pulls a voice down, and the pale left lines and aqua right lines part as Spread opens. The bars behind are the loudest samples really written to the tape, so Feedback shows as repeats after a phrase. The lines gather toward each reel as they reach it, and the middle is true to the scale shown. The left reel winds out with the input level, the right with the output, and a coral ring means over 0 dB.
 
-The row under it follows the signal from left to right: Input, Voices, Rate, Depth, Delay, Feedback, Spread, Mix, Output. Advanced opens the rest on the same nine columns. Drag any column, double-click to reset, click a number to type. Drag the tape up or down for Depth and sideways for Rate, and drag a reel for its gain. A line at the bottom says what the thing under the mouse does.
+The row under it follows the signal from left to right: Input, Voices, Rate, Depth, Delay, Feedback, Spread, Mix, Output. Advanced opens the rest on the same nine columns, with Clean under Saturation. Drag any column, double-click to reset, click a number to type. Drag the tape up or down for Depth and sideways for Rate, and drag a reel for its gain. A line at the bottom says what the thing under the mouse does.
 
 With no audio running at all, the window draws what the settings will do. When the tape has been silent for 3 seconds and nothing is changing, it stops drawing. Everything in it is a real parameter with its old ID, name and range, so automation moves the same controls. A session gains only the window size and whether Advanced is open. The type is Work Sans, under the SIL Open Font License, in `assets/fonts/`.
 
@@ -73,6 +87,12 @@ New in 0.2.0:
 - **Random Drift Double**: almost no regular sweep, mostly Random and Unsync, so it sounds like a second take.
 - **Resonant Tape Swirl**: 3 voices, short delay, 55 % Feedback, darkening repeats.
 
+New in 0.4.0, all with Clean on:
+
+- **Clean Vocal Double**: 2 voices, a little Random and Unsync, Low Cut at 120 Hz. A double for a lead with nothing added that is not the voice.
+- **Clean Wide Stack**: 6 voices, full Spread, Low Cut at 180 Hz.
+- **Worn Cassette Clean**: Worn Cassette, control for control, with Clean on. The same wobble and drive without the hash and without the lifted S sounds. Switch between the two to hear what Clean does.
+
 ## Signal flow
 
 Input > Input Gain > dry path straight to Mix.
@@ -80,6 +100,8 @@ Input > Input Gain > dry path straight to Mix.
 Input > Input Gain > pre-emphasis > oversampled soft clip (4x, or 2x from 60 kHz up) > de-emphasis > DC block > delay line, with hiss and feedback added here > up to 8 voices, each with a left and right read head (6 point interpolation) and its own Degrade dips > sum > Low Cut > High Cut > Tone > Mix > Output Gain > output.
 
 Feedback leaves after High Cut, is scaled by the sum of the voice gains so that its gain can never pass 1 even if every copy lines up, rolls off below 40 Hz and above 12 kHz, passes a soft limiter that starts at 0.9, and returns to the delay line. The repeats do not go through Saturation again, because the clipper runs on oversampled blocks and that would make the output depend on block size.
+
+With Clean on, the clip stage is a second one beside the first: one filter up and one down that stop at half the sample rate, the slope-of-one curve, and a DC block at 1 Hz. The two filters together delay the signal exactly as long as the standard ones, so the two stages can be faded into each other and nothing else has to know.
 
 Latency is 0 samples at every rate. The oversampling filters take 59.5 samples at 48 kHz, and that amount is taken off the read head, so the delay you set is the delay you get and the dry path needs no delay. The feedback path is held back by the same amount, so one pass round the loop takes the Delay Time.
 

@@ -74,7 +74,7 @@ public:
         wetLatency = (double) os->getLatencyInSamples();
         cleanOs.prepare (1 << (int) stages, wetLatency, 2, tickLen);
         cleanOs.reset();
-        fading = false;
+        fading = false; cutMoving = false;
         cleanAmt = cleanAmtNext = p.clean ? 1.0f : 0.0f;
         cleanRunning = p.clean; standardRunning = ! p.clean; cleanWarm = 0;
         wowSmoothA = wowSmoothB = flutSmoothA = flutSmoothB = 0.0;
@@ -541,8 +541,13 @@ private:
         smooth (fbNext, feedbackFrom (target), cMid);
 
         const float lowT = (float) std::log (target.lowCutHz), highT = (float) std::log (target.highCutHz);
+        cutMoving = false;
         if (lowLog != lowT || highLog != highT)
         {
+            // While a cut glides, the filters go from the last tick's setting to this one sample by sample. Up to 0.3.1 they took the
+            // new setting at once, 1500 times a second, and the voices stepped each time (a staircase on a low note under Low Cut).
+            lowCoefPrev = lowCoef; highCoefPrev = highCoef;
+            cutMoving = true;
             smooth (lowLog, lowT, cMid);
             smooth (highLog, highT, cMid);
             setCutCoefs();
@@ -793,9 +798,9 @@ private:
                 double x = wet[(size_t) s];
 
                 // Low Cut and High Cut are inside the feedback loop, so each pass loses a little more.
-                const double hp = st.low.high (x, lowCoef);
+                const double hp = st.low.high (x, cutMoving ? CutCoefs::between (lowCoefPrev, lowCoef, tp) : lowCoef);
                 x += (double) lowNow * (hp - x);
-                const double lpOut = st.high.low (x, highCoef);
+                const double lpOut = st.high.low (x, cutMoving ? CutCoefs::between (highCoefPrev, highCoef, tp) : highCoef);
                 x += (double) highNow * (lpOut - x);
 
                 // The sum of the voices over the sum of their gains: even if every copy lines up, the loop's gain cannot pass 1.
@@ -877,6 +882,12 @@ private:
             a2 = g * a1;
             a3 = g * a2;
         }
+        static CutCoefs between (const CutCoefs& from, const CutCoefs& to, float t)
+        {
+            CutCoefs c;
+            c.a1 = from.a1 + (double) t * (to.a1 - from.a1); c.a2 = from.a2 + (double) t * (to.a2 - from.a2); c.a3 = from.a3 + (double) t * (to.a3 - from.a3);
+            return c;
+        }
     };
     struct Cut
     {
@@ -939,7 +950,8 @@ private:
     float inRaw = 1, outRaw = 1, inGain = 1, inGainNext = 1, outGain = 1, outGainNext = 1, fb = 0, fbNext = 0;
     float hiss = 0, hissNext = 0, gate = 1, gateNext = 1, hissCos = 1, hissSin = 0;
     float lowLog = 3, highLog = 10, lowAmt = 0, lowAmtNext = 0, highAmt = 0, highAmtNext = 0;
-    CutCoefs lowCoef, highCoef;
+    CutCoefs lowCoef, highCoef, lowCoefPrev, highCoefPrev;
+    bool cutMoving = false;
     std::array<float, 2> tapSum {}, tapSumNext {};
     float tapShare = 1.0f, tapShareNext = 1.0f;
     std::atomic<float> readInPeak { 0.0f }, readOutPeak { 0.0f }, readPitchSwing { 0.0f };

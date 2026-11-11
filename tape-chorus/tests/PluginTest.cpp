@@ -2008,6 +2008,35 @@ static void testBypassTick()
     }
 }
 
+// 2026-11-11, real vocal pass. Moving Low Cut or High Cut must not put a staircase on the sound. In 0.3.1 the two filters took a new
+// setting once every 32 samples while they glided, and each time the voices stepped a little (found on a steady tone with every control
+// moving: a step of 0.0003 where the tone stood at 0.013). One still voice, wet only, a steady tone, the cut moved once: the sharpest
+// bend in the sound while the filter glides is held against the sharpest bend before the move.
+static void testCutGlide()
+{
+    struct Case { const char* id; float from, to; double tone; };
+    const Case cases[] = { { "lowCut", 150.0f, 600.0f, 100.0 }, { "lowCut", 600.0f, 60.0f, 100.0 }, { "highCut", 20000.0f, 1000.0f, 1000.0 }, { "highCut", 1500.0f, 9000.0f, 1000.0 } };
+    for (double sr : { 48000.0, 96000.0 })
+        for (const auto& c : cases)
+        {
+            PluginProcessor p;
+            plain (p, 1);
+            set (p, c.id, c.from);
+            prepare (p, 2, sr, 128);
+            const int n = (int) (2.0 * sr), moveBlock = (int) (sr / 128.0);
+            std::vector<float> in ((size_t) n);
+            sine (in.data(), n, c.tone, sr, 0.25);
+            auto out = render (p, in, 128, nullptr, [&] (int idx) { if (idx == moveBlock) set (p, c.id, c.to); });
+            const float* y = out.getReadPointer (0);
+            const auto bend = [&] (int from, int to) { double m = 0; for (int i = from + 2; i < to; ++i) m = std::max (m, (double) std::abs (y[i] - 2.0f * y[i - 1] + y[i - 2])); return m; };
+            const double before = bend ((int) (0.5 * sr), moveBlock * 128 - 8), during = bend (moveBlock * 128 - 8, n);
+            // After the move the tone may be louder than before it (a cut being opened), so the bend is held against the larger of the two steady states.
+            const double after = bend ((int) (1.7 * sr), n);
+            check (during <= 1.5 * std::max (before, after), std::string (c.id) + " moved from " + std::to_string ((int) c.from) + " to " + std::to_string ((int) c.to) + " Hz under a " + std::to_string ((int) c.tone)
+                       + " Hz tone at " + std::to_string ((int) sr) + " Hz: sharpest bend while it glides, against steady", during / std::max (before, after));
+        }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -2049,5 +2078,6 @@ int main()
     testArrival();
     testClean();
     testBypassTick();
+    testCutGlide();
     return finish();
 }

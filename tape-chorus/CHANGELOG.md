@@ -2,11 +2,12 @@
 
 ## 0.4.0, 2026-11-11
 
-Real vocal pass, on Luke's Rode takes. Two faults fixed, one new switch, three new presets. With Clean off, every preset and every setting that is not being moved sounds exactly as in 0.3.1, sample for sample.
+Real vocal pass, on Luke's Rode takes. Three faults fixed, one new switch, three new presets. With Clean off, every preset and every setting that is not being moved sounds exactly as in 0.3.1, sample for sample.
 
 Fixed:
 
 - A control that was moved stopped short of where it was put. Delay Time could stay up to 0.0003 ms off for good, and Voices, Depth, Low Cut, High Cut and Saturation likewise. Against the same setting held from the start that was a difference 55 dB under the sound on the takes (37 dB in the tests at 48 kHz, 24 dB at 96 kHz). Every control now lands exactly.
+- Moving Low Cut or High Cut put a small staircase on the voices: while a cut glided, its filter took the new setting once every 32 samples and the sound stepped each time (a bend 2.6 times the steady one on a 100 Hz tone as Low Cut went from 150 to 600 Hz). The filters now glide sample by sample: 1.01 times.
 - Bypass ticked on a steady tone. The 20 ms fade was a straight line with a corner at each end, which left a tick above 8 kHz, 78 to 86 dB under a 1 kHz tone. The fade is now S shaped: 105 to 132 dB under.
 
 New:
@@ -19,7 +20,7 @@ New:
   The delay you set is still the delay you get, to 0.002 sample at every rate, and latency is still 0. Switching it under sound fades over 30 ms with no tick (110 dB under a tone).
 - Three presets, after the 13 old ones so their numbers do not move: **Clean Vocal Double**, **Clean Wide Stack**, and **Worn Cassette Clean** (Worn Cassette control for control, with Clean on).
 
-Tests: limits that were wider than what the README says are now what it says. Mix 0 and Bypass must match the input in every sample (the limit was 120 dB under). Delay Time is held to 0.02 ms (it was 1 ms), and to 0.05 sample for one still voice at 44.1, 48, 88.2 and 96 kHz. The click limit of the shared test kit was a step of 0.30 on a tone whose own step is 0.004, and is 0.012 here. Nothing was hiding behind those three. New tests for arrival, the Bypass tick and Clean each failed before their fix.
+Tests: limits that were wider than what the README says are now what it says. Mix 0 and Bypass must match the input in every sample (the limit was 120 dB under). Delay Time is held to 0.02 ms (it was 1 ms), and to 0.05 sample for one still voice at 44.1, 48, 88.2 and 96 kHz. The click limit of the shared test kit was a step of 0.30 on a tone whose own step is 0.004, and is 0.012 here. Nothing was hiding behind those three. New tests for arrival, the Bypass tick, the cut staircase and Clean each failed before their fix.
 
 ## 0.3.1, 2026-11-07
 

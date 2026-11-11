@@ -1305,18 +1305,21 @@ void testTargetHold()
         chk (depth <= prolimits::lineWaverCents, "a note on the line with vibrato +/-20 cents: size of the 5.5 Hz waver in the output", depth, "cents");
         chk (nearest <= prolimits::lineSettleCents, "  and how far the output sits from the nearer of the two notes, median", nearest, "cents");
     }
-    // 2. What it may cost: a real step up a semitone that lands 25 cents flat, so only 25 cents past the line. Time from the step until
-    // the output is within 15 cents of the new note.
+    // 2. What it must not cost: a real step up a semitone that lands 25 cents flat, so only 25 cents past the line, at once and as a
+    // glide over 60 ms. Time from the end of the step until the output is within 15 cents of the new note. The limits are 1.5.1's own
+    // readings in Low Latency (10 ms at once, 4 ms on the glide; High Quality 4 and 2) plus 10 ms.
+    for (double glideMs : { 0.0, 60.0 })
     {
         auto p = make();
         prepare (*p, 1, SR, 256);
         auto f0 = voice::steady (220.0, 1.0, SR);
-        const auto second = voice::steady (220.0 * std::pow (2.0, 75.0 / 1200.0), 1.0, SR);
-        f0.insert (f0.end(), second.begin(), second.end());
+        const size_t glide = (size_t) (glideMs * 0.001 * SR);
+        for (size_t i = 0; i < (size_t) SR; ++i)
+            f0.push_back (220.0 * std::pow (2.0, 75.0 / 1200.0 * (glide == 0 ? 1.0 : std::min (1.0, (double) i / (double) glide))));
         const auto x = voice::synth (f0, voice::vowelA, SR);
         const auto out = mono (render (*p, x, 256));
-        const double delay = p->getLatencySamples() / SR, target = 220.0 * std::pow (2.0, 1.0 / 12.0), hop = 0.002;
-        const auto trace = pitchTrace (out.data(), (long) out.size(), SR, target, 1.0 + delay, 1.6 + delay, hop, 0.12);
+        const double delay = p->getLatencySamples() / SR, target = 220.0 * std::pow (2.0, 1.0 / 12.0), hop = 0.002, from = 1.0 + glideMs * 0.001 + delay;
+        const auto trace = pitchTrace (out.data(), (long) out.size(), SR, target, from, from + 0.6, hop, 0.12);
         double ms = 600.0;
         for (size_t i = 0; i + 10 < trace.size(); ++i)
         {
@@ -1324,7 +1327,8 @@ void testTargetHold()
             for (size_t k = i; k < i + 10 && ok; ++k) ok = trace[k] > 0.0 && std::abs (cents (trace[k], target)) <= 15.0;
             if (ok) { ms = (double) i * hop * 1000.0; break; }
         }
-        chk (ms <= prolimits::flatStepMs, "a step up a semitone landing 25 cents flat: time until the output is within 15 cents of the new note", ms, "ms");
+        chk (ms <= (glideMs > 0.0 ? prolimits::flatGlideStepMs : prolimits::flatStepMs),
+             std::string ("a step up a semitone landing 25 cents flat, ") + (glideMs > 0.0 ? "as a glide over 60 ms" : "at once") + ": time until the output is within 15 cents of the new note", ms, "ms");
     }
 }
 

@@ -70,7 +70,7 @@ public:
 
     void reset() noexcept
     {
-        correction = 0.0; target = -1; pendingTarget = -1; pastFor = 0.0; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
+        correction = 0.0; target = -1; pendingTarget = -1; pastFor = 0.0; recentCount = 0; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
         offCents = 0.0; identity = true; hasPitch = false; silentFor = 0.0; vibratoPhase = 0.0;
     }
 
@@ -91,6 +91,9 @@ public:
         input = p;
 
         const bool haveTarget = chooseTarget (p, s, held, tickSeconds);
+        recentAt = (recentAt + 1) % recentSize;
+        recent[(size_t) recentAt] = p;
+        recentCount = std::min (recentCount + 1, recentSize - 1);
         hasPitch = haveTarget;
         age += tickSeconds;
 
@@ -237,10 +240,14 @@ private:
                 // back and forth, the voice was pulled down, then up, then down, and on average was left where it was (real takes,
                 // 2026-11-10: 17 of 727 held notes at 98 Hz and over left uncorrected this way with the song's key set). So the note
                 // being held is kept until the voice has stayed on the far side for holdSeconds in a row, or is plainly on the other
-                // note, 35 cents past the half way point. A real step lands plainly; a waver comes back first.
+                // note, 35 cents past the half way point, or has just moved there in one go: 45 cents or more towards the new note within
+                // the last 60 ms. A step moves like that; a vibrato of +/-20 cents moves 34 cents in 60 ms at most. So a step is taken
+                // as fast as it always was, and only a waver has to wait.
                 pastFor = nearest == pendingTarget ? pastFor + tickSeconds : tickSeconds;
                 pendingTarget = nearest;
-                if (! holdTargets || s.classic || past > 0.70 || pastFor >= holdSeconds)
+                const double before = recent[(size_t) ((recentAt + recentSize - std::min (recentCount, moveTicks)) % recentSize)];
+                const bool jumped = (p - before) * (nearest > target ? 1.0 : -1.0) >= 0.45;
+                if (! holdTargets || s.classic || past > 0.70 || jumped || pastFor >= holdSeconds)
                 {
                     target = nearest;
                     startNote (p);
@@ -272,6 +279,10 @@ private:
     double correction = 0.0, age = 0.0, slowPitch = 0.0, output = 0.0, input = 0.0, offCents = 0.0, silentFor = 0.0, vibratoPhase = 0.0;
     int target = -1, pendingTarget = -1;
     double pastFor = 0.0;
+    // The last 64 readings of the voice's pitch, one a tick, for telling a step from a waver
+    static constexpr int recentSize = 64, moveTicks = 60;
+    std::array<double, recentSize> recent {};
+    int recentAt = 0, recentCount = 0;
     static constexpr bool holdTargets = true;
     static constexpr double holdSeconds = 0.08;
     bool identity = true, hasPitch = false;

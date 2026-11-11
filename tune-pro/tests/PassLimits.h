@@ -126,5 +126,6 @@ namespace prolimits
     // A note sung on the line between two notes, added 2026-11-11 from real takes. Set before the rule was run.
     constexpr double lineWaverCents = 20.0;           // the output's waver may not be bigger than the +/-20 cents that were sung
     constexpr double lineSettleCents = 15.0;          // the output's median from the nearer note: it has settled on one
-    constexpr double flatStepMs = 200.0;              // a semitone step landing 25 cents flat still reaches the new note this fast
+    constexpr double flatStepMs = 20.0;               // a semitone step landing 25 cents flat reaches the new note no later than in 1.5.1 (10 ms, 4 in High Quality) plus 10
+    constexpr double flatGlideStepMs = 14.0;          // the same step as a 60 ms glide: 1.5.1 reads 4 ms after the glide ends (2 in High Quality), plus 10
 }

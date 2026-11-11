@@ -5,6 +5,7 @@
 #include "PassLimits.h"
 #include "KeyCorpus.h"
 #include "VoiceTests.h"
+#include "MixVoiceTests.h"
 #include "ReadingFingerprint.h"
 #include "KeyEditor.h"
 #include "PluginProcessor.h"
@@ -208,6 +209,12 @@ static void testLoneVoice()
     check (u2.followedPercent() >= limits::voiceStepUp2Percent, "off key singer goes up two semitones, Single Voice: new 7 notes within 30 s", u2.followedPercent(), "%");
     info ("off key singer goes up two semitones: median time to the new notes", medianOf (u2.times), "s");
     info ("off key singer goes up two semitones: ends on the new notes", u2.endRightPercent(), "%");
+
+    // Music with that singer on top, music alone and the singer alone, on one seed nothing else uses. The clips, the runner and the
+    // limits are in MixVoiceTests.h; the limits were set from the chord limits before this seed was run.
+    mixvoicetests::report (mixvoicetests::runTable (a, heldOutSeed + 31),
+                           [] (bool ok, const std::string& what, double value, const char* unit) { check (ok, what, value, unit); },
+                           [] (const std::string& what, double value, const char* unit) { info (what, value, unit); });
 
     check (fingerprint::chordsInMixFingerprint() == fingerprint::expectedChordsInMix, "chords in Full Mix: every reading over 96 clips bit identical to 1.5.1");
 }

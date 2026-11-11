@@ -123,7 +123,8 @@ inline MixTrace trace (KeyAnalyser& a, const std::vector<float>& audio, double s
     }
     tr.settleNotes = sinceNotes;
     tr.settleExact = sinceExact;
-    if (n > 0) { tr.rightConfident = (double) right / n; tr.wrongConfident = (double) wrong / n; tr.loneShare = (double) lone / n; }
+    const double frames = (double) std::max (n, 1L);
+    tr.rightConfident = (double) right / frames; tr.wrongConfident = (double) wrong / frames; tr.loneShare = (double) lone / frames;
     return tr;
 }
 

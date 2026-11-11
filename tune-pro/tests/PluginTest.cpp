@@ -1375,6 +1375,9 @@ void testLowNotes()
         runPair (voice::synth (voice::phrase ({ 110.0 * sharp, 165.0, 131.0 * sharp, 196.0, 262.0 * sharp }, 0.5, SR), voice::vowelO, SR, -35.0));
         chk (different == 0, "voices at 99 to 440 Hz in Alto/Tenor: output samples that differ with the reach under the range switched on", (double) different);
         note ("  samples compared", (double) total);
+    }
+}
+
 // ------------------------------------------------------------------------------------------------------------ timing
 
 // Two timing faults found on real takes (2026-11-10), neither seen by the tests before, which read pitch on steady notes and
@@ -1437,7 +1440,7 @@ void testTiming()
     }
 
     // 2. A voice that is not being corrected comes out at the reported delay, also after a correction. A voice 40 cents sharp is
-    // corrected, then every note is set to Bypass: from 1.5 s after that the output must be the delayed input. That is the grains'
+    // corrected, then every note is set to Bypass: from 4.5 s after that (the walk back takes 600 periods at most) the output must be the delayed input. That is the grains'
     // promise (PsolaShifter.h). High Quality's harmonic shifter, which gives out notes above about 220 Hz, never made it: once it has
     // corrected a voiced stretch it keeps its own timing within a period until the stretch ends (TuneEngine.h), so there the number is
     // given, not judged.
@@ -1447,14 +1450,14 @@ void testTiming()
             for (int switchBlock : { 260, 275, 290 })
             {
                 auto p = tuner (altoTenor, 0.0f);
-                const auto x = voice::synth (voice::steady (hz * std::pow (2.0, 40.0 / 1200.0), 4.0, SR), voice::vowelA, SR);
+                const auto x = voice::synth (voice::steady (hz * std::pow (2.0, 40.0 / 1200.0), 7.5, SR), voice::vowelA, SR);
                 const auto out = mono (render (*p, x, 256, nullptr, [&] (int block)
                 {
                     if (block == switchBlock)
                         for (int i = 0; i < 12; ++i) setParam (*p, ("note" + juce::String (i)).toRawUTF8(), 2.0f);
                 }));
                 const long delay = p->getLatencySamples();
-                const long from = (long) switchBlock * 256 + (long) (1.5 * SR), to = (long) x.size() - 4800;
+                const long from = (long) switchBlock * 256 + (long) (4.5 * SR), to = (long) x.size() - 4800;
                 double err = 0.0, ref = 0.0;
                 for (long i = from; i < to; ++i)
                 {
@@ -1466,8 +1469,11 @@ void testTiming()
                 else worst = std::max (worst, db);
             }
         chk (worst <= prolimits::uncorrectedNullDb, std::string ("a voice left uncorrected after a correction, ") + (gEngine == 1 ? "147 and 196 Hz (the grains)" : "147 to 262 Hz")
-             + ": output against the input at the reported delay, from 1.5 s on, worst", worst, "dB");
+             + ": output against the input at the reported delay, from 4.5 s on, worst", worst, "dB");
         if (gEngine == 1) note ("  the same at 262 Hz, where the harmonic shifter gives the output (not judged)", harmonicWorst, "dB");
+    }
+}
+
 // ------------------------------------------------------------------------------------------- a note sung on the line
 
 // Real takes, 2026-11-10: an untrained singer often holds a note near the line between two notes of the scale and wavers across it.
@@ -1521,8 +1527,10 @@ void testTargetHold()
 
 std::vector<float> loadWav (const char* name);
 
-// Low Latency must come out bit for bit the same as the last version that changed it on purpose: 1.4.0, which stopped the burst at note starts and made the level trim slower.
-// Before that it was 1.2.1. tests/ll_null.txt holds a hash of the 32 bit samples for each case, written by 1.4.0.
+// Low Latency must come out bit for bit the same as the last version that changed it on purpose: 1.6.0, which reads the pitch control in line with
+// the audio, makes an uncorrected stretch an exact pass, keeps a held target through a waver, and follows notes under Alto/Tenor's range (19 of the
+// 24 cases changed; the 5 that did not are the parameters and the four latencies). Before that it was 1.4.0, which stopped the burst at note starts
+// and made the level trim slower, and before that 1.2.1. tests/ll_null.txt holds a hash of the 32 bit samples for each case, written by 1.6.0.
 // TUNE_LL_RAW=folder also writes the samples, to read a largest sample difference against a saved copy of an older build.
 void testLowLatencyNull()
 {
@@ -1619,9 +1627,9 @@ void testLowLatencyNull()
         const bool ok = stored.count (name) > 0 && stored[name] == value;
         same += ok ? 1 : 0;
         if (! ok)
-            check (false, "[LL] null test against 1.4.0, case " + name);
+            check (false, "[LL] null test against 1.6.0, case " + name);
     }
-    check (same == (int) found.size() && ! found.empty(), "[LL] null test against 1.4.0: output, parameters and latency bit for bit the same, cases", (double) same);
+    check (same == (int) found.size() && ! found.empty(), "[LL] null test against 1.6.0: output, parameters and latency bit for bit the same, cases", (double) same);
 }
 
 // --------------------------------------------------------------------------------------------------------- vibrato

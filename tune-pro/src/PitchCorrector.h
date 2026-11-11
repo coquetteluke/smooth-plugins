@@ -70,7 +70,7 @@ public:
 
     void reset() noexcept
     {
-        correction = 0.0; target = -1; pendingTarget = -1; pastFor = 0.0; recentCount = 0; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
+        correction = 0.0; target = -1; pendingTarget = -1; pastFor = 0.0; recentCount = 0; recentAt = 0; recent.fill (0.0); haveAverage = false; steadyFor = 0.0; holdAverage = 0.0; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
         offCents = 0.0; identity = true; hasPitch = false; silentFor = 0.0; vibratoPhase = 0.0;
     }
 
@@ -90,6 +90,11 @@ public:
         const double p = 69.0 + 12.0 * std::log2 (hz / s.referenceHz);
         input = p;
 
+        // Is this a held note? The voice has stayed within 35 cents of its own average over the last tenth of a second for 150 ms.
+        // Speech and rap slide through the notes and never do; a note with vibrato does.
+        if (! haveAverage) { holdAverage = p; haveAverage = true; steadyFor = 0.0; }
+        holdAverage += (1.0 - std::exp (-tickSeconds / 0.1)) * (p - holdAverage);
+        steadyFor = std::abs (p - holdAverage) < 0.35 ? steadyFor + tickSeconds : 0.0;
         const bool haveTarget = chooseTarget (p, s, held, tickSeconds);
         recentAt = (recentAt + 1) % recentSize;
         recent[(size_t) recentAt] = p;
@@ -246,8 +251,10 @@ private:
                 pastFor = nearest == pendingTarget ? pastFor + tickSeconds : tickSeconds;
                 pendingTarget = nearest;
                 const double before = recent[(size_t) ((recentAt + recentSize - std::min (recentCount, moveTicks)) % recentSize)];
-                const bool jumped = (p - before) * (nearest > target ? 1.0 : -1.0) >= 0.45;
-                if (! holdTargets || s.classic || past > 0.70 || jumped || pastFor >= holdSeconds)
+                const bool jumped = recentCount > 0 && (p - before) * (nearest > target ? 1.0 : -1.0) >= 0.45;
+                // Only a held note is held on to: a voice that slides, as speech does, changes target where it always did. (Holding on
+                // through a slide made the corrections bigger: real speech, worst 1% of 20 ms frames, level change 2.86 to 3.23 dB.)
+                if (! holdTargets || s.classic || steadyFor < steadySeconds || past > 0.70 || jumped || pastFor >= holdSeconds)
                 {
                     target = nearest;
                     startNote (p);
@@ -284,7 +291,9 @@ private:
     std::array<double, recentSize> recent {};
     int recentAt = 0, recentCount = 0;
     static constexpr bool holdTargets = true;
-    static constexpr double holdSeconds = 0.08;
+    static constexpr double holdSeconds = 0.08, steadySeconds = 0.15;
+    double holdAverage = 0.0, steadyFor = 0.0;
+    bool haveAverage = false;
     bool identity = true, hasPitch = false;
 };
 } // namespace smoothtune

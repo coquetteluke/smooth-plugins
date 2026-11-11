@@ -365,8 +365,9 @@ private:
                     // so does one whose mark was not known in time. Up to 1.5.1 that offset was then kept for as long as nothing was
                     // corrected, so the "untouched" voice came out up to 0.6 of a period early or late (62 samples early on a real take),
                     // which combs against the dry signal at any Mix under 100. Now it is walked back to the reported delay, by at most
-                    // 0.3% of the period a grain: 5 cents, for 200 periods at the very most (about a second), the same thing the grains
-                    // do while correcting a note by 5 cents. Going back in one grain would make one period up to 60% too long or short.
+                    // 0.1% of the period a grain: 1.7 cents, for 600 periods at the very most (2 to 4 s), the same thing the grains do
+                    // while correcting a note by 1.7 cents. Faster was tried: at 0.3% the 5 cents it adds showed in the hard step test
+                    // (the settled note read 5.2 cents off). Going back in one grain would make one period up to 60% too long or short.
                     double offset = lastOffset;
                     if (walkLockedOffset && offset != 0.0)
                     {
@@ -539,7 +540,7 @@ private:
     Plan planned = Plan::pass;
     double peakOfNewest = 0.0, lastOffset = 0.0, plannedOffset = 0.0, pulseOffset = 0.0;
     static constexpr bool walkLockedOffset = true;
-    static constexpr double lockedWalkShare = 0.003;
+    static constexpr double lockedWalkShare = 0.001;
     int pulseGrains = 0;
     bool plain = true;
     long long lastMarkUsed = -1;

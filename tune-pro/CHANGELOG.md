@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.6.0, 2026-11-11
+
+Four fixes found on Luke's own takes (17 whole songs, Rode NT1, 2026-11-10). Low Latency and Classic change on purpose, so the Low Latency null test now holds 1.6.0's output (19 of its 24 cases changed; the other 5 are the parameter list and the four latencies). Latency, parameters and AU codes are unchanged. High Quality changes only where listed. Real take numbers are the 11 working takes with Key and Scale set to each song's key, measured by `_shared/realvox`; the 6 blind takes were run once at the end and are in `_vox/rode/work/tune-pro/REPORT.md`.
+
+**1. Alto/Tenor follows notes under its range, down to 70 Hz, at the same 13.7 ms.** Its range starts at 98 Hz and Luke sings down to 77 to 95 Hz; those notes were not followed at all and came out exactly as sung. A second reading now looks at the longer periods over a window that reaches further back in time, not further ahead, and only speaks where the range's own reading says "not voiced" (`PitchTracker::analyseLow`). The range's reading is the same code and never sees the second one: test voices at 99 to 440 Hz come out bit for bit the same with and without it.
+- What it costs. In Low Latency a grain for a note under 98 Hz is cut from the newest period already known, up to 1.4 periods back; on Luke's low notes the band above 9 kHz reads 4 dB over the dry voice in the top 5% of frames, against 1 dB in Low Male, which has the delay for a whole period. High Quality has no such cost. After a note under 98 Hz the rest of that phrase is not sample for sample 1.5.1 any more (the marks carry on from the low note), and the level trim, which averages over the corrected voice it has heard, differs by up to 0.3 dB for a few seconds.
+
+**2. Low Latency and Classic: the pitch control is read in line with the audio.** The grains give out the input one whole latency late, 1.33 times the Input Type's longest period, but the pitch the tracker reports is only about two of the voice's own periods old. So on every note above the bottom of the range the correction ran ahead of the sound it belonged to: on a test voice with vibrato 0.8, 3.9 and 6.5 ms early in Alto/Tenor at 147, 196 and 262 Hz, and 7.7, 10.7 and 13.2 ms in Low Male and Wide Range. The control is now read that much further back (`TuneEngine::pitchInLine`). Whether a sound is voiced is decided where it was, so notes are not picked up later.
+- What changes in the sound: a correction no longer starts before its note. Measured from the moment the new note arrives in the audio, a flat semitone step reaches its note in 16 ms, where 1.5.1 read 10, because 1.5.1 had started about 4.5 ms early.
+- Under about 140 Hz in Alto/Tenor the reading is older than the whole latency, so there the control is still late, by up to 5.8 ms at 98 Hz, as it always was. Only more latency fixes that: Low Male and Wide Range have it.
+- High Quality is not changed. Its control runs ahead in the same way, and reading it in line moves the ninth held out set's speaking formant move from 4.62% to 5.00% (limit 4), because its vocal tract settings were tuned with the lead in place. The code is there, switched off (`alignHighQuality`).
+
+**3. A voice with nothing to correct comes out as the delayed input.** With no correction the grains step from mark to mark at the reported delay. Where the next mark was not there (the marks had been started again, or it was not known yet) the grain was cut from the nearest mark, up to 0.6 of a period away, and that offset was then kept for the rest of the uncorrected stretch. It is now a plain read at the reported delay, and the two halves of the window share one raised cosine as long as the spacing, so the output is the input, sample for sample. An offset left by a correction is walked back at 0.1% of the period a grain (1.7 cents, 600 periods at most). This is the grains, so it also holds in High Quality below about 220 Hz; its harmonic shifter above that never promised it.
+
+**4. A held note keeps its target through a waver.** The target was the nearest note at every moment, with 12 cents of hysteresis. A singer who holds a note near the line between two notes and wavers by more than that sent the target back and forth, and the tuner made the waver bigger: a test voice 47 cents sharp of A3 with a +/-20 cent vibrato came out with a 45 cent waver, 34 cents from either note. Now a note that has been held (within 35 cents of its own average for 150 ms) keeps its target until the voice has stayed past the line for 80 ms, is 35 cents past it, or got there in one move of 45 cents within 60 ms. The same voice: a 19 cent waver, 14 cents from the note. A real step is taken where it always was (flat semitone step, at once and as a 60 ms glide: no later than before, apart from point 2), and a voice that slides, as speech and rap do, is not held at all. Classic is left as it was.
+
+| | 1.5.1 | 1.6.0 | Limit |
+|---|---|---|---|
+| Alto/Tenor, held notes at 78 to 92 Hz, output pitch error at instant speed | 35.0 cents (not corrected) | 0.19 cents | 5 |
+| Alto/Tenor, 87 Hz, non-harmonic energy in the corrected voice, Low Latency / High Quality | not corrected | -38.5 / -45.6 dB (Low Male -41.9 / -45.7) | -35 |
+| Pitch movement against the sound, test voice, worst of three Input Types, Low Latency | 13.2 ms early | 0.86 ms early | 1 |
+| The same, High Quality (not fixed) | 15.2 ms early | 15.2 ms early | none |
+| An uncorrected voice after a correction, against the input at the reported delay | +5.0 dB | -168.8 dB | -90 |
+| A note on the line with +/-20 cents vibrato, waver in the output | 45.4 cents | 19.4 cents | 20 |
+| Flat semitone step, time to the new note, at once / 60 ms glide, Low Latency | 10 / 4 ms | 16 / 8 ms | 20 / 14 |
+| After a hard step the new note is on pitch, 95th percentile, Low Latency | 0.06 cents | 1.80 cents | 5 |
+| Real speech, worst 1% of 20 ms frames, level change, Low Latency / High Quality | 2.86 / 2.64 dB | 2.89 / 2.64 dB | 3 |
+
+| Luke's 11 working takes, Key set to the song, default settings unless said | 1.5.1 | 1.6.0 | Limit |
+|---|---|---|---|
+| Held notes under 98 Hz left exactly as sung, of 12 (Low Latency / High Quality / Classic) | 4 / 3 / 3 | 0 / 0 / 1 | 0 |
+| Held notes under 98 Hz within 10 cents of their note, Classic, of 12 | 1 | 11 | |
+| Octave errors on held notes | 0 | 0 | 0 |
+| Output over a semitone from the voice for 20 ms or more, Alto/Tenor (Low Latency / Classic) | 27 / 7 | 10 / 5 | 0 |
+| The same in Low Male, Low Latency | 171 | 16 | 0 |
+| Where the voice slides, output moving the other way, sung / rap takes, Alto/Tenor | 3.28 / 4.73% | 2.98 / 4.32% | 5 |
+| The same in Low Male | 5.80 / 8.71% | 2.97 / 4.40% | 5 |
+| Pitch movement against the reported latency, median of takes, Low Male (Low Latency / Classic) | 332 / 332 samples early | 3 / 37 early | 48 |
+| The same in Alto/Tenor, Low Latency | 8 early | 54 late (notes under 140 Hz, see point 2) | 48 |
+| The same, High Quality, Alto/Tenor (not fixed) | 73 early | 50 early | 48 |
+| Every note set to Bypass: output against the input at the reported delay, worst take, Low Latency | -6.5 dB | -155.9 dB | -90 |
+| The same, stretches more than 24 samples off the reported delay | 93 of 2631 | 0 of 2633 | |
+| The same in High Quality (the harmonic shifter above 220 Hz keeps its own timing) | -5.8 dB | -33.6 dB | -90 |
+| Held notes on another scale note than his median was nearest, clear / on the line, of 739 | 2 / 22 | 3 / 25 | 0 clear |
+| Held notes left as sung though 20 cents or more off, of 739 | 21 | 17 | 0 |
+| Clicks by the shared rule | 8 | 9 | 0 |
+| Start lag, clean starts, median / 90th percentile | 105 / 285 ms | 105 / 285 ms | 50 / 120 |
+
+What the takes say about point 4: nothing either way. The notes that end on the other side of a line, or stay where they were, are mostly notes where his own pitch moves across the line during the note, and the default's Humanize 30 follows that 140 ms late (README). The test voice shows the rule working; his takes do not show it helping yet.
+
+Not fixed, and why: the ninth held out set's speaking formant move still reads 4.619% against 4, exactly as in 1.5.1 (High Quality's formant path was not touched, so no tenth set was written); High Quality's control lead; the grains cut one period back from 98 to about 140 Hz in Alto/Tenor Low Latency (README, "Found on Luke's real takes"). Full suite: 539 pass, 3 fail (; 1.5.1: 520 pass, 1 fail, on 21 fewer checks).
+
 ## 1.5.1, 2026-11-09
 
 High Quality's grains, used below about 220 Hz, now sit on the tracker's pitch marks instead of on a pulse position found once at the start of each voiced stretch. Low Latency, Classic and latency are bit for bit 1.5.0.

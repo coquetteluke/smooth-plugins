@@ -22,7 +22,7 @@ Every control is a real AU parameter that a host can find by name. The window on
 | Throat | Formant shift, 60 to 150%. Above 100 lowers the formants, as a longer throat would. Pitch does not move. Only voiced sound is changed. |
 | Formant Preserve | On keeps the formants. Off lets them follow the pitch. |
 | Transpose | -24 to +24 semitones, after correction. |
-| Input Type | Voice range: Soprano, Alto/Tenor, Low Male, Wide Range. The lowest note sets the latency. |
+| Input Type | Voice range: Soprano, Alto/Tenor, Low Male, Wide Range. The lowest note sets the latency. Alto/Tenor's range starts at 98 Hz, and since 1.6.0 it also follows notes under that, down to 70 Hz, at the same latency. |
 | Reference A4 | 415 to 466 Hz. |
 | Tracking | Which sounds count as pitched. 0 is choosy, 100 tunes rough, breathy sound too. |
 | Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key. Bad, stale or low confidence data is ignored and the last good key holds. |
@@ -45,7 +45,7 @@ Latency at 48 kHz, reported to the host and measured on noise and voices:
 | Alto/Tenor | 13.7 ms | 58.7 ms |
 | Low Male, Wide Range | 20.6 ms | 65.6 ms |
 
-- **Low Latency** sits as close to the input as the longest period allows. Use it while tracking.
+- **Low Latency** sits as close to the input as the longest period allows. Use it while tracking. Since 1.6.0 its pitch control is read in line with the audio it is giving out (it ran up to 13 ms ahead in Low Male and Wide Range), and a voice with nothing to correct comes out as the delayed input, sample for sample.
 - **High Quality** adds 45 ms. That buys a vocal tract model that sees both sides of each moment, a first look at whether a sound is voiced before it reaches the output, and grains centred on the pulses of the voice. Use it for mixing.
 
 Changing Engine or Input Type warms the other engine while the first keeps playing, then crossfades over 12 ms, so there is no gap and no click. The host is told the new latency at that point. During those 12 ms the two run at different delays, so level can dip briefly: 7 dB at worst in a 5 ms reading.
@@ -113,6 +113,8 @@ Bold fails its limit. See below.
 - CPU, one core, 48 kHz stereo: about 3.4% while correcting in Low Latency, 4.4% in High Quality, about 8% at 96 kHz.
 
 ## What does not pass, and what the numbers do not say
+
+- **Found on Luke's real takes, 2026-11-11, and not fixed in 1.6.0.** (1) High Quality's pitch control still runs ahead of its audio: 73 samples at the median of 11 takes in Alto/Tenor, 261 in Low Male. Reading it in line, as Low Latency now does, moves the ninth held out set's speaking formant move from 4.62% to 5.00% (limit 4), because High Quality's vocal tract settings were tuned with the lead in place. The code is there, switched off (`TuneEngine.h`, `alignHighQuality`). (2) In Low Latency, Alto/Tenor, notes from 98 to about 140 Hz often have their grains cut one period back, because the mark for the nearer period is not known in time at this latency. The vocal tract model is then put back for a slightly later moment than the grain came from, and on a fast change that leaves a dip of about 10 dB for 15 ms and a few ms of hiss above 9 kHz (take 09 at 50.20 s, take 01 at 163.32 s). Notes under 98 Hz, which 1.6.0 now follows, are cut the same way. Low Male, Wide Range and High Quality do not do it. Fixing it means loading the model for the moment the grain was read from, which is a change to the formant path and needs a tenth held out set first. (3) At the default, Humanize 30 slows the correction on the held part of a note to 140 ms, so on a singer whose pitch moves inside the note the correction arrives late: 37% of his held notes end more than 10 cents from the note. Hard Tune and Classic on the same takes: 5% and 4%.
 
 - **High notes still read flat.** Around 440 and 660 Hz the first formant reads 13.1 dB flatter than a real voice, against a 9 dB limit, and the model does not beat plain grains on this one number (11.8 dB). Harmonics there are wider apart than a formant, so on a held note the peak's height is simply not in the input. The memory is off above 400 Hz, because there even vibrato does not sweep a harmonic across the whole peak. What the model does fix there: formant position read against the input goes from 45% to 16.5%, and overall colour from 6.6 to 5.7 dB.
 - **Held out voices still fail two limits.** The first set was looked at while tuning 1.3.0 and 1.4.0, so it is no longer clean. Low voices, 98 to 220 Hz, now pass: formant move 1.52% against 4% (1.3.0: 4.24%), level 0.72 dB against 1.5 (1.3.0: 1.69). High voices, 392 to 740 Hz: first formant 15.9 dB flatter than a real voice against 9 dB. Held notes, each harmonic against a real voice: 4.54 dB on average against a 3.5 dB target set for a later version.

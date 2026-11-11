@@ -25,3 +25,7 @@ run  cpu%   fastcore-equiv%  Pcore%  fps   main%  audio%  Minstr/s  Minstr/frame
   3    0.7           0.3        74    0.2    0.3    0.1        26        131.8   3.6      2
 cpu time: lowest 0.7%, median 0.7%, highest 0.7% of one core
 work, in fast core terms: lowest 0.3%, median 0.3%, highest 0.3%
+
+0.4.0, 2026-11-11 16:30, RenderWindow --live 3 5 normal, with four other agents building and rendering on the Mac (load average 9 to 16).
+The window gained one switch (Clean, under Saturation). Default: cpu time 4.7, 4.8, 4.9 % of one core (3.1 % in fast core terms), 30.0 frames a second.
+Worn Cassette Clean (preset 15): 3.6, 3.7, 5.8 % (2.7, 2.7, 2.8 % in fast core terms).

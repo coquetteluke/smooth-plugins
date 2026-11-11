@@ -418,12 +418,12 @@ PASS  a session saved by 0.4.0 keeps all three switches as saved
 PASS  preset Natural Pair: Precise Vibrato on, Mono Safe off, Match Level on
 PASS  preset Tight Double: Precise Vibrato on, Mono Safe and Match Level off
 PASS  preset Quiet Thickener: Precise Vibrato on, Mono Safe and Match Level off
-PASS  preset Wide Stack: keeps the 0.3 vibrato it was made with, Mono Safe and Match Level off
-PASS  preset Loose Gang: keeps the 0.3 vibrato it was made with, Mono Safe and Match Level off
+PASS  preset Wide Stack: Precise Vibrato on, Mono Safe and Match Level off
+PASS  preset Loose Gang: Precise Vibrato on, Mono Safe and Match Level off
 PASS  preset Doubles Only Wide: Precise Vibrato on, Mono Safe and Match Level off
-PASS  preset Two Singers: keeps the 0.3 vibrato it was made with, Mono Safe and Match Level off
+PASS  preset Two Singers: Precise Vibrato on, Mono Safe and Match Level off
 PASS  preset Slapback Double: Precise Vibrato on, Mono Safe and Match Level off
-PASS  an old session with Wide Stack's settings sounds as the preset does, bit for bit
+PASS  an old session with Wide Stack's settings sounds as the preset did before it used Precise Vibrato, bit for bit
 PASS  switching Precise Vibrato on changes what Vibrato Variation does
 PASS  delay reading matches the delay measured from the audio, reading = 36.000 ms
 PASS  pitch reading matches a 220 Hz note, reading = 220.314 Hz
@@ -525,7 +525,7 @@ PASS  block size 64 gives the same output as 512
 PASS  block size 4096 gives the same output as 512
 PASS  a playhead changes nothing
 PASS  prepare called again restarts cleanly, same bounce
-PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.019 
+PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.024 
 PASS  the sung recording loads
 PASS  null test: bit for bit the same as 0.2.0, no window, as first opened
 PASS  null test: bit for bit the same with the window open and drawing, as first opened
@@ -691,11 +691,11 @@ PASS  the singer stays on its real delay, worst, Natural Pair = 0.498 px
 PASS  share of time a singer is outside its lane, Natural Pair = 0.000 %
 PASS  the readout shows the delay: 22 ms
 PASS  live while the voice plays, Wide Stack
-PASS  the singer stays on its real delay, worst, Wide Stack = 0.669 px
+PASS  the singer stays on its real delay, worst, Wide Stack = 0.632 px
 PASS  share of time a singer is outside its lane, Wide Stack = 0.000 %
 PASS  the readout shows the delay: 23 ms
 PASS  live while the voice plays, Loose Gang
-PASS  the singer stays on its real delay, worst, Loose Gang = 1.048 px
+PASS  the singer stays on its real delay, worst, Loose Gang = 0.941 px
 PASS  share of time a singer is outside its lane, Loose Gang = 0.000 %
 PASS  the readout shows the delay: 26 ms
 PASS  live while the voice plays, Slapback Double

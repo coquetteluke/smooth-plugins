@@ -18,7 +18,7 @@ Audio Units > Luke Garito > Duo. AU code: `aufx SDuo Luke`. Works mono to stereo
 | Timing Amount | 0 to 200 % | Scales the slow timing wander set by Tightness. 100 is normal. |
 | Pitch Amount | 0 to 200 % | Scales the quicker pitch wander set by Tightness. 100 is normal. Timing wander bends pitch a little too, so 0 here is not perfectly still unless Timing Amount is also 0. |
 | Vibrato Variation | 0 to 100 % | Follows the vibrato in your vocal and changes it in the copies. At 100, double 1 sings almost straight, double 2 sings half again as wide, double 3 sings half as wide. Does nothing to a voice with no vibrato, and leaves slides and note changes alone. |
-| Precise Vibrato | on or off | On (a new Duo opens with it on): Vibrato Variation finds your vibrato's own speed and lines its change up with each double's delay, so it works at any vibrato speed and at any Tightness. Off: the way Vibrato Variation worked before 0.4, which only got it right for a vibrato near 5.5 Hz with the doubles close. Sessions saved before 0.4 load with it off, and the three presets that use Vibrato keep it off, so they sound exactly as they did. |
+| Precise Vibrato | on or off | On (a new Duo opens with it on): Vibrato Variation finds your vibrato's own speed and lines its change up with each double's delay, so it works at any vibrato speed and at any Tightness. Off: the way Vibrato Variation worked before 0.4, which only got it right for a vibrato near 5.5 Hz with the doubles close. Sessions saved before 0.4 load with it off, so they sound exactly as they did. Every preset switches it on. |
 | Timbre Variation | 0 to 100 % | Moves each copy's formants without moving its pitch, so it sounds like a different throat. At 100: double 1 up 3 semitones, double 2 down 3, double 3 up 1.5. At 0 the copies are exact, unprocessed copies. |
 | Vocal Range | Soprano, Alto or Tenor, Baritone or Bass, Instrument | Where to look for the pitch. Only Vibrato Variation and the formant follower use it. |
 | Lead Pan | -100 to +100 % | Places the lead. Equal power. On one output it does nothing. |
@@ -50,10 +50,10 @@ Pictures are in `docs/window/`, made by `build/RenderWindow_artefacts/Release/Re
 - **Natural Pair**: the default. 2 doubles, one on each side, with Match Level on so it comes out as loud as the dry vocal.
 - **Tight Double**: 1 close copy, a moderate spread.
 - **Quiet Thickener**: 2 quiet copies, close to centre.
-- **Wide Stack**: 3 doubles, full Width, a little vibrato and timbre change. Precise Vibrato off, as it was made.
-- **Loose Gang**: 3 doubles, very loose, the most difference between voices. Precise Vibrato off, as it was made.
+- **Wide Stack**: 3 doubles, full Width, a little vibrato and timbre change.
+- **Loose Gang**: 3 doubles, very loose, the most difference between voices.
 - **Doubles Only Wide**: lead off, 2 copies wide. For a send or a copied track.
-- **Two Singers**: lead left of centre, one copy right, with changed timbre and vibrato. Precise Vibrato off, as it was made.
+- **Two Singers**: lead left of centre, one copy right, with changed timbre and vibrato.
 - **Slapback Double**: 1 copy at about 90 ms, for an obvious echo double.
 
 ## Signal flow
@@ -115,4 +115,3 @@ Measured on the 11 working takes of Luke's Rode session (01, 02, 04, 05, 06, 07,
 
 - On Luke's voice as recorded, Vibrato Variation changes almost nothing, because he sings almost no vibrato. The first real-vocal check counted slides and wobble as vibrato and so read this as a fault; it still reads that way (0.98 against a limit of 0.5), and Duo is right not to flatten slides.
 - At Timbre Variation 100 the take's own mouth ticks come out with a changed shape in the doubles (up to 2.1 times as large in one of 24 cases, 1.07 times at the median). The shared click check does not know a reshaped copy from a new click, so it counts 24 events at Timbre 100 against 7 at Timbre 0.
-- Wide Stack, Loose Gang and Two Singers still use the 0.3 vibrato law. Moving them to Precise Vibrato changes how they sound, so that waits for Luke (branch `presets-precise-vibrato`).

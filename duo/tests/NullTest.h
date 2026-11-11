@@ -62,6 +62,13 @@ namespace nulltest
             prm->setValueNotifyingHost (0.0f);
         }
 
+        // The numbers this is held against are from 0.2.0, whose vibrato law is what Precise Vibrato off still runs. The presets now
+        // switch Precise Vibrato on, so it is switched off again here: the old law is still the same bit for bit.
+        {
+            auto* prm = p.apvts.getParameter ("precisevibrato");
+            prm->setValueNotifyingHost (0.0f);
+        }
+
         p.setPlayConfigDetails (c.inputs, c.outputs, c.rate, c.block);
         p.prepareToPlay (c.rate, c.block);
 

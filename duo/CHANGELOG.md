@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.2, 2026-11-11
+
+Luke said yes to this on 2026-11-11.
+
+Wide Stack, Loose Gang and Two Singers now use Precise Vibrato, like the other presets and like a new Duo. Until now they kept the 0.3 vibrato law so that they would sound exactly as they did.
+
+- What changes: these three presets set Vibrato Variation to 20, 40 and 30. With the 0.3 law the doubles are bent all the time by whatever the pitch does at about 4 to 9 Hz, vibrato or not, a little out of step. With Precise Vibrato they are bent only where there is a real vibrato, and then in step with it. On a voice with no vibrato, like Luke's on these takes, the doubles of these presets therefore move a little less against the lead than before. Measured on the 11 working takes: the level of each preset is the same within 0.05 dB, and what a pitch tracker after Duo gets is the same (0.10% of held-note frames off against 0.11% for Wide Stack, 0.50% against 0.46% for Loose Gang, 0.41% against 0.36% for Two Singers). On the 30 s clips of takes 09 and 16 the old and the new Wide Stack differ by 6 to 8 dB under the signal and Loose Gang by 2 to 4 dB under it, which is the doubles sitting a fraction of a millisecond elsewhere. Clips of the old and the new presets are in `_vox/rode/work/duo/demo/presets-main` and `demo/presets-precise-vibrato`.
+- A session saved with one of these presets keeps the vibrato law it was saved with.
+- The null test still holds every case to the 0.2.0 sound bit for bit, with Precise Vibrato switched off for it.
+- Two test lines follow the presets: the line that held these three presets to "keeps the 0.3 vibrato it was made with" now holds every preset to Precise Vibrato on, and the old session test compares against Wide Stack with Precise Vibrato switched off. No limit changed.
+
 ## 0.4.1, 2026-11-11
 
 Luke said yes to this on 2026-11-11.

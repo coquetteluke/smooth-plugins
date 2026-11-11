@@ -12,7 +12,7 @@ namespace
         int doubles;
         float tightness, width, lead, level1, level2, level3;
         float timing = 100.0f, pitch = 100.0f, vibrato = 0.0f, timbre = 0.0f, leadPan = 0.0f, doublesPan = 0.0f, extra = 0.0f;
-        // The three presets that use Vibrato Variation were made on the 0.3 vibrato law and keep it, so they sound as they did.
+        // Every preset uses Precise Vibrato. (Until this change the three that use Vibrato Variation kept the 0.3 law.)
         bool preciseVibrato = true;
         // Only the default, Natural Pair, is level matched. The other presets keep the level they were made at.
         bool matchLevel = false;
@@ -32,10 +32,10 @@ namespace
         { "Natural Pair",      2, 30.0f,  70.0f,   0.0f,  -6.0f,  -6.0f,  -8.0f, 100.0f, 100.0f,  0.0f,  0.0f,   0.0f,  0.0f,  0.0f, true, true },
         { "Tight Double",      1, 10.0f,  50.0f,   0.0f,  -8.0f,  -8.0f,  -8.0f },
         { "Quiet Thickener",   2, 15.0f,  15.0f,   0.0f, -12.0f, -12.0f, -12.0f },
-        { "Wide Stack",        3, 45.0f, 100.0f,  -1.0f,  -6.0f,  -6.0f,  -8.0f, 100.0f, 100.0f, 20.0f, 15.0f,   0.0f,  0.0f,  0.0f, false },
-        { "Loose Gang",        3, 85.0f, 100.0f,  -2.0f,  -5.0f,  -5.0f,  -5.0f, 100.0f, 120.0f, 40.0f, 25.0f,   0.0f,  0.0f,  0.0f, false },
+        { "Wide Stack",        3, 45.0f, 100.0f,  -1.0f,  -6.0f,  -6.0f,  -8.0f, 100.0f, 100.0f, 20.0f, 15.0f },
+        { "Loose Gang",        3, 85.0f, 100.0f,  -2.0f,  -5.0f,  -5.0f,  -5.0f, 100.0f, 120.0f, 40.0f, 25.0f },
         { "Doubles Only Wide", 2, 35.0f, 100.0f, -60.0f,   0.0f,   0.0f,  -3.0f },
-        { "Two Singers",       1, 40.0f,   0.0f,   0.0f,   0.0f,   0.0f,   0.0f, 100.0f, 100.0f, 30.0f, 40.0f, -40.0f, 40.0f,  0.0f, false },
+        { "Two Singers",       1, 40.0f,   0.0f,   0.0f,   0.0f,   0.0f,   0.0f, 100.0f, 100.0f, 30.0f, 40.0f, -40.0f, 40.0f },
         { "Slapback Double",   1, 20.0f,  30.0f,   0.0f,  -9.0f,  -9.0f,  -9.0f, 100.0f, 100.0f,  0.0f,  0.0f,   0.0f,  0.0f, 70.0f },
     };
 

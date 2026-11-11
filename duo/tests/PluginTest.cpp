@@ -1597,17 +1597,17 @@ static void testOlderSessions()
     for (int i = 0; i < fresh.getNumPrograms(); ++i)
     {
         PluginProcessor q; setParam (q, "monosafe", 1.0f); setParam (q, "matchlevel", i == 0 ? 0.0f : 1.0f); q.setCurrentProgram (i);
-        const bool usesVibrato = q.apvts.getRawParameterValue ("vibrato")->load() > 0.0f;
-        check (flag (q, "precisevibrato") == ! usesVibrato && ! flag (q, "monosafe") && flag (q, "matchlevel") == (i == 0),
-               "preset " + q.getProgramName (i).toStdString() + (usesVibrato ? ": keeps the 0.3 vibrato it was made with, Mono Safe and Match Level off" : i == 0 ? ": Precise Vibrato on, Mono Safe off, Match Level on" : ": Precise Vibrato on, Mono Safe and Match Level off"));
+        check (flag (q, "precisevibrato") && ! flag (q, "monosafe") && flag (q, "matchlevel") == (i == 0),
+               "preset " + q.getProgramName (i).toStdString() + (i == 0 ? ": Precise Vibrato on, Mono Safe off, Match Level on" : ": Precise Vibrato on, Mono Safe and Match Level off"));
     }
 
-    // The sound of an old session: Wide Stack's settings arriving as a pre 0.4.0 state give the same samples as the preset.
+    // The sound of an old session: Wide Stack's settings arriving as a pre 0.4.0 state give the same samples as the preset with
+    // Precise Vibrato switched off, which is how the preset was until its vibrato was moved to the precise law.
     {
         const double sr = 48000.0;
         const int n = 48000 * 3;
         const auto x = vibratoNote (n, sr, 196.0, 5.2, 40.0);
-        PluginProcessor a; a.setCurrentProgram (3);
+        PluginProcessor a; a.setCurrentProgram (3); setParam (a, "precisevibrato", 0.0f);
         PluginProcessor source; source.setCurrentProgram (3);
         const auto wide = stateWithout04 (source);
         PluginProcessor b; b.setStateInformation (wide.getData(), (int) wide.getSize());
@@ -1615,7 +1615,7 @@ static void testOlderSessions()
         auto ya = render (a, x, 256), yb = render (b, x, 256);
         bool same = true;
         for (int ch = 0; ch < 2 && same; ++ch) same = std::memcmp (ya.getReadPointer (ch), yb.getReadPointer (ch), sizeof (float) * (size_t) n) == 0;
-        check (same, "an old session with Wide Stack's settings sounds as the preset does, bit for bit");
+        check (same, "an old session with Wide Stack's settings sounds as the preset did before it used Precise Vibrato, bit for bit");
         setParam (b, "precisevibrato", 1.0f);
         prepareMonoToStereo (b, sr, 256);
         auto yc = render (b, x, 256);

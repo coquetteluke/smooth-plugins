@@ -382,6 +382,13 @@ private:
                         plannedOffset = offset;
                     }
                 }
+                // No next mark to step to (the marks were started again, or the next one is not known yet). Up to 1.5.1 this grain was
+                // then cut from whichever mark was nearest, somewhere within 0.6 of a period of the reported delay, and that offset was
+                // kept for the rest of the uncorrected stretch: on real takes with every note set to Bypass, 8 to 10% of the time came
+                // out up to 300 samples early or late. Now it is a plain read at the reported delay, as on unvoiced sound, and the
+                // grain after it lands on a mark again.
+                if (walkLockedOffset && planned != Plan::locked && lastOffset == 0.0)
+                    planned = Plan::pass;
             }
             else if (lastMarkUsed < 0 && tracker.hasMarks())
             {
@@ -415,9 +422,15 @@ private:
             // grain. Longer ones were measured and only flattened the formants further. The rise never takes longer than the
             // spacing, because the next grain cannot start before it has been decided.
             const double shortest = period, longest = period;
-            const double half = std::clamp (spacing, shortest, longest);
+            // Nothing corrected and both grains at the reported delay: the falling and the rising half share one raised cosine as long as
+            // the spacing, so the two sum to exactly 1 and the output is the delayed input, whatever the spacing of the marks.
+            const bool exactPass = walkLockedOffset && c.noCorrection && lastOffset == 0.0
+                                   && (planned == Plan::pass || (planned == Plan::locked && plannedOffset == 0.0));
+            if (planned == Plan::pass && exactPass)
+                spacing = std::floor (std::min ((double) fallback, std::max (16.0, period)));
+            const double half = exactPass ? spacing : std::clamp (spacing, shortest, longest);
             if (current != nullptr) { current->fall = half; current->fallIsFinal = true; }
-            next.rise = std::min (spacing, longest);
+            next.rise = exactPass ? spacing : std::min (spacing, longest);
             next.mark = s + spacing;
 
             if (planned != Plan::pass)

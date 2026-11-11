@@ -334,7 +334,7 @@ private:
                 period = ahead;
         }
         // The pitch itself is read from further back still, so that it is in line with the audio the grains are giving out. See pitchInLine.
-        if (alignPitch && period > 0.0)
+        if (alignPitch && (alignHighQuality || mode != highQuality) && period > 0.0)
             period = pitchInLine (period, (ringAt + size - controlDelayTicks) % size);
         ringAt = (ringAt + 1) % size;
 
@@ -491,7 +491,16 @@ private:
     }
 
     static constexpr bool alignPitch = true;
-    static constexpr double grainPitchAge = 1.92, highQualityGrainPitchAge = 1.75, harmonicPitchAge = 1.40;
+    // High Quality is left as it was, for now. Its control runs ahead in the same way (73 samples at the median of Luke's takes in
+    // Alto/Tenor, 261 in Low Male), and reading it in line fixes that (20 samples late in Low Male), but High Quality's vocal tract
+    // settings were all tuned with the lead in place: with it gone the ninth held out set's speaking formant move reads 5.00% against
+    // 4.62% (limit 4). So that needs High Quality's settings looked at again, on a held out set that has not been seen.
+    static constexpr bool alignHighQuality = false;
+    // On Luke's real takes the readings are a little older than on the steady test voice (weak marks hold their period, and under
+    // about 140 Hz in Alto/Tenor the reading is older than the whole latency, which nothing can make up for): with the test voice's
+    // 1.92 the pitch came 68 samples late at the median of 11 takes in Alto/Tenor and 19 in Low Male. 2.02 keeps the test voice
+    // within 1 ms and brings the takes nearer.
+    static constexpr double grainPitchAge = 2.02, highQualityGrainPitchAge = 1.75, harmonicPitchAge = 1.40;
     double sr = 48000.0, tickSeconds = 0.001;
     int baseLatency = 0;
     int channels = 2, tickSamples = 48, tickPhase = 0, latency = 0, inputType = 1, mode = lowLatency;

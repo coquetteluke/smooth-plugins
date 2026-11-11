@@ -71,10 +71,7 @@ static bool setKnob (KeyAnalyser::Knobs& k, const std::string& name, double v)
         { "outsideStable", &K::outsideStable }, { "outsideFast", &K::outsideFast }, { "recentStable", &K::recentStable }, { "recentFast", &K::recentFast },
         { "holdStable", &K::holdStable }, { "holdFast", &K::holdFast }, { "outsideWeight", &K::outsideWeight }, { "chromaPower", &K::chromaPower },
         { "softness", &K::softness }, { "harmonicDecay", &K::harmonicDecay },
-        { "voiceModel", &K::voiceModel }, { "tuneClarityLow", &K::tuneClarityLow }, { "tuneClarityHigh", &K::tuneClarityHigh }, { "heldShare", &K::heldShare },
-        { "tauVoice", &K::tauVoice }, { "recentVoice", &K::recentVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight }, { "voiceOutsideShare", &K::voiceOutsideShare },
-        { "voiceOutsideSeconds", &K::voiceOutsideSeconds }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceHome", &K::voiceHome }, { "voiceMargin", &K::voiceMargin }, { "voiceKeep", &K::voiceKeep }, { "voiceOutsideFit", &K::voiceOutsideFit }, { "loneWait", &K::loneWait }, { "voiceOutsideHeld", &K::voiceOutsideHeld }, { "heldFull", &K::heldFull }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh }, { "loneFrames", &K::loneFrames }, { "loneShare", &K::loneShare },
-        { "loneTau", &K::loneTau }, { "loneEnter", &K::loneEnter }, { "loneLeave", &K::loneLeave }, { "loneInMix", &K::loneInMix },
+        { "voiceModel", &K::voiceModel }, { "heldShare", &K::heldShare }, { "heldFull", &K::heldFull }, { "tauVoice", &K::tauVoice }, { "recentVoice", &K::recentVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight }, { "voiceTriggerHeld", &K::voiceTriggerHeld }, { "voiceTriggerLead", &K::voiceTriggerLead }, { "voiceTriggerSeconds", &K::voiceTriggerSeconds }, { "voiceConfirmHeld", &K::voiceConfirmHeld }, { "voiceConfirmMax", &K::voiceConfirmMax }, { "voiceOutsideFit", &K::voiceOutsideFit }, { "voiceConfirmSlack", &K::voiceConfirmSlack }, { "voiceSureHeld", &K::voiceSureHeld }, { "voiceWeighSeconds", &K::voiceWeighSeconds }, { "voiceRestSeconds", &K::voiceRestSeconds }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh }, { "voiceMargin", &K::voiceMargin }, { "voiceHome", &K::voiceHome }, { "offKeyEnter", &K::offKeyEnter }, { "offKeyLeave", &K::offKeyLeave }, { "offKeyLeaveSeconds", &K::offKeyLeaveSeconds }, { "clarityTau", &K::clarityTau },
     };
     for (const auto& t : table)
         if (name == t.first) { k.*(t.second) = v; return true; }
@@ -130,6 +127,8 @@ int main (int argc, char** argv)
             changes += line;
             last = idx;
         }
+        if (dump && a.secondsHeard() != heard && a.heldNoteNow() >= 0)
+            std::printf ("H %.2f %d %.3f\n", t, a.heldNoteNow(), a.heldWeightNow());
         if (dump && a.secondsHeard() != heard)
         {
             heard = a.secondsHeard();
@@ -139,5 +138,6 @@ int main (int argc, char** argv)
         }
     }
     std::fputs (changes.c_str(), stdout);
+    std::printf ("KEYCHANGES %d\n", a.voiceKeyChanges());   // moves made because a lone voice's song changed key
     return 0;
 }

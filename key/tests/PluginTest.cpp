@@ -191,17 +191,23 @@ static void testLoneVoice()
         check (s.medianSettle() <= limits::sungMedianSettle, tag + "median time until the right 7 notes are shown and kept", s.medianSettle(), "s");
         check (s.movingPercent() <= limits::sungMovingPercent, tag + "clips whose 7 notes change more than once", s.movingPercent(), "%");
         check (s.referencePercent() >= limits::sungReferencePercent, tag + "Reference Pitch stays within 2 Hz of 440", s.referencePercent(), "%");
+        check (s.leftPercent() <= limits::sungLeftPercent, tag + "clips that show the right 7 notes and then leave them (a false key change)", s.leftPercent(), "%");
 
         const std::string rapTag = src == Source::voice ? "rap, Single Voice: " : "rap, Full Mix: ";
         const auto r = runRap (a, src, heldOutSeed + 22);
         check (r.steadyPercent() >= limits::rapSteadyPercent, rapTag + "clips with at most one change of reading in a minute", r.steadyPercent(), "%");
         info (rapTag + "clips that never show a key", r.neverRead);
         info (rapTag + "mean confidence", r.meanConfidence());
+        check (r.confidentPercent() <= limits::rapConfidentPercent, rapTag + "share of the time at confidence 0.5 or more", r.confidentPercent(), "%");
     }
     const auto u = runStepUp (a, heldOutSeed + 23);
     check (u.followedPercent() >= limits::voiceStepUpPercent, "off key singer goes up a semitone, Single Voice: new 7 notes within 30 s", u.followedPercent(), "%");
     info ("off key singer goes up a semitone: median time to the new notes", medianOf (u.times), "s");
     info ("off key singer goes up a semitone: ends on the new notes", u.endRightPercent(), "%");
+    const auto u2 = runStepUp (a, heldOutSeed + 24, 1, 45.0, 2);
+    check (u2.followedPercent() >= limits::voiceStepUp2Percent, "off key singer goes up two semitones, Single Voice: new 7 notes within 30 s", u2.followedPercent(), "%");
+    info ("off key singer goes up two semitones: median time to the new notes", medianOf (u2.times), "s");
+    info ("off key singer goes up two semitones: ends on the new notes", u2.endRightPercent(), "%");
 
     check (fingerprint::chordsInMixFingerprint() == fingerprint::expectedChordsInMix, "chords in Full Mix: every reading over 96 clips bit identical to 1.5.1");
 }

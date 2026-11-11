@@ -58,6 +58,11 @@ namespace limits
     constexpr double sungReferencePercent = 90.0;    // of clips, read at the end
     constexpr double rapSteadyPercent = 90.0;        // rap clips (rapClip) whose reading changes at most once in a minute, or never shows
     constexpr double voiceStepUpPercent = 80.0;      // a tune that moves up a semitone: the new 7 notes within 30 s, Single Voice
+    // Added on 2026-11-11 for 1.7.0, before the new key change rule was run on any of them. Both directions: a real change must be
+    // followed, and a singer who only strays must not be taken for one.
+    constexpr double voiceStepUp2Percent = 80.0;     // the same, up two semitones
+    constexpr double sungLeftPercent = 5.0;          // off key singer who stays in key: clips that show the right 7 notes and then leave them
+    constexpr double rapConfidentPercent = 5.0;      // rap: share of the time with a reading at confidence 0.5 or more, which followers act on
 
     // key.json
     constexpr double maxWritesPerSecond = 2.2;       // brief says at most about twice a second

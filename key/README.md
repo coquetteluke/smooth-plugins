@@ -22,6 +22,7 @@ All are AU parameters, so they can be automated and set by name.
 | Relative Swap | on, off | Shows and writes the relative key of the one detected, for when it picks C major and you hear A minor |
 | Tempo Scale | As Detected, Half, Double | Halves or doubles the tempo shown |
 | Bypass | on, off | Audio is unchanged either way. Bypassed, it does not listen |
+| Lock | on, off | Holds the key on show at confidence 100% until turned off, through Reset, silence and reloading the session. It goes on listening underneath. Switched on with no key yet, it holds the first reading at 50% or more |
 
 Readings, which ignore writes and never write automation: Detected Key, Detected Scale, Confidence, Reference Pitch, Detected Tempo.
 
@@ -51,15 +52,24 @@ CPU of the open window, real window at Retina size. Nothing else building: 1.9, 
 
 Render every state to PNG with real speech from macOS `say`: `build/RenderWindow_artefacts/Release/RenderWindow docs/window`. Measure the real window's CPU: `build/RenderWindow_artefacts/Release/RenderWindow --live 5 6 speech`.
 
+## Where to put it
+
+On the beat or the mix bus, not on the vocal. Hearing the music, Key ends on the exact key on 99% of clips, shows it after 7.85 s and is sure and right 83% of the time, and an off key voice on top up to as loud as the music leaves that at 95% or better. Hearing a lone off key voice it needs a verse or more, is rarely sure, and says Not sure with the runner up named. Play the song through once on the music, press Lock, and every follower has the key for the session. The table is in CHANGELOG.md under 1.7.0; rerun it with `build/MixVoiceEval` (first lines of tests/MixVoiceEval.cpp).
+
+Under the reading the window shows the runner up with its confidence and how close it is, and Use to take it as the manual key. In a close call it says Not sure and names both keys, and the big letters go grey. Lock is on the top row, solid black when on. Pictures: `docs/window/runner-up@2x.png`, `docs/window/not-sure@2x.png`, `docs/window/locked@2x.png`.
+
+Proofs of what a lone voice cannot give: `python3 tests/proofs/ideal_reader.py step` and `floor` (needs `build/IdealNotes`, see its first lines).
+
 ## Shared file
 
 `~/Library/Application Support/SmoothPlugins/key.json`, one line:
 
 ```
-{"key":"C","scale":"major","confidence":0.87,"time":1794011292.5,"listening":true}
+{"key":"E","scale":"major","confidence":0.78,"time":1794011292.5,"listening":true,"altKey":"A","altScale":"major","altConfidence":0.41,"margin":0.62,"unsure":false,"locked":false,"source":"heard"}
 ```
 
 - `key`: C C# D D# E F F# G G# A A# B. `scale`: major or minor. `confidence`: 0 to 1. `time`: Unix seconds of this write. `listening`: true while detecting, false when paused, manual, bypassed or closed.
+- `altKey`, `altScale`: the runner up, or null. `altConfidence`: 0 to 1, same scale as confidence. `margin`: 0 a tie, 1 no contest. `unsure`: two keys fit about equally, and confidence is then under 0.5. `locked`: the key is held by Lock. `source`: heard, manual or locked. The first five fields never move; new ones are only ever added after them. While locked the file is rewritten every 4 minutes.
 - Written from the background thread only, at most about twice a second, only when something changes (key, scale, listening, or confidence by 0.02). Atomic: a temp file in the same folder, then rename. The folder is made if missing.
 - The home folder comes from `getpwuid`, not HOME.
 - Nothing is written until there is a key. The format has no empty key, so after Reset the last key stays with confidence 0. Treat low confidence as no key.

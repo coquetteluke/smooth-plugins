@@ -276,7 +276,9 @@ public:
                 // output was for 20 ms a blend of the grains and the harmonic shifter's own rebuild of the voice, and the level match
                 // then eased back over a second. On real takes with every note set to Bypass that left the output only 34 dB under
                 // the input at the worst take (a comb at any Mix under 100).
-                if (exactPassHighQuality && mode == highQuality && ! control.plainGrains && control.voiced && control.noCorrection
+                // Also through the few ms for which a gap in the voicing is bridged for the harmonic shifter (control.voiced is false
+                // there, and with the hand over under way the blend was heard again: 1 to 5 blocks of 100 ms a take on real takes).
+                if (exactPassHighQuality && mode == highQuality && ! control.plainGrains && control.noCorrection
                     && harmonicControl.noCorrection && shifter.readOffset() == 0.0 && ! harmonic.hasCorrected())
                     pass = true;
                 passMix = pass ? std::min (1.0, passMix + passStep) : std::max (0.0, passMix - passStep);

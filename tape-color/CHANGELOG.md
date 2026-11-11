@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2, 2026-11-11
+
+Worn Cassette and Slow Reel Haze are safe in mono. Luke said yes to this on 2026-11-11. Both presets set Stereo Drift (30 and 25) and Head Azimuth (15 and 8), which pull left and right apart, so a mono voice lost level when the two sides were summed. Both controls are now 0 in these two presets. Their stereo movement is gone; everything else in them is as it was, and both still keep the old response.
+
+- Measured on the 11 working takes, mono sum against the two sides, worst voiced quarter second (limit -6 dB): Worn Cassette -9.69 to -6.22 dB in 0.4.1, -2.82 to -0.15 dB now. Slow Reel Haze -6.00 to -0.70 dB in 0.4.1, -0.05 to 0.00 dB now.
+- Over the whole take (limit -3 dB): Worn Cassette -2.24 to -1.62 dB in 0.4.1, -0.03 to -0.01 dB now. Slow Reel Haze -0.23 to -0.10 dB, now 0.00 dB.
+- The real vocal mono check failed on 11 of 11 takes for Worn Cassette and 1 of 11 for Slow Reel Haze in 0.4.1. In 0.4.2 every real vocal check passes on every working take for both presets, with 0 clicks.
+- The default and the other nine presets are untouched. The plug-in's own tests read the same as 0.4.1 apart from the CPU line (573 pass, 0 fail).
+- A session that already uses either preset keeps the Stereo Drift and Head Azimuth it was saved with.
+
 ## 0.4.1, 2026-11-11
 
 The tape stays on the reported latency when Tape Speed, Bias, Hardness or light Age change the top end. 0.4.0 lined it up for the default tone only: at 30 ips it came out 0.19 sample early (the real vocal test read 0.215 on Clean Reel) and at 7.5 ips 0.36 late. The short delay that lines the tape up now follows those filters, within 1.6 microseconds, for as long as there is delay left to take off: 30 and 7.5 ips, any Bias at 15 and 30 ips, Age to about 25. Past that (3.75 ips, high Age, Head Spacing) the tape comes out late by what is left: 0.6 sample at 3.75 ips, 2.2 at Head Spacing 100, as any low pass filter is late. Taking all of that off would cost about 15 more samples of latency, so it is left.

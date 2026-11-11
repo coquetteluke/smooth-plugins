@@ -83,9 +83,9 @@ It is not a control and has no button: it travels with the preset or the session
 | Warm Lead | Drive 17, Bias 30, light Age, a little hiss and grain |
 | Airy Encode | Dynamic Soft encode only, for air on a vocal. Keeps the old response |
 | Parallel Body | Drive 26 on hard tape, High Cut 12 kHz, Mix 40. Keeps the old response |
-| Slow Reel Haze | 7.5 ips, Age 20, Random and Stereo Drift, head spacing. Keeps the old response |
+| Slow Reel Haze | 7.5 ips, Age 20, Random Drift, head spacing. Left and right move together, so it is safe in mono. Keeps the old response |
 | Starved Grit | Bias -70 on hard tape with grain. Keeps the old response |
-| Worn Cassette | 3.75 ips, Age 100, dropouts, mismatched compander. Keeps the old response |
+| Worn Cassette | 3.75 ips, Age 100, dropouts, mismatched compander. Left and right move together, so it is safe in mono. Keeps the old response |
 | Old Radio Voice | Small Radio device with tape wear. Keeps the old response |
 | Phone Call | Telephone device with hot tape |
 

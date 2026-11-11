@@ -91,9 +91,9 @@ namespace
         { "Warm Lead",      17.0f,  30.0f, 2,  4.0f,  6.0f,  5.0f,   8.0f, 70.0f,      kHighCutOff, 100.0f, 0.0f, true,  50.0f, 10.0f, 0.0f,  5.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  5.0f, 0, 100.0f, false },
         { "Airy Encode",     8.0f,   5.0f, 3,  0.0f,  3.0f,  0.0f,   0.0f, 60.0f,      kHighCutOff, 100.0f, 0.0f, true,  40.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 2,  60.0f,   0.0f,  0.0f, 0, 100.0f, true },
         { "Parallel Body",  26.0f,  35.0f, 2,  0.0f,  0.0f,  0.0f,   0.0f, 80.0f,      12000.0f,     40.0f, 0.0f, true,  70.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  0.0f, 0, 100.0f, true },
-        { "Slow Reel Haze", 14.0f,  10.0f, 1, 15.0f, 12.0f, 15.0f,  20.0f, 50.0f,      kHighCutOff, 100.0f, 0.0f, true,  50.0f, 25.0f, 8.0f, 20.0f, 25.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f, 10.0f, 0, 100.0f, true },
+        { "Slow Reel Haze", 14.0f,  10.0f, 1, 15.0f, 12.0f, 15.0f,  20.0f, 50.0f,      kHighCutOff, 100.0f, 0.0f, true,  50.0f, 25.0f, 0.0f, 20.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f, 10.0f, 0, 100.0f, true },
         { "Starved Grit",   10.0f, -70.0f, 1,  5.0f, 10.0f, 10.0f,  10.0f, 90.0f,      kHighCutOff, 100.0f, 0.0f, true,  75.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f, 30.0f, 0, 100.0f, true },
-        { "Worn Cassette",  15.0f, -15.0f, 0, 35.0f, 30.0f, 20.0f, 100.0f, 90.0f,      kHighCutOff, 100.0f, 0.0f, true,  60.0f, 30.0f, 15.0f, 40.0f, 30.0f, 35.0f, 0.7f, 2, 100.0f,  60.0f, 25.0f, 0, 100.0f, true },
+        { "Worn Cassette",  15.0f, -15.0f, 0, 35.0f, 30.0f, 20.0f, 100.0f, 90.0f,      kHighCutOff, 100.0f, 0.0f, true,  60.0f, 30.0f, 0.0f, 40.0f,  0.0f, 35.0f, 0.7f, 2, 100.0f,  60.0f, 25.0f, 0, 100.0f, true },
         { "Old Radio Voice", 16.0f,  10.0f, 1, 10.0f, 15.0f, 15.0f,  25.0f, kLowCutOff, kHighCutOff, 100.0f, 0.0f, true,  60.0f, 0.0f, 0.0f, 10.0f,  0.0f, 10.0f, 0.5f, 0, 100.0f, 100.0f, 25.0f, 1, 100.0f, true },
         { "Phone Call",     18.0f,   0.0f, 2,  0.0f,  8.0f, 10.0f,   0.0f, kLowCutOff, kHighCutOff, 100.0f, 0.0f, true,  70.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f, 15.0f, 2, 100.0f, false },
     };

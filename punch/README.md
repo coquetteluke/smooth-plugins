@@ -85,6 +85,12 @@ Steady Notes is off in the 14 presets above these, exactly as before, and their 
 
 **Load Lead Gentle.** It is the lightest of the six lead presets, and all six meet every limit of the real vocal checks on every one of Luke's working set takes, sung and rap: no level change, held notes left still, S, breaths and mouth sounds not raised. If the take also needs evening out and raising, use Lead Upfront (or Lead Rap for rap) and turn the next plug-in's input down by what it adds.
 
+Two things the lead presets do on a take that is already hot. Found after 0.5.0 shipped, on the first session's 11 takes, which peak at 0.0 dBFS (the Rode takes they were tuned on peak at -8 to -18 dBFS). Nothing was changed for it:
+
+- Lead Gentle and Lead Dry And Close have no ceiling, and Attack +1.5 raises a peak. On 3 of those 11 takes the output went up to 0.8 and 1.0 dB over 0 dBFS. If the track peaks within about 2 dB of 0 dBFS, turn Ceiling On with them.
+- Lead Upfront and Lead Rap use Impact, which works from a fixed level. On those hot takes it pushed the vowels down harder, so S came up against them by up to 3.6 and 5.9 dB (limit 2) on 7 of the 11, and consonant peaks by up to 4.0 and 4.7 dB on 5. Not tried yet: turning Gain down first so the peaks sit near -8 dBFS, where these presets were tuned. A de-esser after Punch would also catch it.
+- Lead Soft Consonants and Lead Long Tails met every limit on all 11 of those takes too.
+
 How the 14 older presets did on the same takes (Rode session, 11 working set takes, numbers from 0.3.1, which is how they still sound):
 
 | preset | for | what the takes showed |

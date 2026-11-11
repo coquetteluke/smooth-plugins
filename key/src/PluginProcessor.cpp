@@ -50,7 +50,7 @@ public:
         char path[PATH_MAX] = {};
         if (jsonPath.isNotEmpty())
             std::snprintf (path, sizeof path, "%s", jsonPath.toRawUTF8());
-        else if (! smoothkey::KeyFile::defaultPath (path, sizeof path))
+        else if (! smoothkey::KeyFile::overridePath (path, sizeof path) && ! smoothkey::KeyFile::defaultPath (path, sizeof path))
             path[0] = 0;
         file.setPath (path, minWriteSeconds);
     }

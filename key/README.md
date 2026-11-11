@@ -66,6 +66,7 @@ Render every state to PNG with real speech from macOS `say`: `build/RenderWindow
 - `time` is the last change, not a heartbeat: a steady old time can just mean nothing changed.
 - With several instances, the last one to write wins. If a write fails, the plug-in carries on, shows a note and retries every 5 s.
 - Writing from inside Logic has not been tested. Only offline tests have written this file.
+- For tests: if the environment variable `SMOOTH_KEY_JSON` holds an absolute path, the file is written there instead, so a test run cannot change what a live session follows. Logic never sets it.
 
 ## Signal flow
 

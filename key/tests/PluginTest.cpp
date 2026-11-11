@@ -477,6 +477,53 @@ static void testFileFormat()
            std::string ("path ignores a redirected HOME: ") + after);
 }
 
+// SMOOTH_KEY_JSON: tests can send the shared file somewhere else, so a test run never changes the file a live session follows.
+static void testFileOverride()
+{
+    const char* was = getenv ("SMOOTH_KEY_JSON");
+    const std::string saved = was != nullptr ? was : "";
+    const bool hadOne = was != nullptr;
+    char out[PATH_MAX] = {};
+
+    unsetenv ("SMOOTH_KEY_JSON");
+    check (! smoothkey::KeyFile::overridePath (out, sizeof out), "SMOOTH_KEY_JSON not set: no override, the default path is used");
+    setenv ("SMOOTH_KEY_JSON", "", 1);
+    check (! smoothkey::KeyFile::overridePath (out, sizeof out), "SMOOTH_KEY_JSON empty: no override");
+    setenv ("SMOOTH_KEY_JSON", "key.json", 1);
+    check (! smoothkey::KeyFile::overridePath (out, sizeof out), "SMOOTH_KEY_JSON not an absolute path: no override");
+
+    const auto target = testFolder().getChildFile ("override").getChildFile ("key.json");
+    setenv ("SMOOTH_KEY_JSON", target.getFullPathName().toRawUTF8(), 1);
+    check (smoothkey::KeyFile::overridePath (out, sizeof out) && target.getFullPathName() == juce::String (juce::CharPointer_UTF8 (out)),
+           "SMOOTH_KEY_JSON set to an absolute path: that path is used");
+
+    // A plug-in made the way a host makes it now writes there, and the real shared file is not touched: same bytes, same time.
+    char real[PATH_MAX];
+    smoothkey::KeyFile::defaultPath (real, sizeof real);
+    struct stat before {}, after {};
+    const bool existed = stat (real, &before) == 0;
+    const auto oldText = existed ? juce::File (juce::String (real)).loadFileAsString() : juce::String();
+    {
+        PluginProcessor p;
+        prepare (p, 2, 48000.0, 512);
+        setParam (p, "mode", 1.0f);
+        setParam (p, "manualKey", 6.0f);
+        setParam (p, "manualScale", 0.0f);
+        sleepMs (700);
+        const auto v = readJson (target.getFullPathName());
+        check (validRecord (v) && v["key"].toString() == "F#" && v["scale"].toString() == "major", "with SMOOTH_KEY_JSON set the plug-in writes to that path");
+    }
+    const bool existsNow = stat (real, &after) == 0;
+    const bool untouched = existed == existsNow
+                           && (! existed || (before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec && before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec
+                                             && before.st_ino == after.st_ino && before.st_size == after.st_size
+                                             && juce::File (juce::String (real)).loadFileAsString() == oldText));
+    check (untouched, "with SMOOTH_KEY_JSON set the real shared file is not touched");
+
+    if (hadOne) setenv ("SMOOTH_KEY_JSON", saved.c_str(), 1);
+    else unsetenv ("SMOOTH_KEY_JSON");
+}
+
 static void testFileAtomic()
 {
     const auto folder = testFolder().getChildFile ("deep").getChildFile ("new").getChildFile ("folder");
@@ -685,6 +732,10 @@ static void testEndToEnd()
     {
         char real[PATH_MAX];
         smoothkey::KeyFile::defaultPath (real, sizeof real);
+        // With SMOOTH_KEY_JSON set (a test run beside a live session) the plug-in writes there, and so does this test.
+        char redirected[PATH_MAX];
+        if (smoothkey::KeyFile::overridePath (redirected, sizeof redirected))
+            std::snprintf (real, sizeof real, "%s", redirected);
         const juce::File realFile { juce::String (real) };
         const bool existed = realFile.existsAsFile();
         const auto oldText = existed ? realFile.loadFileAsString() : juce::String();
@@ -880,6 +931,7 @@ int main (int argc, char** argv)
     testNoAudioThreadAllocation();
     testFileFormat();
     testFileAtomic();
+    testFileOverride();
     testFileFailure();
     testManualAndSwap();
     testPresets();

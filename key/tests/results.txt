@@ -62,14 +62,20 @@ PASS  decimal points kept under a comma locale (locale was available)
 PASS  path ignores a redirected HOME: ~/Library/Application Support/SmoothPlugins/key.json
 PASS  the folder is created when missing
 PASS  contents parse as valid JSON with the five fields
-INFO  atomic write test: writes = 13573.000 
-INFO  atomic write test: reads while writing = 110816.000 
+INFO  atomic write test: writes = 12478.000 
+INFO  atomic write test: reads while writing = 99245.000 
 PASS  the atomic test really raced reads against writes
 PASS  reads that saw a partial or missing file = 0.000 
-PASS  each write replaces the file by rename rather than writing into it, replacements = 13573.000 
+PASS  each write replaces the file by rename rather than writing into it, replacements = 12478.000 
 PASS  no temporary files left behind, files in the folder = 1.000 
 PASS  nothing changed: one write in 10 s = 1.000 
 PASS  changing every 0.1 s for 10 s: writes (limit 2 per second) = 20.000 
+PASS  SMOOTH_KEY_JSON not set: no override, the default path is used
+PASS  SMOOTH_KEY_JSON empty: no override
+PASS  SMOOTH_KEY_JSON not an absolute path: no override
+PASS  SMOOTH_KEY_JSON set to an absolute path: that path is used
+PASS  with SMOOTH_KEY_JSON set the plug-in writes to that path
+PASS  with SMOOTH_KEY_JSON set the real shared file is not touched
 PASS  a write failure is noticed
 PASS  audio still bit identical after the write failed
 PASS  readings still work after the write failed
@@ -78,7 +84,7 @@ PASS  that note is on screen
 PASS  write retries after 5 s and recovers when the folder can be made
 PASS  Manual mode shows all 24 keys at confidence 1 = 100.000 %
 PASS  Manual mode writes all 24 keys to key.json = 100.000 %
-PASS  a Manual Key change reaches key.json within = 0.654 s
+PASS  a Manual Key change reaches key.json within = 0.593 s
 PASS  Relative Swap off shows the detected key
 INFO  Relative Swap, key.json key index matches (1 is yes) = 1.000 
 PASS  Relative Swap off shows the detected key
@@ -125,29 +131,29 @@ PASS  the window reopens at its saved size with Advanced open
 PASS  only window size and open section are added to saved state, attributes = 2.000 
 PASS  a damaged window size is clamped
 PASS  a session from before the window opens at the default size
-PASS  audio bit identical while the window opened, drew and closed 30 times, blocks = 184.000 
-INFO  slowest audio block during that = 0.006 ms
-PASS  no audio block took longer than the block itself during that = 0.006 ms
+PASS  audio bit identical while the window opened, drew and closed 30 times, blocks = 230.000 
+INFO  slowest audio block during that = 0.037 ms
+PASS  no audio block took longer than the block itself during that = 0.037 ms
 PASS  no file written before there is a key
 PASS  real background thread finds G minor through processBlock
 PASS  samples dropped by the queue at 7 times real time = 0.000 
-PASS  key.json writes per second while confidence moves = 0.508 per s
-PASS  key.json is valid: {"key":"G","scale":"minor","confidence":0.94,"time":1794157429.3,"listening":true}
+PASS  key.json writes per second while confidence moves = 0.608 per s
+PASS  key.json is valid: {"key":"G","scale":"minor","confidence":0.97,"time":1794368465.2,"listening":true}
 PASS  key.json holds the key found
 PASS  key.json says listening
 PASS  key.json time is Unix seconds, now
-PASS  readings as AU parameters: G Minor 88.155800
+PASS  readings as AU parameters: G Minor 93.657997
 PASS  readings changing never notify the host as automation, notifications = 0.000 
 PASS  Listening off: reading frozen with another key playing, confidence moved = 0.000 
 PASS  Listening off: key.json says listening false
 PASS  nothing changing: no more writes in 1.2 s, writes = 0.000 
-PASS  no calls from the host for 5 s: confidence falls = 0.120 
+PASS  no calls from the host for 5 s: confidence falls = 0.127 
 PASS  the key stays shown when the host stops
 PASS  Reset: no key and confidence 0
 PASS  Reset: key.json shows confidence 0
 PASS  closing the plug-in leaves key.json saying listening false
 PASS  bypassed: nothing was analysed
-PASS  real shared file written from this process: ~/Library/Application Support/SmoothPlugins/key.json
+PASS  real shared file written from this process: ~/smooth-plugins/_vox/rode/work/key/key.json.test
 PASS  20 s of silence from the start gives no key and confidence 0, frames with a reading = 0.000 
 PASS  Stable: C major found before the silence
 INFO  Stable: confidence before the silence = 1.000 

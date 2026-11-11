@@ -5,6 +5,7 @@
 #include <climits>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <pwd.h>
@@ -34,6 +35,18 @@ public:
         if (getpwuid_r (getuid(), &entry, buffer, sizeof buffer, &result) != 0 || result == nullptr || result->pw_dir == nullptr)
             return false;
         const int n = std::snprintf (out, size, "%s/Library/Application Support/SmoothPlugins/key.json", result->pw_dir);
+        return n > 0 && (size_t) n < size;
+    }
+
+    // For tests only. When the environment variable SMOOTH_KEY_JSON holds an absolute path, the file goes there instead, so a
+    // test run beside a live session cannot change the file that session's plug-ins follow. Not set, empty or not absolute:
+    // false, and the default path is used exactly as before. Read once as the plug-in is made, never on the audio thread.
+    static bool overridePath (char* out, size_t size) noexcept
+    {
+        const char* e = std::getenv ("SMOOTH_KEY_JSON");
+        if (e == nullptr || e[0] != '/')
+            return false;
+        const int n = std::snprintf (out, size, "%s", e);
         return n > 0 && (size_t) n < size;
     }
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.1, 2026-11-10
+
+Tests can no longer change the key file a live session follows. Detection is unchanged: every reading is bit identical to 1.5.0 (the saved fingerprint still matches).
+
+- When the environment variable `SMOOTH_KEY_JSON` holds an absolute path, key.json is written there instead of `~/Library/Application Support/SmoothPlugins/key.json`. Not set, empty or not an absolute path, the plug-in behaves exactly as before. It is read once as the plug-in is made, off the audio thread. Logic never sets it.
+- Why: on 2026-11-10 a test run left A minor in the shared file while Logic was open, and Choir Loft followed it. Test runs now set the variable (`_vox/rode/work/key/keyrun.sh` does, and also puts the real file back if anything changed it).
+- Six new tests: no override when the variable is unset, empty or relative; the path is used when absolute; the plug-in writes there; the real file keeps its bytes and its time. The older test that writes the real shared path follows the variable when it is set.
+
 ## 1.5.0, 2026-11-08
 
 Stable follows a key change more often and sooner, by reading the chords as Fast has since 1.4.0. Fast is unchanged: every Fast reading is bit identical to 1.4.0. Run on the new held out seed 20261112, after the expected result was committed (7e219ab), and on the two before it:

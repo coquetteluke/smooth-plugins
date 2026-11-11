@@ -12,7 +12,7 @@ static bool setKnob (KeyAnalyser::Knobs& k, const std::string& name, double v)
 {
     using K = KeyAnalyser::Knobs;
     static const std::pair<const char*, double K::*> table[] = {
-        { "voiceModel", &K::voiceModel }, { "heldShare", &K::heldShare }, { "heldFull", &K::heldFull }, { "tauVoice", &K::tauVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight }, { "voiceChangeEvidence", &K::voiceChangeEvidence }, { "voiceChangeFit", &K::voiceChangeFit }, { "voiceChangeOld", &K::voiceChangeOld }, { "voiceChangeShared", &K::voiceChangeShared }, { "voiceChangeFull", &K::voiceChangeFull }, { "voiceChangeWindow", &K::voiceChangeWindow }, { "voiceChangeWatch", &K::voiceChangeWatch }, { "voiceChangeSlack", &K::voiceChangeSlack }, { "voiceMoveEvidence", &K::voiceMoveEvidence }, { "voiceUnsureMargin", &K::voiceUnsureMargin }, { "voiceSureHeld", &K::voiceSureHeld }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh }, { "voiceMargin", &K::voiceMargin }, { "voiceHome", &K::voiceHome }, { "offKeyEnter", &K::offKeyEnter }, { "offKeyLeave", &K::offKeyLeave }, { "offKeyLeaveSeconds", &K::offKeyLeaveSeconds }, { "clarityTau", &K::clarityTau },
+        { "voiceModel", &K::voiceModel }, { "heldShare", &K::heldShare }, { "heldFull", &K::heldFull }, { "tauVoice", &K::tauVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight }, { "voiceChangeEvidence", &K::voiceChangeEvidence }, { "voiceChangeFit", &K::voiceChangeFit }, { "voiceChangeOld", &K::voiceChangeOld }, { "voiceChangeShared", &K::voiceChangeShared }, { "voiceChangeFull", &K::voiceChangeFull }, { "voiceChangeWindow", &K::voiceChangeWindow }, { "voiceChangeWatch", &K::voiceChangeWatch }, { "voiceInheritEvidence", &K::voiceInheritEvidence }, { "voiceInheritHeld", &K::voiceInheritHeld }, { "voiceChangeSlack", &K::voiceChangeSlack }, { "voiceMoveEvidence", &K::voiceMoveEvidence }, { "voiceUnsureMargin", &K::voiceUnsureMargin }, { "voiceSureHeld", &K::voiceSureHeld }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh }, { "voiceMargin", &K::voiceMargin }, { "voiceHome", &K::voiceHome }, { "offKeyEnter", &K::offKeyEnter }, { "offKeyLeave", &K::offKeyLeave }, { "offKeyLeaveSeconds", &K::offKeyLeaveSeconds }, { "clarityTau", &K::clarityTau },
         { "dwellStable", &K::dwellStable }, { "marginStable", &K::marginStable }, { "holdStable", &K::holdStable }, { "firstStable", &K::firstStable },
         { "firstLeadStable", &K::firstLeadStable }, { "relativeGuard", &K::relativeGuard }, { "returnGuard", &K::returnGuard },
     };
@@ -54,6 +54,37 @@ int main (int argc, char** argv)
         if (only == "sung") continue;
         const auto r = runRap (a, source, seed + 1);
         std::printf ("%-12s rap %d clips: steady %.1f%% (limit %.0f), never read %d, mean confidence %.2f, time at 0.5 or more %.1f%% (limit %.0f)\n", tag, r.total, r.steadyPercent(), limits::rapSteadyPercent, r.neverRead, r.meanConfidence(), r.confidentPercent(), limits::rapConfidentPercent);
+    }
+    if (only == "sungtrace")
+    {
+        // Full Mix, per sung clip that shows the right 7 notes and then leaves them: every change of reading, and whether it was read as a lone voice.
+        const double sr = 48000.0;
+        int left = 0, total = 0;
+        for (int tonic = 0; tonic < 12; tonic += step)
+            for (int minor = 0; minor < 2; ++minor)
+            {
+                const auto clip = corpus::sungClip (tonic, minor == 1, corpus::clipSeed (seed, tonic, minor, 5), sr, 60.0);
+                a.reset(); a.setResponse (Response::stable); a.setSource (Source::mix);
+                const int want = notesOf (corpus::keyIndex (tonic, minor == 1));
+                std::string line;
+                int last = -1; bool wasRight = false, leftIt = false, lone = false;
+                for (int pos = 0; pos < (int) clip.size(); pos += 512)
+                {
+                    a.push (clip.data() + pos, std::min (512, (int) clip.size() - pos));
+                    const auto& r = a.reading();
+                    const int k = r.key < 0 ? -1 : r.key + (r.minor ? 12 : 0);
+                    if (k != last || r.loneVoice != lone)
+                    {
+                        char b[64]; std::snprintf (b, sizeof b, " %.1f:%d(%d)%s c%.2f", (pos + 512) / sr, k, notesOf (k), r.loneVoice ? "L" : "M", a.tuningClarity());
+                        line += b; last = k; lone = r.loneVoice;
+                    }
+                    if (k >= 0) { if (notesOf (k) == want) wasRight = true; else if (wasRight) leftIt = true; }
+                }
+                ++total;
+                if (leftIt) { ++left; std::printf ("LEFT %d%s want %d:%s\n", tonic, minor ? "m" : "M", want, line.c_str()); }
+            }
+        std::printf ("left %d of %d\n", left, total);
+        return 0;
     }
     if (only == "steptrace" || only == "steptrace2")
     {

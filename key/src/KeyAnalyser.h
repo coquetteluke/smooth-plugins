@@ -196,6 +196,8 @@ public:
                                         // semitones is taken first, as that is how a song goes up a key
         double voiceMoveEvidence = 0.0; // the long memory moves the reading to another set of notes only when the notes that tell the
                                         // two apart favour the new one by this many seconds of held notes
+        double voiceInheritEvidence = 0.5; // the same, for leaving a key that was on show before the sound was taken for a lone voice,
+        double voiceInheritHeld = 6.0;  // until there are this many seconds of held notes: while they are few their leader changes with every phrase
         double voiceUnsureMargin = 0.33; // a lone voice's reading is called not sure when its lead over the runner up is under this (see Reading::margin)
         double voiceSureHeld = 6.0;     // seconds of held notes in memory before the confidence can be full
         double voiceMargin = 2.0;       // a new key must lead the shown one by this many times the usual margin
@@ -280,7 +282,7 @@ public:
         std::fill (ring.begin(), ring.end(), 0.0);
         ringPos = 0; hopCounter = 0; windowFilled = 0;
         trebleMemory.fill (0.0); bassMemory.fill (0.0); opening.fill (0.0); chordMemory.fill (0.0); recentMemory.fill (0.0);
-        heldMemory.fill (0.0); clearChangeCounts(); changePeak.fill (0.0); sureSet = -1; heldSeconds = 0.0; voiceFit = 0.0; lastTopPc = -1; heldRun = 0;
+        heldMemory.fill (0.0); clearChangeCounts(); changePeak.fill (0.0); sureSet = -1; inheritedSet = -1; heldSeconds = 0.0; voiceFit = 0.0; lastTopPc = -1; heldRun = 0;
         tunWeight = 0.0; tuneClarity = 1.0; clarityAvg = -1.0; clearSeconds = 0.0; offKey = false; keyChanges = 0;
         for (auto& f : frameHistory) f.fill (0.0);
         for (auto& f : frameTreble) f.fill (0.0);
@@ -502,7 +504,15 @@ private:
         {
             tuneClarity = std::hypot (tunRe, tunIm) / tunWeight;
             clarityAvg = clarityAvg < 0.0 ? tuneClarity : clarityAvg + (tuneClarity - clarityAvg) * (1.0 - std::exp (-hopSeconds / knobs.clarityTau));
-            if (! offKey) { if (clarityAvg < knobs.offKeyEnter) { offKey = true; clearSeconds = 0.0; } }
+            if (! offKey)
+            {
+                if (clarityAvg < knobs.offKeyEnter)
+                {
+                    offKey = true; clearSeconds = 0.0;
+                    // A key already on show was read from every note sounding, before the sound proved to have no tuning of its own.
+                    inheritedSet = current.key < 0 ? -1 : (current.minor ? (current.key + 3) % 12 : current.key);
+                }
+            }
             else
             {
                 clearSeconds = clarityAvg > knobs.offKeyLeave ? clearSeconds + hopSeconds : 0.0;
@@ -997,6 +1007,7 @@ private:
                     if (sharedNotes ((ref + up) % 12, ref) <= (int) knobs.voiceChangeShared && coverage (heldMemory, (ref + up) % 12, total) >= best - knobs.voiceChangeSlack) pick = (ref + up) % 12;
             }
             sureSet = pick;
+            inheritedSet = -1;
             if (pick != shownSet)
             {
                 // The same song a step up keeps its scale. Anything else: whichever of the key and its relative the notes favour.
@@ -1350,12 +1361,14 @@ private:
             const bool holding = heardSeconds - lastMove < holdFor;
             // The notes that tell the two sets apart must favour the new one clearly, in seconds of held notes.
             bool evident = true;
-            if (voicePath() && knobs.voiceMoveEvidence > 0.0)
+            const bool inherited = inheritedSet >= 0 && inheritedSet == (shown < 12 ? shown : (shown - 12 + 3) % 12) && heldSeconds < knobs.voiceInheritHeld;
+            const double needEvidence = inherited ? std::max (knobs.voiceInheritEvidence, knobs.voiceMoveEvidence) : knobs.voiceMoveEvidence;
+            if (voicePath() && needEvidence > 0.0)
             {
                 double lead = 0.0;
                 for (int i = 0; i < 12; ++i)
                     lead += heldMemory[(size_t) i] * ((inSignature (i, top) ? 1.0 : 0.0) - (inSignature (i, shown) ? 1.0 : 0.0));
-                evident = top == relativeOf (shown) || lead * hopSeconds >= knobs.voiceMoveEvidence;
+                evident = top == relativeOf (shown) || lead * hopSeconds >= needEvidence;
             }
             if (! holding && evident && dwell >= need && scores[(size_t) top] - scores[(size_t) shown] >= margin && gate > 0.5)
             {
@@ -1368,6 +1381,7 @@ private:
                 }
                 lastMove = heardSeconds;
                 previousShown = shown;
+                if (top != relativeOf (shown)) inheritedSet = -1;
                 shown = top;
                 candidate = -1;
                 dwell = 0.0;
@@ -1501,6 +1515,7 @@ private:
     double tuneClarity = 1.0, clarityAvg = -1.0, clearSeconds = 0.0;
     double heldSeconds = 0.0, heldNow = 0.0, voiceFit = 0.0, tunWeight = 0.0;
     std::array<double, 12> changeScore {}, changePeak {};        // the running count per set of 7 notes (as its major key), and its highest so far
+    int inheritedSet = -1;                                        // the set on show when the sound was taken for a lone voice, until the reading leaves it
     bool sureMinor = false;
     int sureSet = -1;                                             // the last set of 7 notes that was shown with confidence 0.5 or more: what a change is measured against
     std::array<double, 12> changeStart {};                        // when each count left zero

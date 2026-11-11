@@ -1,8 +1,11 @@
 # Changelog
 
-## Not shipped: branch phrase-start-level, for Luke to hear first
+## Not shipped: branch for-luke-sound, for Luke to hear first
 
-Changes how every setting but Neutral sounds at the start of a phrase, so it is not installed. Level Match's slow step kept the last phrase's correction into the next one, and the first 30 ms of a phrase came out about 2 dB quieter at settings that lower the formants. Here a phrase that starts after a pause gets its own average. Throat's own tests pass. NullTest does not, by design: it holds the sound to the 0.2.0 renders, and those would have to be saved again if this ships.
+Two changes to how every setting but Neutral sounds, so nothing here is installed. Throat's own tests pass (244, 0 fail). NullTest does not, by design: it holds the sound to the 0.2.0 renders, and those would have to be saved again if this ships.
+
+- Phrase starts. Level Match's slow step kept the last phrase's correction into the next one, and the first 30 ms of a phrase came out about 2 dB quieter at settings that lower the formants. Here a phrase that starts after a pause gets its own average.
+- Whistling. A harmonic that landed on a narrow peak of the model came out far above its neighbours (1 to 10% of voiced frames on real vocals). Each harmonic from 500 Hz up is now held to standing out by no more than 8 dB, or 2 dB more than the input's most prominent one.
 
 ## 0.4.1, 2026-11-11
 

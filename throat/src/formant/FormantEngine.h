@@ -350,6 +350,46 @@ private:
             biggest = std::max (biggest, std::abs (logGain[(size_t) k]));
         }
 
+        // No harmonic may whistle. The model's peaks can be narrower than the space between two harmonics, and when a harmonic lands
+        // on one it comes out far above its neighbours: on real vocals 1 to 10% of voiced frames had a harmonic 12 dB or more over
+        // the two next to it and 6 dB more than any harmonic of the input stood out. So each harmonic from 500 Hz up, read where
+        // the envelope found its tip in this frame, is held to standing out by no more than 8 dB, or 2 dB more than the input's
+        // most prominent one if that is more. What is over comes off that harmonic alone, half a harmonic spacing either side.
+        const int tips = envelope.numTips();
+        if (! identityMap && tips >= 3 && f0 > 60.0f)
+        {
+            const float spacing = f0 * (float) synthSize / (float) sr;
+            const int count = std::min (tips, (int) harmonicIn.size());
+            for (int t = 0; t < count; ++t)
+            {
+                const float at = std::min (0.5f * envelope.tipBinAt (t), (float) synthHalf - 1.0f);   // the tips are on the long window's grid
+                const int a = (int) at;
+                harmonicIn[(size_t) t] = envelope.tipLevelAt (t);
+                harmonicOut[(size_t) t] = harmonicIn[(size_t) t] + logGain[(size_t) a] + (at - (float) a) * (logGain[(size_t) a + 1] - logGain[(size_t) a]);
+            }
+            const float lowest = 500.0f * (float) synthSize / (float) sr, highest = 8000.0f * (float) synthSize / (float) sr;
+            float most = 0.0f;
+            for (int t = 1; t + 1 < count; ++t)
+                if (0.5f * envelope.tipBinAt (t) >= lowest)
+                    most = std::max (most, harmonicIn[(size_t) t] - 0.5f * (harmonicIn[(size_t) t - 1] + harmonicIn[(size_t) t + 1]));
+            const float cap = std::max (8.0f * nepersPerDb, most + 2.0f * nepersPerDb);
+            for (int t = 1; t + 1 < count; ++t)
+            {
+                const float centre = 0.5f * envelope.tipBinAt (t);
+                if (centre < lowest || centre > highest) continue;
+                const float excess = harmonicOut[(size_t) t] - 0.5f * (harmonicOut[(size_t) t - 1] + harmonicOut[(size_t) t + 1]) - cap;
+                if (excess <= 0.0f) continue;
+                const float halfWidth = 0.5f * spacing;
+                for (int k = (int) std::ceil (centre - halfWidth); k <= (int) (centre + halfWidth); ++k)
+                    if (k >= 0 && k <= synthHalf)
+                    {
+                        logGain[(size_t) k] -= excess * 0.5f * (1.0f + std::cos (juce::MathConstants<float>::pi * ((float) k - centre) / halfWidth));
+                        wantedOnSynthGrid[(size_t) k] = heard[2 * k] + logGain[(size_t) k];
+                    }
+                harmonicOut[(size_t) t] -= excess;
+            }
+        }
+
         // Moving formants must not change the level. This takes two steps.
         // A quicker one, over about 150 ms, compares the model's energy before and after, with the source's fall on it, so each sound keeps its own level from
         // one moment to the next. It knows nothing of where the harmonics are, so it does not iron out what a harmonic does as it crosses
@@ -552,6 +592,7 @@ private:
     std::vector<float> synthWindow, analysisWindow, power, spectrum, noiseSpectrum, logGain, wanted, finerEnvelope, readHz, breathShape, wantedOnSynthGrid, modelGain, envelopeShift;
     std::array<std::array<float, 2>, phaseTableSize> phaseTable {};
     std::array<float, maxChannels> channelShare { 1.0f, 1.0f };
+    std::array<float, SpectralEnvelope::maxTips> harmonicIn {}, harmonicOut {};
     std::uint32_t noiseState = 0x9E3779B9u;
     Analysis readout;
 };

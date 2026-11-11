@@ -181,6 +181,11 @@ public:
     const float* flatEnvelope() const noexcept { return flatEnv.data(); } // The envelope, on the formant model's scale: harmonic tips with the source's fall off
     float fundamentalHz() const noexcept     { return pitchHz; }
     float voicing() const noexcept           { return voicedAmount; }
+    // The harmonics' tips found in this frame, lowest first: where each sits (in bins, between bins too) and its level in nepers.
+    // None on a frame that is not voiced enough to rest the envelope on harmonics.
+    int numTips() const noexcept             { return tipCount; }
+    float tipBinAt (int i) const noexcept    { return tipBin[(size_t) i]; }
+    float tipLevelAt (int i) const noexcept  { return tipLevel[(size_t) i]; }
     int numBins() const noexcept             { return half + 1; }
     int fftSize() const noexcept             { return size; }
     double binHz() const noexcept            { return sr / (double) size; }

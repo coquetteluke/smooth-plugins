@@ -12,7 +12,7 @@ static bool setKnob (KeyAnalyser::Knobs& k, const std::string& name, double v)
 {
     using K = KeyAnalyser::Knobs;
     static const std::pair<const char*, double K::*> table[] = {
-        { "voiceModel", &K::voiceModel }, { "heldShare", &K::heldShare }, { "heldFull", &K::heldFull }, { "tauVoice", &K::tauVoice }, { "recentVoice", &K::recentVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight }, { "voiceTriggerHeld", &K::voiceTriggerHeld }, { "voiceTriggerLead", &K::voiceTriggerLead }, { "voiceTriggerSeconds", &K::voiceTriggerSeconds }, { "voiceConfirmHeld", &K::voiceConfirmHeld }, { "voiceConfirmMax", &K::voiceConfirmMax }, { "voiceOutsideFit", &K::voiceOutsideFit }, { "voiceConfirmSlack", &K::voiceConfirmSlack }, { "voiceSureHeld", &K::voiceSureHeld }, { "voiceWeighSeconds", &K::voiceWeighSeconds }, { "voiceRestSeconds", &K::voiceRestSeconds }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh }, { "voiceMargin", &K::voiceMargin }, { "voiceHome", &K::voiceHome }, { "offKeyEnter", &K::offKeyEnter }, { "offKeyLeave", &K::offKeyLeave }, { "offKeyLeaveSeconds", &K::offKeyLeaveSeconds }, { "clarityTau", &K::clarityTau },
+        { "voiceModel", &K::voiceModel }, { "heldShare", &K::heldShare }, { "heldFull", &K::heldFull }, { "tauVoice", &K::tauVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight }, { "voiceChangeEvidence", &K::voiceChangeEvidence }, { "voiceChangeFit", &K::voiceChangeFit }, { "voiceChangeOld", &K::voiceChangeOld }, { "voiceChangeShared", &K::voiceChangeShared }, { "voiceChangeFull", &K::voiceChangeFull }, { "voiceChangeWindow", &K::voiceChangeWindow }, { "voiceChangeWatch", &K::voiceChangeWatch }, { "voiceChangeSlack", &K::voiceChangeSlack }, { "voiceMoveEvidence", &K::voiceMoveEvidence }, { "voiceUnsureMargin", &K::voiceUnsureMargin }, { "voiceSureHeld", &K::voiceSureHeld }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh }, { "voiceMargin", &K::voiceMargin }, { "voiceHome", &K::voiceHome }, { "offKeyEnter", &K::offKeyEnter }, { "offKeyLeave", &K::offKeyLeave }, { "offKeyLeaveSeconds", &K::offKeyLeaveSeconds }, { "clarityTau", &K::clarityTau },
         { "dwellStable", &K::dwellStable }, { "marginStable", &K::marginStable }, { "holdStable", &K::holdStable }, { "firstStable", &K::firstStable },
         { "firstLeadStable", &K::firstLeadStable }, { "relativeGuard", &K::relativeGuard }, { "returnGuard", &K::returnGuard },
     };
@@ -25,6 +25,7 @@ int main (int argc, char** argv)
 {
     unsigned seed = 2000;
     int step = 1;
+    std::string only;   // "only sung|rap|step1|step2" runs just that part
     KeyAnalyser::Knobs knobs;
     if (argc % 2 == 0) { std::fprintf (stderr, "arguments come in pairs: name value\n"); return 2; }
     for (int i = 1; i + 1 < argc; i += 2)
@@ -33,6 +34,7 @@ int main (int argc, char** argv)
         const double v = std::atof (argv[i + 1]);
         if (k == "seed") seed = (unsigned) v;
         else if (k == "step") step = (int) v;
+        else if (k == "only") { only = argv[i + 1]; }
         else if (! setKnob (knobs, k, v)) { std::fprintf (stderr, "unknown knob %s\n", k.c_str()); return 2; }
     }
     KeyAnalyser a;
@@ -41,20 +43,52 @@ int main (int argc, char** argv)
     for (auto source : { Source::voice, Source::mix })
     {
         const char* tag = source == Source::voice ? "Single Voice" : "Full Mix";
+        if (! only.empty() && only != "sung" && only != "rap") break;
+        if (only == "rap") { const auto r = runRap (a, source, seed + 1); std::printf ("%-12s rap %d clips: steady %.1f%% (limit %.0f), never read %d, mean confidence %.2f, time at 0.5 or more %.1f%% (limit %.0f)\n", tag, r.total, r.steadyPercent(), limits::rapSteadyPercent, r.neverRead, r.meanConfidence(), r.confidentPercent(), limits::rapConfidentPercent); continue; }
         const auto s = runSung (a, source, seed, limits::sungReferenceHz, step);
         std::printf ("%-12s sung %d clips: right notes %.1f%% (limit %.0f), exact %.1f%%, median settle %s (limit %.0f s), notes change more than once %.1f%% (limit %.0f), reference near 440 %.1f%% (limit %.0f)\n",
                      tag, s.total, s.rightPercent(), limits::sungRightNotesPercent, s.exactPercent(),
                      s.medianSettle() > 1.0e8 ? "never" : std::to_string (s.medianSettle()).c_str(), limits::sungMedianSettle, s.movingPercent(), limits::sungMovingPercent,
                      s.referencePercent(), limits::sungReferencePercent);
-        const auto r = runRap (a, source, seed + 1);
         std::printf ("%-12s sung: leave the right notes after showing them %.1f%% (limit %.0f)\n", tag, s.leftPercent(), limits::sungLeftPercent);
+        if (only == "sung") continue;
+        const auto r = runRap (a, source, seed + 1);
         std::printf ("%-12s rap %d clips: steady %.1f%% (limit %.0f), never read %d, mean confidence %.2f, time at 0.5 or more %.1f%% (limit %.0f)\n", tag, r.total, r.steadyPercent(), limits::rapSteadyPercent, r.neverRead, r.meanConfidence(), r.confidentPercent(), limits::rapConfidentPercent);
     }
+    if (only == "steptrace" || only == "steptrace2")
+    {
+        // Per clip: when the new 7 notes first show after the change at 45 s, the final key, and every change of reading.
+        const int semis = only == "steptrace" ? 1 : 2;
+        const double sr = 48000.0, half = 45.0;
+        for (int tonic = 0; tonic < 12; tonic += step)
+            for (int minor = 0; minor < 2; ++minor)
+            {
+                auto clip = corpus::sungClip (tonic, minor == 1, corpus::clipSeed (seed + 1 + semis, tonic, minor, 6), sr, half);
+                const auto second = corpus::sungClip ((tonic + semis) % 12, minor == 1, corpus::clipSeed (seed + 1 + semis, tonic, minor, 7), sr, half);
+                clip.insert (clip.end(), second.begin(), second.end());
+                a.reset(); a.setResponse (Response::stable); a.setSource (Source::voice);
+                std::printf ("CLIP %d%s -> %d:", tonic, minor ? "m" : "M", notesOf (corpus::keyIndex ((tonic + semis) % 12, minor == 1)));
+                int last = -1;
+                for (int pos = 0; pos < (int) clip.size(); pos += 512)
+                {
+                    a.push (clip.data() + pos, std::min (512, (int) clip.size() - pos));
+                    const auto& r = a.reading();
+                    const int k = r.key < 0 ? -1 : r.key + (r.minor ? 12 : 0);
+                    if (k != last) { std::printf (" %.1f:%d(%d)", (pos + 512) / sr, k, notesOf (k)); last = k; }
+                }
+                std::printf (" conf %.2f%s\n", (double) a.reading().confidence, a.reading().unsure ? " unsure" : "");
+            }
+        return 0;
+    }
+    if (only.empty() || only == "step1") {
     const auto u = runStepUp (a, seed + 2, step);
     std::printf ("Single Voice up a semitone, %d clips: followed in 30 s %.1f%% (limit %.0f), median %.1f s, ends on the new notes %.1f%%\n", u.total, u.followedPercent(),
                  limits::voiceStepUpPercent, medianOf (u.times), u.endRightPercent());
+    }
+    if (only.empty() || only == "step2") {
     const auto u2 = runStepUp (a, seed + 3, step, 45.0, 2);
     std::printf ("Single Voice up two semitones, %d clips: followed in 30 s %.1f%% (limit %.0f), median %.1f s, ends on the new notes %.1f%%\n", u2.total, u2.followedPercent(),
                  limits::voiceStepUp2Percent, medianOf (u2.times), u2.endRightPercent());
+    }
     return 0;
 }

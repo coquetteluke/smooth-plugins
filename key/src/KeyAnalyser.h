@@ -181,19 +181,22 @@ public:
         double heldFull = 3.0;          // and counts in full once it has been the strongest for this many more frames (about half a second)
         double tauVoice = 120.0;        // memory of held notes, seconds: a tune takes a verse and a chorus to show its notes
         double voiceOutsideWeight = 2.0; // takes off this much times the share of held notes outside a key's seven notes
-        // A real change of key against a singer straying: a quick watch on the newest held notes, then a fresh count from there on
-        // that must show another set of 7 notes while the shown one explains little of it.
-        double recentVoice = 0.8;       // the newest held notes: about this many seconds of them
-        double voiceTriggerHeld = 0.6;  // the watch needs this many seconds of them,
-        double voiceTriggerLead = 0.3;  // another set covering this much more of them than the shown key,
-        double voiceTriggerSeconds = 0.3; // for this many more seconds of held notes, with two different notes outside the shown key
-        double voiceConfirmHeld = 2.5;  // then, counted from there: this many seconds of held notes,
-        double voiceConfirmMax = 0.4;   // of which the shown key covers at most this share
-        double voiceOutsideFit = 0.85;  // and another set at least this share
-        double voiceConfirmSlack = 0.05; // sets within this of the best count as fitting equally well; of those, the shown key moved
-                                        // up one or two semitones is taken first, as that is how a song goes up a key
-        double voiceWeighSeconds = 20.0; // the longest the reading is held still while a possible change is weighed
-        double voiceRestSeconds = 8.0;  // after a watch that showed no change, this long before the next
+        // A real change of key against a singer straying. For every other set of 7 notes a running count is kept, in seconds of
+        // held notes: up for a note in that set and not in the shown one, down for a note in the shown one and not in that set,
+        // never under zero. A singer who strays scatters round the shown key and the count falls back; a song that has moved
+        // keeps adding to it. Where the count last left zero is where the change began, and the reading is rebuilt from there.
+        double voiceChangeEvidence = 2.5; // the count that says the song has moved, seconds of held notes
+        double voiceChangeWindow = 30.0; // a count that has not got there this long after it left zero starts again: straying, not a change
+        double voiceChangeWatch = 1.0;  // from this count on a change is being weighed: the reading is called not sure until it is settled
+        double voiceChangeFull = 1.0;   // frames until a held note counts in full toward it (heldFull for the long memory)
+        double voiceChangeFit = 0.85;   // and of the held notes since the change began, the new set covers at least this share,
+        double voiceChangeOld = 0.45;   // the old one at most this share,
+        double voiceChangeShared = 4.0; // and the two sets share at most this many notes: nearer sets cannot be told from straying
+        double voiceChangeSlack = 0.05; // sets within this of the best cover equally well; of those, the old key moved up one or two
+                                        // semitones is taken first, as that is how a song goes up a key
+        double voiceMoveEvidence = 0.0; // the long memory moves the reading to another set of notes only when the notes that tell the
+                                        // two apart favour the new one by this many seconds of held notes
+        double voiceUnsureMargin = 0.33; // a lone voice's reading is called not sure when its lead over the runner up is under this (see Reading::margin)
         double voiceSureHeld = 6.0;     // seconds of held notes in memory before the confidence can be full
         double voiceMargin = 2.0;       // a new key must lead the shown one by this many times the usual margin
         double voiceHome = 1.0;         // how much the listener ratings count in choosing between a key and its relative. 0: the even profile alone
@@ -277,8 +280,8 @@ public:
         std::fill (ring.begin(), ring.end(), 0.0);
         ringPos = 0; hopCounter = 0; windowFilled = 0;
         trebleMemory.fill (0.0); bassMemory.fill (0.0); opening.fill (0.0); chordMemory.fill (0.0); recentMemory.fill (0.0);
-        heldMemory.fill (0.0); heldRecent.fill (0.0); watchMemory.fill (0.0); heldSeconds = 0.0; voiceFit = 0.0; lastTopPc = -1; heldRun = 0;
-        tunWeight = 0.0; tuneClarity = 1.0; clarityAvg = -1.0; clearSeconds = 0.0; offKey = false; watching = watchFresh = false; watchRest = 0.0; weighStart = 0.0; keyChanges = 0;
+        heldMemory.fill (0.0); clearChangeCounts(); changePeak.fill (0.0); sureSet = -1; heldSeconds = 0.0; voiceFit = 0.0; lastTopPc = -1; heldRun = 0;
+        tunWeight = 0.0; tuneClarity = 1.0; clarityAvg = -1.0; clearSeconds = 0.0; offKey = false; keyChanges = 0;
         for (auto& f : frameHistory) f.fill (0.0);
         for (auto& f : frameTreble) f.fill (0.0);
         for (auto& f : frameBass) f.fill (0.0);
@@ -352,6 +355,7 @@ public:
     double heldWeightNow() const noexcept { return heldNow; }
     // How tightly the sound sits on one tuning offset: 0 spread evenly round the semitone, 1 all on one offset.
     double tuningClarity() const noexcept { return tuneClarity; }
+    double changeCountPeak (int semitonesUp) const noexcept { return changePeak[(size_t) (semitonesUp % 12)]; } // for tools: the highest count toward the set this far above the shown one
     int voiceKeyChanges() const noexcept { return keyChanges; } // times a lone voice's reading moved because the song changed key
     double secondsHeard() const noexcept { return heardSeconds; }
 
@@ -773,15 +777,60 @@ private:
         if (held)
         {
             heldMemory[(size_t) topPc] += heldWeight;
-            // The recent notes are counted in seconds of held notes, not of time, so that sparse singing and a rap verse between
-            // sung lines do not empty them.
             heldNow = heldWeight * hopSeconds;
-            const double recentDecay = std::exp (-heldNow / knobs.recentVoice);
-            for (auto& x : heldRecent) x *= recentDecay;
-            heldRecent[(size_t) topPc] += heldWeight;
+            if (voicePath() && current.key >= 0 && sureSet >= 0)
+            {
+                const double changeWeight = frameWeight * std::min (1.0, (heldRun - 1) / std::max (1.0, knobs.voiceChangeFull));
+                const double changeNow = changeWeight * hopSeconds;
+                for (int n = 0; n < 12; ++n)
+                {
+                    if (changeScore[(size_t) n] > 0.0 && heardSeconds - changeStart[(size_t) n] > knobs.voiceChangeWindow)
+                    {
+                        changeScore[(size_t) n] = 0.0;
+                        changeNotes[(size_t) n].fill (0.0);
+                    }
+                    if (changeScore[(size_t) n] <= 0.0) { changeRef[(size_t) n] = sureSet; changeStart[(size_t) n] = heardSeconds; }
+                    const int ref = changeRef[(size_t) n];
+                    if (n == ref) continue;
+                    const bool inNew = inSignature (topPc, n), inOld = inSignature (topPc, ref);
+                    double& score = changeScore[(size_t) n];
+                    score += inNew && ! inOld ? changeNow : (inOld && ! inNew ? -changeNow : 0.0);
+                    if (score <= 0.0) { score = 0.0; changeNotes[(size_t) n].fill (0.0); }
+                    else changeNotes[(size_t) n][(size_t) topPc] += changeWeight;
+                    changePeak[(size_t) ((n - ref + 12) % 12)] = std::max (changePeak[(size_t) ((n - ref + 12) % 12)], score);
+#ifdef KEY_TRACE
+                    for (double level : { 1.5, 2.0 })
+                        if (score >= level && score - changeNow < level && sharedNotes (n, ref) <= 4)
+                        { double tot = 0.0; for (auto x : changeNotes[(size_t) n]) tot += x;
+                          std::fprintf (stderr, "\nCROSS %.1f t %.1f up %d held %.2f new %.2f old %.2f\n", level, heardSeconds, (n - ref + 12) % 12, tot * hopSeconds, coverage (changeNotes[(size_t) n], n, tot), coverage (changeNotes[(size_t) n], ref, tot)); }
+#endif
+                }
+            }
         }
+    }
 
-        if (held && watching) watchMemory[(size_t) topPc] += heldWeight;
+    void clearChangeCounts() noexcept
+    {
+        changeScore.fill (0.0);
+        changeRef.fill (-1);
+        for (auto& m : changeNotes) m.fill (0.0);
+    }
+
+    // A change of key is being weighed: some far set's count is well off zero.
+    bool weighingChange() const noexcept
+    {
+        for (int n = 0; n < 12; ++n)
+            if (changeRef[(size_t) n] >= 0 && n != changeRef[(size_t) n] && changeScore[(size_t) n] >= knobs.voiceChangeWatch
+                && sharedNotes (n, changeRef[(size_t) n]) <= (int) knobs.voiceChangeShared)
+                return true;
+        return false;
+    }
+
+    static int sharedNotes (int a, int b) noexcept
+    {
+        int n = 0;
+        for (int i = 0; i < 12; ++i) if (inSignature (i, a) && inSignature (i, b)) ++n;
+        return n;
     }
 
     // Read as a lone voice: a sound with no tuning of its own, in either Source.
@@ -914,65 +963,59 @@ private:
         if (current.key < 0) { outsideSeconds = 0.0; return; }
         if (voicePath())
         {
-            // A singer strays outside the key for a note or a phrase without the song having moved, and his misses scatter round
-            // the same 7 notes. A real change moves the whole set and stays there. So: a quick watch on the newest held notes
-            // starts a fresh count, and only if that count, 2.5 s of held notes later, fits another set while the shown key
-            // explains little of it, does the reading move. The long memory is not touched until then.
+            // See the note at voiceChangeEvidence. The set whose count is highest wins.
             const int shown = current.key + (current.minor ? 12 : 0);
-            const int home = shown < 12 ? shown : (shown - 12 + 3) % 12;
-            if (watching)
+            const int shownSet = shown < 12 ? shown : (shown - 12 + 3) % 12;
+            int pick = -1;
+            for (int n = 0; n < 12; ++n)
             {
+                const int ref = changeRef[(size_t) n];
+                if (ref < 0 || n == ref || changeScore[(size_t) n] < knobs.voiceChangeEvidence) continue;
+                if (sharedNotes (n, ref) > (int) knobs.voiceChangeShared) continue;
                 double total = 0.0;
-                for (auto x : watchMemory) total += x;
-                if (total * hopSeconds < knobs.voiceConfirmHeld) return;
-                watchFresh = false; // the count is in: if it does not show a new key at once, the long memory may move the reading again
-                const double mine = coverage (watchMemory, home, total);
-                double best = 0.0;
-                for (int k = 0; k < 12; ++k) best = std::max (best, coverage (watchMemory, k, total));
-                if (mine <= knobs.voiceConfirmMax && best >= knobs.voiceOutsideFit)
-                {
-                    int pick = -1;
-                    for (int up : { 1, 2 })
-                        if (pick < 0 && coverage (watchMemory, (home + up) % 12, total) >= best - knobs.voiceConfirmSlack) pick = (home + up) % 12;
-                    const bool moved = pick >= 0; // the same song a step up keeps its scale
-                    for (int k = 0; k < 12 && pick < 0; ++k)
-                        if (k != home && coverage (watchMemory, k, total) >= best) pick = k;
-                    if (pick >= 0)
-                    {
-                        heldMemory = watchMemory;
-                        int next = current.minor ? 12 + (pick + 9) % 12 : pick;
-                        if (! moved)
-                        {
-                            scoreKeys();
-                            next = scores[(size_t) pick] >= scores[(size_t) (12 + (pick + 9) % 12)] ? pick : 12 + (pick + 9) % 12;
-                        }
-                        previousShown = shown;
-                        current.key = next % 12;
-                        current.minor = next >= 12;
-                        lastMove = heardSeconds;
-                        candidate = -1; dwell = 0.0;
-                        ++keyChanges;
-                    }
-                    watching = watchFresh = false; outsideSeconds = 0.0;
-                }
-                else if (mine > knobs.voiceConfirmMax + 0.1 || total * hopSeconds >= 2.5 * knobs.voiceConfirmHeld)
-                {
-                    // Not a change of key. Leave the reading to the long memory for a while before watching anew.
-                    watching = false; outsideSeconds = 0.0; watchRest = heardSeconds + knobs.voiceRestSeconds;
-                }
-                return;
+                for (auto x : changeNotes[(size_t) n]) total += x;
+                if (coverage (changeNotes[(size_t) n], n, total) < knobs.voiceChangeFit) continue;
+                if (coverage (changeNotes[(size_t) n], ref, total) > knobs.voiceChangeOld) continue;
+                if (pick < 0 || changeScore[(size_t) n] > changeScore[(size_t) pick]) pick = n;
             }
-            if (heardSeconds < watchRest) { outsideSeconds = 0.0; return; }
-            double total = 0.0;
-            for (auto x : heldRecent) total += x;
-            if (total * hopSeconds < knobs.voiceTriggerHeld) { outsideSeconds = 0.0; return; }
-            double best = 0.0;
-            for (int k = 0; k < 12; ++k) best = std::max (best, coverage (heldRecent, k, total));
-            int outsideNotes = 0;
-            for (int i = 0; i < 12; ++i) if (heldRecent[(size_t) i] > 0.08 * total && ! inSignature (i, shown)) ++outsideNotes;
-            const bool against = best - coverage (heldRecent, home, total) >= knobs.voiceTriggerLead && outsideNotes >= 2;
-            outsideSeconds = against ? outsideSeconds + heldNow : 0.0;
-            if (outsideSeconds >= knobs.voiceTriggerSeconds) { watching = watchFresh = true; watchMemory = heldRecent; outsideSeconds = 0.0; }
+            if (pick < 0) return;
+            const int ref = changeRef[(size_t) pick];
+#ifdef KEY_TRACE
+            { double tot = 0.0, all = 0.0; for (auto x : changeNotes[(size_t) pick]) tot += x; for (auto x : heldMemory) all += x;
+              std::fprintf (stderr, "FIRE t %.1f ref %d pick %d (+%d) score %.2f held %.2f fitNew %.2f fitOld %.2f memHeld %.1f conf %.2f shownSet %d\n", heardSeconds, ref, pick, (pick - ref + 12) % 12,
+                            changeScore[(size_t) pick], tot * hopSeconds, coverage (changeNotes[(size_t) pick], pick, tot), coverage (changeNotes[(size_t) pick], ref, tot), all * hopSeconds, (double) current.confidence, shownSet); }
+#endif
+            heldMemory = changeNotes[(size_t) pick];   // the reading is built anew from where the change began
+            {
+                double total = 0.0, best = 0.0;
+                for (auto x : heldMemory) total += x;
+                int bestSet = pick;
+                for (int k = 0; k < 12; ++k)
+                    if (k != ref && sharedNotes (k, ref) <= (int) knobs.voiceChangeShared && coverage (heldMemory, k, total) > best) { best = coverage (heldMemory, k, total); bestSet = k; }
+                pick = bestSet;
+                for (int up : { 2, 1 })
+                    if (sharedNotes ((ref + up) % 12, ref) <= (int) knobs.voiceChangeShared && coverage (heldMemory, (ref + up) % 12, total) >= best - knobs.voiceChangeSlack) pick = (ref + up) % 12;
+            }
+            sureSet = pick;
+            if (pick != shownSet)
+            {
+                // The same song a step up keeps its scale. Anything else: whichever of the key and its relative the notes favour.
+                const int up = (pick - ref + 12) % 12;
+                const bool wasMinor = shownSet == ref ? current.minor : sureMinor;
+                int next = wasMinor ? 12 + (pick + 9) % 12 : pick;
+                if (up != 1 && up != 2)
+                {
+                    scoreKeys();
+                    next = scores[(size_t) pick] >= scores[(size_t) (12 + (pick + 9) % 12)] ? pick : 12 + (pick + 9) % 12;
+                }
+                previousShown = shown;
+                current.key = next % 12;
+                current.minor = next >= 12;
+                lastMove = heardSeconds;
+                ++keyChanges;
+            }
+            candidate = -1; dwell = 0.0;
+            clearChangeCounts();
             return;
         }
         const bool outside = shareOutsideShownKey (recentMemory) > knobs.outsideShare;
@@ -1305,12 +1348,16 @@ private:
             const double margin = (stable ? knobs.marginStable : knobs.marginFast) * settled * guard * back * (voicePath() ? knobs.voiceMargin : 1.0);
             const double holdFor = (stable ? knobs.holdStable : knobs.holdFast) * (knobs.holdAfterLetGo > 0.0 ? std::clamp (sinceLetGo / knobs.settleSeconds, 0.25, 1.0) : 1.0);
             const bool holding = heardSeconds - lastMove < holdFor;
-            // While the newest held notes are being weighed as a possible change of key, the long memory holds old and new notes
-            // mixed and its leader is a key between the two: the reading waits for the fresh count instead.
-            // Never for longer than voiceWeighSeconds, so that a sparse singer's wrong first reading can still be put right.
-            if (! (watchFresh || outsideSeconds > 0.0)) weighStart = heardSeconds;
-            const bool weighing = voicePath() && (watchFresh || outsideSeconds > 0.0) && heardSeconds - weighStart < knobs.voiceWeighSeconds;
-            if (! holding && ! weighing && dwell >= need && scores[(size_t) top] - scores[(size_t) shown] >= margin && gate > 0.5)
+            // The notes that tell the two sets apart must favour the new one clearly, in seconds of held notes.
+            bool evident = true;
+            if (voicePath() && knobs.voiceMoveEvidence > 0.0)
+            {
+                double lead = 0.0;
+                for (int i = 0; i < 12; ++i)
+                    lead += heldMemory[(size_t) i] * ((inSignature (i, top) ? 1.0 : 0.0) - (inSignature (i, shown) ? 1.0 : 0.0));
+                evident = top == relativeOf (shown) || lead * hopSeconds >= knobs.voiceMoveEvidence;
+            }
+            if (! holding && evident && dwell >= need && scores[(size_t) top] - scores[(size_t) shown] >= margin && gate > 0.5)
             {
                 // A new set of notes won without ever going far outside the old key, so no section start has been heard yet.
                 if (knobs.sectionOnMove > 0.0 && top != relativeOf (shown) && sinceLetGo > knobs.settleSeconds && heardSeconds - openingBorn > knobs.settleSeconds)
@@ -1352,8 +1399,26 @@ private:
             }
             const double otherSure = voicePath() ? probs[(size_t) other] + probs[(size_t) relativeOf (other)] : probs[(size_t) other];
             current.altConfidence = (float) std::clamp (otherSure * gate * presence * enough, 0.0, 1.0);
+            current.margin = (float) std::clamp ((sure - otherSure) / std::max (sure + otherSure, 1.0e-9), 0.0, 1.0);
             smoothedConfidence += (target - smoothedConfidence) * (1.0 - std::exp (-hopSeconds / 0.8));
             current.confidence = (float) std::clamp (smoothedConfidence, 0.0, 1.0);
+            if (voicePath())
+            {
+                // Two sets of notes about equally likely: say so. Under 0.5 nothing that follows this reading acts on it.
+                smoothedMargin += ((double) current.margin - smoothedMargin) * (1.0 - std::exp (-hopSeconds / 0.8));
+                current.margin = (float) std::clamp (smoothedMargin, 0.0, 1.0);
+                const bool weighing = weighingChange();
+                current.unsure = smoothedMargin < knobs.voiceUnsureMargin || weighing;
+                if (current.unsure) current.confidence = std::min (current.confidence, 0.49f);
+                if (current.confidence >= 0.5f)
+                {
+                    const int set = shown < 12 ? shown : (shown - 12 + 3) % 12;
+                    if (set != sureSet) clearChangeCounts(); // the counts were against another set
+                    sureSet = set;
+                    sureMinor = shown >= 12;
+                }
+            }
+            else current.unsure = current.confidence < 0.5f && current.margin < (float) knobs.voiceUnsureMargin;
         }
         current.tuningCents = (float) (tuning * 100.0);
         current.loneVoice = voicePath();
@@ -1430,13 +1495,18 @@ private:
     Source source = Source::mix;
 
     std::array<double, 12> trebleMemory {}, bassMemory {}, opening {}, recentMemory {};
-    std::array<double, 12> heldMemory {}, heldRecent {}, watchMemory {};      // a lone voice's held notes: about two minutes, the newest, and a fresh count
+    std::array<double, 12> heldMemory {};      // a lone voice's held notes: about two minutes
     std::array<std::array<double, 12>, 24> voiceProfile {};
     int lastTopPc = -1, heldRun = 0, keyChanges = 0;
     double tuneClarity = 1.0, clarityAvg = -1.0, clearSeconds = 0.0;
     double heldSeconds = 0.0, heldNow = 0.0, voiceFit = 0.0, tunWeight = 0.0;
-    double watchRest = 0.0, weighStart = 0.0;
-    bool offKey = false, watching = false, watchFresh = false;
+    std::array<double, 12> changeScore {}, changePeak {};        // the running count per set of 7 notes (as its major key), and its highest so far
+    bool sureMinor = false;
+    int sureSet = -1;                                             // the last set of 7 notes that was shown with confidence 0.5 or more: what a change is measured against
+    std::array<double, 12> changeStart {};                        // when each count left zero
+    std::array<int, 12> changeRef {};                             // the shown set each count is measured against, from when it left zero
+    std::array<std::array<double, 12>, 12> changeNotes {};        // held notes since each count left zero
+    bool offKey = false;
     std::array<std::array<double, 12>, numHistory> frameHistory {}, frameTreble {}, frameBass {};
     std::array<int, numHistory> frameChord {};
     std::array<double, numHistory> frameWeights {};
@@ -1458,7 +1528,7 @@ private:
     double lastMove = -1000.0;
     std::array<double, 24> cadence {};
     int heldChord = -1, pendingChord = -1, pendingFrames = 0;
-    double dwell = 0.0, smoothedConfidence = 0.0;
+    double dwell = 0.0, smoothedConfidence = 0.0, smoothedMargin = 1.0;
     Reading current;
 };
 } // namespace smoothkey

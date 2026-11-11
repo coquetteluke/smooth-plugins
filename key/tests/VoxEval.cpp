@@ -71,7 +71,7 @@ static bool setKnob (KeyAnalyser::Knobs& k, const std::string& name, double v)
         { "outsideStable", &K::outsideStable }, { "outsideFast", &K::outsideFast }, { "recentStable", &K::recentStable }, { "recentFast", &K::recentFast },
         { "holdStable", &K::holdStable }, { "holdFast", &K::holdFast }, { "outsideWeight", &K::outsideWeight }, { "chromaPower", &K::chromaPower },
         { "softness", &K::softness }, { "harmonicDecay", &K::harmonicDecay },
-        { "voiceModel", &K::voiceModel }, { "heldShare", &K::heldShare }, { "heldFull", &K::heldFull }, { "tauVoice", &K::tauVoice }, { "recentVoice", &K::recentVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight }, { "voiceTriggerHeld", &K::voiceTriggerHeld }, { "voiceTriggerLead", &K::voiceTriggerLead }, { "voiceTriggerSeconds", &K::voiceTriggerSeconds }, { "voiceConfirmHeld", &K::voiceConfirmHeld }, { "voiceConfirmMax", &K::voiceConfirmMax }, { "voiceOutsideFit", &K::voiceOutsideFit }, { "voiceConfirmSlack", &K::voiceConfirmSlack }, { "voiceSureHeld", &K::voiceSureHeld }, { "voiceWeighSeconds", &K::voiceWeighSeconds }, { "voiceRestSeconds", &K::voiceRestSeconds }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh }, { "voiceMargin", &K::voiceMargin }, { "voiceHome", &K::voiceHome }, { "offKeyEnter", &K::offKeyEnter }, { "offKeyLeave", &K::offKeyLeave }, { "offKeyLeaveSeconds", &K::offKeyLeaveSeconds }, { "clarityTau", &K::clarityTau },
+        { "voiceModel", &K::voiceModel }, { "heldShare", &K::heldShare }, { "heldFull", &K::heldFull }, { "tauVoice", &K::tauVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight }, { "voiceChangeEvidence", &K::voiceChangeEvidence }, { "voiceChangeFit", &K::voiceChangeFit }, { "voiceChangeOld", &K::voiceChangeOld }, { "voiceChangeShared", &K::voiceChangeShared }, { "voiceChangeFull", &K::voiceChangeFull }, { "voiceChangeWindow", &K::voiceChangeWindow }, { "voiceChangeWatch", &K::voiceChangeWatch }, { "voiceChangeSlack", &K::voiceChangeSlack }, { "voiceMoveEvidence", &K::voiceMoveEvidence }, { "voiceUnsureMargin", &K::voiceUnsureMargin }, { "voiceSureHeld", &K::voiceSureHeld }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh }, { "voiceMargin", &K::voiceMargin }, { "voiceHome", &K::voiceHome }, { "offKeyEnter", &K::offKeyEnter }, { "offKeyLeave", &K::offKeyLeave }, { "offKeyLeaveSeconds", &K::offKeyLeaveSeconds }, { "clarityTau", &K::clarityTau },
     };
     for (const auto& t : table)
         if (name == t.first) { k.*(t.second) = v; return true; }
@@ -119,7 +119,7 @@ int main (int argc, char** argv)
         const double t = (double) (pos + (size_t) n) / rate;
         int lead = -1;   // the key that scores highest now, whatever is shown
         for (int k = 0; k < 24; ++k) if (r.candidates[(size_t) k] > 0.0f && (lead < 0 || r.candidates[(size_t) k] > r.candidates[(size_t) lead])) lead = k;
-        std::printf ("S %.2f %d %.3f %d\n", t, idx, (double) r.confidence, lead);
+        std::printf ("S %.2f %d %.3f %d %d %.3f %d\n", t, idx, (double) r.confidence, lead, r.altKey < 0 ? -1 : r.altKey + (r.altMinor ? 12 : 0), (double) r.margin, r.unsure ? 1 : 0);
         if (idx != last)
         {
             char line[96];
@@ -138,6 +138,9 @@ int main (int argc, char** argv)
         }
     }
     std::fputs (changes.c_str(), stdout);
+    std::printf ("PEAKS");
+    for (int i = 1; i < 12; ++i) std::printf (" %.2f", a.changeCountPeak (i));   // highest change count toward the set i semitones above the shown one
+    std::printf ("\n");
     std::printf ("KEYCHANGES %d\n", a.voiceKeyChanges());   // moves made because a lone voice's song changed key
     return 0;
 }

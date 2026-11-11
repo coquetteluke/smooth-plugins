@@ -18,7 +18,7 @@ New:
   - Wow and Flutter lose their hash. Their irregular part left noise around a held note, 42 dB under a 3 kHz tone at the default Wow 15 and Flutter 10 and 23 dB under with both at 100. With Clean it is 69 and 49 dB under, and they still swing as far (2.25 ms and 0.23 ms at 100).
   - Low notes are on time. The DC filter in the voices sits at 1 Hz in place of 6 Hz, where it brought a 100 Hz note in 4.6 samples early.
   The delay you set is still the delay you get, to 0.002 sample at every rate, and latency is still 0. Switching it under sound fades over 30 ms with no tick (110 dB under a tone).
-- Three presets, after the 13 old ones so their numbers do not move: **Clean Vocal Double**, **Clean Wide Stack**, and **Worn Cassette Clean** (Worn Cassette control for control, with Clean on).
+- Three presets, after the 13 old ones so their numbers do not move: **Clean Vocal Double**, **Clean Wide Stack**, and **Worn Cassette Clean** (Worn Cassette with Clean on, and Spread at 20 in place of 50 so that it holds up in mono).
 
 Tests: limits that were wider than what the README says are now what it says. Mix 0 and Bypass must match the input in every sample (the limit was 120 dB under). Delay Time is held to 0.02 ms (it was 1 ms), and to 0.05 sample for one still voice at 44.1, 48, 88.2 and 96 kHz. The click limit of the shared test kit was a step of 0.30 on a tone whose own step is 0.004, and is 0.012 here. Nothing was hiding behind those three. New tests for arrival, the Bypass tick, the cut staircase and Clean each failed before their fix.
 

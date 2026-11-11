@@ -91,7 +91,7 @@ New in 0.4.0, all with Clean on:
 
 - **Clean Vocal Double**: 2 voices, a little Random and Unsync, Low Cut at 120 Hz. A double for a lead with nothing added that is not the voice.
 - **Clean Wide Stack**: 6 voices, full Spread, Low Cut at 180 Hz.
-- **Worn Cassette Clean**: Worn Cassette, control for control, with Clean on. The same wobble and drive without the hash and without the lifted S sounds. Switch between the two to hear what Clean does.
+- **Worn Cassette Clean**: Worn Cassette with Clean on and Spread at 20 in place of 50. The same wobble and drive without the hash and without the lifted S sounds, and it holds up in mono (at Spread 50 it lost 9.5 dB in its worst quarter second on Luke's takes, as Worn Cassette does).
 
 ## Signal flow
 

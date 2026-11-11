@@ -40,8 +40,9 @@ namespace
         // New in 0.4.0, after the 13 above so their numbers do not move. All three have Clean on.
         { "Clean Vocal Double",  2, 0.5f,  1.0f, 16.0f,  8.0f,  3.0f, 15.0f, -1.0f,  70.0f, 30.0f,  0.0f, 120.0f,  highOff, wowDef, flutterDef, 10.0f, 0.6f, true,  0.0f, 2.0f,  0.0f, true },
         { "Clean Wide Stack",    6, 0.3f,  1.2f, 18.0f, 10.0f,  4.0f, 12.0f, -2.0f, 100.0f, 35.0f,  0.0f, 180.0f,  highOff, wowDef, flutterDef, 15.0f, 0.5f, true,  0.0f, 2.0f,  0.0f, true },
-        // Worn Cassette, control for control, with Clean on: the same wobble and drive without the hash and the lifted S sounds.
-        { "Worn Cassette Clean", 2, 0.35f, 1.0f, 12.0f, 60.0f, 45.0f, 55.0f, -7.0f,  50.0f, 50.0f,  0.0f, lowOff,  highOff, wowDef, flutterDef,  0.0f, 1.0f, false, 0.0f, 2.0f,  0.0f, true },
+        // Worn Cassette with Clean on: the same wobble and drive without the hash and the lifted S sounds. Spread is 20, not Worn
+        // Cassette's 50: at 50 this preset lost 9.5 dB in mono in its worst quarter second on Luke's takes, at 20 it loses 5.
+        { "Worn Cassette Clean", 2, 0.35f, 1.0f, 12.0f, 60.0f, 45.0f, 55.0f, -7.0f,  20.0f, 50.0f,  0.0f, lowOff,  highOff, wowDef, flutterDef,  0.0f, 1.0f, false, 0.0f, 2.0f,  0.0f, true },
     };
 
     juce::NormalisableRange<float> skewed (float lo, float hi, float step, float centre)

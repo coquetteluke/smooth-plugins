@@ -210,7 +210,7 @@ PASS  preset Random Drift Double: level against input = -0.488 dB
 PASS  preset Resonant Tape Swirl: level against input = -1.287 dB
 PASS  preset Clean Vocal Double: level against input = -0.377 dB
 PASS  preset Clean Wide Stack: level against input = -0.621 dB
-PASS  preset Worn Cassette Clean: level against input = -2.414 dB
+PASS  preset Worn Cassette Clean: level against input = -2.405 dB
 PASS  damaged state: every control ends up in range
 PASS  damaged state: NaN depth does not reach the audio
 PASS  damaged state: infinite delay does not reach the audio = 15.000 ms

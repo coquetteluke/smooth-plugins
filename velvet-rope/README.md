@@ -62,7 +62,7 @@ The window's font is Inter, under the SIL Open Font License. See `assets/fonts/O
 - **Bypass**: keeps the delay, crossfades over 20 ms.
 - **Mode**: Soft judges a peak against the bands around it, so it works the same at any level. Hard uses a fixed level, so loud parts get treated and quiet ones don't. Hard is what you want for side chain carving.
 - **Hard Threshold** (-80 to 0 dB, default -36): Hard mode only. A bin over this level is held down toward it, up to Depth. Compared after a 3 dB per octave lift above 1 kHz, so one number suits a voice's falling highs.
-- **Held Notes** (Off or On, default Off): also takes down a single harmonic that rings on a held note. Off is the sound of 0.5.1 to the sample, so nothing saved before it existed changes. It only works in Soft mode, and an S, a breath or noise has no harmonics, so it leaves them alone. The graph shows its part of the reduction in rose gold. On costs about 1.3 times the CPU: 1.3% of one core off, 1.7% on, mono at 48 kHz on the MacBook with other work running. Numbers on real takes are under What was measured.
+- **Held Notes** (Off or On, default Off): also takes down a single harmonic that rings on a held note. Off is the sound of 0.5.1 to the sample, so nothing saved before it existed changes. It only works in Soft mode, and an S, a breath or noise has no harmonics, so it leaves them alone. The graph shows its part of the reduction in rose gold. On costs about 1.3 times the CPU: 0.80% of one core off, 1.05% on, mono at 48 kHz, the mean over Luke's 11 working takes on the MacBook with other work running (0.7.0 in the same half hour: 1.80% and 2.09%). Numbers on real takes are under What was measured.
 - **Stereo Mode**: Stereo or Mid/Side. Switches with no click. Does nothing over two channels.
 - **Stereo Link** (0 to 100%, default 100): 100 means one gain curve for all channels, so the image can't wander. 0 means each channel on its own. Mid and side are always treated apart. In surround it joins every channel except the LFE.
 - **Stereo Focus** (-100 to +100%, default 0): -100 puts all the treatment on left or mid, +100 on right or side. In surround it goes by left and right side channels, and center channels keep theirs.
@@ -120,14 +120,14 @@ Everything is in `tests/results.txt`. Rerun with `zsh tests/run_all.sh` after `c
 
 Held Notes on Luke's real takes (11 whole songs on a Rode NT1, 23.9 minutes of voiced sound, default settings; off, then on in 0.6.0, then on in 0.7.0). A ring here is one harmonic 10 dB or more over the two harmonics either side of it that stays put for a quarter of a second or more; there are 48, most at 1.8 to 1.9 kHz and 2.4 to 4.0 kHz.
 
-- Rings: median cut 4.74, 5.86, 5.92 dB. The 20 between 2 and 5 kHz: 0.31, 4.96, 5.50 dB. The tenth of them cut least: 0.00, 0.31, 4.77 dB. Share cut by 3 dB or more: 58%, 83%, 94% (45 of 48). The three still under 3 dB get 2.2 to 2.5 dB: two at 9.1 kHz whose height jumps from frame to frame, and one on a slide in pitch.
+- Rings: median cut 4.74, 5.86, 5.92 dB. The 20 between 2 and 5 kHz: 0.31, 4.96, 5.50 dB. The tenth of them cut least: 0.00, 0.31, 4.77 dB. Share cut by 3 dB or more: 58%, 83%, 94% (45 of 48). The three still under 3 dB get 1.8 to 2.6 dB. Looked at one by one in 0.7.1, none is a harmonic ringing on a held note: two are a breath whistle at 9.1 kHz, 42 to 52 dB under the note and still there for a tenth of a second after the note stops, and one is a formant that five rapped syllables come back to.
 - S sounds above 4 kHz: -1.27, -1.27, -1.28 dB (limit 1.5). Consonant onsets above 2.5 kHz: -0.55, -0.59, -0.60 dB. Note tails: the gain moves 0.05, 0.06, 0.06 dB a frame.
 - High notes, first three harmonics: -0.01 dB in all three. Level, worst take: -0.08, -0.11, -0.12 dB. Pumping, the swing of the gain between 1 and 10 kHz: 2.60, 2.90, 2.92 dB (limit 3.0). That limit is what holds Held Notes back: with the count starting at 50 ms it reached 98% of the rings and the swing read 3.31 dB.
 - Latency: 2048 samples off and on. No click, no sample over full scale, no NaN.
-- With it off, every sample of all 11 takes equals a 0.5.1 build, at the default and at Harsh Lead Vocal, Boxy Low Mids and Eight Dot Vocal Sculpt (repeated for 0.7.0).
+- With it off, every sample of all 11 takes equals a 0.5.1 build, at the default and at Harsh Lead Vocal, Boxy Low Mids and Eight Dot Vocal Sculpt (repeated for 0.7.0). 0.7.1 equals 0.7.0 sample for sample on the same takes, off and on; Boxy Low Mids and Eight Dot Vocal Sculpt have new values in 0.7.1, so those two presets, loaded fresh, no longer sound as they did.
 - Checked once after everything was final, off, 0.6.0 on, 0.7.0 on. Six more Rode takes kept aside (11 rings): cut by 3 dB or more 45%, 64%, 91%; median 1.59, 5.43, 5.85 dB; S -0.84, -0.84, -0.90 dB; pumping between 1 and 10 kHz 2.11, 2.60, 2.58 dB. The one still under 3 dB (1.66 dB) is in a dying tail where the harmonic spacing is lost. The first session's 11 takes on another microphone (87 rings): 49%, 57%, 97%, with S and consonants inside their limits; there the pumping between 1 and 10 kHz is over its 3.0 dB limit even with Held Notes off (3.18 and 3.20 dB on the two sets), and on adds 0.25 dB.
 
-Old sessions: the default, all 8 old presets and a session with every old control moved, loaded both ways, null exactly against renders saved from the 0.4.1 build (`tests/baseline/`). So do the default and presets on real speech at 44.1, 48, 88.2 and 96 kHz against a frozen copy of the 0.4.1 engine (`tests/legacy/`).
+Old sessions: the default, all 8 old presets and a session with every old control moved, loaded both ways, null exactly against renders saved from the 0.4.1 build (`tests/baseline/`). One exception since 0.7.1: Boxy Low Mids loaded fresh has its new values and is compared with a render saved from 0.7.1; the session 0.4.1 saved with it still nulls against the 0.4.1 render. So do the default and presets on real speech at 44.1, 48, 88.2 and 96 kHz against a frozen copy of the 0.4.1 engine (`tests/legacy/`).
 
 Each Quality at 48 kHz, stereo:
 
@@ -139,13 +139,15 @@ Each Quality at 48 kHz, stereo:
 | Width of the cut at half depth, sharpest | 656 Hz | 211 Hz | 176 Hz |
 | Cut comes back up between tones 400 Hz apart | 0 dB, one cut | 12 dB | 12 dB |
 | Mean removed from a 12 dB boost at 3150 Hz, 4 voices | 5.8 dB | 6.3 dB | 6.6 dB |
-| CPU, one core | 1.7% | 1.4% | 1.5% |
+| CPU, one core (0.7.1; it was 1.3%, 1.5%, 1.7% in 0.7.0) | 0.6% | 0.6% | 0.7% |
 
 Low Latency cannot tell two peaks 400 Hz apart, and on low notes it cannot see separate harmonics at all.
 
 A Quality switch runs two settings at once for a moment. Worst block of 128 samples during a switch, best of 5 tries: 9% in stereo, 38% in 7.1.4.
 
-CPU per layout through the real AU at default, one core: stereo 0.8%, 5.1 2.0%, 7.1 2.9%, 7.1.4 4.7%, 9.1.6 6.4%. All measured with other builds running.
+CPU per layout through the real AU at default, one core, 0.7.1: mono 0.26%, stereo 0.5%, 5.1 1.4%, 7.1 1.9%, 7.1.4 2.7%, 9.1.6 4.7% (0.7.0 the same day: 0.7%, 1.4%, 3.4%, 4.9%, 7.9%, 10.2%). All measured with other builds running.
+
+0.7.1 made the engine about three times cheaper with every output sample unchanged: it only works on the bins between Low and High, takes its sliding maxima from a table, and takes no logarithm for a bin that plainly does not stand out. The suite's hardest CPU line, 96 kHz stereo with Sharpness, Low and Mid/Side moving every 256 samples (limit 5% of one core), reads 1.2 to 1.4% on the busy MacBook where 0.7.0 read 4.2 to 6.0%, and 3.4 to 5.5% when macOS is forced to use only its slow cores (`taskpolicy -b`), where 0.7.0 read 9.2 to 13.6%. Most of what is left is the FFT. Proof that nothing changed: 510 runs side by side with a frozen 0.7.0 engine on random signals and settings and all 17 Rode takes whole at five settings, bit for bit, 0 differ; and the 11 working takes through the real Audio Unit, off and on, equal sample for sample.
 
 Real speech, 4 voices from macOS `say`, a +12 dB Q 6 boost added at a known frequency, Depth 12, the rest default. Reads as boost in the band, then how much came out:
 

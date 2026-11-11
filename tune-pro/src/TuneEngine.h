@@ -16,7 +16,7 @@
 #include "PitchTracker.h"
 #include "PsolaShifter.h"
 
-// TUNE_AS_160 builds the engine as 1.6.0 had it (the four changes of 1.6.1 switched off), for measuring before and after with one
+// TUNE_AS_160 builds the engine as 1.6.0 had it (the five changes of 1.6.1 switched off), for measuring before and after with one
 // test binary. With it the Low Latency null test passes against 1.6.0's own numbers, which is the proof that nothing else moved.
 #ifdef TUNE_AS_160
  #define TUNE_161_CHANGES false
@@ -404,10 +404,21 @@ private:
         // Measured on dev voices (EngineHarness speak8, men 94 to 149 Hz and women 187 to 231 Hz, shifts of 1, 3 and 4 both ways, the six dev
         // vowels plain and styled and 36 random plausible vowels): worst men's formant move 6.51% to 5.76%, cases over 3.5% 20 to 7, women's
         // 6.32% to 4.77%; dev formant test 2.11% to 2.30%, first formant flatter 3.92 to 4.32 dB, big shifts and held notes as before.
-        control.centreOnPulses = mode != highQuality;
+        //
+        // Since 1.6.1 Low Latency's grains sit on the marks too, at every pitch (up to 1.6.0 they centred on the pulses from 130 Hz up),
+        // and are read a little slower going up as well as going down. The tenth held out set, the first ever run on Low Latency,
+        // found women's speaking voices in Wide Range moving their formants with the pitch: 5.19% against the input at +3 semitones
+        // and 4.81% at -1 and -3 (limit 5, and 4.5 by the floor plus 2% rule), on 1.6.0 and before. Measured on those voices and the
+        // dev voices (PluginTest w10dev probes, 2026-11-11): centring off 5.19 / 4.43, with the upward read at 0.15 and the downward
+        // one at 0.1 in place of 0.2: 3.73 / 4.05, against a real voice 2.89 / 3.28 (was 2.50 / 4.05); dev voices at 110 and 165 Hz
+        // 4.43 -> 3.85% against the input, 3.28 -> 2.89% against a real voice, level 1.43 -> 1.24 dB, first formant flatter 8.6 -> 8.8 dB.
+        // Past an octave up four and more grains overlap, and grains on the marks then partly cancel (Transpose +24: 2.6 dB down for
+        // the first second). There they still centre on the pulses, as they always did.
+        control.centreOnPulses = mode != highQuality && (! grainsOnMarksLowLatency || (control.voiced && control.outputPeriod > 0.0 && period > 2.0 * control.outputPeriod));
         // Low Latency's model lags the voice, which matters most on low voices, whose periods are long against it. It leaves those alone.
         control.pulseLowestHz = mode == highQuality ? 0.0 : 130.0;
-        control.downReadPower = mode == highQuality ? 0.0 : 0.2;
+        control.downReadPower = mode == highQuality ? 0.0 : (grainsOnMarksLowLatency ? 0.1 : 0.2);
+        control.upReadPower = mode == highQuality || ! grainsOnMarksLowLatency ? 0.0 : 0.15;
         // Which path High Quality gives out. The grains read the shape of each period, which holds the vocal tract's ring as long as a
         // period outlasts it: a first formant 70 Hz wide rings for about 1 / (pi x 70) = 4.5 ms, the period at 220 Hz. Above that a grain cuts the
         // ring short and the harmonic shifter does better. Measured on the dev vowels, +/-2 and +/-3, glides and held notes (EngineHarness
@@ -491,10 +502,13 @@ private:
         // How old the reported pitch is by the time it is heard, in periods, measured on a voice with vibrato at 147, 196 and 262 Hz
         // (testTiming): 1.89 to 1.94 for the grains in Low Latency and Classic, 1.67 to 1.83 for High Quality's grains, 1.39 to 1.41
         // for its harmonic shifter, which reads a whole period at once.
-        double age = mode != highQuality ? grainPitchAge : (harmonicShare > 0.5 && ! control.plainGrains ? harmonicPitchAge : highQualityGrainPitchAge);
+        // Grains that sit on the marks give out their sound about a quarter of a period earlier than grains centred on the pulses
+        // did: with the grains moved (1.6.1) and the age left at 2.02 the movement came 1.0 to 1.7 ms early at 147 to 262 Hz.
+        const double lowLatencyAge = grainsOnMarksLowLatency && ! control.plainGrains ? grainOnMarksPitchAge : grainPitchAge;
+        double age = mode != highQuality ? lowLatencyAge : (harmonicShare > 0.5 && ! control.plainGrains ? harmonicPitchAge : highQualityGrainPitchAge);
         // On long periods the reading is a little younger, counted in periods: 1.77 to 1.88 on the test voice at 71 to 124 Hz (testTiming 1b).
         if (mode != highQuality && readAheadOnLowNotes)
-            age -= (grainPitchAge - lowNotePitchAge) * std::clamp ((period - lowNoteAgeFrom) / (lowNoteAgeTo - lowNoteAgeFrom), 0.0, 1.0);
+            age -= (age - lowNotePitchAge) * std::clamp ((period - lowNoteAgeFrom) / (lowNoteAgeTo - lowNoteAgeFrom), 0.0, 1.0);
         const double lead = ((double) baseLatency - age * period) / (double) tickSamples;
         const int size = (int) ring.size();
         if (lead <= 0.0)
@@ -535,6 +549,7 @@ private:
     }
 
     static constexpr bool modelFollowsGrains = TUNE_161_CHANGES;
+    static constexpr bool grainsOnMarksLowLatency = TUNE_161_CHANGES;
     static constexpr bool exactPassHighQuality = TUNE_161_CHANGES;
     static constexpr bool readAheadOnLowNotes = TUNE_161_CHANGES;
     // Periods in samples at 48 kHz between which the age goes from grainPitchAge to lowNotePitchAge (141 Hz to 120 Hz)
@@ -551,7 +566,7 @@ private:
     // about 140 Hz in Alto/Tenor the reading is older than the whole latency, which nothing can make up for): with the test voice's
     // 1.92 the pitch came 68 samples late at the median of 11 takes in Alto/Tenor and 19 in Low Male. 2.02 keeps the test voice
     // within 1 ms and brings the takes nearer.
-    static constexpr double grainPitchAge = 2.02, highQualityGrainPitchAge = 1.75, harmonicPitchAge = 1.40;
+    static constexpr double grainPitchAge = 2.02, grainOnMarksPitchAge = 1.80, highQualityGrainPitchAge = 1.75, harmonicPitchAge = 1.40;
     double sr = 48000.0, tickSeconds = 0.001;
     int baseLatency = 0;
     int channels = 2, tickSamples = 48, tickPhase = 0, latency = 0, inputType = 1, mode = lowLatency;

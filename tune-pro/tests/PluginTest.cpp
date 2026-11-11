@@ -3565,7 +3565,7 @@ void testTranspose()
         const auto out = mono (render (*p, x, 256));
         const auto e = centsOff (out.data(), (long) out.size(), SR, noteHz (57 + by), 0.4, 1.4);
         const double q = e.empty() ? 1.0e6 : percentile (absolute (e), 95);
-        if (std::getenv ("TUNE_DUMP") != nullptr) std::printf ("  transpose %d: %.2f cents\n", by, q);
+        if (std::getenv ("TUNE_DUMP") != nullptr) std::printf ("  transpose %d: %.2f cents, level %+.2f dB\n", by, q, toDb (rms (out.data() + 24000, 24000)) - toDb (rms (x.data() + 24000, 24000)));
         worst = std::max (worst, q);
         worstLow = std::max (worstLow, std::abs (toDb (rms (out.data() + 24000, 24000)) - toDb (rms (x.data() + 24000, 24000))));
     }
@@ -4211,6 +4211,33 @@ int main (int argc, char** argv)
     if (want ("heldout7")) testHeldOutSeventh();
     if (want ("heldout8")) testHeldOutEighth();
     if (want ("heldout9")) testHeldOutNinth();
+    if (only == "w10dev")   // dev probe, not a test: the tenth set's women in Low Latency, Wide Range, up and down apart, and the dev voices
+    {
+        gEngine = 0;
+        struct W { voice::Vowel v; VoiceStyle style; };
+        const std::vector<W> ws {
+            { { { 348, 2365, 3130, 4050, 5000 }, { 45, 115, 145, 185, 225 }, "French i women" }, { -44.0, 3100.0 } },
+            { { { 404, 1153, 2742, 4050, 5000 }, { 50, 100, 145, 185, 225 }, "French u women" }, { -41.0, 0.0 } },
+            { { { 436, 1643, 2715, 4050, 5000 }, { 55, 115, 145, 185, 225 }, "French open eu women" }, { -49.0, 4500.0 } },
+            { { { 528, 1347, 2743, 4050, 5000 }, { 65, 100, 145, 185, 225 }, "French open o women" }, { -38.0, 2000.0 } } };
+        FormantScore up, down, men;
+        for (const auto& w : ws)
+        {
+            gStyle = w.style;
+            for (double centre : { 178.0, 201.0, 228.0 })
+                for (int shift : { 3, -3, 1, -1 })
+                    scoreFormants (shift > 0 ? up : down, w.v, centre, shift, wideRange);
+        }
+        gStyle = {};
+        note ("w10dev women up: against input", up.move * 100.0, "%"); note ("w10dev women up: against real", up.moveReal * 100.0, "%"); note ("w10dev women up: level", up.level, "dB");
+        note ("w10dev women down: against input", down.move * 100.0, "%"); note ("w10dev women down: against real", down.moveReal * 100.0, "%"); note ("w10dev women down: level", down.level, "dB");
+        for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelI, &voice::vowelU })
+            for (double centre : { 110.0, 165.0 })
+                for (int shift : { 3, -3, 1, -1 })
+                    scoreFormants (men, *v, centre, shift);
+        note ("w10dev dev voices 110 and 165 Hz: against input", men.move * 100.0, "%"); note ("w10dev dev voices: against real", men.moveReal * 100.0, "%"); note ("w10dev dev voices: flatter", men.flatter, "dB"); note ("w10dev dev voices: level", men.level, "dB");
+        return 0;
+    }
     if (only == "heldout11") testHeldOutEleventh();   // one run, after the fix it was written for
     if (only == "heldout10") testHeldOutTenth();   // not part of a full run until it has had its one run, after the changes it was written for
     if (want ("vowel")) testVowelChange();

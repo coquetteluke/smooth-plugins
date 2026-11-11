@@ -34,6 +34,7 @@ public:
         bool centreOnPulses = false; // line grains up with the pulses in a whitened voice
         double pulseLowestHz = 0.0;  // no lining up below this pitch
         double downReadPower = 0.2;  // whitened grains read slower by the shift to this power when going down
+        double upReadPower = 0.0;    // and slower by the shift to this power when going up
     };
 
     void prepare (double sampleRate, int numChannels)
@@ -473,6 +474,12 @@ private:
                 // High Quality's sweep model does not, so it turns this off.
                 else if (! c.plainGrains && planned != Plan::locked && ratio < 1.0 - 1.0e-4)
                     next.rate *= std::pow (ratio, c.downReadPower);
+                // And going up they carry the formants up with them a little: 5.2% at +3 semitones on women's voices around 200 Hz
+                // (tenth held out set, Low Latency). Read slower by the shift to this power.
+                else if (! c.plainGrains && planned != Plan::locked && ratio > 1.0 + 1.0e-4 && c.upReadPower != 0.0)
+                    // No further than an octave's worth, and fading out to nothing at two octaves: read slower there, four overlapping
+                    // grains lose level (Transpose +24: 2.6 to 7.7 dB down for the first second).
+                    next.rate *= std::pow (std::min (ratio, 2.0), -c.upReadPower * std::clamp ((4.0 - ratio) / 2.0, 0.0, 1.0));
             }
         }
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.1, 2026-11-11
+
+**A held note that slides slowly onto the next note now lands on it** (a wrong note on Luke's take 09 at 97.2 s). His D3 slid down at about 13 cents per 100 ms and settled on C#3 +20 cents. The target only changed once the voice had been 12 cents past the line for 80 ms in a row (the rule that keeps a note sung on the line from flipping), which on a slide that slow came 180 ms after the line, so most of the held note came out on D3. Now a voice that has been on the far side of the line for 120 ms in a row has moved there, and the target follows (`PitchCorrector`, `slideSeconds`). A waver across the line spends much less than that on the far side (a 5.5 Hz vibrato about 80 ms of each cycle), and the waver rules are unchanged, so a note on the line still settles on one note.
+
+New suite test, written and committed before the change (`hold`, case 3): A3 held 30 cents flat slides down at 13 cents per 100 ms onto G#3 +18; time from the line until the output is within 15 cents of G#3, limit 150 ms. 1.7.0: 182 ms in both engines (FAIL); 1.7.1: 132 ms (pass). Every other number in the full suite is the same as 1.7.0's, the Low Latency null pins included; the 12 factory presets still come out bit for bit as 1.6.1 gave them, and a session saved by 1.6.1 within 2.1e-7.
+
+Real takes, the 11 working takes with each song's key (realvox, the same renders as for 1.7.0): wrong notes at the default 2 -> 1, in High Quality 3 -> 2, at Hard Tune's settings 1 -> 0 (take 09 at 97.16 s gone from all three); nothing else moved (held notes 90th percentile 8.0 c, slides 3.57 / rap 4.97%, formant 1.33 / 2.50%). Latency, parameters, defaults, presets and AU codes are unchanged.
+
+Not at zero, as measured on 1.7.1's working set: 1 wrong note at the default (take 04 at 192.46 s, a trill between C#3 and D#3 that the target follows; the dry's median happens to sit 18 cents from the line) and 2 left as sung (takes 02 at 123.19 s and 04 at 158.91 s, both sung within 4 cents of the line between two notes, where the target flips); the settings that claim tight tuning fail take by take on takes 14 (Hard Tune 24.6 c, Classic 20.1, Humanize 0 41.2), 07 (Classic 12.0, Humanize 0 14.1) and 04 (Humanize 0 10.4): notes sung on an out-of-key note between two scale notes a whole tone apart, where the target flips. Every rule tried that holds the target there (in a simulation of the corrector on the recorded pitch; table in `_vox/rode/work/tune-pro/REPORT.md`, third pass) brings take 14 under 10 cents only by adding 4 to 12 wrong notes and turning 5.08 to 5.95% of the rap takes' slides round (limit 5). The eleventh held out set still fails (by name only, unchanged); a twelfth unseen set (Greek and Portuguese women's vowels) is committed for the fix and has not been run.
+
 ## 1.7.0, 2026-11-11
 
 **New defaults: Retune Speed 3 ms and Humanize 0% (they were 20 ms and 30%). Luke said yes to this on 2026-11-11** ("yes to both": a faster default Retune Speed and a lower default Humanize). Nothing else changes: the engine is 1.6.1's, and parameter IDs, ranges, presets, latency and AU codes are as they were.

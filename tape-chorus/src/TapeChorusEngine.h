@@ -379,10 +379,13 @@ private:
     {
         tickLeft = tickLen;
 
+        // Lands on the target. Up to 0.3.1 it only did so within 0.00001, and a float holding 40 ms cannot take a step smaller than
+        // 0.000004, so Delay Time stopped up to 0.0003 ms short for good, and Voices, Depth, the cuts and Saturation likewise.
+        // Now a step too small to move the value any further is the last one.
         const auto smooth = [] (float& v, float t, double c)
         {
-            v += (float) c * (t - v);
-            if (std::abs (t - v) < 1.0e-5f) v = t;
+            const float next = v + (float) c * (t - v);
+            v = (next == v || std::abs (t - next) < 1.0e-5f) ? t : next;
         };
         const auto slew = [] (float& v, float t, float maxStep)
         {

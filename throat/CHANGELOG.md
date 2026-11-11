@@ -1,5 +1,9 @@
 # Changelog
 
+## Not shipped: branch phrase-start-level, for Luke to hear first
+
+Changes how every setting but Neutral sounds at the start of a phrase, so it is not installed. Level Match's slow step kept the last phrase's correction into the next one, and the first 30 ms of a phrase came out about 2 dB quieter at settings that lower the formants. Here a phrase that starts after a pause gets its own average. Throat's own tests pass. NullTest does not, by design: it holds the sound to the 0.2.0 renders, and those would have to be saved again if this ships.
+
 ## 0.4.1, 2026-11-11
 
 From the real vocal re-test on the Rode takes. Only frames that had the fault below sound different: the 0.2.0 renders of every preset tested still null bit for bit.

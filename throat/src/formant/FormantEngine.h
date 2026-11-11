@@ -102,6 +102,7 @@ public:
         // Control changes settle in about 40 ms.
         settle = (float) (1.0 - std::exp (-(double) hop / (0.04 * sr)));
         levelTimeCoef = 1.0 - std::exp (-(double) hop / (2.0 * sr));
+        recentCoef = 1.0 - std::exp (-(double) hop / (0.1 * sr));
         reset();
     }
 
@@ -123,6 +124,7 @@ public:
         smoothedWidening = target.peakWideningHz;
         levelFix = fastLevelFix = slowLevelFix = 0.0f;
         slowEnergyIn = slowEnergyOut = 0.0;
+        recentEnergyIn = 0.0;
         levelAmount = target.levelMatch ? 1.0f : 0.0f;
         framesSinceControlMoved = 1000;
         tiltVoicing = 0.0f;
@@ -388,6 +390,13 @@ private:
                 energyIn += power[(size_t) j];
                 energyOut += power[(size_t) j] * std::exp (2.0f * g) * afterFast * (1.0f + (breathing ? noiseWeight * breathShape[(size_t) k] : 0.0f));
             }
+            // The slow step holds a two second average, weighted by energy, so the loud vowels of one phrase decide it. On real vocals
+            // the next phrase then started with the last phrase's correction: its first 30 ms came out 2 dB quieter (median) at
+            // settings that lower the formants, 5 dB at worst. So a frame that stands 10 dB or more over the last 100 ms, which is
+            // how a phrase starts after a pause, begins its own average. Inside a phrase nothing changes.
+            if (energyIn > 10.0 * recentEnergyIn)
+                slowEnergyIn = slowEnergyOut = 0.0;
+            recentEnergyIn += recentCoef * (energyIn - recentEnergyIn);
             slowEnergyIn += levelTimeCoef * (energyIn - slowEnergyIn);
             slowEnergyOut += levelTimeCoef * (energyOut - slowEnergyOut);
             slowWanted = slowEnergyIn > 1.0e-12 ? juce::jlimit (-1.0f, 1.0f, (float) (0.5 * std::log ((slowEnergyIn + 1.0e-20) / (slowEnergyOut + 1.0e-20)))) : slowLevelFix;
@@ -535,7 +544,7 @@ private:
     Controls target, current;
     float smoothedTilt = 0.0f, smoothedBreath = 0.0f, smoothedHighPass = 1500.0f, smoothedWidening = 20.0f, settle = 0.1f;
     float levelFix = 0.0f, fastLevelFix = 0.0f, slowLevelFix = 0.0f, levelAmount = 1.0f, tiltVoicing = 0.0f;
-    double slowEnergyIn = 0.0, slowEnergyOut = 0.0, levelTimeCoef = 0.03;
+    double slowEnergyIn = 0.0, slowEnergyOut = 0.0, levelTimeCoef = 0.03, recentEnergyIn = 0.0, recentCoef = 0.05;
     bool mapIsCurrent = false, identityMap = true, frameIsSilent = true;
     int framesSinceControlMoved = 1000;
     std::array<std::vector<float>, maxChannels> inputRing, overlap;

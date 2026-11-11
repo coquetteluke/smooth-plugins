@@ -9,20 +9,24 @@
 // 0, so every preset but Tight moved. Tight has no scatter and still gives 1.4.2's two numbers, bit for bit. The other change to the sound
 // in 1.5.0, Alto/Tenor following notes under 98 Hz, does not show here: this material never goes that low. With those two changes left out,
 // the 1.5.0 source gives 1.4.4's output bit for bit on Luke's 11 takes at the default, Full Stack and Tight (realvox, see the README), so
-// nothing else in 1.5.0, the Human control at 0 included, touches the sound. Any later change that is not meant shows here again.
+// nothing else in 1.5.0, the Human control at 0 included, touches the sound.
+// They now hold 1.5.1's with Human at 0. 1.5.1 changed starts on purpose once more: the period of a start is chosen among the deep dips and
+// their halves, thirds and quarters (see startPeriod in src/PitchTracker.h), which calls a breathy high start 20 to 50 ms sooner and on the
+// right note, and calls a clean start on its period a few ms sooner where the old rule sat on a passing harmonic first. Every preset moved,
+// Tight too. Any later change that is not meant shows here again.
 
 namespace windowtests
 {
 struct Fingerprint { int preset; std::uint64_t sum; };
 // Presets 0, 3, 4, 7 and 10 with four voices, as 1.1.0 measured them.
-constexpr Fingerprint before11[] = { { 0, 16083541039105683034ull }, { 3, 1027493210404867167ull }, { 4, 572548499475733402ull },
-                                     { 7, 13330512059821666201ull }, { 10, 10127561413671478685ull } };
+constexpr Fingerprint before11[] = { { 0, 4098435958583399820ull }, { 3, 15994760532772079402ull }, { 4, 15136841548073866403ull },
+                                     { 7, 11747136029797576096ull }, { 10, 16349240374929031256ull } };
 
 // Each preset at its own voice count. -1 is the settings as first opened.
 constexpr Fingerprint before12[] = {
-    { -1, 12650593462791849468ull }, { 0, 5834493182794573315ull }, { 1, 6130733053392173979ull }, { 2, 3177900060742711242ull },
-    { 3, 1027493210404867167ull }, { 4, 572548499475733402ull }, { 5, 8298960366594396617ull }, { 6, 1358350818603808123ull },
-    { 7, 13330512059821666201ull }, { 8, 11299366534786095666ull }, { 9, 8903147316526792999ull }, { 10, 10475156097746397600ull } };
+    { -1, 6964773355638076092ull }, { 0, 13826634681334812772ull }, { 1, 16858024752313915086ull }, { 2, 14455849956877040184ull },
+    { 3, 15994760532772079402ull }, { 4, 15136841548073866403ull }, { 5, 3377724399809152291ull }, { 6, 3601937124367659ull },
+    { 7, 11747136029797576096ull }, { 8, 8406555889939023338ull }, { 9, 14590588442701139453ull }, { 10, 10716541807614450493ull } };
 
 inline void collectIds (juce::Component& c, std::set<juce::String>& ids)
 {
@@ -75,11 +79,11 @@ void testWindow()
     // The sound, bit for bit, against 1.5.0 with Human at 0 (Tight: against 1.4.2 still), and with the window open and drawing all the way through.
     for (const auto& f : before12)
         check (outputFingerprintOf (f.preset, false, false) == f.sum,
-               "null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, " + (f.preset < 0 ? std::string ("first opened") : "preset " + std::to_string (f.preset)));
+               "null test: bit for bit the same as 1.5.1 at Human 0, each preset at its voice count, " + (f.preset < 0 ? std::string ("first opened") : "preset " + std::to_string (f.preset)));
 
     for (const auto& f : before11)
     {
-        check (outputFingerprint (f.preset) == f.sum, "null test: output identical to 1.5.0 at Human 0, four voices, preset " + std::to_string (f.preset));
+        check (outputFingerprint (f.preset) == f.sum, "null test: output identical to 1.5.1 at Human 0, four voices, preset " + std::to_string (f.preset));
 
         check (outputFingerprintWithWindow (f.preset) == f.sum, "null test: identical with the window open and drawing, preset " + std::to_string (f.preset));
     }

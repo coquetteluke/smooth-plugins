@@ -91,12 +91,17 @@ namespace keyui
     // ------------------------------------------------------------------------------------------------------------
 
     Pill::Pill (Apvts& state, const juce::String& paramId, const juce::String& label, const juce::String& hintText, bool strongWhenOn)
+        : Pill (*state.getParameter (paramId), label, hintText, strongWhenOn)
+    {
+    }
+
+    Pill::Pill (juce::RangedAudioParameter& parameter, const juce::String& label, const juce::String& hintText, bool strongWhenOn)
         : juce::ToggleButton (label),
-          param (*state.getParameter (paramId)),
+          param (parameter),
           strong (strongWhenOn)
     {
         hint = hintText;
-        setComponentID (paramId);
+        setComponentID (param.getParameterID());
         setTitle (param.getName (64));
         attachment = std::make_unique<juce::ButtonParameterAttachment> (param, *this);
     }

@@ -477,22 +477,31 @@ static bool validRecord (const juce::var& v)
     if (! v.isObject()) return false;
     static const juce::StringArray names { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
     const auto* o = v.getDynamicObject();
-    if (o->getProperties().size() != 5) return false;
+    // The five fields every follower reads, then the seven that 1.7.0 added after them. No more and no fewer.
+    if (o->getProperties().size() != 12) return false;
     const auto scale = v["scale"].toString();
     const double c = v["confidence"], t = v["time"];
-    return names.contains (v["key"].toString()) && (scale == "major" || scale == "minor") && c >= 0.0 && c <= 1.0
-           && t > 1.0e9 && v["listening"].isBool();
+    const bool firstFive = names.contains (v["key"].toString()) && (scale == "major" || scale == "minor") && c >= 0.0 && c <= 1.0
+                           && t > 1.0e9 && v["listening"].isBool();
+    const auto altScale = v["altScale"].toString(), source = v["source"].toString();
+    const double ac = v["altConfidence"], m = v["margin"];
+    const bool noAlt = v["altKey"].isVoid() && v["altScale"].isVoid() && ac == 0.0 && m == 1.0;
+    const bool anAlt = names.contains (v["altKey"].toString()) && (altScale == "major" || altScale == "minor") && ac >= 0.0 && ac <= 1.0 && m >= 0.0 && m <= 1.0;
+    return firstFive && (noAlt || anAlt) && v["unsure"].isBool() && v["locked"].isBool() && (source == "heard" || source == "manual" || source == "locked")
+           && ((bool) v["locked"]) == (source == "locked") && ! ((bool) v["unsure"] && c >= 0.5);
 }
 
 static void testFileFormat()
 {
     smoothkey::KeyState s { 1, true, 0.87, true };
-    char line[256];
+    char line[smoothkey::KeyFile::lineSize];
     smoothkey::KeyFile::format (line, sizeof line, s, 1794011292.5);
-    check (std::string (line) == "{\"key\":\"C#\",\"scale\":\"minor\",\"confidence\":0.87,\"time\":1794011292.5,\"listening\":true}", std::string ("exact format: ") + line);
+    check (std::string (line) == "{\"key\":\"C#\",\"scale\":\"minor\",\"confidence\":0.87,\"time\":1794011292.5,\"listening\":true,"
+                                 "\"altKey\":null,\"altScale\":null,\"altConfidence\":0.00,\"margin\":1.00,\"unsure\":false,\"locked\":false,\"source\":\"heard\"}", std::string ("exact format: ") + line);
     s = { 11, false, 1.0, false };
     smoothkey::KeyFile::format (line, sizeof line, s, 2.0e9);
-    check (std::string (line) == "{\"key\":\"B\",\"scale\":\"major\",\"confidence\":1.00,\"time\":2000000000.0,\"listening\":false}", std::string ("exact format: ") + line);
+    check (std::string (line) == "{\"key\":\"B\",\"scale\":\"major\",\"confidence\":1.00,\"time\":2000000000.0,\"listening\":false,"
+                                 "\"altKey\":null,\"altScale\":null,\"altConfidence\":0.00,\"margin\":1.00,\"unsure\":false,\"locked\":false,\"source\":\"heard\"}", std::string ("exact format: ") + line);
 
     // A host running with comma decimals must not break the file.
     const std::string oldLocale = std::setlocale (LC_NUMERIC, nullptr);
@@ -578,7 +587,7 @@ static void testFileAtomic()
     file.setPath (path.toRawUTF8(), 0.0);
     file.update ({ 0, false, 0.5, true }, 1.0, 1794011292.5);
     check (! file.hasFailed() && folder.isDirectory(), "the folder is created when missing");
-    check (validRecord (readJson (path)), "contents parse as valid JSON with the five fields");
+    check (validRecord (readJson (path)), "contents parse as valid JSON with the five fields, and the seven added in 1.7.0");
 
     std::atomic<bool> running { true };
     std::atomic<long> reads { 0 }, bad { 0 };
@@ -956,6 +965,7 @@ static void testEditor()
 }
 
 #include "WindowTests.h"
+#include "LockTests.h"
 
 int main (int argc, char** argv)
 {
@@ -965,6 +975,8 @@ int main (int argc, char** argv)
     const bool quick = argc > 1 && juce::String (argv[1]) == "--quick"; // skips the long accuracy runs while developing
     if (argc > 2 && juce::String (argv[1]) == "--seed") heldOutSeed = (unsigned) juce::String (argv[2]).getLargeIntValue();
     if (heldOutSeed != limits::heldOutSeed) std::printf ("INFO  accuracy runs on seed %u, not the held out seed %u\n", heldOutSeed, limits::heldOutSeed);
+
+    if (runLockTests (argc, argv)) { testFolder().deleteRecursively(); return finish(); }   // PluginTest --lock runs only those
 
     GenericOptions opt;
     opt.minPresets = 4;

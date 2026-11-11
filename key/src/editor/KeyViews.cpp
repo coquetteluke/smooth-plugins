@@ -208,6 +208,133 @@ namespace keyui
 
     // ------------------------------------------------------------------------------------------------------------
 
+    namespace
+    {
+        constexpr float lineSmall = 15.0f, lineLarge = 20.0f, lineGap = 10.0f, tagPad = 12.0f, actionPad = 14.0f;
+    }
+
+    SecondLine::SecondLine()
+    {
+        setOpaque (true);
+        setComponentID ("second");
+        action.onClick = [this] { if (onAction != nullptr) onAction(); };
+        addChildComponent (action);
+    }
+
+    bool SecondLine::set (const Content& c)
+    {
+        if (c.tag == content.tag && c.tagRed == content.tagRed && c.label == content.label && c.text == content.text
+             && c.detail == content.detail && c.action == content.action)
+            return false;
+
+        const bool actionMoved = c.action != content.action;
+        content = c;
+
+        if (actionMoved)
+        {
+            action.setButtonText (content.action);
+            action.setVisible (content.action.isNotEmpty());
+            placeAction();
+        }
+
+        repaint();
+        return true;
+    }
+
+    juce::String SecondLine::allText() const
+    {
+        juce::StringArray parts;
+
+        for (auto* part : { &content.tag, &content.label, &content.text, &content.detail })
+            if (part->isNotEmpty())
+                parts.add (*part);
+
+        return parts.joinIntoString (" ");
+    }
+
+    float SecondLine::wordsWidth() const
+    {
+        float width = 0.0f;
+        const auto add = [&width] (float w) { width += (width > 0.0f ? lineGap : 0.0f) + w; };
+
+        if (content.tag.isNotEmpty())     add (textWidth (content.tag, semi, lineSmall) + 2.0f * tagPad);
+        if (content.label.isNotEmpty())   add (textWidth (content.label, book, lineSmall));
+        if (content.text.isNotEmpty())    add (textWidth (content.text, semi, lineLarge));
+        if (content.detail.isNotEmpty())  add (textWidth (content.detail, book, lineSmall));
+        return width;
+    }
+
+    float SecondLine::actionWidth() const
+    {
+        return content.action.isEmpty() ? 0.0f : std::ceil (textWidth (content.action, medium, lineSmall) + 2.0f * actionPad);
+    }
+
+    void SecondLine::placeAction()
+    {
+        const int width = juce::roundToInt (actionWidth());
+        action.setBounds (getWidth() - width, 0, width, getHeight());
+    }
+
+    void SecondLine::resized()
+    {
+        placeAction();
+    }
+
+    void SecondLine::paint (juce::Graphics& g)
+    {
+        ++paintCount;
+        g.fillAll (tone::paper);
+
+        // One baseline for both sizes of type, set so the larger capitals sit in the middle of the line.
+        const auto b = getLocalBounds().toFloat();
+        const float baseline = b.getCentreY() + lineLarge * 0.35f;
+        float x = 0.0f;
+
+        if (content.tag.isNotEmpty())
+        {
+            const float width = textWidth (content.tag, semi, lineSmall) + 2.0f * tagPad;
+            const juce::Rectangle<float> block (x, b.getCentreY() - 14.0f, width, 28.0f);
+            g.setColour (content.tagRed ? tone::red : tone::ink);
+            g.fillRoundedRectangle (block, 4.0f);
+            g.setColour (tone::paper);
+            drawTextIn (g, content.tag, semi, lineSmall, block, Align::centre);
+            x += width + lineGap;
+        }
+
+        const auto words = [&] (const juce::String& text, int weight, float size, juce::Colour colour)
+        {
+            if (text.isEmpty())
+                return;
+
+            g.setColour (colour);
+            x += drawText (g, text, weight, size, x, baseline) + lineGap;
+        };
+
+        words (content.label, book, lineSmall, tone::soft);
+        words (content.text, semi, lineLarge, tone::ink);
+        words (content.detail, book, lineSmall, tone::soft);
+    }
+
+    SecondLine::ActionButton::ActionButton() : juce::Button ({})
+    {
+        setComponentID ("useRunnerUp");
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        hint = "Switch to Manual with this key, so other plug-ins follow it.";
+    }
+
+    void SecondLine::ActionButton::paintButton (juce::Graphics& g, bool isOver, bool isDown)
+    {
+        ++paintCount;
+        const auto b = getLocalBounds().toFloat();
+        g.fillAll (tone::paper);
+        g.setColour (isDown ? tone::ink : (isOver ? tone::deep : tone::wash));
+        g.fillRoundedRectangle (b, 4.0f);
+        g.setColour (isDown ? tone::paper : (isOver ? tone::ink : tone::soft));
+        drawTextIn (g, getButtonText(), medium, lineSmall, b, Align::centre);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+
     CircleView::CircleView()
     {
         setOpaque (true);

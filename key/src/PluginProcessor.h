@@ -4,6 +4,7 @@
 #include <atomic>
 #include "KeyAnalyser.h"
 #include "KeyFile.h"
+#include "KeyPublish.h"
 #include "SampleQueue.h"
 
 // A reading shown to the host, by name and value string.
@@ -85,8 +86,23 @@ public:
         std::array<float, 12> chroma {};
         std::array<float, 24> candidates {}; // for the circle: 0 to 11 major from C, then minor. Before Relative Swap.
         std::array<float, 12> liveNotes {};  // for the keyboard: the notes sounding now
+        // Since 1.7.0.
+        int altKey = -1;           // the runner up, after Relative Swap, or -1 for none
+        bool altMinor = false;
+        float altConfidence = 0.0f;
+        float margin = 1.0f;       // 0 a tie, 1 no contest
+        bool unsure = false;       // two sets of notes fit about equally
+        bool lockOn = false;       // the Lock control
+        bool locked = false;       // a key is held: key and minor are that key, and confidence is 1
+        int heardKey = -1;         // what it hears right now, after Relative Swap, whatever is held. -1 for nothing, and in Manual
+        bool heardMinor = false;
+        float heardConfidence = 0.0f;
     };
     Display getDisplay() const noexcept;
+    juce::RangedAudioParameter& getLockParameter() const noexcept { return *lock; }
+    // For tests and the offline renders: publish this reading as if the analyser had made it. nullptr goes back to the analyser.
+    // The reading must stay alive and unchanged until another one, or nullptr, has been set and a tick has passed.
+    void setReadingForTests (const smoothkey::Reading* r) noexcept { testReading.store (r, std::memory_order_release); }
     bool hasFileFailed() const noexcept { return fileFailed.load (std::memory_order_relaxed); }
     unsigned getDroppedSamples() const noexcept { return queue.droppedCount(); }
     long getFileWrites() const noexcept { return fileWrites.load (std::memory_order_relaxed); }
@@ -107,7 +123,7 @@ private:
 
     bool isListeningNow() const noexcept;
     bool isManual() const noexcept;
-    void workerPublish (const smoothkey::Reading&) noexcept;
+    void workerPublish (const smoothkey::Reading&) noexcept;   // background thread only
 
     std::atomic<float>* listening = nullptr;
     std::atomic<float>* resetParam = nullptr;
@@ -119,6 +135,7 @@ private:
     std::atomic<float>* swapRelative = nullptr;
     std::atomic<float>* tempoScale = nullptr;
     juce::AudioParameterBool* bypass = nullptr;
+    juce::AudioParameterBool* lock = nullptr;   // added in 1.7.0, after every other parameter
 
     ReadingParameter* keyReading = nullptr;
     ReadingParameter* scaleReading = nullptr;
@@ -133,8 +150,18 @@ private:
     std::atomic<long> fileWrites { 0 };
 
     // Packed so key and scale can never be seen half updated: key + 1, then minor in bit 8, signal in bit 9.
+    // Then the runner up + 1 in bits 10 to 13 and its minor in bit 14, unsure in bit 15, a held key in bit 16,
+    // and what it hears + 1 in bits 17 to 20 with its minor in bit 21.
     std::atomic<int> packedReading { 0 };
     std::atomic<float> shownConfidence { 0.0f }, referenceHz { 440.0f }, detectedBpm { 0.0f };
+    std::atomic<float> altConfidence { 0.0f }, shownMargin { 1.0f }, heardConfidence { 0.0f };
+
+    // Lock. The held key belongs to the background thread, in the publisher. A loaded session hands its held key over through
+    // heldFromSession (key + 1, minor in bit 8, or -1 for nothing waiting), and heldNow says what is held, for saving.
+    smoothkey::Publisher publisher;
+    smoothkey::Shown shown;   // the last one published. Background thread only
+    std::atomic<int> heldFromSession { -1 }, heldNow { 0 };
+    std::atomic<const smoothkey::Reading*> testReading { nullptr };
     std::array<std::atomic<float>, 12> chroma {};
     std::array<std::atomic<float>, 24> candidates {};
     std::array<std::atomic<float>, 12> liveNotes {};

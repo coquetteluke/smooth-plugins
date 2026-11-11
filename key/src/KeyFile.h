@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "KeyAnalyser.h"
+#include "KeyPublish.h"
 
 namespace smoothkey
 {
@@ -21,6 +22,14 @@ struct KeyState
     bool minor = false;
     double confidence = 0.0;
     bool listening = false;
+    // Since 1.7.0, written after the fields above.
+    int altKey = -1;          // the runner up, 0 to 11, or -1 for none
+    bool altMinor = false;
+    double altConfidence = 0.0;
+    double margin = 1.0;      // 0 a tie, 1 no contest
+    bool unsure = false;      // two sets of notes fit about equally, and the confidence is under 0.5
+    bool locked = false;      // the key is held by Lock
+    int source = 0;           // 0 heard, 1 manual, 2 locked
 };
 
 class KeyFile
@@ -60,23 +69,44 @@ public:
 
     const char* getPath() const noexcept { return path; }
 
-    // Formats one line exactly as other plug-ins expect it. Returns its length.
+    // Room for the longest line there can be, with some to spare. A test checks the longest one fits.
+    static constexpr size_t lineSize = 384;
+    // A held key never changes, and a follower ignores a file older than ten minutes. So while a key is held the file is
+    // written again this often, and a plug-in added later still finds a fresh one.
+    static constexpr double lockedRefreshSeconds = 240.0;
+
+    // Formats one line. The first five fields are exactly as other plug-ins have always read them. The rest were added in
+    // 1.7.0 and always come after: the runner up (null when there is none), how clearly the key leads it, whether the two
+    // are too close to call, whether the key is held by Lock, and where the key came from. Returns its length.
     static int format (char* out, size_t size, const KeyState& s, double unixSeconds) noexcept
     {
-        const int hundredths = (int) std::lround (std::fmin (1.0, std::fmax (0.0, s.confidence)) * 100.0);
+        const int hundredths = toHundredths (s.confidence);
         const long long tenths = std::llround (unixSeconds * 10.0);
-        return std::snprintf (out, size, "{\"key\":\"%s\",\"scale\":\"%s\",\"confidence\":%d.%02d,\"time\":%lld.%lld,\"listening\":%s}",
+        const bool hasAlt = s.altKey >= 0;
+        const int altHundredths = hasAlt ? toHundredths (s.altConfidence) : 0;
+        const int marginHundredths = hasAlt ? toHundredths (s.margin) : 100;
+        char alt[48];
+        if (hasAlt) std::snprintf (alt, sizeof alt, "\"altKey\":\"%s\",\"altScale\":\"%s\"", keyNames[s.altKey % 12], s.altMinor ? "minor" : "major");
+        else std::snprintf (alt, sizeof alt, "\"altKey\":null,\"altScale\":null");
+        return std::snprintf (out, size, "{\"key\":\"%s\",\"scale\":\"%s\",\"confidence\":%d.%02d,\"time\":%lld.%lld,\"listening\":%s,"
+                                         "%s,\"altConfidence\":%d.%02d,\"margin\":%d.%02d,\"unsure\":%s,\"locked\":%s,\"source\":\"%s\"}",
                               keyNames[((s.key % 12) + 12) % 12], s.minor ? "minor" : "major",
-                              hundredths / 100, hundredths % 100, tenths / 10, tenths % 10, s.listening ? "true" : "false");
+                              hundredths / 100, hundredths % 100, tenths / 10, tenths % 10, s.listening ? "true" : "false",
+                              alt, altHundredths / 100, altHundredths % 100, marginHundredths / 100, marginHundredths % 100,
+                              s.unsure ? "true" : "false", s.locked ? "true" : "false", sourceNames[s.source >= 0 && s.source <= 2 ? s.source : 0]);
     }
 
     // Call often. Writes only when something changed and enough time has passed. monotonic is any steady clock in seconds.
     void update (const KeyState& s, double monotonic, double unixSeconds) noexcept
     {
+        const bool sameAlt = (s.altKey < 0 && written.altKey < 0) || (s.altKey == written.altKey && s.altMinor == written.altMinor);
         const bool changed = ! hasWritten || s.key != written.key || s.minor != written.minor || s.listening != written.listening
                              || std::abs (s.confidence - written.confidence) >= 0.02
-                             || (s.confidence == 0.0 && written.confidence != 0.0);
-        if (! changed)
+                             || (s.confidence == 0.0 && written.confidence != 0.0)
+                             || ! sameAlt || s.unsure != written.unsure || s.locked != written.locked || s.source != written.source
+                             || (s.altKey >= 0 && (std::abs (s.altConfidence - written.altConfidence) >= 0.05 || std::abs (s.margin - written.margin) >= 0.05));
+        const bool refresh = hasWritten && s.locked && monotonic - lastWrite >= lockedRefreshSeconds;
+        if (! changed && ! refresh)
             return;
         const double wait = failed ? std::fmax (minInterval, 5.0) : minInterval;
         if (attempted && monotonic - lastAttempt < wait)
@@ -88,6 +118,7 @@ public:
             written = s;
             hasWritten = true;
             failed = false;
+            lastWrite = monotonic;
             ++writes;
         }
         else
@@ -111,6 +142,8 @@ public:
     long failureCount() const noexcept { return failures; }
 
 private:
+    static int toHundredths (double v) noexcept { return (int) std::lround (std::fmin (1.0, std::fmax (0.0, v)) * 100.0); }
+
     bool makeFolders() const noexcept
     {
         char folder[PATH_MAX];
@@ -134,7 +167,7 @@ private:
     {
         if (path[0] == 0 || ! makeFolders())
             return false;
-        char line[256];
+        char line[lineSize];
         const int length = format (line, sizeof line, s, unixSeconds);
         if (length <= 0 || (size_t) length >= sizeof line)
             return false;
@@ -154,7 +187,7 @@ private:
 
     char path[PATH_MAX] {};
     char tempPath[PATH_MAX + 64] {};
-    double minInterval = 0.5, lastAttempt = 0.0;
+    double minInterval = 0.5, lastAttempt = 0.0, lastWrite = 0.0;
     bool attempted = false, hasWritten = false, failed = false;
     KeyState written;
     long writes = 0, failures = 0;

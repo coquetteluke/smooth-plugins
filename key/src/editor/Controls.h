@@ -47,6 +47,8 @@ namespace keyui
     {
     public:
         Pill (Apvts&, const juce::String& paramId, const juce::String& label, const juce::String& hintText, bool strongWhenOn = false);
+        // For a parameter that is not in the value tree, such as Lock.
+        Pill (juce::RangedAudioParameter&, const juce::String& label, const juce::String& hintText, bool strongWhenOn = false);
 
         void paintButton (juce::Graphics&, bool isOver, bool isDown) override;
         void mouseDoubleClick (const juce::MouseEvent&) override;

@@ -91,6 +91,7 @@ public:
         breathShape.assign ((size_t) synthHalf + 1, 0.0f);
         wantedOnSynthGrid.assign ((size_t) synthHalf + 1, 0.0f);
         modelGain.assign ((size_t) synthHalf + 1, 0.0f);
+        envelopeShift.assign ((size_t) synthHalf + 1, 0.0f);
 
         for (int i = 0; i < phaseTableSize; ++i)
         {
@@ -164,6 +165,9 @@ private:
     static constexpr float maxLogGain = 3.0f;     // 26 dB either way
     static constexpr float nepersPerDb = 0.115129f;
     static constexpr float resynthesisFull = 0.05f; // A move of this much, as a log ratio, takes the harmonics' levels fully from the model
+    // Above highBandFromHz the gain may be at most this much over what moving the envelope itself would give. See shapeFrame.
+    static constexpr float highBandFromHz = 6000.0f;
+    static constexpr float highBandHeadroom = 11.0f * nepersPerDb;
 
     static float tiltCurve (float hz, float cornerHz) noexcept
     {
@@ -333,6 +337,11 @@ private:
                 w += tiltNepers * tiltCurve ((float) (k * binHz), corner);
             const float reference = m[2 * k] + resynthesis * (flat[2 * k] - m[2 * k]);
             const float g = juce::jlimit (-maxLogGain, maxLogGain, w - reference);
+            // What the flattened envelope itself, read at the same place, says this bin should get. Only used above highBandFromHz.
+            float shift = flat[a] + (at - (float) a) * (flat[a + 1] - flat[a]) - flat[2 * k];
+            if (tilting)
+                shift += tiltNepers * tiltCurve ((float) (k * binHz), corner);
+            envelopeShift[(size_t) k] = juce::jlimit (-maxLogGain, maxLogGain, shift);
             modelGain[(size_t) k] = juce::jlimit (-maxLogGain, maxLogGain, w - m[2 * k]);
             logGain[(size_t) k] = std::isfinite (g) ? g : 0.0f;
             wantedOnSynthGrid[(size_t) k] = heard[2 * k] + logGain[(size_t) k];
@@ -400,6 +409,26 @@ private:
         }
         for (int k = 0; k <= synthHalf; ++k)
             logGain[(size_t) k] += levelFix;
+
+        // The formant model is an all-pole fit up to 8 kHz. With no harmonic between the last one and the top of that band to answer
+        // to, the fit can put a peak there that the voice does not have: on a real vocal up to 36 dB over the envelope, for 50 ms and
+        // more. Read through the map, and carried on above 8 kHz as an offset, that became gain for everything from about 6 kHz up,
+        // up to the 26 dB ceiling: a hiss burst on sung vowels at settings that lengthen the tract (take 01 of the Rode takes, 54.5 s,
+        // Length 1.20: 6 to 10 kHz 22 to 26 dB over the input). So above 6 kHz the gain, level match included, is held to at most
+        // 11 dB over what moving the envelope itself would give. A frame that stays within that is not touched at all.
+        if (! identityMap)
+        {
+            const int from = (int) std::ceil (highBandFromHz / binHz);
+            for (int k = from; k <= synthHalf; ++k)
+            {
+                const float most = envelopeShift[(size_t) k] + highBandHeadroom;
+                if (logGain[(size_t) k] > most)
+                {
+                    wantedOnSynthGrid[(size_t) k] -= logGain[(size_t) k] - most;
+                    logGain[(size_t) k] = most;
+                }
+            }
+        }
         return false;
     }
 
@@ -511,7 +540,7 @@ private:
     int framesSinceControlMoved = 1000;
     std::array<std::vector<float>, maxChannels> inputRing, overlap;
     std::vector<juce::dsp::Complex<float>> analysisIn, analysisOut;
-    std::vector<float> synthWindow, analysisWindow, power, spectrum, noiseSpectrum, logGain, wanted, finerEnvelope, readHz, breathShape, wantedOnSynthGrid, modelGain;
+    std::vector<float> synthWindow, analysisWindow, power, spectrum, noiseSpectrum, logGain, wanted, finerEnvelope, readHz, breathShape, wantedOnSynthGrid, modelGain, envelopeShift;
     std::array<std::array<float, 2>, phaseTableSize> phaseTable {};
     std::array<float, maxChannels> channelShare { 1.0f, 1.0f };
     std::uint32_t noiseState = 0x9E3779B9u;

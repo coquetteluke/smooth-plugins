@@ -994,6 +994,56 @@ static void testPeakGuard()
     check (nullDb (a, b, 0, (int) a.size()) <= -200.0, "Peak Guard on with no peak to hold (Mix 0): difference from Peak Guard off", nullDb (a, b, 0, (int) a.size()), "dB");
 }
 
+// The high burst, found on a real vocal in 0.4.0 (take 01 of the Rode takes, 54.5 s and 34.5 s, Length 1.20): on some sung vowels
+// whose highs fall away steeply, everything above 6 kHz came up by 20 to 26 dB for 50 ms or more. This voice is a steady tone with
+// the harmonic levels the plug-in's own envelope read at 34.533 s of that take (182.3 Hz, 49 harmonics up to 9 kHz), so it
+// is the same spectrum and nothing of the recording. Limit written before it was measured, the one the real vocal check uses:
+// the 6 to 12 kHz band no more than 12 dB over what moving the voice's exact envelope the same way would give.
+static void testHighBurst()
+{
+    const double sr = 48000.0, f0 = 182.3;
+    const double tips[] = { 23.5, 23.6, 23.2, 6.7, 7.0, 2.6, 0.1, 10.9, 9.6, 3.2, -0.7, -6.1, 0.0, 3.2, 8.9, 1.9, 0.6, -2.5, -2.2, 5.2, 9.6,
+                            8.5, 6.0, -12.8, -2.5, -1.8, -9.1, -24.4, -12.6, -10.5, -7.5, -0.8, -9.2, -12.9, -11.1, -6.6, -1.4, -9.9, -23.8,
+                            -21.3, -17.8, -11.2, -4.6, -6.3, -15.0, -9.9, -11.9, -7.6, -6.7 };
+    const int harmonics = (int) (sizeof (tips) / sizeof (tips[0]));
+    std::vector<float> x ((size_t) (2.0 * sr), 0.0f);
+    std::mt19937 rng (7);
+    std::uniform_real_distribution<double> phase (0.0, juce::MathConstants<double>::twoPi);
+    for (int h = 1; h <= harmonics; ++h)
+    {
+        const double a = std::pow (10.0, tips[h - 1] / 20.0), ph = phase (rng);
+        for (size_t i = 0; i < x.size(); ++i)
+            x[i] += (float) (a * std::sin (ph + juce::MathConstants<double>::twoPi * f0 * h * (double) i / sr));
+    }
+    const double was = peak (x.data(), (int) x.size());
+    for (auto& v : x) v = (float) (v * 0.25 / was);
+    // The exact envelope: the harmonic levels, joined by straight lines in dB, held flat past the last harmonic.
+    const auto envelopeDb = [&] (double hz)
+    {
+        const double at = hz / f0;
+        if (at <= 1.0) return tips[0];
+        if (at >= (double) harmonics) return tips[harmonics - 1];
+        const int i = (int) at;
+        return tips[i - 1] + (at - (double) i) * (tips[i] - tips[i - 1]);
+    };
+    const int from = (int) (0.5 * sr), n = (int) (1.2 * sr);
+    for (const float len : { 1.2f, 1.5f })
+    {
+        const auto y = run (x, { { "length", len } }, sr);
+        double out = 0.0, predicted = 0.0;
+        for (int h = 1; h <= harmonics; ++h)
+        {
+            const double hz = f0 * h;
+            if (hz < 6000.0 || hz > 12000.0) continue;
+            out += std::pow (10.0, toneDb (y.data() + from, n, hz, sr) / 10.0);
+            // A longer tract moves formants down, so the level at hz is the one the envelope had at hz times the length.
+            predicted += std::pow (10.0, (toneDb (x.data() + from, n, hz, sr) + envelopeDb (hz * len) - envelopeDb (hz)) / 10.0);
+        }
+        const double over = 10.0 * std::log10 (out / predicted);
+        check (over <= 12.0, tag ("Sung vowel with steep highs, Length", len) + ": 6 to 12 kHz over the envelope moved the same way", over, "dB");
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -1036,6 +1086,7 @@ int main()
     testLevelMatchAndOutput();
     testMoveLevel();
     testPeakGuard();
+    testHighBurst();
     testPresets (speech[0].second);
     testCpu (speech[0].second);
     return finish();

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1, 2026-11-11
+
+From the real vocal re-test on the Rode takes. Only frames that had the fault below sound different: the 0.2.0 renders of every preset tested still null bit for bit.
+
+- Fixed: a burst of hiss on some sung vowels at settings that lengthen the tract (Length over 1, A Little Longer, Width 2.00). Everything from about 6 kHz up came up by 20 to 26 dB for 50 ms or more (take 01, 34.5 s and 54.5 s, Length 1.20). The formant model, an all-pole fit up to 8 kHz, could put a peak at the top of its band where no harmonic answers to it, up to 36 dB over the voice's envelope, and the map turned that into gain for the whole top of the spectrum. Above 6 kHz the gain is now held to at most 11 dB over what moving the envelope itself would give. On takes 01 and 16, frames more than 12 dB over the tube model from 6 to 12 kHz: Length 1.20 1.64% to 0%, A Little Longer 1.11% to 0%, Width 2.00 0.53% to 0%, Length 1.50 3.71% to 1.80%. New test: a steady tone with that vowel's harmonic levels, Length 1.20, 6 to 12 kHz over the envelope moved the same way 16.4 dB before, 7.3 dB now (limit 12).
+
 ## 0.4.0, 2026-11-11
 
 From the real vocal re-test on the Rode takes. A still setting sounds exactly as in 0.3.1, sample for sample: the default, every preset, and saved sessions.

@@ -70,7 +70,7 @@ public:
 
     void reset() noexcept
     {
-        correction = 0.0; target = -1; pendingTarget = -1; pastFor = 0.0; evidence = 0.0; recentCount = 0; recentAt = 0; recent.fill (0.0); haveAverage = false; steadyFor = 0.0; holdAverage = 0.0; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
+        correction = 0.0; target = -1; pendingTarget = -1; pastFor = 0.0; farFor = 0.0; evidence = 0.0; recentCount = 0; recentAt = 0; recent.fill (0.0); haveAverage = false; steadyFor = 0.0; holdAverage = 0.0; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
         offCents = 0.0; identity = true; hasPitch = false; silentFor = 0.0; vibratoPhase = 0.0;
     }
 
@@ -266,6 +266,8 @@ private:
         }
         else if (nearest != target)
         {
+            // How long the voice has been nearer another note than the target, in a row (see slideSeconds)
+            farFor += tickSeconds;
             // Past the half way point by 12 cents before changing, so a note on the line does not flip.
             const double past = std::abs (p - (double) target) - std::abs (p - (double) nearest);
             if (past > 0.24)
@@ -291,7 +293,12 @@ private:
                 // past the 12 cent mark until they reach 0.8, 1.5 or 2.5 cent seconds (mode 1), and letting the note's own average decide
                 // (mode 2). Both left fewer notes as sung (10 to 7) and put more on the wrong note (3 to 8, 10, 12 and 12). A target that
                 // waits is late when he really has moved. So neither ships.
-                const bool decided = weighTargets ? evidence >= targetEvidence : (steadyFor < steadySeconds || pastFor >= holdSeconds);
+                // A held note that slides slowly onto the next note is not a waver either (real take 09 at 97.0 s: his D3 slid down at
+                // about 13 cents per 100 ms and settled on C#3 +20 cents; the 12 cent mark came 90 ms after the line and the 80 ms after
+                // that, so most of the held note came out on D3, a wrong note). A voice that has been on the far side of the line for
+                // slideSeconds in a row is on the other note: a 5.5 Hz waver across the line spends about 80 ms of each cycle there.
+                const bool decided = weighTargets ? evidence >= targetEvidence
+                                                  : (steadyFor < steadySeconds || pastFor >= holdSeconds || farFor >= slideSeconds);
                 if (! holdTargets || s.classic || past > 0.70 || jumped || decided)
                 {
                     target = nearest;
@@ -311,6 +318,7 @@ private:
         else
         {
             pastFor = 0.0;
+            farFor = 0.0;
             evidence = 0.0;
             pendingTarget = -1;
         }
@@ -319,6 +327,7 @@ private:
 
     void startNote (double p) noexcept
     {
+        farFor = 0.0;
         age = 0.0;
         slowPitch = p;
         noteMean = p;
@@ -327,7 +336,7 @@ private:
     double sr = 48000.0;
     double correction = 0.0, age = 0.0, slowPitch = 0.0, output = 0.0, input = 0.0, offCents = 0.0, silentFor = 0.0, vibratoPhase = 0.0;
     int target = -1, pendingTarget = -1;
-    double pastFor = 0.0, evidence = 0.0;
+    double pastFor = 0.0, farFor = 0.0, evidence = 0.0;
 #ifndef TARGET_EVIDENCE
  #define TARGET_EVIDENCE 0.015
 #endif
@@ -345,7 +354,7 @@ private:
     std::array<double, recentSize> recent {};
     int recentAt = 0, recentCount = 0;
     static constexpr bool holdTargets = true;
-    static constexpr double holdSeconds = 0.08, steadySeconds = 0.15;
+    static constexpr double holdSeconds = 0.08, steadySeconds = 0.15, slideSeconds = 0.12;
     double holdAverage = 0.0, steadyFor = 0.0;
     bool haveAverage = false;
     bool identity = true, hasPitch = false;

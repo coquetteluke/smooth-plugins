@@ -140,7 +140,7 @@ private:
 class HumanVoice
 {
 public:
-    static constexpr double slowCents = 10.5, fastCents = 7.5, levelDb = 0.5, rateShare = 0.08, depthShare = 0.3;
+    static constexpr double slowCents = 10.5, fastCents = 7.5, levelDb = 0.65, rateShare = 0.08, depthShare = 0.3;
     static constexpr double earlierMs = 3.0, laterMs = 11.0;
     // At Human 100, how much of the lead's quick level movement a voice does not copy
     static double holdsLevel (int v) noexcept
@@ -164,12 +164,18 @@ public:
         landed = 1.0;
         cents = 0.0;
         gain = 1.0;
+        trail = trailDraw = 0.0;
+        noteAge = 0.0;
     }
 
     // A new note or a new phrase: this note's own place behind the lead
-    void noteEvent() noexcept
+    // fresh: the voice was silent, so it starts from its place at once
+    void noteEvent (bool fresh = false) noexcept
     {
         lagDraw = nextRandom();
+        trailDraw = 0.7 + 0.3 * nextRandom();
+        noteAge = 0.0;
+        if (fresh) trail = 0.0;
         leadMean = 0.0;
         // A note's first moments already carry Humanize's scoop and settle. The wander comes back in over the next tenth of a second, so
         // the two do not pile up and push a voice off its note as it lands.
@@ -180,7 +186,16 @@ public:
     // followShare: how much of the lead's movement is left to follow, 1 less what Follow Lead already copies.
     void update (double amount, double leadOffNote, double followShare) noexcept
     {
-        static constexpr double followGain[8] = { 0.13, 0.09, 0.11, 0.075, 0.1, 0.085, 0.12, 0.07 };
+        // 1.5.1: half of what 1.5.0 followed. What the voices take from the lead they take together, and at 100 the two default voices
+        // still moved together 0.32 where two passes of Luke move 0.12.
+        static constexpr double followGain[8] = { 0.065, 0.045, 0.055, 0.0375, 0.05, 0.0425, 0.06, 0.035 };
+        // How far a voice falls behind over a held note (1.5.1), in ms at Human 100: singers do not let go of a note together. It grows
+        // from 200 ms into the note, so a voice still comes in where it did and moves with the lead through short notes, and ends a
+        // long one later by its own amount. Two passes of Luke end
+        // 40 ms apart; the voices ended 4 ms apart.
+        static constexpr double trailMs[8] = { 2.0, 20.0, 8.0, 16.0, 4.0, 14.0, 6.0, 18.0 };
+        noteAge += tick;
+        trail += tick / 0.15 * ((noteAge > 0.2 ? trailMs[voice] * trailDraw : 0.0) - trail);
         static constexpr double followSeconds[8] = { 0.03, 0.055, 0.04, 0.07, 0.045, 0.06, 0.035, 0.075 };
         // The wander turns over within a note, as Luke's does, and has its long average taken out, so it moves the voice about its note
         // and not off it.
@@ -205,10 +220,15 @@ public:
 
     double pitchCents() const noexcept { return cents; }
     double levelGain() const noexcept { return gain; }
-    double vibratoRateScale() const noexcept { return 1.0 + amountNow * rateShare * rate; }
+    // Each voice's vibrato also runs at its own speed (1.5.1), up to a tenth off, so two voices' vibratos do not stay in step
+    double vibratoRateScale() const noexcept
+    {
+        static constexpr double own[8] = { -0.09, 0.11, -0.05, 0.07, 0.1, -0.07, 0.04, -0.11 };
+        return 1.0 + amountNow * (rateShare * rate + own[voice]);
+    }
     double vibratoDepthScale() const noexcept { return 1.0 + amountNow * depthShare * depth; }
     // Added to how far behind the lead the voice stands, for this note: a little earlier or later
-    double lagOffsetMs() const noexcept { return amountNow * (lagDraw < 0.0 ? earlierMs : laterMs) * lagDraw; }
+    double lagOffsetMs() const noexcept { return amountNow * ((lagDraw < 0.0 ? earlierMs : laterMs) * lagDraw + trail); }
 
 private:
     // A random walk that stays about one unit wide: pulled back to 0 over the given time
@@ -228,7 +248,7 @@ private:
     double tick = 0.001;
     std::uint32_t random = 1;
     double slow = 0.0, slowMean = 0.0, fast = 0.0, fastMean = 0.0, level = 0.0, rate = 0.0, depth = 0.0, followed = 0.0, leadMean = 0.0;
-    double lagDraw = 0.0, cents = 0.0, gain = 1.0, amountNow = 0.0, landed = 1.0;
+    double lagDraw = 0.0, cents = 0.0, gain = 1.0, amountNow = 0.0, landed = 1.0, trail = 0.0, trailDraw = 0.0, noteAge = 0.0;
 };
 
 class HarmonyBrain
@@ -461,7 +481,7 @@ public:
                 const double aim = wanted + fine;
                 if (humanOn && (! wasSounding || phraseStart || discrete != lastDiscrete[(size_t) v] || s.mode != lastMode
                                 || (s.mode == modeFixed && chromaticNote != oldChromatic)))
-                    person.noteEvent();
+                    person.noteEvent (! wasSounding || phraseStart);
                 if (! wasSounding || phraseStart)
                 {
                     remains[(size_t) v] = 0.0;

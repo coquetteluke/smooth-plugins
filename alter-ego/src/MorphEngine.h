@@ -43,6 +43,7 @@ public:
         bool rangeMatch = false;
         double rangeCentreHz = 220.0;
         bool bypass = false;
+        bool peakGuard = false;     // on: the output never peaks higher than the input has (times Output)
     };
 
     // Total delay at a sample rate, from input to output, including the dry path. Used before prepare() as well.
@@ -86,6 +87,9 @@ public:
         levelRate = 1.0 - std::exp (-1.0 / (0.025 * sr));
         levelGainRate = 1.0 - std::exp (-1.0 / (0.015 * sr));
         levelRelease = 1.0 - std::exp (-1.0 / (0.003 * sr));
+        guardRelease = 1.0 - std::exp (-1.0 / (0.100 * sr));
+        fastRate = 1.0 - std::exp (-1.0 / (0.005 * sr));
+        burstRelease = 1.0 - std::exp (-1.0 / (0.015 * sr));
         tilt = std::exp (-2.0 * M_PI * 200.0 / sr);
         for (auto& f : airFilter) f.highPass (4500.0, sr, 0.707);
         historySize = 1;
@@ -118,6 +122,7 @@ public:
         std::fill (history.begin(), history.end(), 0);
         std::fill (periodHistory.begin(), periodHistory.end(), 0.0);
         smoothedPeriod = 0.0;
+        wasVoicedOut = false;
         historyAt = 0;
         learned = 0.0;
         learnedFrames = 0;
@@ -132,6 +137,12 @@ public:
         breathPower.fill (0.0);
         levelIn = levelOut = 0.0;
         levelGain = 1.0;
+        heldPeak = 0.0;
+        guardGain = 1.0;
+        fastIn = fastOut = dryHold = 0.0;
+        burstGain = 1.0;
+        fastRing.fill (0.0);
+        fastAt = 0;
         readDetected.store (0.0f);
         readOutput.store (0.0f);
         readRange.store (0.0f);
@@ -152,6 +163,9 @@ public:
         {
             float x[2] = { clean (audio[0][i]), channels > 1 ? clean (audio[1][i]) : 0.0f };
             const float mono = channels > 1 ? 0.5f * (x[0] + x[1]) : x[0];
+            // Peak Guard's ceiling: the highest peak the input has had. The input runs one delay ahead of the output, so it already
+            // covers the sound now coming out. Kept whether the guard is on or not, so switching it on mid song works at once.
+            heldPeak = std::max (heldPeak, (double) std::max (std::abs (x[0]), std::abs (x[1])));
 
             if (--tickPhase <= 0)
             {
@@ -159,6 +173,7 @@ public:
                 tick();
             }
 
+            fastIn += fastRate * ((double) x[0] * x[0] + (double) x[1] * x[1] - fastIn);
             tracker.push (mono);
             // Pre-emphasis takes the source's tilt out before the fit, so formants high up are fitted as well as low ones,
             // and they alone move when formants do. The de-emphasis after the filter puts the tilt back.
@@ -257,11 +272,42 @@ public:
             const double wetAmount = current.mix * current.engaged;
             // Hiss passes unshifted, so on a sound that is part noise the level match, which answers to the voiced part, is held back from it.
             const double matched = 1.0 + (levelGain - 1.0) * (1.0 - airShare);
+            // Burst limit (1.2.0). The voice coming out should be about as loud as the voice going in. The level match sees to that,
+            // but it needs 40 ms, and a filter pair that stops matching for a few frames (a note that starts or jumps, a harmonic
+            // landing on a peak of the fit, a low steady note that moves) put out 20 dB more than went in on real takes before it
+            // noticed. So the voice coming out, over about 5 ms, may be no more than 6 dB over the loudest 5 ms the input has within
+            // 20 ms either side (the input is a whole delay ahead, so both sides are known). Anything under that is never touched:
+            // the gain here is then exactly 1.
+            fastOut += fastRate * (matched * matched * powerOut - fastOut);
+            const double burstWant = fastOut > burstAllowed * dryHold ? std::sqrt (burstAllowed * dryHold / fastOut) : 1.0;
+            // Lets go towards a little over 1 and stops at 1, so it is exactly 1 again about 60 ms after a burst, not nearly 1 for ever.
+            burstGain = std::min (burstWant, burstGain + burstRelease * (1.01 - burstGain));
+            const double wetGain = matched * burstGain;
+            const double overall = 1.0 + current.engaged * (current.outputGain - 1.0);
+            double out[2] = { 0.0, 0.0 };
             for (int ch = 0; ch < channels; ++ch)
+                out[ch] = ((1.0 - wetAmount) * (double) dry[ch] + wetAmount * wetGain * wet[ch]) * overall;
+            if (wanted.peakGuard || guardGain < 1.0)
             {
-                const double out = ((1.0 - wetAmount) * (double) dry[ch] + wetAmount * matched * wet[ch]) * (1.0 + current.engaged * (current.outputGain - 1.0));
-                audio[ch][i] = (float) std::clamp (out, -16.0, 16.0);
+                // Moving pitch down or formants about changes the shape of the wave: fewer, stronger pulses, so peaks come out higher
+                // than they went in at the same level (7 dB over full scale at Giant on a take that peaks just under it). On, the gain
+                // drops at once on a sample that would pass the ceiling and comes back over about 100 ms. Switched off, it lets go at
+                // that same rate and then nothing here runs: the output is the same samples as without the control.
+                const double ceiling = heldPeak * overall;
+                const double biggest = std::max (std::abs (out[0]), std::abs (out[1]));
+                const double want = wanted.peakGuard && biggest > ceiling ? ceiling / biggest : 1.0;
+                guardGain = std::min (want, guardGain + guardRelease * (1.0 - guardGain));
+                if (! wanted.peakGuard && guardGain > 1.0 - 1.0e-4)
+                    guardGain = 1.0; // let go: under a thousandth of a dB is left, and from here nothing runs
+                if (guardGain < 1.0)
+                    for (int ch = 0; ch < channels; ++ch)
+                    {
+                        out[ch] *= guardGain;
+                        if (wanted.peakGuard) out[ch] = std::clamp (out[ch], -ceiling, ceiling); // the last bit of rounding in the product
+                    }
             }
+            for (int ch = 0; ch < channels; ++ch)
+                audio[ch][i] = (float) std::clamp (out[ch], -16.0, 16.0);
             ++input;
         }
         readDetected.store ((float) (control.voiced && control.inputPeriod > 0.0 ? sr / control.inputPeriod : 0.0), std::memory_order_relaxed);
@@ -354,6 +400,17 @@ private:
         if (voicedNow && period > 0.0)
             lastPeriod = period;
 
+        // For the burst limit: the loudest the input is within 20 ms either side of what is coming out now
+        fastRing[(size_t) (fastAt & (fastRingSize - 1))] = fastIn;
+        ++fastAt;
+        {
+            const int centre = total / tickEvery, reach = (int) (0.020 * sr) / tickEvery;
+            double hold = 0.0;
+            for (int k = std::max (0, centre - reach); k <= centre + reach && k < fastRingSize; ++k)
+                hold = std::max (hold, fastRing[(size_t) ((fastAt - 1 - k) & (fastRingSize - 1))]);
+            dryHold = hold;
+        }
+
         // Range Match: learn where this voice sits, then move it there in whole semitones
         if (voicedNow && period > 0.0)
         {
@@ -433,8 +490,13 @@ private:
             if (older > 0.0)
                 thenPeriod = older;
         }
-        // Each period is measured on its own and carries a little jitter, which grain spacing should not inherit.
-        smoothedPeriod = control.voiced && smoothedPeriod > 0.0 ? smoothedPeriod + spacingSmooth * (thenPeriod - smoothedPeriod) : thenPeriod;
+        // Each period is measured on its own and carries a little jitter, which grain spacing should not inherit. But a voiced
+        // stretch starts on its own period, and a jump of over a semitone is taken at once: gliding there from the last stretch's
+        // period hands the envelope, for a frame or two, pitches that are not in the sound, and the fit to their "harmonics" made a
+        // burst 20 dB over the voice on a real take (1.2.0).
+        const bool glide = control.voiced && wasVoicedOut && smoothedPeriod > 0.0 && std::abs (thenPeriod / smoothedPeriod - 1.0) < 0.06;
+        smoothedPeriod = glide ? smoothedPeriod + spacingSmooth * (thenPeriod - smoothedPeriod) : thenPeriod;
+        wasVoicedOut = control.voiced;
         control.inputPeriod = smoothedPeriod;
         const double fromInput = (smoothedPeriod > 0.0 ? std::log2 (sr / smoothedPeriod) : 0.0) + (current.pitch + rangeNow) / 12.0;
         const double fromRobot = std::log2 (std::max (s.robotHz, 20.0)) + current.userPitch / 12.0;
@@ -471,6 +533,7 @@ private:
     std::vector<uint8_t> history;
     std::vector<double> periodHistory;
     double spacingSmooth = 0.1, smoothedPeriod = 0.0;
+    bool wasVoicedOut = false;
 
     Settings wanted;
     Smoothed current;
@@ -489,6 +552,12 @@ private:
     std::array<double, 2> tiltIn {}, tiltOut {};
     float lastMono = 0.0f;
     double breathRate = 0.01, levelRate = 0.001, levelGainRate = 0.001, levelRelease = 0.01, levelIn = 0.0, levelOut = 0.0, levelGain = 1.0;
+    double heldPeak = 0.0, guardGain = 1.0, guardRelease = 0.001;
+    static constexpr int fastRingSize = 256;      // ticks: reaches a whole delay and 20 ms back at every rate
+    static constexpr double burstAllowed = 4.0;   // 6 dB, as power
+    std::array<double, fastRingSize> fastRing {};
+    long long fastAt = 0;
+    double fastIn = 0.0, fastOut = 0.0, dryHold = 0.0, burstGain = 1.0, fastRate = 0.01, burstRelease = 0.01;
     std::atomic<float> readDetected { 0.0f }, readOutput { 0.0f }, readRange { 0.0f };
 };
 } // namespace smoothmorph

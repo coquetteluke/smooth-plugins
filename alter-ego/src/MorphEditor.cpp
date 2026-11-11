@@ -37,7 +37,7 @@ public:
     {
         setComponentID ("advanced");
         setTitle ("Advanced");
-        hint = "Range Match, Range Centre, Mix and Output.";
+        hint = "Range Match, Peak Guard, Centre, Mix and Output.";
     }
 
     void setSummary (const juce::String& text)
@@ -118,6 +118,7 @@ MorphEditor::MorphEditor (PluginProcessor& p)
       robotNote (p.apvts, "robotNote", "Robot Note", "The one note Robot sits on. Pitch moves it.", tone::text,
                  [] (float v) { return noteName (juce::roundToInt (v)); }),
       rangeMatch (p.apvts, "rangeMatch", "Range Match", "Learns the voice's range and moves it to Range Centre."),
+      peakGuard (p.apvts, "peakGuard", "Peak Guard", "Holds peaks at or under your own voice's highest."),
       rangeCentre (p.apvts, "rangeCentre", "Range Centre", "Where Range Match puts the voice.", tone::text,
                    [] (float v) { return noteName (juce::roundToInt (v)); }),
       mix (p.apvts, "mix", "Mix", "Blends the alter ego with your own voice.", tone::text,
@@ -143,7 +144,7 @@ MorphEditor::MorphEditor (PluginProcessor& p)
     addAndMakeVisible (mirror);
     for (juce::Component* c : std::initializer_list<juce::Component*> { &presets, &bypass, &pitchValue, &formantValue, &chips, &amount, &vibratoDepth, &vibratoRate, &whisper, &robotNote })
         addAndMakeVisible (c);
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &rangeMatch, &rangeCentre, &mix, &output })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &rangeMatch, &peakGuard, &rangeCentre, &mix, &output })
         addChildComponent (c);
 
     advancedHeader = std::make_unique<AdvancedHeader> (*this);
@@ -227,7 +228,7 @@ void MorphEditor::resized()
     hintArea = foot;
 
     const bool open = isAdvancedOpen();
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &rangeMatch, &rangeCentre, &mix, &output })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &rangeMatch, &peakGuard, &rangeCentre, &mix, &output })
         c->setVisible (open);
 
     if (open)
@@ -235,8 +236,10 @@ void MorphEditor::resized()
         auto drawer = area.removeFromBottom (drawerHeight - rowGap);
         area.removeFromBottom (rowGap);
         const int gap = 24;
-        const int pill = 112;
+        const int pill = 112, guardPill = 104;
         rangeMatch.setBounds (drawer.removeFromLeft (pill).withSizeKeepingCentre (pill, 34));
+        drawer.removeFromLeft (10);
+        peakGuard.setBounds (drawer.removeFromLeft (guardPill).withSizeKeepingCentre (guardPill, 34));
         drawer.removeFromLeft (gap);
         const int w = (drawer.getWidth() - 2 * gap) / 3;
         for (auto* s : { &rangeCentre, &mix, &output })
@@ -352,6 +355,8 @@ void MorphEditor::updateAdvancedSummary()
     juce::StringArray moved;
     if (rangeMatch.isOn())
         moved.add ("Range Match to " + rangeCentre.valueText());
+    if (peakGuard.isOn())
+        moved.add ("Peak Guard on");
     if (std::abs (mix.getValue() - 100.0) > 0.05)
         moved.add ("Mix " + mix.valueText());
     if (std::abs (output.getValue()) > 0.005)

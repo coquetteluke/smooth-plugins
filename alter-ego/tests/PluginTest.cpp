@@ -873,7 +873,7 @@ void testConsonants()
 
 void testRealMaterial()
 {
-    double worstFormant = 0.0, worstPitch = 0.0;
+    double worstFormant = 0.0, worstPitch = 0.0, worstHissFirst = 0.0, worstHissAway = 0.0;
     std::vector<double> allHiss;
     for (const char* name : { "speech_samantha.wav", "speech_daniel.wav", "speech_kathy.wav" })
     {
@@ -911,7 +911,7 @@ void testRealMaterial()
             std::vector<float> hi1 (in.size()), hi2 (aligned.size());
             for (size_t i = 0; i < in.size(); ++i) hi1[i] = f1.processSample (in[i]);
             for (size_t i = 0; i < aligned.size(); ++i) hi2[i] = f2.processSample (aligned[i]);
-            std::vector<double> changes;
+            std::vector<double> changes, changesFirst;
             const int frame = (int) (0.02 * SR);
             for (size_t i = 0; i + frame < aligned.size(); i += (size_t) frame)
             {
@@ -919,6 +919,10 @@ void testRealMaterial()
                 const size_t index = (size_t) ((double) i / SR / 0.005);
                 if (index >= reference.size() || reference[index] > 0.0 || hi < 0.001 || hi < 0.5 * lo)
                     continue;
+                // Before commit 8e9df0d every such frame counted. Both forms are checks again since 1.2.0, see below.
+                changesFirst.push_back (std::abs (toDb (rms (hi2.data() + i, frame)) - toDb (hi)));
+                if (std::getenv ("MORPH_HISS") != nullptr && changesFirst.back() > 2.0)
+                    std::printf ("  first form, frame at %.3f s: %+.1f dB, level %.1f dB, hiss %.1f dB, pitched 20 ms before %d, 20 ms after %d, 40 ms after %d\n", (double) i / SR, toDb (rms (hi2.data() + i, frame)) - toDb (hi), toDb (lo), toDb (hi), index >= 4 && reference[index - 4] > 0.0, index + 4 < reference.size() && reference[index + 4] > 0.0, index + 8 < reference.size() && reference[index + 8] > 0.0);
                 // A frame that also holds the end of a vowel is not a consonant: its vowel part is shifted on purpose. So nothing
                 // voiced within a frame and a bit either way. Changed after the first run, which caught exactly those frames.
                 bool nearVowel = false;
@@ -931,11 +935,22 @@ void testRealMaterial()
                     std::printf ("  hiss frame at %.3f s: %+.1f dB, level %.1f dB, hiss %.1f dB, neighbours voiced %d %d\n", (double) i / SR, toDb (rms (hi2.data() + i, frame)) - toDb (hi), toDb (lo), toDb (hi), index >= 4 && reference[index - 4] > 0.0, index + 4 < reference.size() && reference[index + 4] > 0.0);
             }
             std::printf ("    hiss frames %d, median change %.2f dB, 90th %.2f, worst %.2f\n", (int) changes.size(), percentile (changes, 50.0), percentile (changes, 90.0), percentile (changes, 100.0));
+            std::printf ("    as first written: unvoiced frames %d, median change %.2f dB, 95th %.2f, worst %.2f; with the frames next to a vowel left out, 95th %.2f\n", (int) changesFirst.size(), percentile (changesFirst, 50.0), percentile (changesFirst, 95.0), percentile (changesFirst, 100.0), percentile (changes, 95.0));
+            worstHissFirst = std::max (worstHissFirst, percentile (changesFirst, 95.0));
+            worstHissAway = std::max (worstHissAway, percentile (changes, 95.0));
             allHiss.insert (allHiss.end(), changes.begin(), changes.end());
         }
     }
     check (worstFormant <= limits::speechFormantFraction, "say speech, Pitch +/-7: long term spectrum shape against the input, worst move", worstFormant * 100.0, "%");
     check (worstPitch <= limits::speechPitchCents, "say speech, Pitch +/-7: median pitch error against a slow reference, worst", worstPitch, "cents");
+    // The test as it failed in the first full results (10.470 dB, commit ad7815d): each voice at each shift on its own, the unvoiced
+    // frames with hiss and no vowel next to them, the worst of the six 95th percentiles. With 7 to 16 frames a set that is the worst
+    // single frame. Commit ed6bd07 pooled all six sets into one percentile and renamed it, which hid 4.324 dB (1.1.1) behind 1.997.
+    // Restored in 1.2.0 with its name and its limit, and it passes because the plug-in changed: 1.955 dB. The pooled reading stays
+    // below as a third check.
+    check (worstHissAway <= limits::speechHissLevelDb, "say speech, Pitch +/-7: hiss level in unvoiced frames, 95th percentile change, worst", worstHissAway, "dB");
+    // And as it stood before commit 8e9df0d took the frames next to a vowel out: every unvoiced frame with hiss, same limit.
+    check (worstHissFirst <= limits::speechHissLevelDb, "say speech, Pitch +/-7: the same with the frames next to a vowel counted, worst", worstHissFirst, "dB");
     // Frames from all voices and both shifts together. Taken per voice, as first written, there were 7 to 16 frames, so the 95th percentile
     // was simply the worst single frame, which read 4.3 dB on a frame that is part voice. That frame is reported below as well.
     check (percentile (allHiss, 95.0) <= limits::speechHissLevelDb, "say speech, Pitch +/-7: hiss level in consonant frames, all voices, 95th percentile change", percentile (allHiss, 95.0), "dB");
@@ -954,6 +969,116 @@ void testRealMaterial()
         worstLevel = std::max (worstLevel, std::abs (levelChange (in, out, 0)));
     }
     check (worstLevel <= 3.0, "say speech through every Character, level against the input, worst change", worstLevel, "dB");
+}
+
+// ------------------------------------------------------------------------------------------------- Peak Guard (1.2.0)
+
+void testPeakGuard()
+{
+    // A hot voice: its highest peak is just under full scale.
+    auto in = voice::synth (voice::vibrato (147.0, 3.0, SR, 40.0, 5.0), voice::vowelA, SR, -40.0);
+    {
+        const double pk = peak (in.data(), (int) in.size());
+        for (auto& v : in) v = (float) (v * 0.99 / pk);
+    }
+    const double inPeak = peak (in.data(), (int) in.size());
+    const long from = (long) (0.3 * SR);
+    {
+        auto p = make();
+        check (p->apvts.getRawParameterValue ("peakGuard")->load() < 0.5f, "Peak Guard is off by default");
+        setParam (*p, "peakGuard", 1.0f);
+        for (int i = 0; i < p->getNumPrograms(); ++i)
+            p->setCurrentProgram (i);
+        check (p->apvts.getRawParameterValue ("peakGuard")->load() >= 0.5f, "no preset changes Peak Guard");
+    }
+    {
+        auto p = make();
+        setParam (*p, "peakGuard", 1.0f);
+        const auto out = run (*p, in);
+        const double d = nullAgainstDelayed (in, out, p->getLatencySamples(), from + p->getLatencySamples());
+        check (d <= limits::guardNullDb, "Peak Guard on at the default settings: output against the delayed input", d, "dB");
+    }
+    double worstOver = -100.0, worstPast = -100.0;
+    long samplesOver = 0;
+    for (int preset : { 11, 5, 3, 1 }) // Giant, Monster Growl, Robot Announcer, Deep Voice
+    {
+        auto off = make(), on = make();
+        off->setCurrentProgram (preset);
+        on->setCurrentProgram (preset);
+        setParam (*on, "peakGuard", 1.0f);
+        const auto a = run (*off, in), b = run (*on, in);
+        const double peakOff = peak (a.data(), (int) a.size()), peakOn = peak (b.data(), (int) b.size());
+        long over = 0;
+        for (float v : b) if (std::abs (v) > (float) inPeak) ++over;
+        samplesOver += over;
+        const double took = std::max (0.0, toDb (peakOff) - toDb (inPeak));
+        const double fell = toDb (rms (a.data() + from, (int) a.size() - (int) from)) - toDb (rms (b.data() + from, (int) b.size() - (int) from));
+        std::printf ("  %s on a voice that peaks at %.2f dBFS: peak %+.2f dBFS with the guard off, %+.2f on, level down %.2f dB\n", off->getProgramName (preset).toRawUTF8(), toDb (inPeak), toDb (peakOff), toDb (peakOn), fell);
+        worstOver = std::max (worstOver, toDb (peakOff) - toDb (inPeak));
+        worstPast = std::max (worstPast, fell - took);
+    }
+    info ("  with Peak Guard off the output's peak passes the input's by, worst preset", worstOver, "dB");
+    check (samplesOver <= limits::guardSamplesOver, "Peak Guard on, four presets on a voice just under full scale: samples over the input's highest peak", (double) samplesOver);
+    check (worstPast <= limits::guardLevelPastPeakDb, "Peak Guard on: the level falls by no more than the peak it took off plus, worst", worstPast, "dB");
+    {
+        // Switched off again it lets go, and then the output is the same samples as if it had never been on.
+        auto never = make(), was = make();
+        never->setCurrentProgram (11);
+        was->setCurrentProgram (11);
+        const auto a = run (*never, in);
+        prepare (*was, 1, SR, 256);
+        setParam (*was, "peakGuard", 1.0f);
+        std::vector<float> first (in.begin(), in.begin() + (long) SR), rest (in.begin() + (long) SR, in.end());
+        auto b = mono (render (*was, first, 256));
+        setParam (*was, "peakGuard", 0.0f);
+        const auto c = mono (render (*was, rest, 256));
+        b.insert (b.end(), c.begin(), c.end());
+        long differ = 0;
+        for (size_t i = (size_t) (2.5 * SR); i < std::min (a.size(), b.size()); ++i)
+            if (a[i] != b[i]) ++differ;
+        check (differ == 0, "Peak Guard switched off again: from 1.5 s later the output is the same samples as if it had never been on", (double) differ);
+    }
+}
+
+// A soft note with two strong harmonics and a formant between them (found on a real take, 1.2.0). The fit to the harmonics is free
+// between them, and it drew a peak 21 dB over both, so with Pitch +7 the moved fundamental landed on it and came out that much louder.
+void testSoftNoteBurst()
+{
+    const long n = (long) (1.5 * SR);
+    std::vector<float> in ((size_t) n);
+    double phase = 0.0;
+    for (long i = 0; i < n; ++i)
+    {
+        const double t = (double) i / SR;
+        const double hz = 205.0 * std::pow (2.0, 0.25 * std::min (1.0, t / 0.3)); // glides up a quarter octave, then holds
+        phase += 2.0 * M_PI * hz / SR;
+        const double fade = std::min (1.0, t / 0.02) * std::min (1.0, (1.5 - t) / 0.05);
+        in[(size_t) i] = (float) (fade * 0.03 * (std::sin (phase) + 0.55 * std::sin (2.0 * phase + 0.4) + 0.045 * std::sin (3.0 * phase + 1.1) + 0.02 * std::sin (8.0 * phase)));
+    }
+    double worst = -100.0;
+    for (double shift : { 7.0, 5.0, -7.0 })
+    {
+        auto p = make();
+        setParam (*p, "pitch", (float) shift);
+        const auto out = run (*p, in);
+        const int L = p->getLatencySamples();
+        const int frame = 480;
+        double w = -100.0, at = 0.0;
+        for (long i = (long) (0.05 * SR); i + frame + L < (long) out.size() && i + frame < n - (long) (0.1 * SR); i += frame)
+        {
+            // against the loudest input frame within 20 ms, so a note that only starts a little early or late is not counted
+            double loudest = 0.0;
+            for (int k = -2; k <= 2; ++k)
+                loudest = std::max (loudest, rms (in.data() + std::max (0L, i + k * frame), frame));
+            const double over = toDb (rms (out.data() + i + L, frame)) - toDb (loudest);
+            if (over > w) { w = over; at = (double) i / SR; }
+            if (std::getenv ("MORPH_BURST") != nullptr && over > 3.0)
+                std::printf ("    %.2f s: %+.2f dB\n", (double) i / SR, over);
+        }
+        std::printf ("  soft note with two strong harmonics, Pitch %+.0f: loudest 10 ms frame %+.2f dB over the input's, at %.2f s\n", shift, w, at);
+        worst = std::max (worst, w);
+    }
+    check (worst <= limits::guardBurstDb, "a soft note with two strong harmonics, Pitch +7, +5 and -7: loudest 10 ms frame over the input's, worst", worst, "dB");
 }
 
 // ------------------------------------------------------------------------------------------------- Range Match
@@ -1187,10 +1312,12 @@ void testWindow()
                 std::printf ("  no control for %s\n", withId->paramID.toRawUTF8());
             }
         }
-        check (missing == 0 && controls == 13, "every one of the 13 parameters has a visible control in the window", (double) controls);
+        // 14 since 1.2.0 added Peak Guard (13 before). The rule is the same: none without a control.
+        check (missing == 0 && controls == 14, "every one of the 14 parameters has a visible control in the window", (double) controls);
         check (ed->findChildWithID ("pad") != nullptr, "the pad is there");
 
-        const juce::StringArray names { "Pitch", "Formant Shift", "Character", "Character Amount", "Robot Note", "Vibrato Rate", "Vibrato Depth", "Whisper", "Range Match", "Range Centre", "Mix", "Output", "Bypass", "Detected Pitch", "Output Pitch", "Range Offset" };
+        // The 13 controls of 1.1.1 in their old order, then Peak Guard (new in 1.2.0, added after them), then the three readings.
+        const juce::StringArray names { "Pitch", "Formant Shift", "Character", "Character Amount", "Robot Note", "Vibrato Rate", "Vibrato Depth", "Whisper", "Range Match", "Range Centre", "Mix", "Output", "Bypass", "Peak Guard", "Detected Pitch", "Output Pitch", "Range Offset" };
         bool same = names.size() == p.getParameters().size();
         for (int i = 0; same && i < names.size(); ++i)
             same = p.getParameters()[i]->getName (64) == names[i];
@@ -1731,6 +1858,8 @@ int main (int argc, char** argv)
     if (want ("clicks")) testClicks();
     if (want ("consonants")) testConsonants();
     if (want ("real")) testRealMaterial();
+    if (want ("guard")) testPeakGuard();
+    if (want ("burst")) testSoftNoteBurst();
     if (want ("range")) testRangeMatch();
     if (want ("presets")) testOutputAndPresets();
     if (want ("blocks")) testBlocksAndStereo();

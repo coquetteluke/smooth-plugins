@@ -66,6 +66,7 @@ public:
         for (auto& f : frames) { f.analysis.fill (0.0); f.synthesis.fill (0.0); f.wantedLags.fill (0.0); f.gain = 1.0; f.level = 0.0; f.leftover = 1.0; f.plain = true; }
         std::fill (held.begin(), held.end(), 0.0);
         count = 0;
+        gainMean = 1.0;
     }
 
     // How many samples behind the whitening filter the putting-back filter runs. Sets how far its frames can be averaged.
@@ -218,7 +219,7 @@ private:
             // moves with them, which at that note shows as wobble.
             const bool useLines = pitchHz >= lowestLinesHz && sharpen == 1.0 && findLines (pitchHz);
             if (useLines)
-                fitToLines (1.0, lags.data(), 1.0);
+                fitToLines (1.0, lags.data(), 1.0, true);
             const double heldLevel = lags[0];
             const double errorHeld = levinson (lags.data(), f.analysis.data());
             f.leftover = heldLevel > 0.0 ? errorHeld / (heldLevel * (1.0 + floorAmount)) : 1.0;
@@ -243,7 +244,7 @@ private:
             }
             toLags (warped, f.wantedLags.data());
             if (useLines)
-                fitToLines (ratio, f.wantedLags.data(), sharpen);
+                fitToLines (ratio, f.wantedLags.data(), sharpen, false);
             // Squeezing a spectrum squeezes its peaks too, and a very narrow peak is what turns small moves in the fit into pitch wobble.
             const double squeeze = std::max (1.0 / ratio - 1.0, 0.0);
             const double wide = wideAmount * squeeze * squeeze;
@@ -291,9 +292,13 @@ private:
     // Replaces lags with those of the all-pole curve fitted through the lines, whose frequencies are scaled by ratio.
     // Cosines come from a rotating pair rather than a call each, and the matrix is Toeplitz, so its recursion runs once and every
     // round only needs its stored steps. Measured at 20% of a core before that, on the same fit.
-    void fitToLines (double ratio, double* lags, double sharpen) noexcept
+    // findPlaces: this is the frame's first fit (the whitening filter), which looks for places where the fit stands too tall between
+    // two harmonics and holds them down. The second fit of the frame (the filter that goes back on) is handed the same places.
+    void fitToLines (double ratio, double* lags, double sharpen, bool findPlaces) noexcept
     {
         const int p = order;
+        if (findPlaces)
+            numHeld = 0;
         std::array<double, maxOrder + 1> r {};
         int used = 0;
         double top = 1.0e-30;
@@ -303,6 +308,7 @@ private:
         const auto addLine = [&] (double w, double power)
         {
             lineFitFrequency[(size_t) used] = w;
+            lineFitPower[(size_t) used] = power;
             lineFitCos[(size_t) used] = std::cos (w);
             lineFitSin[(size_t) used] = std::sin (w);
             const double cw = lineFitCos[(size_t) used], sw = lineFitSin[(size_t) used];
@@ -343,6 +349,37 @@ private:
         }
         if (used <= p + 2 || ! (r[0] > 0.0))
             return; // too few harmonics, or the top of the voice would go over the top of the band: keep the ordinary fit
+        const int voiceLines = used;
+        const std::array<double, maxOrder + 1> sums = r;
+        std::array<double, maxOrder + 1> a {}, target {}, startLags {}, startK {}, startA {};
+        if (! findPlaces)
+            for (int k = 0; k < numHeld && used < maxFitLines; ++k)
+            {
+                const double w = heldAt[(size_t) k] * ratio;
+                if (w >= M_PI) continue;
+                lineFitFrequency[(size_t) used] = w;
+                lineFitPower[(size_t) used] = heldPower[(size_t) k];
+                lineFitCos[(size_t) used] = std::cos (w);
+                lineFitSin[(size_t) used] = std::sin (w);
+                ++used;
+            }
+        // Twice at most, and only for the first fit of a frame: the fit, then, if it stands too tall between two harmonics, the fit
+        // again with those places held down.
+        for (int pass = 0; pass < 2; ++pass)
+        {
+        r = sums;
+        for (int k = voiceLines; k < used; ++k)
+        {
+            const double cw = lineFitCos[(size_t) k], sw = lineFitSin[(size_t) k];
+            double c = 1.0, sn = 0.0;
+            for (int l = 0; l <= p; ++l)
+            {
+                r[(size_t) l] += lineFitPower[(size_t) k] * c;
+                const double next = c * cw - sn * sw;
+                sn = sn * cw + c * sw;
+                c = next;
+            }
+        }
         for (double& v : r) v /= used;
         r[0] *= 1.0 + 1.0e-4;
 
@@ -366,24 +403,29 @@ private:
             errors[(size_t) m] = error;
         }
 
-        // Start from the ordinary fit to the lines, a little widened, on the unit gain scale the rounds use.
-        std::array<double, maxOrder + 1> a {}, target {}, startLags = r, startK {}, startA {};
-        const double startError = levinson (startLags.data(), startK.data());
-        if (! (startError > 0.0))
-            return;
-        a[0] = 1.0;
-        for (int i = 1; i <= p; ++i)
+        // Start from the ordinary fit to the lines, a little widened, on the unit gain scale the rounds use. The second time round
+        // the first fit is the start, and it is already close, so it takes fewer rounds.
+        if (pass == 0)
         {
-            startA = a;
-            for (int j = 1; j < i; ++j)
-                a[(size_t) j] = startA[(size_t) j] + startK[(size_t) i - 1] * startA[(size_t) (i - j)];
-            a[(size_t) i] = startK[(size_t) i - 1];
+            a.fill (0.0);
+            startLags = r;
+            const double startError = levinson (startLags.data(), startK.data());
+            if (! (startError > 0.0))
+                return;
+            a[0] = 1.0;
+            for (int i = 1; i <= p; ++i)
+            {
+                startA = a;
+                for (int j = 1; j < i; ++j)
+                    a[(size_t) j] = startA[(size_t) j] + startK[(size_t) i - 1] * startA[(size_t) (i - j)];
+                a[(size_t) i] = startK[(size_t) i - 1];
+            }
+            const double gain = 1.0 / std::sqrt (startError);
+            for (int i = 0; i <= p; ++i)
+                a[(size_t) i] *= gain;
         }
-        const double gain = 1.0 / std::sqrt (startError);
-        for (int i = 0; i <= p; ++i)
-            a[(size_t) i] *= gain;
 
-        for (int round = 0; round < fitRounds; ++round)
+        for (int round = 0; round < (pass == 0 ? fitRounds : heldRounds); ++round)
         {
             // Right hand side: the model's own response read at the lines.
             target.fill (0.0);
@@ -426,6 +468,63 @@ private:
             }
             if (! std::isfinite (a[0]) || a[0] <= 0.0)
                 return;
+        }
+
+        // Between two harmonics the fit is free, and where a formant sits between them it can draw a peak 20 dB over both (measured
+        // on a real take: a soft note with two strong harmonics). Move the pitch and a harmonic lands on that peak, and the note
+        // comes out that much louder. No vocal tract stands that far over the harmonics either side of it, so the fit may be no
+        // more than peakAllowed over the higher of the two. Where it is, that place is held down and the fit is made once more.
+        if (pass > 0 || ! findPlaces)
+            break;
+        int added = 0;
+        const auto modelAt = [&] (double w)
+        {
+            const double cw = std::cos (w), sw = std::sin (w);
+            double c = 1.0, sn = 0.0, re = 0.0, im = 0.0;
+            for (int i = 0; i <= p; ++i)
+            {
+                re += a[(size_t) i] * c;
+                im -= a[(size_t) i] * sn;
+                const double next = c * cw - sn * sw;
+                sn = sn * cw + c * sw;
+                c = next;
+            }
+            return 1.0 / (re * re + im * im + 1.0e-300);
+        };
+        double atLine = modelAt (lineFitFrequency[0]);
+        const double holdTop = 2.0 * M_PI * holdTopHz / sr;
+        for (int k = 0; k + 1 < voiceLines && used < maxFitLines && numHeld < maxHeld; ++k)
+        {
+            const double w0 = lineFitFrequency[(size_t) k], w1 = lineFitFrequency[(size_t) k + 1];
+            if (w1 > holdTop)
+                break; // a voice's power, and so a burst, is under this. Above it the check would only cost.
+            const double atNext = modelAt (w1);
+            // Over the harmonics either side, as the voice had them and as the fit itself draws them: a place where the fit is
+            // only smoother than a rough top end is left alone.
+            const double ceiling = peakAllowed * std::max (std::max (lineFitPower[(size_t) k], lineFitPower[(size_t) k + 1]), std::max (atLine, atNext));
+            atLine = atNext;
+            double worst = 0.0, worstAt = 0.0;
+            for (double t : { 0.25, 0.5, 0.75 })
+            {
+                const double w = w0 + t * (w1 - w0);
+                const double model = modelAt (w);
+                if (model > worst) { worst = model; worstAt = w; }
+            }
+            if (worst > ceiling)
+            {
+                lineFitFrequency[(size_t) used] = worstAt;
+                lineFitPower[(size_t) used] = ceiling;
+                lineFitCos[(size_t) used] = std::cos (worstAt);
+                lineFitSin[(size_t) used] = std::sin (worstAt);
+                heldAt[(size_t) numHeld] = worstAt / ratio;
+                heldPower[(size_t) numHeld] = ceiling;
+                ++numHeld;
+                ++used;
+                ++added;
+            }
+        }
+        if (added == 0)
+            break;
         }
 
         // Back to lags: walk down to reflection coefficients and refuse anything unstable, then walk up to the curve's autocorrelation.
@@ -505,6 +604,7 @@ private:
         {
             f.synthesis = f.analysis;
             f.gain = 1.0;
+            gainMean += 0.25 * (1.0 - gainMean);
             return;
         }
         std::array<double, maxOrder + 1> sum {};
@@ -522,6 +622,14 @@ private:
         const double leftoverOut = total > 0.0 ? error / (total * (1.0 + floorAmount)) : 1.0;
         const double wanted = std::max (f.wantedLags[0], 0.0);
         f.gain = f.level > 0.0 && f.leftover > 0.0 ? std::clamp (std::sqrt (leftoverOut * wanted / (f.leftover * f.level)), 0.1, 10.0) : 1.0;
+        // The gain is worked out from how well each fit says it explains its frame. When the long memory lets go (a held note that
+        // moves), one frame's own fit and the average around it disagree for a moment, and the gain of that one frame jumped to
+        // 2.7 and 6 times on made up and real voices: a burst of one frame (1.2.0). A voice's level is carried by the frame's
+        // level, not by this ratio, so the ratio may stand no more than gainRise over its own recent average (about 10 ms). The
+        // small frame to frame moves of a steady voice are well inside that and are left exactly as they were.
+        if (m > 0 && f.gain > gainRise * gainMean)
+            f.gain = gainRise * gainMean;
+        gainMean += 0.25 * (f.gain - gainMean);
     }
 
     void publish (const Frame&) noexcept
@@ -546,12 +654,20 @@ private:
     static constexpr int maxLines = 192;
     static constexpr int maxFitLines = 2 * maxLines;
     std::array<double, maxLines> lineFrequency {}, linePower {};
-    std::array<double, maxFitLines> lineFitFrequency {}, lineFitCos {}, lineFitSin {};
+    std::array<double, maxFitLines> lineFitFrequency {}, lineFitCos {}, lineFitSin {}, lineFitPower {};
+    static constexpr double peakAllowed = 4.0; // 6 dB, as power
+    static constexpr double holdTopHz = 4000.0;
+    static constexpr int maxHeld = 32;
+    std::array<double, maxHeld> heldAt {}, heldPower {};
+    int numHeld = 0;
     std::array<std::array<double, maxOrder + 1>, maxOrder + 1> steps {};
     std::array<double, maxOrder + 1> errors {};
     int numLines = 0;
     static constexpr int fitRounds = 3;
+    static constexpr int heldRounds = 1;
     static constexpr double lowestLinesHz = 150.0; // below this a 21 ms window does not see separate harmonics
+    static constexpr double gainRise = 2.0;         // 6 dB over the recent average
+    double gainMean = 1.0;
     int lead = 0;
     static constexpr double floorAmount = 1.0e-5, wideAmount = 120.0;
     static constexpr double longMemory = 0.985, steadyDb = 3.0, changingDb = 6.0;

@@ -101,6 +101,7 @@ private:
     std::atomic<float>* rangeCentre = nullptr;
     std::atomic<float>* mix = nullptr;
     std::atomic<float>* output = nullptr;
+    std::atomic<float>* peakGuard = nullptr;
     juce::AudioParameterBool* bypass = nullptr;
     ReadingParameter* detectedReading = nullptr;
     ReadingParameter* outputReading = nullptr;

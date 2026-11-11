@@ -59,7 +59,7 @@ private:
     ui::ValueField pitchValue, formantValue;
     ui::Chips chips;
     ui::DotSlider amount, vibratoDepth, vibratoRate, whisper, robotNote;
-    ui::Pill rangeMatch;
+    ui::Pill rangeMatch, peakGuard;
     ui::DotSlider rangeCentre, mix, output;
 
     std::unique_ptr<AdvancedHeader> advancedHeader;

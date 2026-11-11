@@ -93,6 +93,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "mix", 1 }, "Mix", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, fixedText (0, "%")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "output", 1 }, "Output", NormalisableRange<float> (-24.0f, 12.0f, 0.01f), 0.0f, fixedText (1, "dB")));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "bypass", 1 }, "Bypass", false));
+    // New in 1.2.0, off by default, and no preset touches it. Last, so nothing before it moves.
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "peakGuard", 1 }, "Peak Guard", false));
     return layout;
 }
 
@@ -114,6 +116,7 @@ PluginProcessor::PluginProcessor()
     mix = apvts.getRawParameterValue ("mix");
     output = apvts.getRawParameterValue ("output");
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
+    peakGuard = apvts.getRawParameterValue ("peakGuard");
 
     addParameter (detectedReading = new ReadingParameter ("detectedPitch", "Detected Pitch", "Hz", 0.0f, 2000.0f, 0.0f, hzText));
     addParameter (outputReading = new ReadingParameter ("outputPitch", "Output Pitch", "Hz", 0.0f, 4000.0f, 0.0f, hzText));
@@ -153,6 +156,7 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass) n
     s.mix = 0.01 * mix->load (std::memory_order_relaxed);
     s.outputGain = juce::Decibels::decibelsToGain (output->load (std::memory_order_relaxed), -120.0f);
     s.bypass = forceBypass || bypass->get();
+    s.peakGuard = peakGuard->load (std::memory_order_relaxed) >= 0.5f;
     engine.set (s);
 
     if (buffer.getNumChannels() >= getTotalNumOutputChannels())

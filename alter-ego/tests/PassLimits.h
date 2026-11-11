@@ -59,6 +59,12 @@ namespace limits
     constexpr double cpuPercent = 15.0;               // of one core, 48 kHz stereo, machine busy with other builds
     constexpr double cpuPercent96 = 30.0;             // the same at 96 kHz
 
+    // Peak Guard (1.2.0), set before it was first measured. The same rules the real vocal check holds it to.
+    constexpr double guardNullDb = -100.0;            // on at the default settings: output against the delayed input
+    constexpr int guardSamplesOver = 0;               // on: samples of the output higher than the input's highest peak
+    constexpr double guardLevelPastPeakDb = 0.5;      // on: the level falls by no more than the peak it took off, plus this
+    constexpr double guardBurstDb = 6.0;              // a soft note with two strong harmonics, Pitch +7: loudest 10 ms frame over the input's
+
     // The window, set before the window's cue was first measured. Shape widths are shares of the mirror's half width.
     constexpr double mirrorNaturalShape = 0.02;       // Natural: the two sides of the mirror match at every point to this much
     constexpr double mirrorPitchSemitones = 1.0;      // Pitch +12: the voice's lowest tooth moves up 12 semitones, to this much

@@ -13,7 +13,7 @@ Called Alter Ego inside. The build name stays Alter Ego until the rename.
 - **Pad:** left and right is Pitch, up and down is Formant Shift, one semitone the same distance either way. You are the ring in the middle and the dot is the voice, including what the Character adds. Drag it, hold Shift for whole semitones, double-click to go back. The rings show where each Character would land from here.
 - **Disc under the dot:** where the voice really is right now, read from the engine, and how loud. Vibrato swings it. Robot throws it about as the sung pitch moves against the held note. Range Match shows in it too.
 - **Mirror, the live cue:** your voice on the left and what comes out on the right, each one's real spectrum, low notes at the bottom. Natural is a perfect ink blot, because the two really are the same. Pitch slides the teeth (harmonics), Formant Shift slides the humps, Whisper melts the teeth, Monster fills in between them. The line across the middle joins the note going in to the note coming out.
-- **Advanced:** Range Match, Range Centre, Mix and Output. Closed, it says which of them have moved.
+- **Advanced:** Range Match, Peak Guard, Range Centre, Mix and Output. Closed, it says which of them have moved.
 
 Every control is the same AU parameter as before, with the same ID and name. Readings stay readings. Only the window's size and whether Advanced is open are added to saved state, and they stay out of the parameter tree.
 
@@ -40,6 +40,7 @@ Every control is a real AU parameter that a host can find by name.
 | Mix | 0 to 100 % | Blend with the dry signal, delayed to match. |
 | Output | -24 to +12 dB | Level after Mix. |
 | Bypass | off, on | Input at the same delay. |
+| Peak Guard | off, on | On, the output never peaks higher than the input has (times Output). Off by default, no preset touches it, and off it adds nothing. New in 1.2.0. |
 
 Readings, which never write automation: Detected Pitch, Output Pitch, Range Offset.
 
@@ -55,7 +56,7 @@ Readings, which never write automation: Detected Pitch, Output Pitch, Range Offs
 
 ## Presets
 
-Clean Slate, Deep Voice, Little Kid, Robot Announcer, Half Robot, Monster Growl, Ghost Whisper, Breathy Layer, Male To Female, Female To Male, Chipmunk, Giant, Old Singer, Deep Double. Each sets every sound control, and leaves Range Match as it was.
+Clean Slate, Deep Voice, Little Kid, Robot Announcer, Half Robot, Monster Growl, Ghost Whisper, Breathy Layer, Male To Female, Female To Male, Chipmunk, Giant, Old Singer, Deep Double. Each sets every sound control, and leaves Range Match and Peak Guard as they were.
 
 ## Signal flow
 
@@ -74,6 +75,14 @@ input > pre-emphasis > whitening filter > grain shifter > breath or Robot pulses
 - `getEngine()` gives a later window pitch, range offset and the envelope before and after moving, without blocking audio.
 
 Smooth Throat's engine finished while this was being built. Its all-pole fit idea was adopted here because it measured better on high voices. Its whole engine was not tried in this chain: it would add 32 ms on top of the shifter, against the 30 ms limit set for this plug-in before any DSP.
+
+## What the real takes changed (1.2.0)
+
+Measured on Luke's own takes with `~/smooth-plugins/_shared/realvox` (the check is `src/extra/morph.cpp` there), not on made up voices:
+
+- The whitening filter and the filter that goes back on are only a pair while the sound holds still. Where a note starts, jumps or begins to move they stopped matching for a few frames, and the level match after them needs 40 ms to notice, so the voice came out up to 20 dB too loud for 30 ms. Three causes were found and fixed (see CHANGELOG), and a burst limit now sits behind them: the changed voice, over 5 ms, may be no more than 6 dB over the loudest 5 ms of the input within 20 ms either side.
+- Pitch down and formants down raise the peaks at the same level: fewer, stronger pulses. Giant reads 7 dB over the input's highest peak on real takes. That is the sound, not a fault, so it is left alone by default and Peak Guard is there for a take recorded hot.
+- The CPU lines of the suite use process time. With other builds filling this Mac's four fast cores they read about double (43 to 46% at 96 kHz for 1.1.1 and 1.2.0 alike, against 24% on a quiet Mac), so they only mean something when the Mac is quiet.
 
 ## Latency
 

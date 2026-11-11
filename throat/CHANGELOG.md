@@ -5,7 +5,7 @@
 Three changes to how every setting but Neutral sounds, so nothing here is installed. Throat's own tests pass (244, 0 fail). NullTest does not, by design: it holds the sound to the 0.2.0 renders, and those would have to be saved again if this ships.
 
 - Phrase starts. Level Match's slow step kept the last phrase's correction into the next one, and the first 30 ms of a phrase came out about 2 dB quieter at settings that lower the formants. Here a phrase that starts after a pause gets its own average.
-- Whistling. A harmonic that landed on a narrow peak of the model came out far above its neighbours (1 to 10% of voiced frames on real vocals). Each harmonic from 500 Hz up is now held to standing out by no more than 8 dB, or 2 dB more than the input's most prominent one.
+- Whistling. A harmonic that landed on a narrow peak of the model came out far above its neighbours (1 to 10% of voiced frames on real vocals). Each harmonic from 500 Hz up is now held to standing out by no more than 8 dB, or 2 dB more than the input's most prominent one. The guard reads what a harmonic really gets, with the bins beside it that the short window spreads it over, and it also holds on frames that are voiced but less clearly so.
 - Hiss bursts, the rest of them. 0.4.1 holds the gain above 6 kHz to 11 dB over what moving the envelope itself would give, the least that leaves the 0.2.0 renders bit for bit. Length 1.50 still had 1.8% of voiced frames more than 12 dB over the tube model from 6 to 12 kHz on takes 01 and 16, mostly where the level match lifts the whole frame. Here it is 8 dB: 0.16%.
 
 ## 0.4.1, 2026-11-11

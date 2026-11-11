@@ -358,39 +358,77 @@ private:
         // the two next to it and 6 dB more than any harmonic of the input stood out. So each harmonic from 500 Hz up, read where
         // the envelope found its tip in this frame, is held to standing out by no more than 8 dB, or 2 dB more than the input's
         // most prominent one if that is more. What is over comes off that harmonic alone, half a harmonic spacing either side.
-        const int tips = envelope.numTips();
-        if (! identityMap && tips >= 3 && f0 > 60.0f)
+        // The envelope only finds tips on frames it calls clearly voiced. On a frame the pitch tracker still follows but calls less
+        // voiced (onsets, breathy or rough notes) the harmonics are read here from the spectrum itself, the same way, so the guard
+        // holds there too.
+        int count = std::min (envelope.numTips(), (int) harmonicIn.size());
+        for (int t = 0; t < count; ++t)
+        {
+            harmonicBin[(size_t) t] = envelope.tipBinAt (t);
+            harmonicIn[(size_t) t] = envelope.tipLevelAt (t);
+        }
+        if (count < 3 && f0 > 60.0f && voicing > 0.2f)
+        {
+            count = 0;
+            const float step = f0 * (float) analysisSize / (float) sr;
+            const int top = std::min (analysisHalf - 1, (int) (9000.0f * (float) analysisSize / (float) sr));
+            for (float next = step; next < (float) top && count < (int) harmonicIn.size(); next += step)
+            {
+                const int from = std::max (1, (int) std::ceil (next - 0.35f * step)), to = std::min (analysisHalf - 1, (int) (next + 0.35f * step));
+                int best = from;
+                for (int j = from; j <= to; ++j)
+                    if (power[(size_t) j] > power[(size_t) best]) best = j;
+                harmonicBin[(size_t) count] = (float) best;
+                harmonicIn[(size_t) count] = 0.5f * std::log (power[(size_t) best] + 1.0e-30f);
+                ++count;
+            }
+        }
+        if (! identityMap && count >= 3 && f0 > 60.0f)
         {
             const float spacing = f0 * (float) synthSize / (float) sr;
-            const int count = std::min (tips, (int) harmonicIn.size());
-            for (int t = 0; t < count; ++t)
+            // What a harmonic really gets: the short window spreads it over about two bins either side of its centre, so where the gain is
+            // steep (a narrow peak of the model) it picks up the gain of the bins beside it too. Weighted by the window's spectrum.
+            const auto effectiveGain = [this] (float centre)
             {
-                const float at = std::min (0.5f * envelope.tipBinAt (t), (float) synthHalf - 1.0f);   // the tips are on the long window's grid
-                const int a = (int) at;
-                harmonicIn[(size_t) t] = envelope.tipLevelAt (t);
-                harmonicOut[(size_t) t] = harmonicIn[(size_t) t] + logGain[(size_t) a] + (at - (float) a) * (logGain[(size_t) a + 1] - logGain[(size_t) a]);
-            }
+                double sum = 0.0, weight = 0.0;
+                for (int k = (int) std::ceil (centre - 2.0f); k <= (int) std::floor (centre + 2.0f); ++k)
+                {
+                    if (k < 0 || k > synthHalf) continue;
+                    const float d = (float) k - centre;
+                    const auto dirichlet = [] (float x) { return std::abs (x) < 1.0e-4f ? 1.0f : std::sin (juce::MathConstants<float>::pi * x) / (juce::MathConstants<float>::pi * x); };
+                    const float w = 0.5f * dirichlet (d) + 0.25f * dirichlet (d - 1.0f) + 0.25f * dirichlet (d + 1.0f);
+                    sum += (double) (w * w) * std::exp (2.0 * (double) logGain[(size_t) k]);
+                    weight += (double) (w * w);
+                }
+                return weight > 0.0 ? (float) (0.5 * std::log (sum / weight)) : 0.0f;
+            };
+            for (int t = 0; t < count; ++t)
+                harmonicOut[(size_t) t] = harmonicIn[(size_t) t] + effectiveGain (std::min (0.5f * harmonicBin[(size_t) t], (float) synthHalf));   // the harmonics are on the long window's grid
             const float lowest = 500.0f * (float) synthSize / (float) sr, highest = 8000.0f * (float) synthSize / (float) sr;
             float most = 0.0f;
             for (int t = 1; t + 1 < count; ++t)
-                if (0.5f * envelope.tipBinAt (t) >= lowest)
+                if (0.5f * harmonicBin[(size_t) t] >= lowest)
                     most = std::max (most, harmonicIn[(size_t) t] - 0.5f * (harmonicIn[(size_t) t - 1] + harmonicIn[(size_t) t + 1]));
             const float cap = std::max (8.0f * nepersPerDb, most + 2.0f * nepersPerDb);
-            for (int t = 1; t + 1 < count; ++t)
-            {
-                const float centre = 0.5f * envelope.tipBinAt (t);
-                if (centre < lowest || centre > highest) continue;
-                const float excess = harmonicOut[(size_t) t] - 0.5f * (harmonicOut[(size_t) t - 1] + harmonicOut[(size_t) t + 1]) - cap;
-                if (excess <= 0.0f) continue;
-                const float halfWidth = 0.5f * spacing;
-                for (int k = (int) std::ceil (centre - halfWidth); k <= (int) (centre + halfWidth); ++k)
-                    if (k >= 0 && k <= synthHalf)
-                    {
-                        logGain[(size_t) k] -= excess * 0.5f * (1.0f + std::cos (juce::MathConstants<float>::pi * ((float) k - centre) / halfWidth));
-                        wantedOnSynthGrid[(size_t) k] = heard[2 * k] + logGain[(size_t) k];
-                    }
-                harmonicOut[(size_t) t] -= excess;
-            }
+            // The cut is shaped, so it takes a little less than the excess off the harmonic itself: three passes.
+            for (int pass = 0; pass < 3; ++pass)
+                for (int t = 1; t + 1 < count; ++t)
+                {
+                    const float centre = 0.5f * harmonicBin[(size_t) t];
+                    if (centre < lowest || centre > highest) continue;
+                    const float excess = harmonicOut[(size_t) t] - 0.5f * (harmonicOut[(size_t) t - 1] + harmonicOut[(size_t) t + 1]) - cap;
+                    if (excess <= 0.0f) continue;
+                    const float halfWidth = 0.5f * spacing;
+                    for (int k = (int) std::ceil (centre - halfWidth); k <= (int) (centre + halfWidth); ++k)
+                        if (k >= 0 && k <= synthHalf)
+                        {
+                            logGain[(size_t) k] -= excess * 0.5f * (1.0f + std::cos (juce::MathConstants<float>::pi * ((float) k - centre) / halfWidth));
+                            wantedOnSynthGrid[(size_t) k] = heard[2 * k] + logGain[(size_t) k];
+                        }
+                    harmonicOut[(size_t) t] = harmonicIn[(size_t) t] + effectiveGain (centre);
+                    harmonicOut[(size_t) t - 1] = harmonicIn[(size_t) t - 1] + effectiveGain (0.5f * harmonicBin[(size_t) t - 1]);
+                    harmonicOut[(size_t) t + 1] = harmonicIn[(size_t) t + 1] + effectiveGain (std::min (0.5f * harmonicBin[(size_t) t + 1], (float) synthHalf));
+                }
         }
 
         // Moving formants must not change the level. This takes two steps.
@@ -595,7 +633,7 @@ private:
     std::vector<float> synthWindow, analysisWindow, power, spectrum, noiseSpectrum, logGain, wanted, finerEnvelope, readHz, breathShape, wantedOnSynthGrid, modelGain, envelopeShift;
     std::array<std::array<float, 2>, phaseTableSize> phaseTable {};
     std::array<float, maxChannels> channelShare { 1.0f, 1.0f };
-    std::array<float, SpectralEnvelope::maxTips> harmonicIn {}, harmonicOut {};
+    std::array<float, SpectralEnvelope::maxTips> harmonicIn {}, harmonicOut {}, harmonicBin {};
     std::uint32_t noiseState = 0x9E3779B9u;
     Analysis readout;
 };

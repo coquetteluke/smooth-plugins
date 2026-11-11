@@ -196,8 +196,9 @@ static std::vector<float> highPass (std::vector<float> x, double hz)
 }
 
 /** Notes with a little vibrato, 0.6 s each with 0.15 s between, whose harmonics stay level from 1.5 to 5 kHz. */
-static std::vector<float> heldNotes (double seconds, double f0)
+static std::vector<float> heldNotes (double seconds, double f0, double vibrato = 0.012, double highsDb = 0.0)
 {
+    const double highs = std::pow (10.0, highsDb / 20.0);   // 1 at the default, so the first notes are sample for sample what they were
     std::vector<float> x ((size_t) (seconds * kRate), 0.0f);
     const int harmonics = (int) std::floor (9000.0 / f0);
     std::vector<double> phases ((size_t) harmonics + 1, 0.0);
@@ -206,7 +207,7 @@ static std::vector<float> heldNotes (double seconds, double f0)
     for (size_t i = 0; i < x.size(); ++i)
     {
         const double t = (double) i / kRate, inNote = std::fmod (t, kNote);
-        const double f = f0 * (1.0 + 0.012 * std::sin (twoPi * 5.5 * t));
+        const double f = f0 * (1.0 + vibrato * std::sin (twoPi * 5.5 * t));
         const double gate = inNote < kSung ? std::min ({ 1.0, inNote / 0.02, (kSung - inNote) / 0.02 }) : 0.0;
         double y = 0.0;
 
@@ -214,7 +215,8 @@ static std::vector<float> heldNotes (double seconds, double f0)
         {
             phases[(size_t) h] += twoPi * h * f / kRate;
             const double hz = h * f;
-            y += std::sin (phases[(size_t) h]) / (hz < 1500.0 ? std::pow (hz / 1500.0, 0.7) * 6.0 : (hz < 5000.0 ? 6.0 : 6.0 * std::pow (hz / 5000.0, 2.0)));
+            y += std::sin (phases[(size_t) h]) / (hz < 1500.0 ? std::pow (hz / 1500.0, 0.7) * 6.0 : (hz < 5000.0 ? 6.0 : 6.0 * std::pow (hz / 5000.0, 2.0)))
+                 * (h * f0 < 1500.0 ? 1.0 : highs);
         }
 
         x[i] = (float) (0.05 * gate * y);
@@ -471,6 +473,86 @@ static void testOnCutsARing()
     }
 }
 
+// ---- the rings 0.6.0 passed over ---------------------------------------------------------------------------------------
+// On Luke's takes 0.6.0 left 8 of 48 lasting rings on the working set, and 4 of 11 on the blind set, cut by under 3 dB.
+// Looked at frame by frame they were of two kinds, and each is built here before the fix:
+//   - a ring more than 50 dB under the loudest harmonic of the voice (a low, dark, quiet voice: the highs sit far under the
+//     fundamental). Blind take 08 at 3041, 3086, 3965 and 3728 Hz, working takes 01 at 4820 Hz, 02 at 3966 Hz, 10 at 3749 Hz.
+//   - a ring whose harmonics move through it, with wide vibrato or a slide in pitch.
+
+static double ringStandsAt (const std::vector<float>& x, double seconds, double f0, double hz)
+{
+    const auto spans = ringSpans (seconds);
+    const auto power = [&] (double at) { return std::pow (10.0, 0.1 * bandDb (x, 0, spans, at - 40.0, at + 40.0)); };
+    return 10.0 * std::log10 (power (hz) / (0.25 * (power (hz - 2.0 * f0) + power (hz - f0) + power (hz + f0) + power (hz + 2.0 * f0))));
+}
+
+static double ringCutAt (const std::vector<float>& dry, const std::vector<float>& out, double seconds, double hz)
+{
+    return bandDb (dry, 0, ringSpans (seconds), hz - 60.0, hz + 60.0) - bandDb (out, kLatency, ringSpans (seconds), hz - 60.0, hz + 60.0);
+}
+
+/** The level of the tallest harmonic of the whole voice over the level at the ring, in dB. */
+static double loudestOver (const std::vector<float>& x, double seconds, double f0, double hz)
+{
+    const auto spans = ringSpans (seconds);
+    double loudest = -1.0e9;
+    for (double at = f0; at < 1500.0; at += f0) loudest = std::max (loudest, bandDb (x, 0, spans, at - 40.0, at + 40.0));
+    return loudest - bandDb (x, 0, spans, hz - 40.0, hz + 40.0);
+}
+
+/** Notes with the two formants of ringingVoice() and a narrow ring at hz that stands 12 dB over the harmonics beside it. */
+static std::vector<float> voiceWithRingAt (double seconds, double f0, double hz, double vibrato, double highsDb, bool withRing = true)
+{
+    auto voice = peakFilter (peakFilter (heldNotes (seconds, f0, vibrato, highsDb), 0.72 * hz, 5.0, 12.0), 1.36 * hz, 5.0, 12.0);
+
+    if (! withRing)
+        return voice;
+
+    for (double gain = 10.0; gain < 36.0; gain += 0.5)
+    {
+        auto ringing = peakFilter (voice, hz, 20.0, gain);
+
+        if (ringStandsAt (ringing, seconds, f0, hz) >= kRingStands)
+            return ringing;
+    }
+
+    return peakFilter (voice, hz, 20.0, 36.0);
+}
+
+static void testRingsThatWerePassedOver()
+{
+    std::puts ("\n== On takes down the rings 0.6.0 passed over: far under the loudest harmonic, and with harmonics moving through them");
+    constexpr double seconds = 7.5;
+    struct Case { const char* what; double f0, near, vibrato, highsDb; };
+    const Case cases[] = {
+        { "low dark voice, F0 110 Hz, ring near 2800 Hz", 110.0, 2800.0, 0.012, -42.0 },
+        { "dark voice, F0 180 Hz, ring near 3050 Hz", 180.0, 3050.0, 0.012, -42.0 },
+        { "dark voice, F0 165 Hz, ring near 4800 Hz", 165.0, 4800.0, 0.012, -42.0 },
+        { "dark voice on a high note, F0 395 Hz, ring near 3950 Hz", 395.0, 3950.0, 0.012, -42.0 },
+        { "wide vibrato of 2.5%, F0 110 Hz, ring near 2800 Hz", 110.0, 2800.0, 0.025, 0.0 },
+        { "wide vibrato of 2.5% on a dark voice, F0 180 Hz, ring near 3050 Hz", 180.0, 3050.0, 0.025, -42.0 } };
+
+    for (const auto& c : cases)
+    {
+        const double hz = std::round (c.near / c.f0) * c.f0;
+        const auto x = voiceWithRingAt (seconds, c.f0, hz, c.vibrato, c.highsDb);
+        const auto clean = voiceWithRingAt (seconds, c.f0, hz, c.vibrato, c.highsDb, false);
+        const auto off = renderWith (x, false), on = renderWith (x, true);
+        const std::string line (c.what);
+
+        info (line + ": the ring stands over the two harmonics either side by", ringStandsAt (x, seconds, c.f0, hz), "dB");
+        info (line + ": the loudest harmonic of the voice is over the ring by", loudestOver (x, seconds, c.f0, hz), "dB");
+        info (line + ": with it off the ring comes down", ringCutAt (x, off, seconds, hz), "dB");
+        check (ringCutAt (x, on, seconds, hz) >= 3.0, line + ": with it on, from 100 ms into each note (limit 3 or more)", ringCutAt (x, on, seconds, hz), "dB");
+
+        const auto spans = ringSpans (seconds);
+        const auto cleanOff = renderWith (clean, false), cleanOn = renderWith (clean, true);
+        const double noRing = bandDb (cleanOn, kLatency, spans, hz - 60.0, hz + 60.0) - bandDb (cleanOff, kLatency, spans, hz - 60.0, hz + 60.0);
+        check (std::abs (noRing) <= 1.0, line + ": the same notes with no ring, on against off at that place (limit 1)", noRing, "dB");
+    }
+}
+
 static void testConsonants()
 {
     std::puts ("\n== On leaves S and T alone: an S straight after every note and a T just before the next");
@@ -695,6 +777,7 @@ int main()
     testControl();
     testOffIsTheOldSound();
     testOnCutsARing();
+    testRingsThatWerePassedOver();
     testConsonants();
     testState();
     testAutomation();

@@ -205,6 +205,34 @@ static void testVocal()
                        f0, cleanTotal, cleanWorst, cleanLimit, standsOut, peak, peakGoal, below, above);
         if (f0 <= 330.0) check (ok, "%s", line); else info ("%s", line);
     }
+
+    // The limits above are the ones 974f10f and 8e8996a (2026-11-06) left behind: the boost had to come down 5 dB at every F0
+    // up to 330 Hz, and is now let off with 2.5 dB at 330 Hz. They check the old judgement, which is frozen for saved
+    // sessions and pinned by NullTest, so they stay exactly as they are. Held Notes is the mode meant to do better on a held
+    // note, so with it on the boost has its first limit again: 5 dB at every F0, 330 Hz included.
+    section ("Synthetic vowel, Held Notes on: the added resonance comes down 5 dB at every F0, the limit this test first had");
+    for (double f0 : { 110.0, 165.0, 220.0, 330.0, 440.0, 660.0 })
+    {
+        const auto clean = syntheticVocal (8.0, kRate, f0, 7);
+        Params off; off.depthDb = 12.0f;
+        Params on = off; on.heldNotes = true;
+        const auto cleanBefore = spectrumOf (clean);
+        const double cleanOff = worstThirdOctave (cleanBefore, spectrumOf (render (mono (clean), off)[0]), 1000, 12000);
+        const double cleanOn  = worstThirdOctave (cleanBefore, spectrumOf (render (mono (clean), on)[0]), 1000, 12000);
+
+        const auto harsh = peakFilter (clean, kRate, 3100.0, 6.0, 15.0);
+        const auto harshBefore = spectrumOf (harsh);
+        const auto harshAfter = spectrumOf (render (mono (harsh), on)[0]);
+        const double peak = bandChange (harshBefore, harshAfter, 2800, 3400);
+        const double below = bandChange (harshBefore, harshAfter, 100, 2000);
+        const double above = bandChange (harshBefore, harshAfter, 5000, 12000);
+        const double peakOff = bandChange (harshBefore, spectrumOf (render (mono (harsh), off)[0]), 2800, 3400);
+
+        char line[320];
+        std::snprintf (line, sizeof (line), "F0 %3.0f Hz, Depth 12, Held Notes on. +15 dB at 3100 Hz: peak %+.1f dB (goal -5.0; off %+.1f), below %+.2f dB (limit 1), above %+.2f dB (limit 1.5). Clean vowel, worst 3rd octave: %+.2f dB (limit 2.0; off %+.2f)",
+                       f0, peak, peakOff, below, above, cleanOn, cleanOff);
+        if (f0 <= 330.0) check (std::abs (cleanOn) < 2.0 && peak < -5.0 && std::abs (below) < 1.0 && std::abs (above) < 1.5, "%s", line); else info ("%s", line);
+    }
 }
 
 static void testControls()

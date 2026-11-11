@@ -138,3 +138,10 @@ target_link_libraries(HostCheck PRIVATE "-framework AudioToolbox" "-framework Co
 # The same, once per channel layout: channel order, the LFE from a real layout tag, and Quality's latency. Run after InstallAU.
 add_executable(LayoutCheck tests/LayoutCheck.cpp)
 target_link_libraries(LayoutCheck PRIVATE "-framework AudioToolbox" "-framework CoreFoundation")
+
+# Not a test: prints what the engine sees at one spot of a recording, and how deeply a list of rings is cut. See tests/RingProbe.cpp.
+juce_add_console_app(RingProbe PRODUCT_NAME "RingProbe")
+target_sources(RingProbe PRIVATE src/ResonanceEngine.cpp tests/RingProbe.cpp)
+target_include_directories(RingProbe PRIVATE src)
+target_compile_definitions(RingProbe PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0)
+target_link_libraries(RingProbe PRIVATE juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)

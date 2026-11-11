@@ -113,6 +113,14 @@ static double bandAround (const Spectrum& s, double f, double q)
     return s.band (f - half, f + half);
 }
 
+/** How far the band of a boost stands over the spectrum a quarter to three quarters of an octave either side, per Hz, in dB. */
+static double standsOver (const Spectrum& s, double f, double q)
+{
+    const double half = f / (2.0 * q);
+    const auto perHz = [&s] (double low, double high) { return s.band (low, high) - 10.0 * std::log10 (high - low); };
+    return perHz (f - half, f + half) - 0.5 * (perHz (f / std::pow (2.0, 0.75), f / std::pow (2.0, 0.25)) + perHz (f * std::pow (2.0, 0.25), f * std::pow (2.0, 0.75)));
+}
+
 /** Mean absolute third-octave difference between two spectra, 500 Hz to 10 kHz. How far the tone colour is from clean. */
 static double colourDistance (const Spectrum& a, const Spectrum& b)
 {
@@ -184,8 +192,9 @@ static double crestDb (const std::vector<float>& x)
     return 20.0 * std::log10 (pk / std::sqrt (sum / (double) x.size()));
 }
 
-int main()
+int main (int argc, char** argv)
 {
+    const bool verbose = argc > 1 && std::string (argv[1]) == "-v";   // one line per voice in the Held Notes table
     const std::vector<std::string> voices { "Samantha", "Daniel", "Karen", "Moira" };
     std::map<std::string, std::vector<float>> speech;
 
@@ -261,6 +270,36 @@ int main()
             check (ok, "+%2.0f dB at %4.0f Hz, in band %+.1f: removed %.1f (%s%.1f), least voice %.1f; left %+.1f (limit 6), most %+.1f (limit 9), deepest %+.1f (limit -3); spread elsewhere %+.2f (limit 1.5); colour error %.2f to %.2f dB",
                    gain, f, boost, removed, enoughBoost ? "goal " : "no goal, 40% is ", 0.4 * boost, leastRemoved, left, mostLeft, deepest, worstSpread, mean.colourBefore / c, mean.colourAfter / c);
         }
+
+    // Held Notes on, with the limit this table first had (231c07b): the worst voice of the four loses at least half the boost,
+    // at +9 dB too. The table above keeps the limit it was given in 974f10f (the mean of the voices at 40%, no goal at +9 dB)
+    // because it checks the old judgement, which is frozen for saved sessions and pinned by NullTest.
+    section ("Held Notes on: the same boosts, Q 6, Depth 12, with the first limit. The worst voice of four loses at least half the boost");
+    {
+        Params held = harsh; held.heldNotes = true;
+        for (double gain : { 9.0, 12.0, 15.0 })
+            for (double f : { 1250.0, 2000.0, 3150.0, 4500.0, 6300.0 })
+            {
+                double boost = 0.0, removed = 0.0, leastRemoved = 1.0e9, leastOff = 1.0e9, worstSpread = 0.0;
+                std::string leastVoice;
+                for (const auto& v : voices)
+                {
+                    const auto n = measureBoost (speech[v], f, 6.0, gain, held);
+                    const auto off = measureBoost (speech[v], f, 6.0, gain, harsh);
+                    const auto boosted = peakFilter (speech[v], kRate, f, 6.0, gain);
+                    if (verbose)
+                        info ("  %-9s +%2.0f at %4.0f: in band %+.1f, removed %.1f off, %.1f on; the band stands %+.1f dB over the spectrum either side (clean voice %+.1f)",
+                              v.c_str(), gain, f, n.boost, off.removed, n.removed, standsOver (spectrumOf (boosted, kRate, 0.2), f, 6.0), standsOver (spectrumOf (speech[v], kRate, 0.2), f, 6.0));
+                    boost += n.boost; removed += n.removed;
+                    if (n.removed < leastRemoved) { leastRemoved = n.removed; leastVoice = v; }
+                    leastOff = std::min (leastOff, off.removed);
+                    if (std::abs (n.spread) > std::abs (worstSpread)) worstSpread = n.spread;
+                }
+                const double c = (double) voices.size();
+                check (leastRemoved >= 0.5 * (boost / c), "+%2.0f dB at %4.0f Hz, in band %+.1f: removed mean %.1f, least voice %.1f, %s (goal %.2f; with Held Notes off %.1f); spread elsewhere %+.2f",
+                       gain, f, boost / c, removed / c, leastRemoved, leastVoice.c_str(), 0.5 * boost / c, leastOff, worstSpread);
+            }
+    }
 
     // The settings the first preset for a harsh vocal uses, Harsh Lead Vocal. Limits as for the boost table above.
     section ("Harsh Lead Vocal settings: Depth 12, Selectivity 50, Attack 10, Release 100, 1.2 to 10 kHz, Band 2 at 3.2 kHz +2 dB, 1.5 oct");

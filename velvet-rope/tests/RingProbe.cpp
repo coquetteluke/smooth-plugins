@@ -1,8 +1,9 @@
 // Not a test: a look inside. Shows what the engine sees and does at one spot of a recording, and how deeply a list of rings is cut.
 //
 //   RingProbe frames <wav> <from sec> <to sec> <hz> [name=value ...]
-//       one line per hop: the harmonic spacing it reads, and at the tallest bin within a 24th of an octave of hz its level, the
-//       harmonics either side, how far it stands over them, the long view and the reduction asked for and applied.
+//       one line per hop: the harmonic spacing it reads, the loudest bin of the whole spectrum, and at the tallest bin within a
+//       24th of an octave of hz its level, the harmonics either side, how far it stands over them, for how long something
+//       there has stood out (ms), and the reduction asked for by the old judgement and the reduction applied.
 //   RingProbe rings <events.txt> <folder of wavs> [name=value ...]
 //       events.txt: lines of "<take number> <start sec> <length sec> <hz>". For each, the mean of dry dB minus output dB at the
 //       ring's tallest bin from 107 ms after it starts (Hann 2048, hop 512, the way the real vocal check reads a lasting resonance).
@@ -106,7 +107,7 @@ static int frames (int argc, char** argv)
     std::vector<float> block ((size_t) hop);
     // Start two seconds early, so that every long view has settled by the time the printing starts.
     const size_t startAt = (size_t) std::max (0.0, (from - 2.0) * 48000.0) / (size_t) hop * (size_t) hop;
-    std::printf ("# centre_s  f0est  bin_hz  level  h-2   h-1   h+1   h+2  stands  long  raw  applied\n");
+    std::printf ("# centre_s  f0est  bin_hz loudest level  h-2   h-1   h+1   h+2  stands  count_ms  raw  applied\n");
     for (size_t pos = startAt; pos + (size_t) hop <= x.size(); pos += (size_t) hop)
     {
         std::copy (x.begin() + (long) pos, x.begin() + (long) (pos + (size_t) hop), block.begin());
@@ -124,7 +125,7 @@ static int frames (int argc, char** argv)
         const auto hp = [&] (int q) { return q >= 0 && q < c.numBins && c.spacingBins > 0 ? db (c.harmonicPeak[(size_t) q]) : -999.0; };
         float raw = 0, applied = 0;
         for (int q = k0; q <= k1; ++q) { raw = std::max (raw, s.raw[(size_t) q]); applied = std::max (applied, s.applied[(size_t) q]); }
-        std::printf ("%8.3f %6.1f %7.1f %6.1f %6.1f %5.1f %5.1f %5.1f %6.1f %5.1f %5.2f %5.2f\n", centre, c.spacingBins * binHz, k * binHz, db (s.smoothedPower[(size_t) k]),
+        std::printf ("%8.3f %6.1f %7.1f %6.1f %6.1f %6.1f %5.1f %5.1f %5.1f %6.1f %5.1f %5.2f %5.2f\n", centre, c.spacingBins * binHz, k * binHz, db (s.loudest), db (s.smoothedPower[(size_t) k]),
                      hp (k - two), hp (k - one), hp (k + one), hp (k + two), (double) c.standing[(size_t) k], (double) s.slowStanding[(size_t) k], (double) raw, (double) applied);
     }
     return 0;

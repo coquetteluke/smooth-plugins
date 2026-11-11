@@ -145,10 +145,11 @@ namespace ui
         std::array<float, numPoints> pointHz {};
         std::array<float, numPoints> tilt {};         // display only: lifts the highs, so a voice reads as level
         std::array<float, numPoints> scratch {};
-        std::array<float, numPoints> targetLevel {}, targetCut[2] {};
-        std::array<float, numPoints> shownLevel {}, shownCut[2] {};
-        std::array<float, numPoints> yLevel {}, yAfter {}, yCut[2] {};
-        std::array<float, numDense> denseX {}, yVoice {}, yShaved {}, yGold[2] {}, normalX {}, normalY {};
+        std::array<float, numPoints> targetLevel {}, targetCut[2] {}, targetHeld {};
+        std::array<float, numPoints> shownLevel {}, shownCut[2] {}, shownHeld {};
+        std::array<float, numPoints> yLevel {}, yAfter {}, yCut[2] {}, yHeldCut {};
+        std::array<float, numDense> denseX {}, yVoice {}, yShaved {}, yGold[2] {}, yHeldTop {}, shownHeldTop {}, normalX {}, normalY {};
+        bool heldShowing = false;   // some of the gold is Held Notes' doing right now
         std::array<float, numSensSteps> sensX {}, sensY {};
         std::array<float, numDense + 4> simpleX {}, simpleY {};
         int numSimple = 0;

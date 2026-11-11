@@ -86,6 +86,7 @@ struct GraphFrame
     std::array<float, numPoints> outputDb {};       // spectrum after the reduction, before Mix
     std::array<float, numPoints> reductionDb[2] {}; // slot 0 is left or mid, slot 1 is right or side. Over stereo: deepest and shallowest of all channels. Positive means turned down
     std::array<float, numPoints> sensitivityDb {};  // the sensitivity curve: bands, plus -96 outside Low and High
+    std::array<float, numPoints> heldNotesDb {};    // the part of the reduction that Held Notes adds, never more than the deepest reduction there. 0 with it off
     int numSlots = 1;
     bool midSide = false, keyInUse = false;
     float maxReductionDb = 0.0f, maxReductionHz = 0.0f;
@@ -184,8 +185,12 @@ private:
         std::vector<float>  applied;
         std::vector<float>  gain;
         std::vector<float>  slowExcess;
-        std::vector<float>  slowStanding;   // Held Notes: the same long view, for how far a bin stands over its neighbouring harmonics
+        std::vector<float>  slowStanding;   // Held Notes: for how many ms something at this bin has been standing well over its neighbouring harmonics
         bool standingLive = false;          // false while slowStanding is all zero, so that nothing is spent on it
+        std::vector<float>  heldRaw;        // Held Notes: the reduction it asks for by itself, as narrow as the harmonic
+        std::vector<float>  firmAdded;      // Held Notes: what its firmer bar adds to raw
+        std::vector<float>  heldPart;       // for the graph: how much of the reduction here is Held Notes' doing
+        bool heldRawLive = false, heldPartLive = false;
         float loudest = 0.0f;
     };
 
@@ -206,6 +211,7 @@ private:
         void fillGraph (GraphFrame&, int numGraphChannels) noexcept;
 
         void detect (Slot&) noexcept;
+        void followHeldPart (Slot&, bool on) noexcept;
         void shapeAndApplyBallistics (Slot&, float focusScale) noexcept;
         void updateWidths() noexcept;
         void updateHarmonicSpacing() noexcept;
@@ -250,7 +256,7 @@ private:
         float bandGlide[Params::numBands][3] {}, bandBuilt[Params::numBands][3] {};
         int listenBuiltBand = -1;
         float listenBuiltHz = 0.0f, listenBuiltWidth = 0.0f;
-        float harmonicCoeff = 1.0f;
+        float hopMs = 5.0f;
         float detectorCoeff = 1.0f, rangeCoeff = 1.0f, persistenceCoeff = 1.0f, loudestFallCoeff = 1.0f, focusNow = 0.0f, maxCutNow = 24.0f, cutLimit = 1.0e9f;
         float builtAttackMs = -1.0f, builtReleaseMs = -1.0f, builtAttackTilt = -9.0f, builtReleaseTilt = -9.0f;
         std::array<float, maxChannels> channelMost {};

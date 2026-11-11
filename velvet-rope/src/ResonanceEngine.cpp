@@ -1,4 +1,5 @@
 #include "ResonanceEngine.h"
+#include <cstdlib>
 
 #include <algorithm>
 #include <cmath>
@@ -50,8 +51,20 @@ namespace
     // two above.
     constexpr float harmonicMinBins     = 4.5f;         // harmonics closer together than this run into each other in the FFT
     constexpr float harmonicThresholdDb = 2.0f;         // a harmonic has to clear its neighbours by this much more than Selectivity asks
-    constexpr float harmonicPersistMs   = 100.0f;       // a held note is short next to a room's ring
-    constexpr float harmonicPersistWeight = 0.5f;
+    // TUNING BUILD: read from the environment so that one build can be measured at several settings. Frozen before release.
+    float tune (const char* name, float value) noexcept  { const char* v = std::getenv (name); return v != nullptr ? (float) std::atof (v) : value; }
+    const float heldGateDb     = tune ("VR_GATE", 50.0f);     // a ring counts while it is within this of the loudest bin between Low and High
+    const float heldBarDb      = tune ("VR_BAR", 1.5f);       // how much further than Selectivity asks a harmonic has to clear its neighbours
+    const float heldAgeFromMs  = tune ("VR_AGEFROM", 110.0f);  // nothing is taken off a spot that has stood out for less than this
+    const float heldAgeToMs    = tune ("VR_AGETO", 170.0f);   // and all of it once it has stood out this long
+    const float heldAgeMaxMs   = tune ("VR_AGEMAX", 260.0f);
+    const float heldAgeFall    = tune ("VR_FALL", 1.0f);      // how fast the count runs back while the spot does not stand out, against how fast it runs up
+    const float heldAgeMarginDb = tune ("VR_AGEMARGIN", 2.0f);
+    const int   heldWidenBins  = (int) tune ("VR_WIDEN", 2.0f);  // Normal's bins either side
+    const float heldSureDb     = tune ("VR_SURE", 0.0f);        // how much of the bar comes off for a spot that has stood out as long as the long view reaches
+    const float heldSureSparse = tune ("VR_SURESPARSE", 0.0f);  // and how much of the lift for sparse harmonics
+    const float heldSureFrom   = tune ("VR_SUREFROM", 0.7f);    // long view over what stands now: where that starts
+    const float heldSureTo     = tune ("VR_SURETO", 0.9f);      // and where it is complete
     constexpr float harmonicFollowOctaves = 1.0f / 24.0f;   // the long view follows a harmonic this far as vibrato moves it
     constexpr float notJudged          = -1000.0f;
     constexpr float standsUnder        = -1.0f;        // judged, and no taller than its neighbours: there is nothing to turn down
@@ -255,6 +268,11 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
         s.slowExcess.assign (bins, 0.0f);
         s.slowStanding.assign (bins, 0.0f);
         s.standingLive = false;
+        s.heldPart.assign (bins, 0.0f);
+        s.heldPartLive = false;
+        s.heldRaw.assign (bins, 0.0f);
+        s.heldRawLive = false;
+        s.firmAdded.assign (bins, 0.0f);
     }
 
     for (int ch = 0; ch < maxKeyChannels; ++ch)
@@ -325,7 +343,7 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
     detectorCoeff    = coeffForTime (detectorTimeMs, hopSeconds);
     rangeCoeff       = coeffForTime (rangeTimeMs, hopSeconds);
     persistenceCoeff = coeffForTime (persistenceMs, hopSeconds);
-    harmonicCoeff    = coeffForTime (harmonicPersistMs, hopSeconds);
+    hopMs            = (float) (1000.0 * hopSeconds);
     loudestFallCoeff = 1.0f - coeffForTime (loudestFallMs, hopSeconds);
 
     // The graph's points in this FFT's bins. Same axis as the frames carry.
@@ -375,6 +393,11 @@ void ResonanceEngine::Core::reset() noexcept
         std::fill (s.applied.begin(), s.applied.end(), 0.0f);
         std::fill (s.slowExcess.begin(), s.slowExcess.end(), 0.0f);
         std::fill (s.slowStanding.begin(), s.slowStanding.end(), 0.0f);
+        std::fill (s.heldPart.begin(), s.heldPart.end(), 0.0f);
+        std::fill (s.heldRaw.begin(), s.heldRaw.end(), 0.0f);
+        std::fill (s.firmAdded.begin(), s.firmAdded.end(), 0.0f);
+        s.heldPartLive = false;
+        s.heldRawLive = false;
         s.standingLive = false;
         s.loudest = 0.0f;
     }
@@ -1011,6 +1034,14 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
     const bool harmonics = params.heldNotes && ! hard && spacingBins >= harmonicMinBins && activeLast >= activeFirst;
     const int oneAway = juce::roundToInt (spacingBins), twoAway = juce::roundToInt (2.0f * spacingBins);
 
+    float heldGate = floorPower;
+    const bool marking = params.heldNotes && ! hard;
+
+    if (marking)
+        std::fill (s.firmAdded.begin(), s.firmAdded.end(), 0.0f);
+
+    const bool firmer = params.heldNotes && ! hard && (heldSureDb > 0.0f || heldSureSparse > 0.0f);
+
     if (harmonics)
     {
         // Only for the bins Low and High let through, and as far past them as their neighbours and those neighbours' windows reach.
@@ -1018,6 +1049,15 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
         slidingMaxFixed (s.smoothedPower.data(), harmonicPeak.data(), runUp.data(), runDown.data(),
                          std::max (0, activeFirst - twoAway - half), std::min (numBins - 1, activeLast + twoAway + half), half);
         std::fill (standing.begin(), standing.end(), notJudged);
+
+        // What counts is how loud a ring is next to the rest of the range being treated, not next to the fundamental: on a low
+        // or dark voice a ring at 3 kHz is 50 dB and more under the first harmonics and still the loudest thing around it.
+        float bandLoudest = 0.0f;
+
+        for (int k = activeFirst; k <= activeLast; ++k)
+            bandLoudest = std::max (bandLoudest, detector[k]);
+
+        heldGate = std::max (floorPower, bandLoudest * std::pow (10.0f, -0.1f * heldGateDb));   // powers, so 10 dB is a factor of 10
     }
 
     for (int k = 0; k < numBins; ++k)
@@ -1038,7 +1078,7 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
             const float above = std::max (0.5f * (harmonicPeak[(size_t) (k + oneAway)] + harmonicPeak[(size_t) (k + twoAway)]), minimum);
             const float taller = std::max (below, above), lower = std::min (below, above);
 
-            if (level * level <= taller * lower || level * tiltAllowGain[idx] <= taller)
+            if (level * level <= taller * lower || level * tiltAllowGain[idx] <= taller || detector[k] <= heldGate)
                 standing[idx] = standsUnder;
             else if (taller <= lower * tiltAllowGainSquared[idx])
                 standing[idx] = 5.0f * std::log10 (level * level / (taller * lower));
@@ -1099,7 +1139,15 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
             slow += persistenceCoeff * (std::max (excessDb, 0.0f) - slow);
 
         const float judged = std::min (excessDb, persistenceWeight * slow + (1.0f - persistenceWeight) * excessDb);
-        const float over = judged - (threshold + sparseLift + juce::jmap (std::max (tiltPosition[idx], 0.0f), thresholdOffsetLowDb, thresholdOffsetHighDb) - sensitivity[idx]);
+        const float plainBar = threshold + sparseLift + juce::jmap (std::max (tiltPosition[idx], 0.0f), thresholdOffsetLowDb, thresholdOffsetHighDb) - sensitivity[idx];
+        float bar = plainBar;
+
+        // Held Notes: the bar above carries a margin against formants that pass. Once a spot has stood out for about as long
+        // as the long view reaches back, it is not passing, and the margin comes off.
+        if (firmer && excessDb > 0.0f && slow > heldSureFrom * excessDb)
+            bar -= std::min (1.0f, (slow / excessDb - heldSureFrom) / (heldSureTo - heldSureFrom)) * (heldSureDb + heldSureSparse * sparseLift);
+
+        const float over = judged - bar;
 
         if (over <= -kneeDb)
             continue;
@@ -1108,28 +1156,42 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
 
         // Never push a peak below the spectrum around it, however large Depth is.
         s.raw[idx] = std::min ({ softOver * softSlope, limit, std::max (excessDb, 0.0f) });
+
+        if (bar != plainBar)   // for the graph: how much of this the old judgement would have asked for
+        {
+            const float plainOver = judged - plainBar;
+            const float plain = plainOver <= -kneeDb ? 0.0f
+                                                    : std::min ({ (plainOver >= kneeDb ? plainOver : (plainOver + kneeDb) * (plainOver + kneeDb) / (4.0f * kneeDb)) * softSlope, limit, std::max (excessDb, 0.0f) });
+            s.firmAdded[idx] = s.raw[idx] - plain;
+        }
     }
 
-    // Held Notes: the same judgement against the neighbouring harmonics. The long view takes the tallest reading within a
-    // 24th of an octave, so that a harmonic wavering with vibrato still counts as one thing that stays. The deeper reduction
-    // wins. Off, or with no harmonics to judge, the long view lets go, and once it is empty nothing more is spent on it.
+    // Held Notes. What marks a ring is that it stays: each bin counts how long something within a 24th of an octave of it has
+    // been standing well over its neighbouring harmonics, so that a harmonic wavering with vibrato, or harmonics passing one
+    // after another through the same narrow peak, still count as one thing that stays. Nothing is taken off before that count
+    // reaches a first length, all of it from a second, and the deeper of this and the reduction above wins. Off, or with no
+    // harmonics to judge, the counts run back, and once they are all at nothing no more is spent on them.
+    const float fall = heldAgeFall * hopMs;
+
     if (! harmonics)
     {
         if (s.standingLive)
         {
             bool any = false;
 
-            for (auto& slow : s.slowStanding)
+            for (auto& age : s.slowStanding)
             {
-                slow = params.heldNotes ? slow - harmonicCoeff * slow : 0.0f;
-
-                if (slow < 1.0e-6f)
-                    slow = 0.0f;
-
-                any = any || slow > 0.0f;
+                age = params.heldNotes ? std::max (0.0f, age - fall) : 0.0f;
+                any = any || age > 0.0f;
             }
 
             s.standingLive = any;
+        }
+
+        if (s.heldRawLive)
+        {
+            std::fill (s.heldRaw.begin(), s.heldRaw.end(), 0.0f);
+            s.heldRawLive = false;
         }
 
         return;
@@ -1138,41 +1200,76 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
     // Outside Low and High nothing is judged, so the windows need not look there.
     slidingMax (standing.data() + activeFirst, followed.data() + activeFirst, scratchDeque.data(), activeLast - activeFirst + 1, followHalf.data() + activeFirst);
     s.standingLive = true;
+    const float ageSpan = std::max (1.0f, heldAgeToMs - heldAgeFromMs);
+
+    bool any = false;
 
     for (int k = 0; k < numBins; ++k)
     {
         const auto idx = (size_t) k;
-        float& slow = s.slowStanding[idx];
+        float& age = s.slowStanding[idx];
         const float stands = standing[idx];
+        s.heldRaw[idx] = 0.0f;
 
         if (stands <= notJudged)   // which every bin outside Low and High is, so followed is never read there
         {
-            if (slow > 0.0f)
-            {
-                slow -= harmonicCoeff * slow;
-
-                if (slow < 1.0e-6f)
-                    slow = 0.0f;
-            }
-
+            age = std::max (0.0f, age - fall);
             continue;
         }
 
-        if (detector[k] > gate)
-            slow += harmonicCoeff * (std::max (followed[idx], 0.0f) - slow);
+        const float bar = threshold + heldBarDb + sparseLift + juce::jmap (std::max (tiltPosition[idx], 0.0f), thresholdOffsetLowDb, thresholdOffsetHighDb) - sensitivity[idx];
+        age = followed[idx] >= bar - heldAgeMarginDb ? std::min (age + hopMs, heldAgeMaxMs) : std::max (0.0f, age - fall);
 
-        if (stands <= 0.0f)
+        if (stands <= 0.0f || age <= heldAgeFromMs)
             continue;
 
-        const float judged = std::min (stands, harmonicPersistWeight * slow + (1.0f - harmonicPersistWeight) * stands);
-        const float over = judged - (threshold + harmonicThresholdDb + sparseLift + juce::jmap (std::max (tiltPosition[idx], 0.0f), thresholdOffsetLowDb, thresholdOffsetHighDb) - sensitivity[idx]);
+        const float over = stands - bar;
 
         if (over <= -kneeDb)
             continue;
 
         const float softOver = over >= kneeDb ? over : (over + kneeDb) * (over + kneeDb) / (4.0f * kneeDb);
-        s.raw[idx] = std::max (s.raw[idx], std::min ({ softOver * softSlope, depth * depthScale[idx], stands }));
+        const float t = std::min (1.0f, (age - heldAgeFromMs) / ageSpan), weight = t * t * (3.0f - 2.0f * t);
+        s.heldRaw[idx] = weight * std::min ({ softOver * softSlope, depth * depthScale[idx], stands });
+        any = true;
     }
+
+    // The detector reads a harmonic's height a few bins either side of it, so the reduction is already as wide as the
+    // harmonic. It is taken a touch wider, so that a harmonic moving with vibrato stays under it, and no wider: unlike the
+    // reduction above, this one is not spread over Sharpness's width, and the harmonics beside the ring are left as they are.
+    if (any && heldWidenBins > 0)
+    {
+        const int first = std::max (0, activeFirst - heldWidenBins), last = std::min (numBins - 1, activeLast + heldWidenBins);
+        slidingMaxFixed (s.heldRaw.data(), scratchBins.data(), runUp.data(), runDown.data(), first, last, heldWidenBins);
+        std::copy (scratchBins.begin() + first, scratchBins.begin() + last + 1, s.heldRaw.begin() + first);
+    }
+
+    s.heldRawLive = any;
+}
+
+/** For the graph only: how much of the reduction at each bin is Held Notes' doing, with the same attack and release as the
+    reduction itself. Costs nothing while the control is off and nothing is left to let go of. */
+void ResonanceEngine::Core::followHeldPart (Slot& s, bool on) noexcept
+{
+    if (! on && ! s.heldPartLive)
+        return;
+
+    bool any = false;
+
+    for (int k = 0; k < numBins; ++k)
+    {
+        const auto idx = (size_t) k;
+        const float target = on ? s.firmAdded[idx] + (s.heldRawLive ? std::max (0.0f, s.heldRaw[idx] - s.spread[idx]) : 0.0f) : 0.0f;
+        float& part = s.heldPart[idx];
+        part += (target > part ? attackCoeffs[idx] : releaseCoeffs[idx]) * (target - part);
+
+        if (part < 1.0e-3f)
+            part = 0.0f;
+
+        any = any || part > 0.0f;
+    }
+
+    s.heldPartLive = any;
 }
 
 void ResonanceEngine::Core::shapeAndApplyBallistics (Slot& s, float focusScale) noexcept
@@ -1215,10 +1312,13 @@ void ResonanceEngine::Core::shapeAndApplyBallistics (Slot& s, float focusScale) 
     }
 
     // Attack and release act on each bin's reduction in dB.
+    const bool heldLive = s.heldRawLive;
     for (int k = 0; k < numBins; ++k)
     {
         const auto idx = (size_t) k;
-        const float target = std::min (s.spread[idx], cutLimit);   // at the limit a release starts straight away, not from where Depth would have gone
+        // Held Notes' own reduction joins here, after the spreading, so that it stays as narrow as the harmonic it is for.
+        const float wanted = heldLive ? std::max (s.spread[idx], s.heldRaw[idx]) : s.spread[idx];
+        const float target = std::min (wanted, cutLimit);   // at the limit a release starts straight away, not from where Depth would have gone
         float& held = s.held[idx];
         held += (target > held ? attackCoeffs[idx] : releaseCoeffs[idx]) * (target - held);
 
@@ -1235,6 +1335,8 @@ void ResonanceEngine::Core::shapeAndApplyBallistics (Slot& s, float focusScale) 
         s.applied[(size_t) k] = r;
         s.gain[(size_t) k] = r > 0.0f ? std::exp (-r * 0.11512925f) : 1.0f;
     }
+
+    followHeldPart (s, params.heldNotes && ! params.hard);
 }
 
 void ResonanceEngine::Core::updateListenMask (int band) noexcept
@@ -1379,6 +1481,35 @@ bool ResonanceEngine::Core::processFrame (int keyChannelsNow, bool listening, fl
         }
     }
 
+    // Held Notes' own reduction is linked the same way.
+    if (numSlots >= 2 && ! midSide && params.link > 0.0f && params.heldNotes)
+    {
+        bool live = false;
+
+        for (int slot = 0; slot < numSlots; ++slot)
+            live = live || slots[(size_t) slot].heldRawLive;
+
+        if (live)
+        {
+            for (int k = 0; k < numBins; ++k)
+            {
+                float most = slots[0].heldRaw[(size_t) k];
+
+                for (int slot = 1; slot < numSlots; ++slot)
+                    most = std::max (most, slots[(size_t) slot].heldRaw[(size_t) k]);
+
+                for (int slot = 0; slot < numSlots; ++slot)
+                {
+                    float& r = slots[(size_t) slot].heldRaw[(size_t) k];
+                    r += params.link * (most - r);
+                }
+            }
+
+            for (int slot = 0; slot < numSlots; ++slot)
+                slots[(size_t) slot].heldRawLive = true;
+        }
+    }
+
     focusNow += rangeCoeff * (params.stereoFocus - focusNow);
 
     for (int slot = 0; slot < numSlots; ++slot)
@@ -1500,11 +1631,15 @@ bool ResonanceEngine::Core::processFrame (int keyChannelsNow, bool listening, fl
 void ResonanceEngine::Core::fillGraph (GraphFrame& frame, int numGraphChannels) noexcept
 {
     const bool apart = numSlots > 2;
+    bool anyHeldPart = false;
+
+    for (int slot = 0; slot < numSlots; ++slot)
+        anyHeldPart = anyHeldPart || slots[(size_t) slot].heldPartLive;
 
     for (int i = 0; i < GraphFrame::numPoints; ++i)
     {
         const auto idx = (size_t) i;
-        float power = 0.0f, reduction[2] = { 0.0f, 0.0f }, sens = 0.0f, mask = 0.0f;
+        float power = 0.0f, reduction[2] = { 0.0f, 0.0f }, sens = 0.0f, mask = 0.0f, heldPart = 0.0f;
         float deepest = 0.0f, shallowest = 1.0e9f;
 
         for (int k = graphFirstBin[idx]; k <= graphLastBin[idx]; ++k)
@@ -1512,6 +1647,10 @@ void ResonanceEngine::Core::fillGraph (GraphFrame& frame, int numGraphChannels) 
             power = std::max (power, displayPower[(size_t) k]);
             sens += sensitivity[(size_t) k];
             mask = std::max (mask, rangeMask[(size_t) k]);
+
+            if (anyHeldPart)
+                for (int slot = 0; slot < numSlots; ++slot)
+                    heldPart = std::max (heldPart, std::min (slots[(size_t) slot].heldPart[(size_t) k], slots[(size_t) slot].applied[(size_t) k]));
 
             if (apart)
             {
@@ -1541,6 +1680,7 @@ void ResonanceEngine::Core::fillGraph (GraphFrame& frame, int numGraphChannels) 
         frame.outputDb[idx] = inDb - both;
         frame.reductionDb[0][idx] = reduction[0];
         frame.reductionDb[1][idx] = numSlots >= 2 ? reduction[1] : reduction[0];
+        frame.heldNotesDb[idx] = std::min (heldPart, both);
         frame.sensitivityDb[idx] = mask > 0.0f ? sens / (float) (graphLastBin[idx] - graphFirstBin[idx] + 1) : -96.0f;
     }
 

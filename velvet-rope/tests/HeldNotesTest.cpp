@@ -198,7 +198,9 @@ static std::vector<float> highPass (std::vector<float> x, double hz)
 /** Notes with a little vibrato, 0.6 s each with 0.15 s between, whose harmonics stay level from 1.5 to 5 kHz. */
 static std::vector<float> heldNotes (double seconds, double f0, double vibrato = 0.012, double highsDb = 0.0)
 {
-    const double highs = std::pow (10.0, highsDb / 20.0);   // 1 at the default, so the first notes are sample for sample what they were
+    // A dark voice: the level falls away by highsDb between 500 Hz and 2.5 kHz and stays there, as a real one does, with no
+    // step. At the default it is 1 throughout, so the first notes are sample for sample what they were.
+    const auto highs = [highsDb] (double hz) { return std::pow (10.0, highsDb / 20.0 * juce::jlimit (0.0, 1.0, std::log2 (hz / 500.0) / std::log2 (5.0))); };
     std::vector<float> x ((size_t) (seconds * kRate), 0.0f);
     const int harmonics = (int) std::floor (9000.0 / f0);
     std::vector<double> phases ((size_t) harmonics + 1, 0.0);
@@ -216,7 +218,7 @@ static std::vector<float> heldNotes (double seconds, double f0, double vibrato =
             phases[(size_t) h] += twoPi * h * f / kRate;
             const double hz = h * f;
             y += std::sin (phases[(size_t) h]) / (hz < 1500.0 ? std::pow (hz / 1500.0, 0.7) * 6.0 : (hz < 5000.0 ? 6.0 : 6.0 * std::pow (hz / 5000.0, 2.0)))
-                 * (h * f0 < 1500.0 ? 1.0 : highs);
+                 * highs (h * f0);
         }
 
         x[i] = (float) (0.05 * gate * y);
@@ -553,6 +555,53 @@ static void testRingsThatWerePassedOver()
     }
 }
 
+// ---- the graph ---------------------------------------------------------------------------------------------------------
+
+static void testGraphMarksIt()
+{
+    std::puts ("\n== The graph data marks the part of the reduction that Held Notes adds");
+    const double f0 = 180.0, hz = ringHzFor (f0);
+    const auto x = ringingVoice (7.5, f0);
+
+    for (bool held : { false, true })
+    {
+        Proc p;
+        setHeld (p, held);
+        prepare (p);
+        smoothres::GraphFrame frame;
+        double atRing = 0.0, away = 0.0, overReduction = -1.0e9;
+        int frames = 0;
+
+        render (p, x, kBlock, [&] (int)
+        {
+            while (p.readGraph (frame))
+            {
+                ++frames;
+
+                for (size_t i = 0; i < (size_t) smoothres::GraphFrame::numPoints; ++i)
+                {
+                    const double mark = frame.heldNotesDb[i], octaves = std::abs (std::log2 ((double) frame.hz[i] / hz));
+                    overReduction = std::max (overReduction, mark - (double) std::max (frame.reductionDb[0][i], frame.reductionDb[1][i]));
+
+                    if (octaves < 1.0 / 12.0)      atRing = std::max (atRing, mark);
+                    else if (octaves > 1.0 / 3.0)  away = std::max (away, mark);
+                }
+            }
+        });
+
+        if (! held)
+        {
+            check (frames > 100 && atRing == 0.0 && away == 0.0, "off: nothing is marked anywhere, in any frame (the most marked)", std::max (atRing, away), "dB");
+        }
+        else
+        {
+            check (atRing >= 3.0, "on: at the ring the marked part reaches (limit 3 or more)", atRing, "dB");
+            check (overReduction <= 1.0e-4, "on: the marked part is never more than the reduction drawn there (largest excess)", overReduction, "dB");
+            check (away <= 1.0, "on: more than a third of an octave from the ring, the most marked (limit 1)", away, "dB");
+        }
+    }
+}
+
 static void testConsonants()
 {
     std::puts ("\n== On leaves S and T alone: an S straight after every note and a T just before the next");
@@ -778,6 +827,7 @@ int main()
     testOffIsTheOldSound();
     testOnCutsARing();
     testRingsThatWerePassedOver();
+    testGraphMarksIt();
     testConsonants();
     testState();
     testAutomation();

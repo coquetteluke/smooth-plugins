@@ -181,11 +181,16 @@ namespace ui
             }
 
             slotsApart = slotsApart || std::abs (targetCut[0][i] - targetCut[1][i]) > 0.25f;
+
+            // The share of the deeper cut that Held Notes adds, kept as a share so that Mix shrinks both alike.
+            const float deeper = juce::jmax (0.0f, frame.reductionDb[0][i], frame.reductionDb[1][i]);
+            targetHeld[i] = deeper > 0.05f ? juce::jmax (targetCut[0][i], targetCut[1][i]) * juce::jlimit (0.0f, 1.0f, frame.heldNotesDb[i] / deeper) : 0.0f;
         }
 
         smoothBy (targetLevel, scratch, pointHz, 0.7f, 1, 2);
         smoothBy (targetCut[0], scratch, pointHz, 0.45f, 0, 1);
         smoothBy (targetCut[1], scratch, pointHz, 0.45f, 0, 1);
+        smoothBy (targetHeld, scratch, pointHz, 0.45f, 0, 1);
     }
 
     bool ResonanceGraph::advance (double dtSeconds)
@@ -206,11 +211,12 @@ namespace ui
                 targetLevel.fill (levelFloor - 8.0f);
                 targetCut[0].fill (0.0f);
                 targetCut[1].fill (0.0f);
+                targetHeld.fill (0.0f);
                 slotsApart = false;
             }
         }
 
-        float loudest = -200.0f, deepest = 0.0f;
+        float loudest = -200.0f, deepest = 0.0f, mostHeld = 0.0f;
 
         for (size_t i = 0; i < (size_t) numPoints; ++i)
         {
@@ -224,7 +230,12 @@ namespace ui
                 shownCut[slot][i] = nextCut;
                 deepest = juce::jmax (deepest, nextCut);
             }
+
+            shownHeld[i] = juce::jmin (glide (shownHeld[i], targetHeld[i], 0.018f, 0.070f, dt), juce::jmax (shownCut[0][i], shownCut[1][i]));
+            mostHeld = juce::jmax (mostHeld, shownHeld[i]);
         }
+
+        heldShowing = mostHeld > 0.08f;
 
         peakDb = deepest;
 
@@ -283,12 +294,18 @@ namespace ui
             yAfter[i] = yForLevel (shownLevel[i] - juce::jmax (shownCut[0][i], shownCut[1][i]) * (1.0f - bypassShown));
             yCut[0][i] = yForReduction (shownCut[0][i]);
             yCut[1][i] = yForReduction (shownCut[1][i]);
+            yHeldCut[i] = yForReduction (shownCut[0][i] - juce::jmin (shownHeld[i], shownCut[0][i]));   // on the first channel's gold, which is the one that is filled
         }
 
         upsample (yLevel, yVoice);
         upsample (yAfter, yShaved);
         upsample (yCut[0], yGold[0]);
         upsample (yCut[1], yGold[1]);
+
+        if (heldShowing)
+            upsample (yHeldCut, yHeldTop);
+        else
+            yHeldTop = yGold[0];   // nothing of Held Notes' to draw: its line lies on the gold's own edge
 
         // What has moved by more than a quarter of a pixel on a 2x screen since the screen last showed it. Each point only
         // counts as shown once it has been asked for, so small changes add up instead of being lost.
@@ -312,6 +329,7 @@ namespace ui
         compare (yShaved, shownShaved, voiceDirty);
         compare (yGold[0], shownGold[0], goldDirty);
         compare (yGold[1], shownGold[1], goldDirty);
+        compare (yHeldTop, shownHeldTop, goldDirty);
     }
 
     void ResonanceGraph::flushRepaint()
@@ -693,6 +711,50 @@ namespace ui
             shape.closeSubPath();
             g.setColour (gold.withAlpha (0.86f * dim));
             g.fillPath (shape);
+
+            // The part of it that Held Notes adds, in rose gold: the lowest slice of the gold, down to the same edge.
+            if (heldShowing)
+            {
+                int heldFirst = -1, heldLast = -1;
+
+                for (int i = first; i <= last; ++i)
+                {
+                    if (ys[(size_t) i] - yHeldTop[(size_t) i] > 0.35f)
+                    {
+                        if (heldFirst < 0)
+                            heldFirst = i;
+
+                        heldLast = i;
+                    }
+                }
+
+                if (heldFirst >= 0)
+                {
+                    heldFirst = juce::jmax (first, heldFirst - 1);
+                    heldLast = juce::jmin (last, heldLast + 1);
+
+                    numSimple = 0;
+                    simplify (yHeldTop, heldFirst, heldLast);
+                    shape.clear();
+                    shape.startNewSubPath (simpleX[0], simpleY[0]);
+
+                    for (int i = 1; i < numSimple; ++i)
+                        shape.lineTo (simpleX[(size_t) i], simpleY[(size_t) i]);
+
+                    numSimple = 0;
+                    simplify (ys, heldFirst, heldLast);
+
+                    for (int i = numSimple; --i >= 0;)
+                        shape.lineTo (simpleX[(size_t) i], simpleY[(size_t) i]);
+
+                    shape.closeSubPath();
+                    g.setColour (tone::held.interpolatedWith (tone::faint, bypassShown).withAlpha (0.95f * dim));
+                    g.fillPath (shape);
+
+                    numSimple = 0;
+                    simplify (ys, first, last);
+                }
+            }
 
             buildRibbon (simpleY.data(), simpleX.data(), numSimple, 0.7f);
             g.setColour (edge.withAlpha (dim));

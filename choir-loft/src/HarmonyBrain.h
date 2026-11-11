@@ -143,7 +143,7 @@ private:
 class HumanVoice
 {
 public:
-    static constexpr double slowCents = 11.0, fastCents = 7.5, levelDb = 0.65, rateShare = 0.08, depthShare = 0.3;
+    static constexpr double slowCents = 12.5, fastCents = 7.5, levelDb = 0.65, rateShare = 0.08, depthShare = 0.3;
     static constexpr double earlierMs = 3.0, laterMs = 11.0;
     // At Human 100, how much of the lead's quick level movement a voice does not copy
     static double holdsLevel (int v) noexcept

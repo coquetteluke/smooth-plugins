@@ -80,6 +80,9 @@ namespace prolimits
     constexpr double highNoteMoveOverFloor = 0.02;    // High Quality, voice around 440 and 660 Hz, +/-3 semitones
     // Same reason, floor 10.5%. Kept at 8% but read against a real voice at the new pitch, which is the goal.
     constexpr double bigShiftMove = 0.08;             // High Quality, voice around 165 and 247 Hz, +/-7 semitones
+    // Added 2026-11-11 for the ninth held out set's speaking voices, before its per case numbers were tabled: the output against a real voice with the
+    // same vocal tract at the new pitch, which is what formant preservation means. The same 4% as hqFormantMove, against the right reference.
+    constexpr double hqFormantMoveReal = 0.04;        // High Quality, speaking pitches, +/-1, 3 and 4 semitones, output against a real voice there, worst
     constexpr double highNoteF1Flatter = 9.0;         // dB, High Quality, high notes and big shifts
     constexpr double hqLevelChangeDb = 1.5;           // level at the same shifts as above, High Quality
     // Added for version 1.3, before any of its DSP. A peak that overshoots a real voice is as wrong as a flat one, and could otherwise pass the limit above.

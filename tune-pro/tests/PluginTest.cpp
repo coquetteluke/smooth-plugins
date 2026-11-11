@@ -395,7 +395,7 @@ std::vector<float> controlVoice (const voice::Vowel& v, double centreHz, int shi
 // tries at this (picking peaks and fitting harmonics) could not read a real voice to better than +/-3 to 10%, so this one
 // was checked against known moves instead: Formant Preserve off must read the pitch shift, and Throat Length its own ratio
 // (see testAddedControls). Peak height is reported too, because grains do broaden each peak: it stays in place, a bit flatter.
-struct FormantScore { double move = 0.0, moveReal = 0.0, floor = 0.0, level = 0.0, flatter = 0.0, colour = 0.0, colourFloor = 0.0, peakFlatter = 0.0, peakSharper = -100.0, peakFlatterCrossed = 0.0; };
+struct FormantScore { double move = 0.0, moveReal = 0.0, floor = 0.0, ideal = 0.0, level = 0.0, flatter = 0.0, colour = 0.0, colourFloor = 0.0, peakFlatter = 0.0, peakSharper = -100.0, peakFlatterCrossed = 0.0; };
 
 void scoreFormants (FormantScore& s, const voice::Vowel& v, double centre, int shift, int type = lowMale)
 {
@@ -417,8 +417,11 @@ void scoreFormants (FormantScore& s, const voice::Vowel& v, double centre, int s
         s.move = std::max (s.move, std::abs (against - 1.0));
         s.moveReal = std::max (s.moveReal, std::abs (real - 1.0));
         s.floor = std::max (s.floor, std::abs (noise - 1.0));
+        // What a perfect shifter would read on the line above: that real voice itself, put through the same reading against the input.
+        const double ideal = shapeScale (inShape, wantShape, band.first, band.second);
+        s.ideal = std::max (s.ideal, std::abs (ideal - 1.0));
         if (std::getenv ("TUNE_DUMP") != nullptr)
-            std::printf ("  vowel %s around %.0f Hz, shift %d, band %.0f to %.0f Hz: against input %.3f, against a real voice there %.3f, input against that voice %.3f\n", v.name, centre, shift, band.first, band.second, against, real, noise);
+            std::printf ("  vowel %s around %.0f Hz, shift %d, band %.0f to %.0f Hz: against input %.3f, against a real voice there %.3f, input against that voice %.3f, that real voice against input %.3f\n", v.name, centre, shift, band.first, band.second, against, real, noise, ideal);
     }
     // Colour: how far the output's whole spectrum shape sits from that real voice's, as a plain distance in dB, smoothed over a harmonic spacing.
     const auto distance = [&] (const std::vector<double>& a, const std::vector<double>& b)
@@ -1193,6 +1196,12 @@ void testHeldOutNinth()
     }
     chk (low.move <= prolimits::hqFormantMove, "ninth held out set, Mandarin men 92 to 148 Hz and women 182 to 238 Hz, worst formant move against the input", low.move * 100.0, "%");
     note ("  and the tool's floor there", low.floor * 100.0, "%");
+    note ("  what a perfect shifter reads on that line: the real voice at the new pitch itself against the input, worst", low.ideal * 100.0, "%");
+    // Added 2026-11-11, with both limits set before the per case numbers of any version were tabled (tests/heldout9-reference.sh). The line
+    // above reads the output against the input; the goal is a real voice with the same vocal tract at the new pitch, so this reads against that,
+    // at the same 4%. And the rule the singing sets have always used for the line above: no more than 2% beyond the tool's floor.
+    chk (low.moveReal <= prolimits::hqFormantMoveReal, "  worst formant move against a real voice at the new pitch", low.moveReal * 100.0, "%");
+    chk (low.move <= low.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", low.move * 100.0, "%");
     chk (low.level <= prolimits::hqLevelChangeDb, "  level change, worst", low.level, "dB");
     note ("  first formant against its surroundings, flatter than a real voice, worst", low.peakFlatter, "dB");
     note ("  colour, worst", low.colour, "dB");

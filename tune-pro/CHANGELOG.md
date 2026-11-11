@@ -16,6 +16,24 @@ Second pass on Luke's own takes (17 whole songs, Rode NT1, 2026-11-10). Five eng
 
 **5. Low Latency: formants stay put on women's voices too.** Found by the tenth held out set, the first one ever run on Low Latency: on women's speaking voices around 200 Hz in Wide Range the formants went with the pitch, 5.19% at +3 semitones and 4.81% going down, against a 5% limit (and 4.5% by the floor plus 2% rule), on 1.6.0 and every version before it. Low Latency's grains centred on the voice's pulses from 130 Hz up; High Quality stopped doing that in 1.5.1 for the same reason. They now sit on the tracker's marks at every pitch, and are read a little slower going up as well as going down (the shift to the power 0.15 up, 0.1 down where it was 0.2). Past an octave up they still centre on the pulses and the upward read fades out, so Transpose +24 is as it was. The pitch control's age for these grains is 1.80 periods (2.02 for pulse centred ones), which keeps the pitch movement within 0.25 ms of the sound at 147 to 262 Hz. This changes Low Latency on every corrected note, the default included. An eleventh held out set (French women's vowels held on their own, other speakers and another source) was committed before the fix and run once after it.
 
+| | 1.6.0 | 1.6.1 | Limit |
+|---|---|---|---|
+| A tick in a corrected note, Alto/Tenor 102 to 131 Hz: louder above 9 kHz / the 10 ms after it against the input | 3.97 dB / -6.26 dB | 0.10 / -1.52 dB (first fix alone) | 6 / -6 |
+| The same at 81 and 90 Hz | 5.45 / -9.33 dB | -0.42 / -3.33 dB | 6 / -6 |
+| Pitch movement against the sound, Low Latency, low notes, worst (Alto/Tenor 101 Hz) | 4.87 ms late | within 0.81 ms | 1 |
+| The same, High Quality, 147 to 262 Hz, worst | 15.24 ms early | 0.49 ms early | 1 |
+| A voice never corrected, gliding across High Quality's hand over: against the input / worst 100 ms | -57.1 / -47.9 dB | -197.0 / -188.2 dB | -90 |
+| Tenth held out set, Low Latency, women in Wide Range, against the input | 5.192% | 4.045% | 5, and floor plus 2% |
+| Tenth held out set, Low Latency, men in Alto/Tenor, level | 6.159 dB | 0.940 dB | 1.5 |
+| Real takes: pitch contour against the reported latency, Low Latency / High Quality | 54 late / 50 early | 25 late / 16 late | 48 samples |
+| Real takes: every note Bypass, High Quality, null at the reported delay, worst take | -33.6 dB | about -180 dB, 11 of 11 takes | -90 |
+| Real takes: formant move on corrected notes, median / 90th pct, Low Latency | 1.47 / 2.70% | 1.33 / 2.49% | 1.5 / 3.0 |
+| Real takes: clicks by the shared rule, default | 9 | 4 | 0 |
+| Real takes: over a semitone off for 20 ms, Low Latency / High Quality / Classic | 10 / 25 / 5 | 7 / 9 / 4 | 0 |
+| Real takes: slides reversed, High Quality, rap takes | 5.41% | 4.36% | 5 |
+
+**Still not at zero on the real takes** (all in `REPORT.md`): held notes at the default (90th percentile 35 cents against 10: the default's Retune 20 and Humanize 30); 5 held notes of 716 on the wrong note and 16 left as sung (his pitch crosses the line between two notes inside the note); start lag by the check's rule (his slides into the note; 72 synthetic entries with a stable pitch read 30 ms at the median); 4 clicks by the shared rule, each smaller than the voice's own steps beside it. **The default Humanize was not changed.** Luke said yes to lowering it; the sweep says no value does what was hoped: share of held notes more than 10 cents off at Retune 20 with Humanize 30 / 20 / 15 / 10 / 5 / 0: 44.6 / 39.0 / 36.3 / 32.1 / 26.8 / 21.3% (movement left on long notes 94 / 90 / 88 / 84 / 78 / 69%), Hard Tune 0.1% (engine traces of 713 held notes; realvox on the AU: 44.8% at 30, 24.0% at 0, 6.7% Hard Tune). The rest is Retune 20 gliding between two notes where the target changes inside the note.
+
 **Not at zero: the eleventh held out set fails, on 1.6.0 and 1.6.1 alike.** `PluginTest heldout11`, results in `tests/results-heldout11.txt` and `tests/results-heldout11-1.6.0.txt`. These are vowels at the corners of the vowel space; nearly all of it is one vowel, held u (F1 291 Hz, F2 779 Hz) at 221 Hz. High Quality: 4.428% against a real voice on both versions (limit 4, one reading of 360), against the input 4.809% on 1.6.0 and 7.529% on 1.6.1 (one reading, u at 221 Hz up 4, moved by the in line control; the mean over all 360 readings is 0.65% and 0.66%). Low Latency: 12.65 -> 12.12% against a real voice and 11.24 -> 11.06% against the input (limit 5; u at 221 Hz down 3, then y and o at 5.6%), level 2.20 dB (fail) -> 1.14 dB (pass). So 1.6.1 is no worse than 1.6.0 on it except that one High Quality reading, and better on level, but the set does not pass and nothing was tuned on it. It runs by name only and is not part of the full run. The tenth set passes every line on 1.6.1 and is part of the full run from here on.
 
 ## 1.6.0, 2026-11-11

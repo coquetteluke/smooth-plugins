@@ -1582,6 +1582,177 @@ static void testNewControlsRepeat()
     check (db3 <= -90.0, "all new controls, with a playhead against none", db3, "dB");
 }
 
+// ---- Added 2026-11-10 after the real vocal runs. Limits written before the fix and before the first run. ----
+
+// Bypass is the input, delayed by the reported latency, and nothing else. A whole number of samples of delay on 32 bit floats
+// nulls to nothing, so the limit is the numeric floor: -120 dB against the delayed input once the switch has settled.
+// The real vocal runs measured -68 to -76 dB with Bypass on in 1.2.1.
+static void testBypassIsTheDelayedInput()
+{
+    const auto residual = [] (const std::vector<float>& in, const juce::AudioBuffer<float>& out, int ch, int latency, int from)
+    {
+        const int n = (int) in.size() - latency - from;
+        return nullDb (out.getReadPointer (ch) + from + latency, in.data() + from, n, rms (in.data() + from, n));
+    };
+
+    // Bypass on from the start, the plug-in's own defaults otherwise, white noise so the whole band counts
+    for (double sr : { 44100.0, 48000.0, 88200.0, 96000.0 })
+    {
+        const int n = (int) sr * 2;
+        const auto in = noiseSignal (n, 0.25, 31);
+        PluginProcessor p;
+        setParam (p, "bypass", 1.0f);
+        prepare (p, 2, sr, 512);
+        const auto out = render (p, in, 512);
+        const int latency = p.getLatencySamples();
+        const auto tag = " at " + std::to_string ((int) sr) + " Hz";
+        check (residual (in, out, 0, latency, 0) <= -120.0, "Bypass on, left against the input delayed by the latency" + tag, residual (in, out, 0, latency, 0), "dB");
+        check (residual (in, out, 1, latency, 0) <= -120.0, "Bypass on, right against the input delayed by the latency" + tag, residual (in, out, 1, latency, 0), "dB");
+    }
+
+    const double sr = 48000.0;
+    const int n = (int) sr * 2;
+    const auto in = noiseSignal (n, 0.25, 37);
+
+    // Mono
+    {
+        PluginProcessor p;
+        setParam (p, "bypass", 1.0f);
+        prepare (p, 1, sr, 512);
+        const auto out = render (p, in, 512);
+        const double db = residual (in, out, 0, p.getLatencySamples(), 0);
+        check (db <= -120.0, "Bypass on, mono against the input delayed by the latency", db, "dB");
+    }
+    // A voice like signal: noise with most of its energy under 1.5 kHz
+    {
+        const auto soft = softNoiseSignal (n, sr, 0.5, 41);
+        PluginProcessor p;
+        setParam (p, "bypass", 1.0f);
+        prepare (p, 2, sr, 512);
+        const auto out = render (p, soft, 512);
+        const double db = residual (soft, out, 0, p.getLatencySamples(), 0);
+        check (db <= -120.0, "Bypass on, low passed noise against the input delayed by the latency", db, "dB");
+    }
+    // Switched on while audio plays: settled half a second after the switch
+    {
+        PluginProcessor p;
+        prepare (p, 2, sr, 128);
+        const int at = (int) (0.5 * sr) / 128;
+        const auto out = render (p, in, 128, nullptr, [&] (int idx) { if (idx == at) setParam (p, "bypass", 1.0f); });
+        const double db = residual (in, out, 0, p.getLatencySamples(), (int) sr);
+        check (db <= -120.0, "Bypass switched on under audio, half a second later, against the delayed input", db, "dB");
+    }
+    // The host's own bypass call, switched in while audio plays
+    {
+        PluginProcessor p;
+        prepare (p, 2, sr, 512);
+        juce::AudioBuffer<float> buf (2, 512), capture (2, n);
+        juce::MidiBuffer midi;
+        capture.clear();
+        for (int pos = 0; pos + 512 <= n; pos += 512)
+        {
+            for (int ch = 0; ch < 2; ++ch) buf.copyFrom (ch, 0, in.data() + pos, 512);
+            if (pos < (int) (0.5 * sr)) p.processBlock (buf, midi); else p.processBlockBypassed (buf, midi);
+            for (int ch = 0; ch < 2; ++ch) capture.copyFrom (ch, pos, buf, ch, 0, 512);
+        }
+        const int latency = p.getLatencySamples(), from = (int) sr, len = (n / 512) * 512 - from - latency;
+        const double db = nullDb (capture.getReadPointer (0) + from + latency, in.data() + from, len, rms (in.data() + from, len));
+        check (db <= -120.0, "host bypass call under audio, half a second later, against the delayed input", db, "dB");
+    }
+    // Every control far from its default: Bypass still passes the input and nothing else
+    {
+        Settings s; s.rate = 5.0f; s.depth = 5.0f; s.feedback = 95.0f; s.saturation = 100.0f; s.tone = 12.0f; s.spread = 180.0f; s.mix = 100.0f;
+        s.delay = 20.0f; s.invert = true; s.wowDepth = 2.0f; s.flutterDepth = 0.3f; s.randomDepth = 2.0f; s.unsync = true;
+        s.inputGain = 12.0f; s.outputGain = 12.0f; s.lowCut = 1000.0f; s.highCut = 1000.0f; s.comp = false; s.bypass = true;
+        auto p = makeProc (s, sr);
+        const auto out = render (*p, in, 512);
+        const double db = residual (in, out, 0, p->getLatencySamples(), 0);
+        check (db <= -120.0, "Bypass on with every control at an extreme, against the delayed input", db, "dB");
+    }
+    // One sample in, one sample out at the reported latency. Limit: everything else 120 dB under that sample.
+    {
+        PluginProcessor p;
+        setParam (p, "bypass", 1.0f);
+        prepare (p, 2, sr, 512);
+        std::vector<float> click (8192, 0.0f);
+        click[1000] = 0.5f;
+        const auto out = render (p, click, 512);
+        const int latency = p.getLatencySamples();
+        double rest = 0.0;
+        for (int i = 0; i < 8192; ++i)
+            if (i != 1000 + latency) rest = std::max (rest, (double) std::abs (out.getSample (0, i)));
+        check (out.getSample (0, 1000 + latency) == 0.5f, "Bypass on, one sample in comes out unchanged at the latency", out.getSample (0, 1000 + latency));
+        check (toDb (rest / 0.5) <= -120.0, "Bypass on, one sample in, largest output sample anywhere else", toDb (rest / 0.5), "dB");
+    }
+    // Bypass off again: one second later the output is what it would have been with Bypass never on. Limit: 120 dB null.
+    {
+        const auto longIn = noiseSignal ((int) sr * 4, 0.25, 43);
+        PluginProcessor a, b;
+        prepare (a, 2, sr, 128);
+        prepare (b, 2, sr, 128);
+        const auto never = render (a, longIn, 128);
+        const int on = (int) (1.0 * sr) / 128, off = (int) (2.0 * sr) / 128;
+        const auto switched = render (b, longIn, 128, nullptr, [&] (int idx) { if (idx == on) setParam (b, "bypass", 1.0f); if (idx == off) setParam (b, "bypass", 0.0f); });
+        const int from = (int) (3.0 * sr), len = (int) sr;
+        const double db = nullDb (switched.getReadPointer (0) + from, never.getReadPointer (0) + from, len, rms (never.getReadPointer (0) + from, len));
+        check (db <= -120.0, "Bypass off again, one second later, against never bypassed", db, "dB");
+    }
+}
+
+// Switching Bypass while audio plays must not click. Bypass goes on and off every 0.31 s under a steady tone, with small host
+// blocks so the switches land all over the wave.
+// Limits: the biggest sample to sample step is no more than 1.5 times the biggest step of the steady effect and of the input
+// (a click is a step far above the signal's own slope), and nothing over -80 dB re the tone comes out above 8 kHz
+// (a hard switch between two different waves puts a step of up to the tone's own height there; the tones and their
+// saturation harmonics are far below 8 kHz).
+static void testBypassSwitchClicks()
+{
+    const double sr = 48000.0;
+    const int n = (int) sr * 4, block = 64;
+    for (double freq : { 220.0, 500.0 })
+    {
+        const double amp = 0.125;
+        const auto in = sineSignal (n, freq, sr, amp);
+        PluginProcessor steady, switched;
+        prepare (steady, 2, sr, block);
+        prepare (switched, 2, sr, block);
+        const auto ref = render (steady, in, block);
+        const int every = (int) (0.31 * sr) / block;
+        bool on = false;
+        const auto out = render (switched, in, block, nullptr, [&] (int idx) { if (idx > 0 && idx % every == 0) { on = ! on; setParam (switched, "bypass", on ? 1.0f : 0.0f); } });
+        const auto tag = ", " + std::to_string ((int) freq) + " Hz at -18 dBFS";
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            const double own = std::max (maxJump (ref.getReadPointer (ch), n), maxJump (in.data(), n));
+            const double j = maxJump (out.getReadPointer (ch), n);
+            check (j <= 1.5 * own, std::string ("Bypass switching, biggest step against the steady signal's own, ") + (ch == 0 ? "left" : "right") + tag, j / own, "times");
+            // Sixth order high pass at 8 kHz, then the largest sample after the first 50 ms
+            double z[3][2] = {}, worst = 0.0, worstRef = 0.0;
+            const double w = juce::MathConstants<double>::twoPi * 8000.0 / sr, cs = std::cos (w), al = std::sin (w) / (2.0 * 0.7071), a0 = 1.0 + al;
+            const double b0 = (1.0 + cs) * 0.5 / a0, b1 = -(1.0 + cs) / a0, a1 = -2.0 * cs / a0, a2 = (1.0 - al) / a0;
+            for (int pass = 0; pass < 2; ++pass)
+            {
+                const float* x = (pass == 0 ? out : ref).getReadPointer (ch);
+                for (auto& st : z) st[0] = st[1] = 0.0;
+                for (int i = 0; i < n; ++i)
+                {
+                    double v = x[i];
+                    for (auto& st : z)
+                    {
+                        const double y = b0 * v + st[0];
+                        st[0] = b1 * v - a1 * y + st[1];
+                        st[1] = b0 * v - a2 * y;
+                        v = y;
+                    }
+                    if (i > (int) (0.05 * sr)) { auto& m = pass == 0 ? worst : worstRef; m = std::max (m, std::abs (v)); }
+                }
+            }
+            check (toDb (worst / amp) <= -80.0, std::string ("Bypass switching, largest sample above 8 kHz re the tone, ") + (ch == 0 ? "left" : "right") + tag, toDb (worst / amp), "dB");
+            info (std::string ("never switched, largest sample above 8 kHz re the tone, ") + (ch == 0 ? "left" : "right") + tag, toDb (worstRef / amp), "dB");
+        }
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -1614,5 +1785,7 @@ int main()
     testFeedbackCompensation();
     testReadings();
     testNewControlsRepeat();
+    testBypassIsTheDelayedInput();
+    testBypassSwitchClicks();
     return finish();
 }

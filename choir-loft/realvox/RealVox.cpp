@@ -938,7 +938,13 @@ struct Dry
 const char* bandOf (double hz) { return hz < 98.0 ? "under98" : (hz < 130.0 ? "98to130" : "over130"); }
 
 // The plug-in's own tracker, run on the take the way the processor runs it, read once a ms.
-struct TrackerTrace { std::vector<unsigned char> why; std::vector<float> hz, dip, coarseHz, halfFine, halfEven; double lowHz = 0.0, highHz = 0.0; };
+struct TrackerTrace { std::vector<unsigned char> why, rule; std::vector<float> hz, dip, coarseHz, halfFine, halfEven; double lowHz = 0.0, highHz = 0.0; };
+
+// The tracker's probe came with 1.5.1; a 1.5.0 tree builds without it (and without CHOIR_OLD, so its own range set up is used)
+template <typename T> auto probeIfThere (const T& t, double hz, float& fine, float& even, int) -> decltype (t.probe (hz, fine, even), void()) { t.probe (hz, fine, even); }
+template <typename T> void probeIfThere (const T&, double, float&, float&, long) {}
+template <typename T> auto startRuleIfThere (const T& t, int) -> decltype (t.startRule()) { return t.startRule(); }
+template <typename T> int startRuleIfThere (const T&, long) { return 0; }
 
 TrackerTrace traceTracker (const std::vector<float>& x, int inputType, float tracking)
 {
@@ -976,10 +982,11 @@ TrackerTrace traceTracker (const std::vector<float>& x, int inputType, float tra
 #ifndef REALVOX_OLD_TREE
             // How well the sound repeats at half the coarse period, and how its even harmonics do: what the tracker asks before a low start
             float hf = 1.0f, he = 1.0f;
-            if (tr.coarsePeriod() > 0.0) tr.probe (2.0 * SR / tr.coarsePeriod(), hf, he);
+            if (tr.coarsePeriod() > 0.0) probeIfThere (tr, 2.0 * SR / tr.coarsePeriod(), hf, he, 0);
             t.halfFine.push_back (hf);
             t.halfEven.push_back (he);
 #endif
+            t.rule.push_back ((unsigned char) startRuleIfThere (tr, 0));
         }
     }
     return t;
@@ -2124,7 +2131,65 @@ int main (int argc, char** argv)
                          tr.hz[(size_t) ms] > 0.0f ? "voiced" : stateNames[std::clamp ((int) tr.why[(size_t) ms], 1, 7)], tr.dip[(size_t) ms], tr.coarseHz[(size_t) ms],
                          d.leadHzAt ((ms - 12) * 48), toDb (rmsAround (d.x, (ms - 12) * 48, 240)));
             if ((size_t) ms < tr.halfFine.size()) std::printf ("  half period: dip %.3f even %.3f", tr.halfFine[(size_t) ms], tr.halfEven[(size_t) ms]);
+            if ((size_t) ms < tr.rule.size()) std::printf ("  start rule %d", (int) tr.rule[(size_t) ms]);
             std::printf ("\n");
+        }
+        return 0;
+    }
+    if (mode == "calls" && argc >= 3)
+    {
+        // When the plug-in's tracker calls each start, with no render: RealVox calls <take.wav> ...
+        // One line per phrase or word start (the same starts as measure): the take, the onset, the gap before it, the ms from the onset to
+        // the first moment the tracker is voiced within a semitone of the reference and stays so for 8 ms, the ms to its first voiced
+        // moment at any pitch from 30 ms before the onset, what that first pitch was against the reference (right, highoctave, lowoctave,
+        // otherpitch), and how many ms the tracker was voiced in the unpitched part before the start that the leak measures read (from
+        // 80 ms after the last voiced stretch to 30 ms before the onset).
+        const RenderInfo info = renderInfo();
+        for (int a = 2; a < argc; ++a)
+        {
+            Dry d;
+            if (! d.load (cwd.getChildFile (argv[a]))) return 1;
+            const TrackerTrace tr = traceTracker (d.x, info.inputType, info.tracking);
+            const long ticks = (long) tr.hz.size();
+            for (size_t si = 0; si < d.stretches.size(); ++si)
+            {
+                const auto& s = d.stretches[si];
+                if (s.b - s.a + 1 < 30) continue;
+                const int gapFrames = si == 0 ? s.a : s.a - d.stretches[si - 1].b - 1;
+                if (gapFrames < 10) continue;
+                const long onsetMs = (long) std::lround (1000.0 * s.onset / SR);
+                const auto refAt = [&] (long ms)
+                {
+                    // the reference where it has a pitch, else the stretch's first pitch
+                    const double r = d.leadHzAt ((ms - 12) * 48);
+                    return r > 0.0 ? r : d.track[(size_t) s.a];
+                };
+                long right = -1, any = -1;
+                int firstState = 0;
+                for (long ms = std::max (0L, onsetMs - 30); ms < std::min (ticks, onsetMs + 300); ++ms)
+                {
+                    if (tr.hz[(size_t) ms] <= 0.0f) continue;
+                    const double c = measure::cents (tr.hz[(size_t) ms], refAt (ms));
+                    if (any < 0)
+                    {
+                        any = ms;
+                        firstState = std::abs (c) <= 100.0 ? 0 : (std::abs (c - 1200.0) <= 100.0 || std::abs (c - 1902.0) <= 100.0) ? 8
+                                     : (std::abs (c + 1200.0) <= 100.0 || std::abs (c + 1902.0) <= 100.0) ? 9 : 10;
+                    }
+                    if (std::abs (c) > 100.0) continue;
+                    bool holds = true;
+                    for (long k = ms; k < std::min (ticks, ms + 8) && holds; ++k)
+                        holds = tr.hz[(size_t) k] > 0.0f && std::abs (measure::cents (tr.hz[(size_t) k], refAt (k))) <= 100.0;
+                    if (holds) { right = ms; break; }
+                }
+                long from = si == 0 ? 0 : d.stretches[si - 1].end + (long) (0.08 * SR);
+                if (gapFrames >= 50) from = std::max (from, s.onset - (long) (1.5 * SR));
+                int before = 0;
+                for (long ms = from / 48 + 12; ms < (s.onset - (long) (0.03 * SR)) / 48 + 12 && ms < ticks; ++ms)
+                    if (ms >= 0 && tr.hz[(size_t) ms] > 0.0f) ++before;
+                std::printf ("C %s %.3f %d %ld %ld %s %d\n", d.take.c_str(), s.onset / SR, gapFrames * 5, right < 0 ? 999L : right - onsetMs,
+                             any < 0 ? 999L : any - onsetMs, stateNames[firstState], before);
+            }
         }
         return 0;
     }

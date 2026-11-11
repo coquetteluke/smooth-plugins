@@ -1468,6 +1468,52 @@ void testTiming()
         chk (worst <= prolimits::uncorrectedNullDb, std::string ("a voice left uncorrected after a correction, ") + (gEngine == 1 ? "147 and 196 Hz (the grains)" : "147 to 262 Hz")
              + ": output against the input at the reported delay, from 1.5 s on, worst", worst, "dB");
         if (gEngine == 1) note ("  the same at 262 Hz, where the harmonic shifter gives the output (not judged)", harmonicWorst, "dB");
+// ------------------------------------------------------------------------------------------- a note sung on the line
+
+// Real takes, 2026-11-10: an untrained singer often holds a note near the line between two notes of the scale and wavers across it.
+// The target then went back and forth and the correction pulled him up, then down. Default settings throughout (Retune 20 ms, Humanize 30).
+void testTargetHold()
+{
+    // 1. A3 sung 47 cents sharp with a 5.5 Hz vibrato of +/-20 cents: it crosses the line to A#3 (and 12 cents more) for about 50 ms
+    // of every cycle. The tuner must settle on one note and must not make the waver bigger than it was sung.
+    {
+        auto p = make();
+        prepare (*p, 1, SR, 256);
+        const double hz = 220.0 * std::pow (2.0, 47.0 / 1200.0), hop = 0.002;
+        const auto x = voice::synth (voice::vibrato (hz, 3.0, SR, 20.0, 5.5), voice::vowelA, SR);
+        const auto out = mono (render (*p, x, 256));
+        const auto trace = pitchTrace (out.data(), (long) out.size(), SR, hz, 1.0, 2.9, hop, 0.1);
+        std::vector<double> c, toA, toB;
+        for (double h : trace) if (h > 0.0) { c.push_back (cents (h, hz)); toA.push_back (std::abs (cents (h, 220.0))); toB.push_back (std::abs (cents (h, 220.0 * std::pow (2.0, 1.0 / 12.0)))); }
+        const double depth = sineDepth (c, hop, 5.5);
+        const double nearest = std::min (percentile (toA, 50), percentile (toB, 50));
+        chk (depth <= prolimits::lineWaverCents, "a note on the line with vibrato +/-20 cents: size of the 5.5 Hz waver in the output", depth, "cents");
+        chk (nearest <= prolimits::lineSettleCents, "  and how far the output sits from the nearer of the two notes, median", nearest, "cents");
+    }
+    // 2. What it must not cost: a real step up a semitone that lands 25 cents flat, so only 25 cents past the line, at once and as a
+    // glide over 60 ms. Time from the end of the step until the output is within 15 cents of the new note. The limits are 1.5.1's own
+    // readings in Low Latency (10 ms at once, 4 ms on the glide; High Quality 4 and 2) plus 10 ms.
+    for (double glideMs : { 0.0, 60.0 })
+    {
+        auto p = make();
+        prepare (*p, 1, SR, 256);
+        auto f0 = voice::steady (220.0, 1.0, SR);
+        const size_t glide = (size_t) (glideMs * 0.001 * SR);
+        for (size_t i = 0; i < (size_t) SR; ++i)
+            f0.push_back (220.0 * std::pow (2.0, 75.0 / 1200.0 * (glide == 0 ? 1.0 : std::min (1.0, (double) i / (double) glide))));
+        const auto x = voice::synth (f0, voice::vowelA, SR);
+        const auto out = mono (render (*p, x, 256));
+        const double delay = p->getLatencySamples() / SR, target = 220.0 * std::pow (2.0, 1.0 / 12.0), hop = 0.002, from = 1.0 + glideMs * 0.001 + delay;
+        const auto trace = pitchTrace (out.data(), (long) out.size(), SR, target, from, from + 0.6, hop, 0.12);
+        double ms = 600.0;
+        for (size_t i = 0; i + 10 < trace.size(); ++i)
+        {
+            bool ok = true;
+            for (size_t k = i; k < i + 10 && ok; ++k) ok = trace[k] > 0.0 && std::abs (cents (trace[k], target)) <= 15.0;
+            if (ok) { ms = (double) i * hop * 1000.0; break; }
+        }
+        chk (ms <= (glideMs > 0.0 ? prolimits::flatGlideStepMs : prolimits::flatStepMs),
+             std::string ("a step up a semitone landing 25 cents flat, ") + (glideMs > 0.0 ? "as a glide over 60 ms" : "at once") + ": time until the output is within 15 cents of the new note", ms, "ms");
     }
 }
 
@@ -3562,6 +3608,7 @@ int main (int argc, char** argv)
         if (want ("mix")) testMix();
         if (want ("low")) testLowNotes();
         if (want ("timing")) testTiming();
+        if (want ("hold")) testTargetHold();
     }
     gEngine = 0;
     if (want ("engines")) testEngines();

@@ -70,7 +70,7 @@ public:
 
     void reset() noexcept
     {
-        correction = 0.0; target = -1; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
+        correction = 0.0; target = -1; pendingTarget = -1; pastFor = 0.0; recentCount = 0; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
         offCents = 0.0; identity = true; hasPitch = false; silentFor = 0.0; vibratoPhase = 0.0;
     }
 
@@ -90,7 +90,10 @@ public:
         const double p = 69.0 + 12.0 * std::log2 (hz / s.referenceHz);
         input = p;
 
-        const bool haveTarget = chooseTarget (p, s, held);
+        const bool haveTarget = chooseTarget (p, s, held, tickSeconds);
+        recentAt = (recentAt + 1) % recentSize;
+        recent[(size_t) recentAt] = p;
+        recentCount = std::min (recentCount + 1, recentSize - 1);
         hasPitch = haveTarget;
         age += tickSeconds;
 
@@ -196,7 +199,7 @@ private:
         return t * t * (3.0 - 2.0 * t);
     }
 
-    bool chooseTarget (double p, const Settings& s, const HeldNotes& held) noexcept
+    bool chooseTarget (double p, const Settings& s, const HeldNotes& held, double tickSeconds) noexcept
     {
         bool targetStillGood;
         int nearest;
@@ -230,11 +233,38 @@ private:
         else if (nearest != target)
         {
             // Past the half way point by 12 cents before changing, so a note on the line does not flip.
-            if (std::abs (p - (double) target) - std::abs (p - (double) nearest) > 0.24)
+            const double past = std::abs (p - (double) target) - std::abs (p - (double) nearest);
+            if (past > 0.24)
             {
-                target = nearest;
-                startNote (p);
+                // That alone still flips on a singer who holds a note near the line and wavers by more than 12 cents: the target went
+                // back and forth, the voice was pulled down, then up, then down, and on average was left where it was (real takes,
+                // 2026-11-10: 17 of 727 held notes at 98 Hz and over left uncorrected this way with the song's key set). So the note
+                // being held is kept until the voice has stayed on the far side for holdSeconds in a row, or is plainly on the other
+                // note, 35 cents past the half way point, or has just moved there in one go: 45 cents or more towards the new note within
+                // the last 60 ms. A step moves like that; a vibrato of +/-20 cents moves 34 cents in 60 ms at most. So a step is taken
+                // as fast as it always was, and only a waver has to wait.
+                pastFor = nearest == pendingTarget ? pastFor + tickSeconds : tickSeconds;
+                pendingTarget = nearest;
+                const double before = recent[(size_t) ((recentAt + recentSize - std::min (recentCount, moveTicks)) % recentSize)];
+                const bool jumped = (p - before) * (nearest > target ? 1.0 : -1.0) >= 0.45;
+                if (! holdTargets || s.classic || past > 0.70 || jumped || pastFor >= holdSeconds)
+                {
+                    target = nearest;
+                    startNote (p);
+                    pastFor = 0.0;
+                    pendingTarget = -1;
+                }
             }
+            else
+            {
+                pastFor = 0.0;
+                pendingTarget = -1;
+            }
+        }
+        else
+        {
+            pastFor = 0.0;
+            pendingTarget = -1;
         }
         return true;
     }
@@ -247,7 +277,14 @@ private:
 
     double sr = 48000.0;
     double correction = 0.0, age = 0.0, slowPitch = 0.0, output = 0.0, input = 0.0, offCents = 0.0, silentFor = 0.0, vibratoPhase = 0.0;
-    int target = -1;
+    int target = -1, pendingTarget = -1;
+    double pastFor = 0.0;
+    // The last 64 readings of the voice's pitch, one a tick, for telling a step from a waver
+    static constexpr int recentSize = 64, moveTicks = 60;
+    std::array<double, recentSize> recent {};
+    int recentAt = 0, recentCount = 0;
+    static constexpr bool holdTargets = true;
+    static constexpr double holdSeconds = 0.08;
     bool identity = true, hasPitch = false;
 };
 } // namespace smoothtune

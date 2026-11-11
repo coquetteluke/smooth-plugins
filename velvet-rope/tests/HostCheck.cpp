@@ -217,7 +217,8 @@ int main()
     }
 
     check (unit.latencySamples == 2048.0, "reported latency", unit.latencySamples, "samples");
-    check (unit.ids.size() == 59, "parameters found by name", (double) unit.ids.size(), "");
+    check (unit.ids.size() == 60, "parameters found by name", (double) unit.ids.size(), "");   // 59 until 0.6.0 added Held Notes
+    check (unit.ids.count ("Held Notes") == 1 && unit.get ("Held Notes") == 0.0f, "Held Notes is one of them, and is off when the plug-in loads", (double) unit.get ("Held Notes"), "");
 
     const auto input = toneOverNoise (4.0, 2500.0, 0.25, 0.003, 1);
     unit.source.main = input;

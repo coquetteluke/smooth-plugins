@@ -72,13 +72,14 @@ public:
     }
 
     // Starts this engine clean on a new range, delay and mode. No allocation, safe on the audio thread.
-    void configure (int inputTypeIndex, double lowHz, double highHz, int modeIndex) noexcept
+    // belowHz: notes under lowHz that are still followed, at the delay lowHz sets. 0 for none. See PitchTracker::setRange.
+    void configure (int inputTypeIndex, double lowHz, double highHz, int modeIndex, double belowHz = 0.0) noexcept
     {
         inputType = inputTypeIndex;
         mode = modeIndex;
         latency = latencyFor (lowHz, mode, sr);
         tracker.reset();
-        tracker.setRange (lowHz, highHz);
+        tracker.setRange (lowHz, highHz, belowHz);
         tracker.setStrictOctaveUp (mode == highQuality ? highQualityStrictOctaveUp : 0.0);
         lastVoicingLimit = -1.0f;
         // High Quality's sweep memory model has half as many poles again. With the memory showing it the peaks between the harmonics, the finer

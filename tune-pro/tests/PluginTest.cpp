@@ -1283,6 +1283,88 @@ void testVowelChange()
     note ("  and the tool's floor: the new vowel as sung against that real voice, worst", floor * 100.0, "%");
 }
 
+// ------------------------------------------------------------------------------------------- notes under the range
+
+// Alto/Tenor is the default Input Type and its range starts at 98 Hz, but men sing under that (Luke: 77 to 95 Hz, 2026-11-10 takes).
+// Up to 1.5.1 such a note was not followed at all and came out exactly as sung. 1.6.0 follows notes down to 70 Hz at the same delay.
+void testLowNotes()
+{
+    double worst = 0.0, worstHz = 0.0;
+    for (int midi : { 39, 40, 41, 42 })   // D#2 77.8 Hz to F#2 92.5 Hz
+        for (double off : { 35.0, -30.0 })
+        {
+            auto p = tuner (altoTenor, 0.0f);
+            const double target = noteHz (midi);
+            const auto x = voice::synth (voice::steady (target * std::pow (2.0, off / 1200.0), 1.6, SR), voice::vowelA, SR);
+            const auto out = mono (render (*p, x, 256));
+            const auto e = centsOff (out.data(), (long) out.size(), SR, target, 0.4, 1.5);
+            const double q = e.empty() ? 1200.0 : percentile (absolute (e), 95);
+            if (q > worst) { worst = q; worstHz = target; }
+        }
+    chk (worst < limits::outputInstantCents, "Alto/Tenor, held notes under its range, 78 to 92 Hz, output pitch error at instant speed, worst 95th percentile", worst, "cents");
+    note ("  worst case is at", worstHz, "Hz");
+
+    // The same with vibrato and breath, and a phrase that goes under the range and comes back
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        const auto x = voice::synth (voice::vibrato (noteHz (41), 1.6, SR, 30.0, 5.5), voice::vowelE, SR, -30.0);
+        const auto out = mono (render (*p, x, 256));
+        const auto e = centsOff (out.data(), (long) out.size(), SR, noteHz (41), 0.4, 1.5);
+        const double q = e.empty() ? 1200.0 : percentile (absolute (e), 95);
+        chk (q < limits::outputInstantCents, "Alto/Tenor, 87 Hz with vibrato +/-30 cents and breath, output pitch error at instant speed, 95th percentile", q, "cents");
+        const double nh = nonHarmonicDb (out.data() + (int) (0.5 * SR), 1 << 15, noteHz (41), SR);
+        chk (nh < limits::nonHarmonicDb, "Alto/Tenor, 87 Hz, non-harmonic energy in the corrected voice", nh, "dB");
+    }
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        const double sharp = std::pow (2.0, 30.0 / 1200.0);
+        const auto x = voice::synth (voice::phrase ({ noteHz (45) * sharp, noteHz (40) * sharp, noteHz (45) * sharp, noteHz (42) * sharp }, 0.8, SR, -80.0, 0.06), voice::vowelO, SR);
+        const auto out = mono (render (*p, x, 256));
+        const long delay = p->getLatencySamples();
+        double w = 0.0;
+        int k = 0;
+        for (int midi : { 45, 40, 45, 42 })
+        {
+            const double from = 0.8 * k + 0.25 + delay / SR, to = 0.8 * k + 0.75 + delay / SR;
+            const auto e = centsOff (out.data(), (long) out.size(), SR, noteHz (midi), from, to);
+            w = std::max (w, e.empty() ? 1200.0 : percentile (absolute (e), 95));
+            ++k;
+        }
+        chk (w < limits::outputInstantCents, "Alto/Tenor, a phrase A2 E2 A2 F#2 sung 30 cents sharp, each note's output pitch error, worst 95th percentile", w, "cents");
+    }
+
+    // Notes inside the range are read exactly as before: the same engine with and without the reach under its range, bit for bit.
+    {
+        long different = 0, total = 0;
+        const auto runPair = [&] (const std::vector<float>& x)
+        {
+            smoothtune::TuneEngine a, b;
+            a.prepare (SR, 1); b.prepare (SR, 1);
+            a.configure (altoTenor, 98.0, 1000.0, gEngine, 0.0);
+            b.configure (altoTenor, 98.0, 1000.0, gEngine, 70.0);
+            smoothtune::TuneEngine::Shared s;
+            s.settings.retuneMs = 0.0;
+            for (float v : x)
+            {
+                float wa[2], wb[2], da[2], db[2];
+                a.process (v, v, s, wa, da);
+                b.process (v, v, s, wb, db);
+                if (std::memcmp (wa, wb, sizeof (float)) != 0) ++different;
+                ++total;
+            }
+        };
+        const double sharp = std::pow (2.0, 30.0 / 1200.0);
+        for (double hz : { 99.0, 110.0, 147.0, 220.0, 330.0, 440.0 })
+        {
+            runPair (voice::synth (voice::steady (hz * sharp, 1.0, SR), voice::vowelA, SR));
+            runPair (voice::synth (voice::vibrato (hz * sharp, 1.0, SR, 40.0, 5.5), voice::vowelE, SR, -30.0));
+        }
+        runPair (voice::synth (voice::phrase ({ 110.0 * sharp, 165.0, 131.0 * sharp, 196.0, 262.0 * sharp }, 0.5, SR), voice::vowelO, SR, -35.0));
+        chk (different == 0, "voices at 99 to 440 Hz in Alto/Tenor: output samples that differ with the reach under the range switched on", (double) different);
+        note ("  samples compared", (double) total);
+    }
+}
+
 // ----------------------------------------------------------------------------------------------- Low Latency null test
 
 std::vector<float> loadWav (const char* name);
@@ -3372,6 +3454,7 @@ int main (int argc, char** argv)
         if (want ("throat")) testThroat();
         if (want ("gen")) testVibratoGenerator();
         if (want ("mix")) testMix();
+        if (want ("low")) testLowNotes();
     }
     gEngine = 0;
     if (want ("engines")) testEngines();

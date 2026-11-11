@@ -7,13 +7,16 @@ using namespace smoothtune;
 
 namespace
 {
-    struct InputRange { const char* name; double lowHz, highHz; };
+    struct InputRange { const char* name; double lowHz, highHz, belowHz; };
     // The lowest note sets the latency, because a grain needs one full period plus the time to find its mark.
+    // belowHz (1.6.0): Alto/Tenor also follows notes under its range, down to 70 Hz, at the same latency. The tracker looks further
+    // back for them, not further ahead, and their grains are cut from the newest period already known, up to one period older than
+    // a note in the range gets. Notes at and above 98 Hz are read as before.
     constexpr InputRange inputRanges[] = {
-        { "Soprano",    150.0, 1300.0 },
-        { "Alto/Tenor",  98.0, 1000.0 },
-        { "Low Male",    65.0,  600.0 },
-        { "Wide Range",  65.0, 1300.0 },
+        { "Soprano",    150.0, 1300.0,  0.0 },
+        { "Alto/Tenor",  98.0, 1000.0,  0.0 },
+        { "Low Male",    65.0,  600.0,  0.0 },
+        { "Wide Range",  65.0, 1300.0,  0.0 },
     };
     constexpr int numInputTypes = (int) std::size (inputRanges);
 
@@ -220,7 +223,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     crossfadeLength = juce::jmax (16, juce::roundToInt (sr * crossfadeMs * 0.001));
     const int type = juce::jlimit (0, numInputTypes - 1, (int) inputType->load());
     const int engine = juce::jlimit (0, 1, (int) engineParam->load());
-    engines[0].configure (type, inputRanges[(size_t) type].lowHz, inputRanges[(size_t) type].highHz, engine);
+    engines[0].configure (type, inputRanges[(size_t) type].lowHz, inputRanges[(size_t) type].highHz, engine, inputRanges[(size_t) type].belowHz);
 
     historyTicks = juce::jmax (1, juce::roundToInt (sr * 0.005));
     historyPhase = 0;
@@ -333,7 +336,7 @@ void PluginProcessor::manageEngines() noexcept
     auto& next = engines[(size_t) (1 - activeEngine)];
     const auto startWarming = [&]
     {
-        next.configure (wantedType, inputRanges[(size_t) wantedType].lowHz, inputRanges[(size_t) wantedType].highHz, wantedMode);
+        next.configure (wantedType, inputRanges[(size_t) wantedType].lowHz, inputRanges[(size_t) wantedType].highHz, wantedMode, inputRanges[(size_t) wantedType].belowHz);
         warmLeft = next.getLatency() + juce::roundToInt (sr * warmExtraMs * 0.001);
         handover = Handover::warming;
     };

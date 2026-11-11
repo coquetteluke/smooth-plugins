@@ -1043,7 +1043,8 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
     if (marking)
         std::fill (s.firmAdded.begin(), s.firmAdded.end(), 0.0f);
 
-    const bool together = marking && harmonics && sparseLift > 0.0f;
+    // Only while the newest look at the spectrum found clear harmonics, not while an old spacing is being held through an S.
+    const bool together = marking && harmonics && sparseLift > 0.0f && spacingHeld >= spacingHoldHops;
     const float togetherDrop = sparseLift + std::min (togetherExtra * sparseLift, togetherExtraMaxDb);
 
     if (harmonics)

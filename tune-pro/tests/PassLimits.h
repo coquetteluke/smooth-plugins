@@ -135,4 +135,5 @@ namespace prolimits
     constexpr double lineSettleCents = 15.0;          // the output's median from the nearer note: it has settled on one
     constexpr double flatStepMs = 20.0;               // a semitone step landing 25 cents flat reaches the new note no later than in 1.5.1 (10 ms, 4 in High Quality) plus 10
     constexpr double flatGlideStepMs = 14.0;          // the same step as a 60 ms glide: 1.5.1 reads 4 ms after the glide ends (2 in High Quality), plus 10
+    constexpr double slowSlideMs = 150.0;             // a held note sliding slowly across the line (13 cents per 100 ms) is on the new note within 150 ms of the line
 }

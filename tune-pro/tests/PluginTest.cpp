@@ -2038,6 +2038,39 @@ void testTargetHold()
         chk (ms <= (glideMs > 0.0 ? prolimits::flatGlideStepMs : prolimits::flatStepMs),
              std::string ("a step up a semitone landing 25 cents flat, ") + (glideMs > 0.0 ? "as a glide over 60 ms" : "at once") + ": time until the output is within 15 cents of the new note", ms, "ms");
     }
+    // 3. Added 2026-11-11 (third pass), before the change it tests: a held note that slides slowly onto the next note. Real take 09 at
+    // 97.0 s: his D3 slides down at about 13 cents per 100 ms near the line and settles on C#3 +20 cents; the target stayed on D3 until
+    // the voice had been 12 cents past the line for 80 ms, so most of the held note came out on D3 (a wrong note by the real vocal check,
+    // at 1.7.0's default and at Hard Tune). Here A3 is held 30 cents flat, slides down at 13 cents per 100 ms to 82 cents flat (G#3 +18)
+    // and stays there. Time from the voice crossing the line until the output is within 15 cents of G#3. Limit: 150 ms. A voice that
+    // has been on the far side of the line that long is on the other note: the 5.5 Hz waver of case 1 spends 82 ms of each cycle there,
+    // a 4 Hz one 113 ms, and 150 ms would be a waver of 3.3 Hz, slower than any vibrato.
+    {
+        auto p = make();
+        prepare (*p, 1, SR, 256);
+        const double flat = -30.0, low = -82.0, rate = 0.13;   // cents, cents, cents per ms
+        const double slideMs = (flat - low) / rate;
+        std::vector<double> f0;
+        const size_t hold = (size_t) (0.8 * SR), slide = (size_t) (slideMs * 0.001 * SR), after = (size_t) (0.7 * SR);
+        for (size_t i = 0; i < hold + slide + after; ++i)
+        {
+            const double c = i < hold ? flat : i < hold + slide ? flat + (low - flat) * (double) (i - hold) / (double) slide : low;
+            f0.push_back (220.0 * std::pow (2.0, c / 1200.0));
+        }
+        const auto x = voice::synth (f0, voice::vowelA, SR);
+        const auto out = mono (render (*p, x, 256));
+        const double delay = p->getLatencySamples() / SR, target = 220.0 * std::pow (2.0, -1.0 / 12.0), hop = 0.002;
+        const double crossing = 0.8 + (flat - (-50.0)) / rate * 0.001, from = crossing + delay;
+        const auto trace = pitchTrace (out.data(), (long) out.size(), SR, target, from, from + 0.6, hop, 0.12);
+        double ms = 600.0;
+        for (size_t i = 0; i + 10 < trace.size(); ++i)
+        {
+            bool ok = true;
+            for (size_t k = i; k < i + 10 && ok; ++k) ok = trace[k] > 0.0 && std::abs (cents (trace[k], target)) <= 15.0;
+            if (ok) { ms = (double) i * hop * 1000.0; break; }
+        }
+        chk (ms <= prolimits::slowSlideMs, "a held note sliding onto the next one at 13 cents per 100 ms: time from the line until the output is within 15 cents of the new note", ms, "ms");
+    }
 }
 
 // ----------------------------------------------------------------------------------- saved sessions and presets from 1.6.1

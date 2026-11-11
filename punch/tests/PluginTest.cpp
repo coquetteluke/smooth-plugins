@@ -8,6 +8,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <thread>
 #include "GoldenV010.h"
+#include "PunchEngine040.h"
 
 using namespace testkit;
 
@@ -313,8 +314,10 @@ static void testSteadyNotes()
         PluginProcessor p;
         check (p.apvts.getRawParameterValue ("steadyNotes")->load() < 0.5f, "Steady Notes is off by default");
         bool olderOff = true;
-        for (int i = 0; i < p.getNumPrograms(); ++i) { p.setCurrentProgram (i); olderOff = olderOff && p.apvts.getRawParameterValue ("steadyNotes")->load() < 0.5f; }
-        check (olderOff && p.getNumPrograms() == 14, "Steady Notes is off in all 14 presets", (double) p.getNumPrograms());
+        // 0.5.0 appended six presets for a lead vocal that have it on. The 14 that were there before keep it off, as this test has always asked.
+        for (int i = 0; i < 14; ++i) { p.setCurrentProgram (i); olderOff = olderOff && p.apvts.getRawParameterValue ("steadyNotes")->load() < 0.5f; }
+        check (olderOff && p.getNumPrograms() >= 14, "Steady Notes is off in all 14 presets that were there before 0.5.0", (double) p.getNumPrograms());
+        p.setCurrentProgram (0);
         setParam (p, "steadyNotes", 1.0f);
         check (p.isCurrentProgramEdited(), "turning it on shows the preset as edited");
         juce::MemoryBlock saved;
@@ -1246,7 +1249,7 @@ static void testNewPresets()
 {
     const double sr = 48000.0;
     const auto hot = speechShaped (sr, 5.0);
-    for (int preset = 7; preset < PluginProcessor().getNumPrograms(); ++preset)
+    for (int preset = 7; preset < 14; ++preset) // the seven that 0.2.0 added; the ones 0.5.0 added have their own test
     {
         PluginProcessor p;
         p.setCurrentProgram (preset);
@@ -1361,6 +1364,376 @@ namespace
         for (int i = from; i < to; ++i)
             sum += (double) punchview::toDb (hit.after[(size_t) i]) - (double) punchview::toDb (hit.before[(size_t) i]);
         return sum / juce::jmax (1, to - from);
+    }
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// 0.5.0. Steady Notes follows the note. Every limit below was written before the first run, from the limits of the real vocal checks
+// (~/smooth-plugins/_shared/realvox/src/extra/punch.cpp), on a made-up sung line that has exactly the parts a real one has.
+namespace
+{
+    // Times in seconds. A room (hiss at -70 dBFS and a 120 Hz hum at -64 dBFS) runs under everything.
+    //   0.30 to 1.50   note A: 196 Hz with vibrato, its level swinging 3 dB at 5 Hz, soft start. The voice stops in about 15 ms.
+    //   1.50 to 1.66   what is left of A: a dull breathy sound 20 dB under the note, dying away
+    //   1.75 to 2.15   a breath, 26 dB under the note, 250 ms after it
+    //   2.35           a mouth sound: a 2 ms tick, 30 dB under the note
+    //   2.60 to 3.40   note B, 10 dB quieter than A, hard start; at 3.00 it drops 5 dB and holds (two syllables on one breath)
+    //   3.46 to 3.86   a breath straight after B
+    //   3.90 to 4.40   the room alone
+    std::vector<float> sungLine (double sr)
+    {
+        const double twoPi = juce::MathConstants<double>::twoPi, pi = juce::MathConstants<double>::pi;
+        const int n = (int) (sr * 4.4);
+        std::vector<float> x ((size_t) n, 0.0f);
+        std::mt19937 g (21); std::uniform_real_distribution<float> d (-1.0f, 1.0f);
+        for (int i = 0; i < n; ++i)
+            x[(size_t) i] = 0.0003f * d (g) + (float) (0.0006 * std::sin (twoPi * 120.0 * i / sr));
+
+        const auto voiced = [&] (double from, double to, double f0, double swingDb, bool soft, const std::function<double (double)>& amp)
+        {
+            double phase = 0.0;
+            for (int i = (int) (from * sr); i < (int) ((to + 0.06) * sr) && i < n; ++i)
+            {
+                const double t = i / sr - from;
+                phase += twoPi * f0 * std::pow (2.0, 0.5 / 12.0 * std::sin (twoPi * 5.5 * t)) / sr;
+                double env = 1.0;
+                if (soft && t < 0.03) env = 0.5 - 0.5 * std::cos (pi * t / 0.03);
+                if (i / sr > to) env = std::exp (-(i / sr - to) / 0.004);
+                const double swing = std::pow (10.0, 0.5 * swingDb * std::sin (twoPi * 5.0 * t) / 20.0);
+                double v = 0.0;
+                for (int h = 1; h <= 6; ++h) v += std::sin (h * phase) / h;
+                x[(size_t) i] += (float) (amp (t) * env * swing * v);
+            }
+        };
+        // Dull noise through a one pole low pass. slow: rises and falls like a breath. Otherwise it starts at once and dies away.
+        const auto airy = [&] (double from, double to, double amp, double cutoff, bool slow)
+        {
+            const double k = 1.0 - std::exp (-twoPi * cutoff / sr);
+            double lp = 0.0;
+            for (int i = (int) (from * sr); i < (int) (to * sr) && i < n; ++i)
+            {
+                const double t = i / sr - from, len = to - from;
+                lp += k * ((double) d (g) - lp);
+                const double env = slow ? 0.5 - 0.5 * std::cos (twoPi * t / len) : std::exp (-t / (len / 2.0));
+                x[(size_t) i] += (float) (amp * 3.0 * env * lp);
+            }
+        };
+        voiced (0.3, 1.5, 196.0, 3.0, true, [] (double) { return 0.2; });
+        airy (1.5, 1.66, 0.02, 1500.0, false);
+        airy (1.75, 2.15, 0.01, 2500.0, true);
+        for (int i = (int) (2.35 * sr); i < (int) (2.352 * sr); ++i)
+            x[(size_t) i] += (float) (0.02 * std::exp (-(i / sr - 2.35) / 0.0005) * d (g));
+        voiced (2.6, 3.4, 220.0, 0.0, false, [] (double t) { return 0.063 * (t < 0.4 ? 1.0 : (t < 0.42 ? 1.0 - 0.44 * (t - 0.4) / 0.02 : 0.56)); });
+        airy (3.46, 3.86, 0.004, 2500.0, true);
+        return x;
+    }
+
+    struct LineNumbers { double held, tail, breath, tick, startB, legato, breathAfter, room; };
+
+    LineNumbers measureLine (const std::vector<float>& in, const Settings& s, double sr = 48000.0)
+    {
+        int lat = 0;
+        const auto out = process (in, s, sr, 512, &lat);
+        const auto change = [&] (double from, double to)
+        {
+            const int a = (int) (from * sr), len = (int) ((to - from) * sr);
+            return windowRmsDb (out, a + lat, len) - windowRmsDb (in, a, len);
+        };
+        const auto worst = [&] (double from, double to)
+        {
+            double w = 0.0;
+            for (double t = from; t + 0.01 <= to + 1.0e-9; t += 0.01) w = std::max (w, std::abs (change (t, t + 0.01)));
+            return w;
+        };
+        return { worst (0.5, 1.4), change (1.52, 1.65), change (1.75, 2.15), change (2.348, 2.355), change (2.6, 2.615), worst (3.02, 3.38), change (3.46, 3.86), change (3.95, 4.35) };
+    }
+}
+
+static void testSteadyVoice()
+{
+    const double sr = 48000.0;
+    const auto line = sungLine (sr);
+    for (float v : { 9.0f, -9.0f })
+    {
+        Settings s; s.sustain = v; s.steadyNotes = 1.0f;
+        const auto m = measureLine (line, s);
+        const std::string tag = "Steady Notes, Sustain " + std::to_string ((int) v) + " on a sung line: ";
+        check (m.held <= 1.0, tag + "largest change of the held note", m.held, "dB");
+        check (v > 0 ? m.tail >= 4.5 : m.tail <= -4.5, tag + "the 20 to 150 ms after the voice stops", m.tail, "dB");
+        check (std::abs (m.startB) <= 1.0, tag + "first 15 ms of the next, quieter note", m.startB, "dB");
+        check (std::abs (m.breath) <= 1.0, tag + "a breath a quarter of a second after the note", m.breath, "dB");
+        check (std::abs (m.room) <= 0.5, tag + "the room and its hum on their own", m.room, "dB");
+        Settings off = s; off.steadyNotes = 0.0f;
+        const auto o = measureLine (line, off);
+        info ("  without Steady Notes, the same: held note", o.held, "dB");
+        info ("  without Steady Notes, the same: after the voice stops", o.tail, "dB");
+        info ("  without Steady Notes, the same: the breath", o.breath, "dB");
+    }
+    for (float v : { 6.0f, -6.0f })
+    {
+        Settings s; s.sustain = v; s.steadyNotes = 1.0f;
+        const auto m = measureLine (line, s);
+        const std::string tag = "Steady Notes, Sustain " + std::to_string ((int) v) + " on a sung line: ";
+        check (m.legato <= 1.0, tag + "largest change of a syllable that is 5 dB quieter than the one before, on the same breath", m.legato, "dB");
+        if (v > 0)
+        {
+            check (m.breath <= 1.0, tag + "a breath a quarter of a second after the note", m.breath, "dB");
+            check (m.breathAfter <= 3.0, tag + "a breath straight after the note, all of it", m.breathAfter, "dB");
+            check (std::abs (m.tick) <= 1.0, tag + "a mouth sound between phrases", m.tick, "dB");
+        }
+    }
+    // Other rates: the tail is still found and the held note still left alone.
+    for (double rate : { 44100.0, 96000.0 })
+    {
+        Settings s; s.sustain = 9.0f; s.steadyNotes = 1.0f;
+        const auto m = measureLine (sungLine (rate), s, rate);
+        const std::string tag = "Steady Notes, Sustain 9 at " + std::to_string ((int) rate) + " Hz: ";
+        check (m.held <= 1.0, tag + "largest change of the held note", m.held, "dB");
+        check (m.tail >= 4.5, tag + "the 20 to 150 ms after the voice stops", m.tail, "dB");
+        check (std::abs (m.breath) <= 1.0, tag + "a breath a quarter of a second after the note", m.breath, "dB");
+    }
+    // Steady Notes with nothing else set changes nothing at all.
+    {
+        Settings s; s.steadyNotes = 1.0f;
+        int lat = 0;
+        const auto out = process (line, s, sr, 512, &lat);
+        const double residual = nullDb (out, line, lat, 0, (int) line.size() - lat, rms (line.data(), (int) line.size()));
+        check (residual <= -120.0, "Steady Notes on with every other control at its default: difference from the input", residual, "dB");
+    }
+}
+
+// The pitch sense on its own: a voice is found within 80 ms and lost within 40 ms of its end; noise and silence have no pitch.
+static void testPitchSense()
+{
+    const double sr = 48000.0, twoPi = juce::MathConstants<double>::twoPi;
+    for (double f0 : { 82.0, 110.0, 440.0, 880.0 })
+    {
+        PitchSense ps;
+        ps.prepare (sr);
+        int foundAt = -1, lostAt = -1;
+        const int on = (int) (0.2 * sr), off = (int) (0.8 * sr), n = (int) (1.0 * sr);
+        for (int i = 0; i < n; ++i)
+        {
+            double v = 0.0;
+            if (i >= on && i < off)
+                for (int h = 1; h <= 5; ++h) v += 0.1 * std::sin (twoPi * f0 * h * (i - on) / sr) / h;
+            ps.push ((float) v);
+            if (foundAt < 0 && ps.voiced) foundAt = i;
+            if (foundAt >= 0 && lostAt < 0 && i >= off && ! ps.voiced) lostAt = i;
+        }
+        const std::string tag = "pitch sense, " + std::to_string ((int) f0) + " Hz: ";
+        check (foundAt >= on && foundAt <= on + (int) (0.08 * sr), tag + "found after", foundAt >= 0 ? 1000.0 * (foundAt - on) / sr : -1.0, "ms");
+        check (lostAt >= off && lostAt <= off + (int) (0.04 * sr), tag + "lost after the end", lostAt >= 0 ? 1000.0 * (lostAt - off) / sr : -1.0, "ms");
+    }
+    {
+        PitchSense ps;
+        ps.prepare (sr);
+        std::mt19937 g (9); std::uniform_real_distribution<float> d (-1.0f, 1.0f);
+        long voiced = 0; const long n = (long) (4.0 * sr);
+        for (long i = 0; i < n; ++i) { ps.push (0.1f * d (g)); voiced += ps.voiced ? 1 : 0; }
+        check (100.0 * voiced / n <= 2.0, "pitch sense, white noise: share of the time it finds a pitch", 100.0 * voiced / n, "%");
+        PitchSense quiet;
+        quiet.prepare (sr);
+        long any = 0;
+        for (long i = 0; i < (long) sr; ++i) { quiet.push (0.0f); any += quiet.voiced ? 1 : 0; }
+        check (any == 0, "pitch sense, silence: no pitch", (double) any);
+    }
+}
+
+// Punch with Steady Notes: a held note whose peaks move while its level does not must keep its level, from the first word of a phrase on.
+// The note: three harmonics whose phases turn against each other, so the crest factor moves and the level over 30 ms does not. Two
+// phrases with a pause between; the second is measured, from 150 ms after its start (the first is where the level match is learned).
+static void testSteadyPunch()
+{
+    const double sr = 48000.0, twoPi = juce::MathConstants<double>::twoPi, pi = juce::MathConstants<double>::pi;
+    const int n = (int) (sr * 4.9);
+    std::vector<float> in ((size_t) n, 0.0f);
+    for (int i = 0; i < n; ++i)
+    {
+        const double t = i / sr;
+        const bool first = t >= 0.3 && t < 1.8, second = t >= 2.6 && t < 4.6;
+        if (! first && ! second) continue;
+        const double u = t - (first ? 0.3 : 2.6), turn = 0.5 * pi * (1.0 - std::cos (twoPi * 1.5 * u));
+        const double p = twoPi * 150.0 * u;
+        in[(size_t) i] = (float) (0.15 * (std::sin (p) + 0.8 * std::sin (2.0 * p + turn) + 0.6 * std::sin (3.0 * p + 2.0 * turn)));
+    }
+    for (float amount : { 50.0f, 100.0f })
+        for (float on : { 1.0f, 0.0f })
+        {
+            Settings s; s.punch = amount; s.steadyNotes = on;
+            int lat = 0;
+            const auto out = process (in, s, sr, 512, &lat);
+            double inLo = 1e9, inHi = -1e9, outLo = 1e9, outHi = -1e9;
+            for (int w = 275; w + 3 <= 455; ++w) // 2.75 to 4.55 s, 30 ms windows every 10 ms
+            {
+                const double a = windowRmsDb (in, w * 480, 1440), b = windowRmsDb (out, w * 480 + lat, 1440);
+                inLo = std::min (inLo, a); inHi = std::max (inHi, a); outLo = std::min (outLo, b); outHi = std::max (outHi, b);
+            }
+            const double added = (outHi - outLo) - (inHi - inLo);
+            const double level = windowRmsDb (out, (int) (2.75 * sr) + lat, (int) (1.8 * sr)) - windowRmsDb (in, (int) (2.75 * sr), (int) (1.8 * sr));
+            const std::string tag = "Punch " + std::to_string ((int) amount) + (on > 0.5f ? " with Steady Notes" : " without Steady Notes") + ", a held note whose peaks move: ";
+            if (on > 0.5f)
+            {
+                check (added <= 1.5, tag + "level swing added", added, "dB");
+                check (std::abs (level) <= 1.0, tag + "level against the input", level, "dB");
+            }
+            else
+            {
+                info (tag + "level swing added", added, "dB");
+                info (tag + "level against the input", level, "dB");
+            }
+        }
+}
+
+// Attack with Steady Notes: a jump of the peaks inside a held note is not a start. The note: six harmonics of 150 Hz whose phases change at
+// one moment, so the peaks rise by about 3 dB while the level stays where it is (on Luke's takes such jumps were 1.6 to 4.8 dB). Limits
+// written before the first run: with Steady Notes the 10 ms around the jump move by under 1 dB at Attack +9 and -9, and the start of the
+// note itself still moves by at least 6 dB of the 9, as in the Attack test.
+static void testSteadyAttack()
+{
+    const double sr = 48000.0, twoPi = juce::MathConstants<double>::twoPi;
+    const int n = (int) (sr * 2.0), on = (int) (sr * 0.3), jump = (int) (sr * 1.0);
+    std::vector<float> in ((size_t) n, 0.0f);
+    for (int i = on; i < (int) (sr * 1.7); ++i)
+    {
+        const double p = twoPi * 150.0 * (i - on) / sr, k = i < jump ? 0.5236 : 0.2;
+        double v = 0.0;
+        for (int h = 1; h <= 6; ++h) v += std::cos (h * p + k * h * h);
+        in[(size_t) i] = (float) (0.03 * v);
+    }
+    info ("a held note whose peaks jump: the jump of the peak", toDb (peak (in.data() + jump, 4800)) - toDb (peak (in.data() + jump - 4800, 4800)), "dB");
+    info ("a held note whose peaks jump: the jump of the level", windowRmsDb (in, jump, 4800) - windowRmsDb (in, jump - 4800, 4800), "dB");
+    for (float v : { 9.0f, -9.0f })
+        for (float steady : { 1.0f, 0.0f })
+        {
+            Settings s; s.attack = v; s.steadyNotes = steady;
+            int lat = 0;
+            const auto out = process (in, s, sr, 512, &lat);
+            double worst = 0.0;
+            for (int w = -5; w < 30; ++w) // 50 ms before the jump to 300 ms after, 10 ms at a time
+                worst = std::max (worst, std::abs (windowRmsDb (out, jump + w * 480 + lat, 480) - windowRmsDb (in, jump + w * 480, 480)));
+            const double start = windowRmsDb (out, on + lat, 144) - windowRmsDb (in, on, 144);
+            const std::string tag = std::string ("Attack ") + std::to_string ((int) v) + (steady > 0.5f ? " with Steady Notes" : " without Steady Notes") + ", a held note whose peaks jump: ";
+            if (steady > 0.5f)
+            {
+                check (worst <= 1.0, tag + "largest change around the jump", worst, "dB");
+                check (start * (v > 0 ? 1.0 : -1.0) >= 6.0, tag + "first 3 ms of the note", start, "dB");
+            }
+            else
+            {
+                info (tag + "largest change around the jump", worst, "dB");
+                info (tag + "first 3 ms of the note", start, "dB");
+            }
+        }
+}
+
+// Off stays off. With Steady Notes off the detector is the one 0.4.0 shipped, sample for sample: both run side by side on speech and on
+// bursts at the settings of each of the 14 presets that were there before 0.5.0, and at everything turned up. Not one gain may differ.
+static void testOffStaysOff()
+{
+    const double sr = 48000.0;
+    auto sound = speechShaped (sr, 6.0);
+    const auto bursts = burstTrain (sr, 0.5, 2.0, Tone::noise, 0.25, 0.08);
+    sound.insert (sound.end(), bursts.begin(), bursts.end());
+    struct Case { std::string name; float punch, attack, sustain, impact, gain; };
+    std::vector<Case> cases;
+    for (int i = 0; i < 14; ++i)
+    {
+        PluginProcessor p;
+        p.setCurrentProgram (i);
+        const auto v = [&p] (const char* id) { return p.apvts.getRawParameterValue (id)->load(); };
+        cases.push_back ({ p.getProgramName (i).toStdString(), v ("punch") * 0.01f, v ("attack"), v ("sustain"), v ("impact") * 0.01f, v ("gain") });
+    }
+    cases.push_back ({ "everything turned up", 1.0f, 15.0f, 15.0f, 1.0f, 12.0f });
+    cases.push_back ({ "everything turned down", 0.37f, -15.0f, -15.0f, 0.5f, -12.0f });
+    long differing = 0, compared = 0;
+    for (const auto& c : cases)
+    {
+        PunchEngine now;
+        v040::PunchEngine then;
+        now.prepare (sr); then.prepare (sr);
+        now.reset (c.punch); then.reset (c.punch);
+        const float inGain = PunchEngine::dbToGain (c.gain);
+        long here = 0;
+        for (float x : sound)
+        {
+            const float a = now.process (std::abs (x) * inGain, c.attack, c.sustain, c.punch, c.impact, false, x);
+            const float b = then.process (std::abs (x) * inGain, c.attack, c.sustain, c.punch, c.impact, false, x);
+            if (a != b || now.impactReductionNowDb() != then.impactReductionNowDb()) ++here;
+            ++compared;
+        }
+        differing += here;
+        if (here != 0) check (false, "Steady Notes off, " + c.name + ": gains that differ from 0.4.0's detector", (double) here);
+    }
+    check (differing == 0 && compared > 5000000, "Steady Notes off: the detector's gain is 0.4.0's, sample for sample, at all 14 older presets and both extremes; samples that differ", (double) differing);
+    // And it comes back to that after Steady Notes has been on for a while and is turned off again, once the old envelopes have settled.
+    {
+        PunchEngine now;
+        v040::PunchEngine then;
+        now.prepare (sr); then.prepare (sr);
+        now.reset (0.3f); then.reset (0.3f);
+        long late = 0;
+        for (size_t i = 0; i < sound.size(); ++i)
+        {
+            const bool steady = i > sound.size() / 6 && i < sound.size() / 3;
+            const float a = now.process (std::abs (sound[i]), 2.5f, 6.0f, 0.3f, 0.0f, steady, sound[i]);
+            const float b = then.process (std::abs (sound[i]), 2.5f, 6.0f, 0.3f, 0.0f, false, sound[i]);
+            if (i > sound.size() * 2 / 3 && std::abs (a - b) > 0.01f) ++late;
+        }
+        check (late == 0, "Steady Notes switched on and off again: 2.5 s later the gain is within 0.01 dB of a detector that never had it on; samples further off", (double) late);
+    }
+}
+
+// The six presets 0.5.0 added for a lead vocal: at the end of the list, Steady Notes on, the values written here, names that are new.
+static void testLeadPresets()
+{
+    struct Want { const char* name; float punch, attack, sustain, mix, gain, impact, ceiling; bool ceilingOn; };
+    const Want wants[] = {
+        { "Lead Gentle",          12.0f,  1.5f,  0.0f, 100.0f, 0.0f,  0.0f, -1.0f, false },
+        { "Lead Upfront",         20.0f,  2.5f,  0.0f, 100.0f, 0.0f, 35.0f, -1.0f, true },
+        { "Lead Rap",             15.0f,  2.5f, -2.0f, 100.0f, 0.0f, 50.0f, -1.0f, true },
+        { "Lead Soft Consonants", 10.0f, -5.0f,  1.5f, 100.0f, 0.0f,  0.0f, -1.0f, false },
+        { "Lead Long Tails",      10.0f,  0.0f,  6.0f, 100.0f, 0.0f,  0.0f, -1.0f, false },
+        { "Lead Dry And Close",   10.0f,  1.5f, -6.0f, 100.0f, 0.0f,  0.0f, -1.0f, false },
+    };
+    PluginProcessor p;
+    check (p.getNumPrograms() == 20, "there are 20 presets: the 14 from before and six for a lead vocal", (double) p.getNumPrograms());
+    const char* older[] = { "Neutral", "Vocal Forward", "Soft Consonants", "Dry And Close", "Longer Tails", "Drum Snap", "Parallel Weight", "Even Lead", "Rap Upfront",
+                            "Quiet Take Lift", "Spoken Word", "Full Level Hook", "Parallel Impact", "Ceiling Only" };
+    bool sameOrder = true;
+    for (int i = 0; i < 14; ++i) sameOrder = sameOrder && p.getProgramName (i) == older[i];
+    check (sameOrder, "the 14 older presets keep their numbers and names");
+    const auto line = sungLine (48000.0);
+    for (int i = 0; i < 6; ++i)
+    {
+        const auto& w = wants[i];
+        p.setCurrentProgram (14 + i);
+        const auto v = [&p] (const char* id) { return p.apvts.getRawParameterValue (id)->load(); };
+        const bool values = std::abs (v ("punch") - w.punch) < 0.01f && std::abs (v ("attack") - w.attack) < 0.01f && std::abs (v ("sustain") - w.sustain) < 0.01f
+                         && std::abs (v ("mix") - w.mix) < 0.01f && std::abs (v ("gain") - w.gain) < 0.01f && std::abs (v ("impact") - w.impact) < 0.01f
+                         && std::abs (v ("ceiling") - w.ceiling) < 0.01f && (v ("ceilingOn") > 0.5f) == w.ceilingOn;
+        check (p.getProgramName (14 + i) == w.name && values && v ("steadyNotes") > 0.5f && ! p.isCurrentProgramEdited(),
+               std::string ("preset ") + std::to_string (14 + i) + " is " + w.name + ", with its values and Steady Notes on");
+        // On the made-up sung line: no more than 1.5 dB of level swing added to the held note, nothing over 0 dBFS, no bad samples.
+        Settings s; s.punch = w.punch; s.attack = w.attack; s.sustain = w.sustain; s.mix = w.mix; s.gain = w.gain; s.impact = w.impact; s.ceiling = w.ceiling;
+        s.ceilingOn = w.ceilingOn ? 1.0f : 0.0f; s.steadyNotes = 1.0f;
+        int lat = 0;
+        const auto out = process (line, s, 48000.0, 512, &lat);
+        // The level swing of the held note that the input does not have, as the real vocal check reads it: the swing of the output's
+        // level less the swing of the input's. (A first version of this test read the swing of the gain, which a level rider such as
+        // Impact has by design: it moves against the note's own swing and makes it smaller. Changed after its first run; the limit is the same.)
+        double inLo = 1e9, inHi = -1e9, outLo = 1e9, outHi = -1e9;
+        for (int k = 80; k + 3 <= 140; ++k) // 0.8 to 1.4 s of note A, 30 ms windows
+        {
+            const double a = windowRmsDb (line, k * 480, 1440), b = windowRmsDb (out, k * 480 + lat, 1440);
+            inLo = std::min (inLo, a); inHi = std::max (inHi, a); outLo = std::min (outLo, b); outHi = std::max (outHi, b);
+        }
+        const double added = (outHi - outLo) - (inHi - inLo);
+        bool finite = true;
+        for (float y : out) finite = finite && std::isfinite (y);
+        check (added <= 1.5, std::string ("preset ") + w.name + ": level swing added to the held note of the sung line", added, "dB");
+        check (finite && peak (out.data(), (int) out.size()) <= 1.0, std::string ("preset ") + w.name + ": peak of the sung line", toDb (peak (out.data(), (int) out.size())), "dBFS");
     }
 }
 
@@ -1713,6 +2086,14 @@ void testWindow()
         check (box != nullptr, "the preset box is found");
         if (box != nullptr)
         {
+            // Every name fits in the box, with ", edited" after it, in the box's own font: nothing is cut short.
+            const auto nameFont = ui::font (ui::Weight::medium, 14.0f);
+            const float room = (float) box->getWidth() - 2.0f * 30.0f;
+            float widest = 0.0f;
+            for (int i = 0; i < p.getNumPrograms(); ++i)
+                widest = juce::jmax (widest, juce::GlyphArrangement::getStringWidth (nameFont, p.getProgramName (i) + ", edited"));
+            check (p.getNumPrograms() == 20 && widest > 100.0f && widest <= room, "all 20 preset names fit in the preset box, edited or not; widest in points", (double) widest);
+            info ("  room for a name in the preset box", (double) room, "points");
             box->choose (8);
             check (std::abs (realValue (p, "impact") - 55.0f) < 0.06f && box->getShownName() == "Rap Upfront", "choosing a preset sets it and shows its name: " + box->getShownName().toStdString());
             setParam (p, "attack", 9.0f);
@@ -1995,6 +2376,12 @@ int main()
     testMeters();
     testSameAsFirstVersion();
     testNewPresets();
+    testPitchSense();
+    testSteadyVoice();
+    testSteadyPunch();
+    testSteadyAttack();
+    testOffStaysOff();
+    testLeadPresets();
     testEnvelopeTap();
     testHitDisplayNumbers();
     testWindow();

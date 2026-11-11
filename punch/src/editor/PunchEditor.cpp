@@ -103,7 +103,7 @@ PunchEditor::PunchEditor (PluginProcessor& p)
       impact (p.apvts, "impact", "Impact", "Evens out the performance and raises it. Use with the Ceiling on.", BarSlider::Size::regular, percent),
       ceiling (p.apvts, "ceiling", "Ceiling", "The most the output can reach while On is lit.", BarSlider::Size::regular, [] (float v) { return minusText (v, 1) + " dB"; }),
       ceilingOn (p.apvts, "ceilingOn", "On", "Turns the Ceiling on or off."),
-      steadyNotes (p.apvts, "steadyNotes", "Steady", "For a voice: Sustain leaves held notes, new starts and S alone."),
+      steadyNotes (p.apvts, "steadyNotes", "Steady", "For a voice: Sustain and Punch leave held notes alone."),
       gain (p.apvts, "gain", "Gain", "Level in front of everything, for quiet takes. It drives Impact harder.", BarSlider::Size::regular, [] (float v) { return signedDb (v); }),
       mix (p.apvts, "mix", "Mix", "Blends the effect with the untouched sound.", BarSlider::Size::regular, percent)
 {
@@ -190,7 +190,7 @@ void PunchEditor::resized()
     // Top bar.
     auto bar = r.removeFromTop (60).withTrimmedTop (14).withTrimmedBottom (12);
     titleArea = bar.removeFromLeft (92);
-    presets.setBounds (bar.removeFromLeft (248));
+    presets.setBounds (bar.removeFromLeft (300)); // wide enough for the longest preset name with ", edited" after it
     bypass.setBounds (bar.removeFromRight (84));
 
     // The timeline runs the whole width.

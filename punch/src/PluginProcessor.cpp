@@ -21,6 +21,13 @@ namespace
         { "Full Level Hook", 15.0f,   2.0f,  0.0f, 100.0f,  0.0f, 70.0f, -0.5f, true },
         { "Parallel Impact",  0.0f,   0.0f,  0.0f,  50.0f,  0.0f, 90.0f, -1.0f, true },
         { "Ceiling Only",     0.0f,   0.0f,  0.0f, 100.0f,  0.0f,  0.0f, -1.0f, true },
+        // Added in 0.5.0, for a lead vocal, tuned on Luke's real takes. All have Steady Notes on. The 14 above are untouched.
+        { "Lead Gentle",          12.0f,  1.5f,  0.0f, 100.0f, 0.0f,  0.0f, -1.0f, false, true },
+        { "Lead Upfront",         20.0f,  2.5f,  0.0f, 100.0f, 0.0f, 35.0f, -1.0f, true,  true },
+        { "Lead Rap",             15.0f,  2.5f, -2.0f, 100.0f, 0.0f, 50.0f, -1.0f, true,  true },
+        { "Lead Soft Consonants", 10.0f, -5.0f,  1.5f, 100.0f, 0.0f,  0.0f, -1.0f, false, true },
+        { "Lead Long Tails",      10.0f,  0.0f,  6.0f, 100.0f, 0.0f,  0.0f, -1.0f, false, true },
+        { "Lead Dry And Close",   10.0f,  1.5f, -6.0f, 100.0f, 0.0f,  0.0f, -1.0f, false, true },
     };
 
     constexpr float smoothSeconds = 0.02f;
@@ -54,7 +61,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "ceiling", 1 }, "Ceiling", NormalisableRange<float> (-24.0f, 0.0f, 0.1f), -1.0f,
                                                        AudioParameterFloatAttributes().withLabel ("dBFS")));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "ceilingOn", 1 }, "Ceiling On", false));
-    // Added in 0.4.0. Off leaves Sustain exactly as it was, so every older session and preset sounds the same.
+    // Added in 0.4.0. Off leaves Sustain and Punch exactly as they were, so every older session and preset sounds the same.
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "steadyNotes", 1 }, "Steady Notes", false));
     return layout;
 }

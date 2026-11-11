@@ -11,7 +11,11 @@ In your host: Audio Units > Luke Garito > Punch. AU code `aufx SPun Luke`. Mono 
 - **Punch** (0 to 100 %, default 0): amount of fast compression, level matched. The threshold follows the loudest recent level, so it does the same job on a quiet track as on a loud one. Up to 36 dB below that peak at 10 to 1 at the top of the control.
 - **Attack** (-15 to +15 dB, default 0): boosts or cuts the start of a sound. Full effect for about the first 5 ms, gone by about 30 ms.
 - **Sustain** (-15 to +15 dB, default 0): boosts or cuts the tail, as a sound dies away. Starts after about 15 ms. A steady sound has no tail, so it is left alone.
-- **Steady Notes** (default off): Sustain for a voice. A sung note is never quite steady, and without this Sustain treats every small sag of a held vowel as a tail and moves the note in and out. On, a sound that has kept its level for 60 ms may sag by 4 dB before Sustain acts, a sharp start counts as a new sound and not as the tail of the one before, and bright sounds such as an S are left alone. Off, Sustain is exactly what it was. It only changes anything when Sustain is not 0.
+- **Steady Notes** (default off): Sustain and Punch for a voice. Off, both are exactly what they were. On:
+  - **Sustain follows the note.** A note is a sound with a pitch. While it has its pitch it may sag by 6 dB before Sustain acts, so a held vowel stays still and only a note that is really dying away is shaped. The tail is what comes right after the pitch stops: a boost stays on it for about 70 ms and is gone by about 105 ms, a cut stays for about 110 ms and is gone by 130 ms. A breath, a mouth sound, the room or the start of the next phrase after that is not the word's tail and is left alone. A boost also leaves bright sounds such as an S alone. A sound with no note before it gets nothing from Sustain.
+  - **Punch reads a held note by its level, not by every peak**, and its level match is learned on the voice and then held, so a held note keeps one gain from the first word of a phrase on. The match is given to a sound by how near it is to the level Punch works at, so the room and a far-off breath are not lifted with the voice.
+  - **Attack leaves a held note alone.** Inside a note that is sounding, the peaks jump by a few dB now and then while the level stays put. A start there has to rise 4 dB before Attack acts. The first sound after a pause is shaped exactly as before.
+  - With every other control at its default it changes nothing at all.
 - **Mix** (0 to 100 %, default 100): blend with the dry signal, which is delayed by the same 2 ms.
 - **Bypass**: fades to the input, delayed by the same 2 ms. Takes Gain and Ceiling out too.
 - **Gain** (-12 to +24 dB, default 0): level in front of everything, for quiet takes. It moves dry and wet alike, so Mix 0 still carries it. Attack, Sustain and Punch ignore level, so it does not change them. It does drive Impact harder.
@@ -26,7 +30,7 @@ Read only, for a host to read by name. They never write automation and are never
 - **Impact Reduction**: how far Impact is pulling down, before its makeup, in dB.
 - **Ceiling Reduction**: how far the ceiling is pulling down, in dB.
 
-Not on the panel, fixed by design: 15 ms peak hold for the shaper and 8 ms for Punch, which is what keeps steady low tones clean. Punch releases in about 8 ms after its hold. Both channels share one gain, so the stereo image stays put.
+Not on the panel, fixed by design: 15 ms peak hold for the shaper and 8 ms for Punch, which is what keeps steady low tones clean. Punch releases in about 8 ms after its hold. Both channels share one gain, so the stereo image stays put. Steady Notes hears pitch the way a pitch tracker does: every 5 ms, the last 20 ms against the same 20 ms one period earlier, for periods from 1100 Hz down to 60 Hz. A note has to keep its pitch for 80 ms to count, and is over when the pitch stops or the level has sunk 24 dB under the note's own.
 
 ## The window
 
@@ -66,7 +70,53 @@ These add Gain, Impact and Ceiling, with Ceiling On:
 - **Parallel Impact**: 0, 0, 0, 50. Gain 0, Impact 90, Ceiling -1.
 - **Ceiling Only**: 0, 0, 0, 100. Gain 0, Impact 0, Ceiling -1.
 
-Steady Notes is off in every preset. Turn it on by hand with any preset that uses Sustain.
+For a lead vocal, added in 0.5.0, all with Steady Notes on (Punch, Attack, Sustain, Mix, then what else is set):
+
+- **Lead Gentle**: 12, +1.5, 0, 100. A little edge on each word, nothing else moved.
+- **Lead Upfront**: 20, +2.5, 0, 100. Impact 35, Ceiling -1, Ceiling On. Forward and evened out. Raises the level by about 8 dB.
+- **Lead Rap**: 15, +2.5, -2, 100. Impact 50, Ceiling -1, Ceiling On. Tight and loud. Raises the level by 10 to 12 dB.
+- **Lead Soft Consonants**: 10, -5, +1.5, 100. Softens hard starts.
+- **Lead Long Tails**: 10, 0, +6, 100. Lifts the end of each word, not the held note and not the breath after it.
+- **Lead Dry And Close**: 10, +1.5, -6, 100. Shortens the end of each word.
+
+Steady Notes is off in the 14 presets above these, exactly as before, and their numbers in the list have not changed. Turn it on by hand with any of them that uses Sustain or Punch.
+
+### Which preset on a lead vocal
+
+**Load Lead Gentle.** It is the lightest of the six lead presets, and all six meet every limit of the real vocal checks on every one of Luke's working set takes, sung and rap: no level change, held notes left still, S, breaths and mouth sounds not raised. If the take also needs evening out and raising, use Lead Upfront (or Lead Rap for rap) and turn the next plug-in's input down by what it adds.
+
+How the 14 older presets did on the same takes (Rode session, 11 working set takes, numbers from 0.3.1, which is how they still sound):
+
+| preset | for | what the takes showed |
+|---|---|---|
+| Neutral | anything | changes nothing: the output is the input 2 ms later |
+| Even Lead | a lead vocal | meets every limit on all 11 takes; raises the level by 9 to 10 dB |
+| Rap Upfront | a lead vocal, rap or sung | meets every limit on 9 of 11 takes (S +2.2 dB on one, held swing 1.7 dB on one); raises the level by 10 to 12 dB |
+| Ceiling Only | a safety net | does nothing until a peak reaches -1 dBFS |
+| Vocal Forward | a voice that has no de-esser after it | S comes up 2.2 to 3.5 dB against the vowels on all 11 takes; nothing else fails |
+| Soft Consonants | a voice, nearly | S +2.0 to +2.2 dB on 4 takes, held notes wobble on 2. Lead Soft Consonants is the version that passes |
+| Dry And Close | drums and short sounds | held notes swing 5.9 to 6.8 dB on every take. Lead Dry And Close is the version for a voice |
+| Longer Tails | drums and short sounds | held notes swing 3.4 to 5.7 dB and S comes up 2.7 to 4.3 dB on every take. Lead Long Tails is the version for a voice |
+| Spoken Word | speech with few held notes | held notes swing 2.5 to 3.0 dB on every take |
+| Drum Snap | drums | raises peaks by up to 6.4 dB |
+| Parallel Weight | parallel use under a dry copy | breaths come up 3.5 to 11.1 dB and S 3.3 to 6.7 dB against the voice |
+| Parallel Impact | parallel use under a dry copy | breaths come up 6.2 to 8.6 dB on 6 takes |
+| Full Level Hook | a loud hook with a de-esser after it | S comes up 2.1 to 4.5 dB, consonant peaks 3.2 to 4.5 dB |
+| Quiet Take Lift | a quiet take only | adds 14 to 18 dB; the room comes up to about -39 dBFS |
+
+## On Luke's real takes
+
+Measured with `~/smooth-plugins/_shared/realvox` on the Rode session (17 takes of Luke singing and rapping whole songs; 11 are the working set, 6 were kept blind). Every limit was written before the run it was first used in. Full numbers, the blind set and the first session: `~/smooth-plugins/_vox/rode/work/punch/REPORT.md`.
+
+On the working set, 0.5.0, with Steady Notes on (limit in brackets):
+
+- Sustain +9 and -9: the 20 to 150 ms after a phrase ends +5.6 to +7.8 and -6.3 to -9.0 dB (at least 4.5 of the 9). Held vowels 0.00 dB (1.0). First 15 ms of phrase starts 0.00 dB (3.0 at the 90th percentile).
+- Sustain +6: breaths against the voice -0.1 to +1.3 dB (+3), mouth sounds -0.2 to 0.0 dB (+3), S -0.2 to 0.0 dB (+2).
+- Punch 50 and 100: level swing added to held vowels at most 0.56 and 0.64 dB (1.5). Without Steady Notes 1.68 and 4.10.
+- Attack +9 and -9: phrase starts 8.85 to 9.00 dB, held vowels 0.00 dB (1.0). Without Steady Notes 1.88 on one take.
+- All six lead presets meet every limit on all 11 takes.
+
+With Steady Notes off every one of these numbers is what it was in 0.3.1 and 0.4.0: Sustain moves held vowels by 7.2 to 9.0 dB, and so on. That is how Sustain has always sounded, and the 14 older presets still sound that way.
 
 ## Signal flow
 
@@ -91,7 +141,7 @@ The ceiling adds no latency. The sample going into the 2 ms delay comes out 2 ms
 
 ## What was measured
 
-All offline, in `tests/PluginTest.cpp`, with results in `tests/results.txt`. Pass limits were written before the first run. All tests use synthetic signals. **This does not prove how it sounds on a real voice.**
+All offline, in `tests/PluginTest.cpp`, with results in `tests/results.txt`. Pass limits were written before the first run. All tests use synthetic signals. **This does not prove how it sounds on a real voice.** For that see "On Luke's real takes" above.
 
 Decaying burst: instant onset, 100 ms decay time. Start means the first 3 ms, tail means 60 to 300 ms after the onset.
 
@@ -140,14 +190,28 @@ Added in 0.3.0, with limits written before the first run:
 - The drawn shape on a burst: Attack +9 draws +9.0 at the start and 0.0 in the tail. Sustain -9 draws -9.0 in the tail and 0.0 at the start.
 - Hits: 5 bursts make 5 hits at -30 dBFS, a steady tone makes 1, silence and a -60 dBFS tone make none, real speech makes about 2 a second.
 - 60 windows opened, painted and closed, 30 of them with audio running on another thread. One opens and paints before the host has prepared the plug-in. Frames and paints write no parameter and no automation. Ten seconds of silence from the host moves nothing.
-- Audio CPU through `_shared/bin/AuBench`: 0.6 to 0.7% default before and after. Window CPU: see `docs/window-cpu.md`, measured with `build/RenderWindow_artefacts/Release/RenderWindow --live`.
+- Audio CPU through `_shared/bin/AuBench`: 0.6 to 0.7% default before and after. With Steady Notes on, the pitch sense adds to it: over Luke's takes the worst block of a lead preset took 2.2 to 3.3% of one core, against 0.4 to 1.1% at the default. Window CPU: see `docs/window-cpu.md`, measured with `build/RenderWindow_artefacts/Release/RenderWindow --live`.
 - The pictures in `docs/window/` come from `RenderWindow`, with real speech going through the real processor. None of this has been opened in a real host window yet.
+
+Steady Notes on a made-up sung line (0.5.0): a held note at 196 Hz with vibrato and a 3 dB swing, the breathy sound left after it, a breath a quarter of a second later, a mouth sound, a quieter second note that drops 5 dB half way (two syllables on one breath), a breath straight after it, and a room that hisses and hums at 120 Hz under everything.
+
+- Sustain +9 and -9: the held note moves 0.00 dB. The 20 to 150 ms after the voice stops move +7.8 and -5.6 dB. The first 15 ms of the next note, the breath a quarter of a second later and the room on its own move 0.00 dB.
+- Sustain +6 and -6: the quieter syllable on the same breath moves 0.00 dB. At +6 the breath straight after the note moves +0.1 dB over its whole length and the mouth sound 0.00 dB.
+- The same at 44.1 and 96 kHz: held note 0.00 dB, after the voice stops at least +4.5 dB.
+- The pitch sense finds a voice of 82 to 880 Hz within 10 to 30 ms and loses it 25 to 30 ms after it ends. White noise: a pitch 0 % of the time.
+- Punch 50 and 100 on a held note whose peaks move while its level does not: 0.2 and 0.3 dB of level swing added with Steady Notes, 1.3 and 1.5 dB without. Level within 0.4 dB of the input.
+- Attack +9 and -9 on a held note whose peaks jump: the peaks jump 2.8 dB while the level stays put. Around the jump the level moves 0.0 dB with Steady Notes, 2.5 and 2.4 dB without. The first 3 ms of the note still move 9.0 dB.
+- Steady Notes off: the detector gives 0.4.0's gain sample for sample at all 14 older presets and at both extremes, on speech and bursts (a copy of 0.4.0's detector is kept in `tests/PunchEngine040.h` for this).
+- All 20 preset names fit in the preset box with ", edited" after them: the widest is 198 points, the room is 240.
 
 Limits to know about:
 
 - Sustain follows how fast a sound dies away. +9 dB gives 9.0 dB on a 30 ms decay, 7.5 on 300 ms and 2.6 on 1 second. Slower decays read as steady sounds.
-- Without Steady Notes, Sustain moves a held sung note: one swinging 3 dB at 5 Hz moves by 7.3 dB at Sustain +9. With it, 0.0 dB, and the note's tail still gets the full 9.0 dB. On Luke's real takes the numbers are in `~/smooth-plugins/_vox/rode/work/punch/REPORT.md`.
-- The picture of the last hit draws Steady Notes' held notes and new starts, but not its sparing of bright sounds, because the display only has levels.
+- Without Steady Notes, Sustain moves a held sung note: one swinging 3 dB at 5 Hz moves by 7.3 dB at Sustain +9. With it, 0.0 dB, and what follows the note still gets its gain.
+- Steady Notes hears a note by its pitch, so it is for a voice or anything else with a pitch. A drum has none: with Steady Notes on, Sustain does nothing to it. A room's hum has a pitch too, and is kept from counting as a note by its level: a note can only start within 6 dB of where the level is, and is over once it has sunk 24 dB under its own level.
+- With Steady Notes on, the very first phrase after the plug-in starts is where Punch's level match is learned, at the old speed. From the second phrase on a held note keeps one gain.
+- With Steady Notes on, a boost from Sustain lets go about 105 ms after the pitch stops and a cut about 130 ms after. A long reverb tail after a note is shaped for that long and no longer.
+- The picture of the last hit is drawn from levels, and a level has no pitch. With Steady Notes on, a preview treats every sound as a note, so it shows the held part left alone and the tail shaped, but it cannot show a breath or an S being spared.
 - Level match needs a moment. At Punch 50, the first hit after a long silence is 2.7 dB quieter than the input, the second 0.6 dB, the fifth 0.0 dB.
 - At high Punch, the level match lifts quiet tails a lot, including any noise in them.
 - Boosting Attack raises peaks. With Ceiling On off there is no limit on the output, so watch the level after it.

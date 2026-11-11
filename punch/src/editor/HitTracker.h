@@ -144,7 +144,7 @@ namespace punchview
     class Preview
     {
     public:
-        Preview() { engine.prepare (1.0 / binSeconds); }
+        Preview() { engine.prepare (1.0 / binSeconds); engine.setLevelsOnly (true); }
 
         void run (const float* before, int length, const Settings& s, float* after)
         {
@@ -164,7 +164,8 @@ namespace punchview
 
                 for (int i = 0; i < length; ++i)
                 {
-                    // The display only has levels, not the sound itself, so Steady Notes' sparing of bright sounds is not drawn.
+                    // The display only has levels, not the sound itself, so it cannot hear a pitch: with Steady Notes every sound is drawn
+                    // as a note, and the sparing of bright sounds is not drawn.
                     const float gainDb = engine.process (before[i] * inGain, s.attack, s.sustain, punch, impact, s.steadyNotes, before[i] * inGain);
                     if (pass == 1)
                     {

@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.4.1, not installed: branch `level-matched-default`, waiting for Luke
+## 0.4.1, 2026-11-11
+
+Luke said yes to this on 2026-11-11.
 
 A new Duo, and the Natural Pair preset, open with Match Level on. The default then comes out as loud as the dry vocal instead of 1.6 to 1.8 dB over it, so it no longer pushes whatever comes after it harder. Nothing else about the default changes: the same two doubles at the same balance, the same pans.
 

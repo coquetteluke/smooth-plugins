@@ -525,7 +525,7 @@ PASS  block size 64 gives the same output as 512
 PASS  block size 4096 gives the same output as 512
 PASS  a playhead changes nothing
 PASS  prepare called again restarts cleanly, same bounce
-PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.026 
+PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.019 
 PASS  the sung recording loads
 PASS  null test: bit for bit the same as 0.2.0, no window, as first opened
 PASS  null test: bit for bit the same with the window open and drawing, as first opened

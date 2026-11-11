@@ -1375,6 +1375,99 @@ void testLowNotes()
         runPair (voice::synth (voice::phrase ({ 110.0 * sharp, 165.0, 131.0 * sharp, 196.0, 262.0 * sharp }, 0.5, SR), voice::vowelO, SR, -35.0));
         chk (different == 0, "voices at 99 to 440 Hz in Alto/Tenor: output samples that differ with the reach under the range switched on", (double) different);
         note ("  samples compared", (double) total);
+// ------------------------------------------------------------------------------------------------------------ timing
+
+// Two timing faults found on real takes (2026-11-10), neither seen by the tests before, which read pitch on steady notes and
+// delay on noise.
+void testTiming()
+{
+    // 1. The pitch control must be in line with the audio. Every note Bypass and Transpose +1: nothing is corrected, the voice is moved
+    // up a semitone, so the output's vibrato is the input's and should arrive one reported latency later, like the sound. Up to 1.5.1
+    // it arrived early, most in Low Male and Wide Range.
+    {
+        double worst = 0.0;
+        std::string worstName;
+        for (int type : { altoTenor, lowMale, wideRange })
+            for (double hz : { 147.0, 196.0, 262.0 })
+            {
+                auto p = make();
+                setParam (*p, "inputType", (float) type);
+                setParam (*p, "retune", 0.0f);
+                setParam (*p, "humanize", 0.0f);
+                setParam (*p, "transpose", 1.0f);
+                for (int i = 0; i < 12; ++i) setParam (*p, ("note" + juce::String (i)).toRawUTF8(), 2.0f);
+                prepare (*p, 1, SR, 256);
+                const auto x = voice::synth (voice::vibrato (hz, 3.0, SR, 50.0, 5.5), voice::vowelA, SR);
+                const auto out = mono (render (*p, x, 256));
+                const double delay = p->getLatencySamples() / SR, hop = 0.0005, up = std::pow (2.0, 1.0 / 12.0);
+                const auto in = pitchTrace (x.data(), (long) x.size(), SR, hz, 0.5, 2.7, hop, 0.1);
+                const auto moved = pitchTrace (out.data(), (long) out.size(), SR, hz * up, 0.5 + delay - 0.04, 2.7 + delay + 0.04, hop, 0.1);
+                // Where the output's vibrato sits against the input's, in ms after the reported latency (negative: early)
+                const int reach = (int) std::lround (0.04 / hop);
+                double best = -1.0e30; int bestK = 0; std::vector<double> score ((size_t) (2 * reach + 1), 0.0);
+                for (int k = -reach; k <= reach; ++k)
+                {
+                    double sum = 0.0;
+                    for (size_t i = 0; i < in.size(); ++i)
+                    {
+                        const size_t j = (size_t) ((int) i + reach + k);
+                        if (j >= moved.size() || in[i] <= 0.0 || moved[j] <= 0.0) continue;
+                        sum += cents (in[i], hz) * cents (moved[j], hz * up);
+                    }
+                    score[(size_t) (k + reach)] = sum;
+                    if (sum > best) { best = sum; bestK = k; }
+                }
+                double lag = bestK;
+                if (bestK > -reach && bestK < reach)
+                {
+                    const double a = score[(size_t) (bestK + reach - 1)], b = score[(size_t) (bestK + reach)], c = score[(size_t) (bestK + reach + 1)], den = a - 2.0 * b + c;
+                    if (den < -1.0e-12) lag += 0.5 * (a - c) / den;
+                }
+                const double ms = lag * hop * 1000.0;
+                const char* names[] = { "Soprano", "Alto/Tenor", "Low Male", "Wide Range" };
+                note (std::string ("  pitch movement against the sound, ") + names[type] + " at " + std::to_string ((int) hz) + " Hz", ms, "ms");
+                if (std::abs (ms) > std::abs (worst)) { worst = ms; worstName = std::string (names[type]) + " at " + std::to_string ((int) hz) + " Hz"; }
+            }
+        // High Quality is not fixed yet and is given, not judged: reading its control in line moves the ninth held out set's speaking
+        // formant move from 4.62% to 5.00%, so its vocal tract settings have to be looked at again first (TuneEngine.h, alignHighQuality).
+        if (gEngine == 0)
+            chk (std::abs (worst) <= prolimits::pitchInLineMs, "pitch movement arrives with the sound it belongs to, 147 to 262 Hz, three Input Types, worst (negative is early), " + worstName, worst, "ms");
+        else
+            note ("pitch movement against the sound it belongs to, High Quality, not fixed yet, worst (negative is early), " + worstName, worst, "ms");
+    }
+
+    // 2. A voice that is not being corrected comes out at the reported delay, also after a correction. A voice 40 cents sharp is
+    // corrected, then every note is set to Bypass: from 1.5 s after that the output must be the delayed input. That is the grains'
+    // promise (PsolaShifter.h). High Quality's harmonic shifter, which gives out notes above about 220 Hz, never made it: once it has
+    // corrected a voiced stretch it keeps its own timing within a period until the stretch ends (TuneEngine.h), so there the number is
+    // given, not judged.
+    {
+        double worst = -200.0, harmonicWorst = -200.0;
+        for (double hz : { 147.0, 196.0, 262.0 })
+            for (int switchBlock : { 260, 275, 290 })
+            {
+                auto p = tuner (altoTenor, 0.0f);
+                const auto x = voice::synth (voice::steady (hz * std::pow (2.0, 40.0 / 1200.0), 4.0, SR), voice::vowelA, SR);
+                const auto out = mono (render (*p, x, 256, nullptr, [&] (int block)
+                {
+                    if (block == switchBlock)
+                        for (int i = 0; i < 12; ++i) setParam (*p, ("note" + juce::String (i)).toRawUTF8(), 2.0f);
+                }));
+                const long delay = p->getLatencySamples();
+                const long from = (long) switchBlock * 256 + (long) (1.5 * SR), to = (long) x.size() - 4800;
+                double err = 0.0, ref = 0.0;
+                for (long i = from; i < to; ++i)
+                {
+                    const double d = (double) out[(size_t) i] - x[(size_t) (i - delay)];
+                    err += d * d; ref += (double) x[(size_t) (i - delay)] * x[(size_t) (i - delay)];
+                }
+                const double db = 10.0 * std::log10 (err / ref + 1.0e-30);
+                if (gEngine == 1 && hz > 235.0) harmonicWorst = std::max (harmonicWorst, db);
+                else worst = std::max (worst, db);
+            }
+        chk (worst <= prolimits::uncorrectedNullDb, std::string ("a voice left uncorrected after a correction, ") + (gEngine == 1 ? "147 and 196 Hz (the grains)" : "147 to 262 Hz")
+             + ": output against the input at the reported delay, from 1.5 s on, worst", worst, "dB");
+        if (gEngine == 1) note ("  the same at 262 Hz, where the harmonic shifter gives the output (not judged)", harmonicWorst, "dB");
     }
 }
 
@@ -3468,6 +3561,7 @@ int main (int argc, char** argv)
         if (want ("gen")) testVibratoGenerator();
         if (want ("mix")) testMix();
         if (want ("low")) testLowNotes();
+        if (want ("timing")) testTiming();
     }
     gEngine = 0;
     if (want ("engines")) testEngines();

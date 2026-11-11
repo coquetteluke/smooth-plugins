@@ -78,6 +78,7 @@ public:
         inputType = inputTypeIndex;
         mode = modeIndex;
         latency = latencyFor (lowHz, mode, sr);
+        baseLatency = latencyFor (lowHz, lowLatency, sr);
         tracker.reset();
         tracker.setRange (lowHz, highHz, belowHz);
         tracker.setStrictOctaveUp (mode == highQuality ? highQualityStrictOctaveUp : 0.0);
@@ -333,6 +334,9 @@ private:
             else if (period <= 0.0 && ahead > 0.0)
                 period = ahead;
         }
+        // The pitch itself is read from further back still, so that it is in line with the audio the grains are giving out. See pitchInLine.
+        if (alignPitch && (alignHighQuality || mode != highQuality) && period > 0.0)
+            period = pitchInLine (period, (ringAt + size - controlDelayTicks) % size);
         ringAt = (ringAt + 1) % size;
 
         corrector.update (period, shared.settings, point.held, tickSeconds);
@@ -452,7 +456,54 @@ private:
         envelope.setStrength (shared.settings.classic || grainsIdle ? 0.0 : 1.0);
     }
 
+    // The grains give out the input one whole latency late: 1.33 times the Input Type's longest period, so that even its lowest note has
+    // its mark in time. The pitch the tracker reports is younger than that. It is the spacing of its two newest marks, which by the
+    // time a decision is heard, half a grain later, is about two of the voice's own periods old, not of the
+    // longest one (see the ages below). So on every note above the bottom of the range the pitch control ran ahead of the audio, by the difference: the
+    // output began to bend up to 11 ms before the sound it belonged to (Low Male and Wide Range, measured on real takes: 4 to 11 ms; Alto/Tenor about
+    // 1 ms). The control is now read that much further back, a little more on a short period and nothing at the bottom of the range.
+    // Whether a sound is voiced at all is still decided where it was, so a note is not picked up any later.
+    double pitchInLine (double period, int nominal) const noexcept
+    {
+        // How old the reported pitch is by the time it is heard, in periods, measured on a voice with vibrato at 147, 196 and 262 Hz
+        // (testTiming): 1.89 to 1.94 for the grains in Low Latency and Classic, 1.67 to 1.83 for High Quality's grains, 1.39 to 1.41
+        // for its harmonic shifter, which reads a whole period at once.
+        const double age = mode != highQuality ? grainPitchAge : (harmonicShare > 0.5 && ! control.plainGrains ? harmonicPitchAge : highQualityGrainPitchAge);
+        const double lead = ((double) baseLatency - age * period) / (double) tickSamples;
+        if (lead <= 0.0)
+            return period;
+        const int size = (int) ring.size();
+        const int whole = (int) lead;
+        const double part = lead - whole;
+        const double a = ring[(size_t) ((nominal + 2 * size - whole) % size)].period;
+        const double b = ring[(size_t) ((nominal + 2 * size - whole - 1) % size)].period;
+        if (a > 0.0 && b > 0.0)
+            return a + part * (b - a);
+        if (a > 0.0)
+            return a;
+        // The note is younger than that: the oldest reading it has
+        for (int k = whole - 1; k > 0; --k)
+        {
+            const double p = ring[(size_t) ((nominal + 2 * size - k) % size)].period;
+            if (p > 0.0)
+                return p;
+        }
+        return period;
+    }
+
+    static constexpr bool alignPitch = true;
+    // High Quality is left as it was, for now. Its control runs ahead in the same way (73 samples at the median of Luke's takes in
+    // Alto/Tenor, 261 in Low Male), and reading it in line fixes that (20 samples late in Low Male), but High Quality's vocal tract
+    // settings were all tuned with the lead in place: with it gone the ninth held out set's speaking formant move reads 5.00% against
+    // 4.62% (limit 4). So that needs High Quality's settings looked at again, on a held out set that has not been seen.
+    static constexpr bool alignHighQuality = false;
+    // On Luke's real takes the readings are a little older than on the steady test voice (weak marks hold their period, and under
+    // about 140 Hz in Alto/Tenor the reading is older than the whole latency, which nothing can make up for): with the test voice's
+    // 1.92 the pitch came 68 samples late at the median of 11 takes in Alto/Tenor and 19 in Low Male. 2.02 keeps the test voice
+    // within 1 ms and brings the takes nearer.
+    static constexpr double grainPitchAge = 2.02, highQualityGrainPitchAge = 1.75, harmonicPitchAge = 1.40;
     double sr = 48000.0, tickSeconds = 0.001;
+    int baseLatency = 0;
     int channels = 2, tickSamples = 48, tickPhase = 0, latency = 0, inputType = 1, mode = lowLatency;
     PitchTracker tracker;
     PsolaShifter shifter;

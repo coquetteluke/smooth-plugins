@@ -65,6 +65,7 @@ public:
         havePending = false;
         lastMarkUsed = -1;
         lastOffset = 0.0;
+        plannedOffset = 0.0;
         needDecision = true;
         firstGrain = true;
         pulseOffset = 0.0;
@@ -360,14 +361,34 @@ private:
                 const long long following = lastMarkUsed + 1;
                 if (following <= tracker.lastMark() && following >= tracker.firstMark())
                 {
-                    const double m = tracker.mark (following).position + pulseOffset - lastOffset;
+                    // The grain before may have read its mark from somewhere else than the reported delay: every corrected grain does, and
+                    // so does one whose mark was not known in time. Up to 1.5.1 that offset was then kept for as long as nothing was
+                    // corrected, so the "untouched" voice came out up to 0.6 of a period early or late (62 samples early on a real take),
+                    // which combs against the dry signal at any Mix under 100. Now it is walked back to the reported delay, by at most
+                    // 0.3% of the period a grain: 5 cents, for 200 periods at the very most (about a second), the same thing the grains
+                    // do while correcting a note by 5 cents. Going back in one grain would make one period up to 60% too long or short.
+                    double offset = lastOffset;
+                    if (walkLockedOffset && offset != 0.0)
+                    {
+                        const double most = lockedWalkShare * period;
+                        offset -= std::clamp (offset, -most, most);
+                    }
+                    const double m = tracker.mark (following).position + pulseOffset - offset;
                     const double gap = m - s;
                     if (gap > 0.5 * period && gap < 1.6 * period)
                     {
                         spacing = gap;
                         planned = Plan::locked;
+                        plannedOffset = offset;
                     }
                 }
+                // No next mark to step to (the marks were started again, or the next one is not known yet). Up to 1.5.1 this grain was
+                // then cut from whichever mark was nearest, somewhere within 0.6 of a period of the reported delay, and that offset was
+                // kept for the rest of the uncorrected stretch: on real takes with every note set to Bypass, 8 to 10% of the time came
+                // out up to 300 samples early or late. Now it is a plain read at the reported delay, as on unvoiced sound, and the
+                // grain after it lands on a mark again.
+                if (walkLockedOffset && planned != Plan::locked && lastOffset == 0.0)
+                    planned = Plan::pass;
             }
             else if (lastMarkUsed < 0 && tracker.hasMarks())
             {
@@ -387,6 +408,7 @@ private:
                     spacing = tracker.mark (found).position + pulseOffset - s;
                     lastMarkUsed = found - 1;
                     lastOffset = 0.0;
+                    plannedOffset = 0.0;
                     planned = Plan::locked;
                 }
                 else
@@ -400,9 +422,15 @@ private:
             // grain. Longer ones were measured and only flattened the formants further. The rise never takes longer than the
             // spacing, because the next grain cannot start before it has been decided.
             const double shortest = period, longest = period;
-            const double half = std::clamp (spacing, shortest, longest);
+            // Nothing corrected and both grains at the reported delay: the falling and the rising half share one raised cosine as long as
+            // the spacing, so the two sum to exactly 1 and the output is the delayed input, whatever the spacing of the marks.
+            const bool exactPass = walkLockedOffset && c.noCorrection && lastOffset == 0.0
+                                   && (planned == Plan::pass || (planned == Plan::locked && plannedOffset == 0.0));
+            if (planned == Plan::pass && exactPass)
+                spacing = std::floor (std::min ((double) fallback, std::max (16.0, period)));
+            const double half = exactPass ? spacing : std::clamp (spacing, shortest, longest);
             if (current != nullptr) { current->fall = half; current->fallIsFinal = true; }
-            next.rise = std::min (spacing, longest);
+            next.rise = exactPass ? spacing : std::min (spacing, longest);
             next.mark = s + spacing;
 
             if (planned != Plan::pass)
@@ -461,7 +489,8 @@ private:
         else if (planned == Plan::locked)
         {
             const long long following = std::clamp (lastMarkUsed + 1, tracker.firstMark(), tracker.lastMark());
-            g.offset = lastOffset;
+            g.offset = plannedOffset;
+            lastOffset = plannedOffset;
             lastMarkUsed = following;
         }
         else
@@ -508,7 +537,9 @@ private:
     Grain pending;
     bool havePending = false, needDecision = true, firstGrain = true;
     Plan planned = Plan::pass;
-    double peakOfNewest = 0.0, lastOffset = 0.0, pulseOffset = 0.0;
+    double peakOfNewest = 0.0, lastOffset = 0.0, plannedOffset = 0.0, pulseOffset = 0.0;
+    static constexpr bool walkLockedOffset = true;
+    static constexpr double lockedWalkShare = 0.003;
     int pulseGrains = 0;
     bool plain = true;
     long long lastMarkUsed = -1;

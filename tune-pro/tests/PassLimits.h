@@ -122,4 +122,8 @@ namespace prolimits
     // Mix
     constexpr double mixDryNullDb = -120.0;           // Mix 0 against the delayed input
     constexpr double mixHalfLevelDb = 1.5;            // Mix 50 on a voice with nothing to correct: no level change, so dry and wet line up
+
+    // Timing, added 2026-11-11 after two faults found on real takes. Both limits are the real vocal tool's (realvox tune-pro.cpp, d95cdff).
+    constexpr double pitchInLineMs = 1.0;             // pitch movement against the sound it belongs to, either way
+    constexpr double uncorrectedNullDb = -90.0;       // an uncorrected voice against the input at the reported delay, once settled
 }

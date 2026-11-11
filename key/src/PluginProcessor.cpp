@@ -115,19 +115,19 @@ private:
     // False when there is no key to report yet.
     bool currentState (smoothkey::KeyState& s) const noexcept
     {
-        const auto& shown = owner.shown;
-        if (shown.key < 0) return false;
-        s.key = shown.key;
-        s.minor = shown.minor;
-        s.confidence = shown.confidence;
+        const auto& latest = owner.shown;
+        if (latest.key < 0) return false;
+        s.key = latest.key;
+        s.minor = latest.minor;
+        s.confidence = latest.confidence;
         s.listening = owner.isListeningNow();
-        s.altKey = shown.altKey;
-        s.altMinor = shown.altMinor;
-        s.altConfidence = shown.altConfidence;
-        s.margin = shown.margin;
-        s.unsure = shown.unsure;
-        s.locked = shown.source == smoothkey::KeySource::locked;
-        s.source = (int) shown.source;
+        s.altKey = latest.altKey;
+        s.altMinor = latest.altMinor;
+        s.altConfidence = latest.altConfidence;
+        s.margin = latest.margin;
+        s.unsure = latest.unsure;
+        s.locked = latest.source == smoothkey::KeySource::locked;
+        s.source = (int) latest.source;
         return true;
     }
 

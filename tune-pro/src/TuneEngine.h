@@ -456,15 +456,19 @@ private:
     }
 
     // The grains give out the input one whole latency late: 1.33 times the Input Type's longest period, so that even its lowest note has
-    // its mark in time. The pitch the tracker reports is younger than that. It is the spacing of its two newest marks, which on average
-    // is pitchAgePeriods old, counting the half grain until a decision is heard: about two of the voice's own periods, not of the
-    // longest one. So on every note above the bottom of the range the pitch control ran ahead of the audio, by the difference: the
+    // its mark in time. The pitch the tracker reports is younger than that. It is the spacing of its two newest marks, which by the
+    // time a decision is heard, half a grain later, is about two of the voice's own periods old, not of the
+    // longest one (see the ages below). So on every note above the bottom of the range the pitch control ran ahead of the audio, by the difference: the
     // output began to bend up to 11 ms before the sound it belonged to (Low Male and Wide Range, measured on real takes: 4 to 11 ms; Alto/Tenor about
     // 1 ms). The control is now read that much further back, a little more on a short period and nothing at the bottom of the range.
     // Whether a sound is voiced at all is still decided where it was, so a note is not picked up any later.
     double pitchInLine (double period, int nominal) const noexcept
     {
-        const double lead = ((double) baseLatency - pitchAgePeriods * period) / (double) tickSamples;
+        // How old the reported pitch is by the time it is heard, in periods, measured on a voice with vibrato at 147, 196 and 262 Hz
+        // (testTiming): 1.89 to 1.94 for the grains in Low Latency and Classic, 1.67 to 1.83 for High Quality's grains, 1.39 to 1.41
+        // for its harmonic shifter, which reads a whole period at once.
+        const double age = mode != highQuality ? grainPitchAge : (harmonicShare > 0.5 && ! control.plainGrains ? harmonicPitchAge : highQualityGrainPitchAge);
+        const double lead = ((double) baseLatency - age * period) / (double) tickSamples;
         if (lead <= 0.0)
             return period;
         const int size = (int) ring.size();
@@ -486,8 +490,8 @@ private:
         return period;
     }
 
-    static constexpr bool alignPitch = false;
-    static constexpr double pitchAgePeriods = 2.08;
+    static constexpr bool alignPitch = true;
+    static constexpr double grainPitchAge = 1.92, highQualityGrainPitchAge = 1.75, harmonicPitchAge = 1.40;
     double sr = 48000.0, tickSeconds = 0.001;
     int baseLatency = 0;
     int channels = 2, tickSamples = 48, tickPhase = 0, latency = 0, inputType = 1, mode = lowLatency;

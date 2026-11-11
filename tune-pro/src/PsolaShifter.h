@@ -525,7 +525,7 @@ private:
     bool havePending = false, needDecision = true, firstGrain = true;
     Plan planned = Plan::pass;
     double peakOfNewest = 0.0, lastOffset = 0.0, plannedOffset = 0.0, pulseOffset = 0.0;
-    static constexpr bool walkLockedOffset = false;
+    static constexpr bool walkLockedOffset = true;
     static constexpr double lockedWalkShare = 0.003;
     int pulseGrains = 0;
     bool plain = true;

@@ -1454,6 +1454,91 @@ void testHeldOutEleventh()
     gEngine = 1;
 }
 
+// A twelfth held out set, written on 2026-11-11 (third pass) and committed before any of it was run, and before any change to the formant
+// path. The eleventh set's one run failed on 1.6.0 and 1.6.1 alike, nearly all of it held u (F1 291, F2 779 Hz) at 221 Hz; the eleventh set
+// has now been seen, so a fix for it needs voices that have not been. Two published sources none of the earlier sets used, two languages
+// none of them used, and speakers none of them used. Both have the back rounded corner the eleventh set found (Portuguese u at F1 335 to
+// 337 Hz, F2 812 to 862 Hz, at the women's own 222 to 252 Hz).
+//   Greek: Sfakianaki, A., Acoustic characteristics of Greek vowels produced by adults and children, PDF at
+//   enl.auth.gr/phonlab/Sfakianaki_Greek_vowel_acoustics.PDF (no year printed on it), Table 1: mean F1, F2, F3 in hertz of the five Greek
+//   vowels; 10 women aged 20 to 28, words read from a list, stressed and unstressed, measured at the vowel's midpoint from wide band
+//   spectrograms. The women's column is copied as Table 1 prints it.
+//   Portuguese: Escudero, P., Boersma, P., Rauber, A. S. and Bion, R. (2009), A cross-dialect acoustic description of vowels: Brazilian and
+//   European Portuguese, Journal of the Acoustical Society of America 126, 1379 to 1393; numbers from the authors' copy at
+//   fon.hum.uva.nl/paul/papers/BPEP_vowels37.pdf (version of 17 July 2008), Table I: geometric averages of F0, F1 and F2 for 10 women of each
+//   dialect, the seven stressed oral vowels. Copied as that table prints them. It has no F3.
+// F3 for the Portuguese vowels is the Greek women's F3 for the same vowel (i, e, a, o, u); for open e and open o, which Greek does not have,
+// the mean of the Greek e and a (2882 Hz) and of the Greek o and a (2765 Hz). F4 and F5 4200 and 4900 Hz for every voice, a pairing none of
+// the earlier sets used, inside the range they used for women. Bandwidths by the tenth and eleventh sets' conventions (first formant an
+// eighth of its frequency, rounded to 5 Hz, 45 Hz at least; F2 90 below 1000 Hz, 100 to 1600, 115 above; then 145, 185, 225). Pitches: the
+// Greek voices at 186, 209 and 236 Hz, which no earlier set used; each Portuguese voice at its own F0 from Table I (202 to 252 Hz), not
+// chosen. Breath and source tone vary from voice to voice, values none of the earlier sets used. Nothing was tuned on these and none of
+// it was chosen by looking at output. Metrics and limits are the eleventh set's, fixed before the first run: High Quality at +/-1, 3 and
+// 4 semitones, Low Latency in Wide Range at +/-1 and 3. To be run once on a build with a formant fix and once on the build before it.
+void testHeldOutTwelfth()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; std::vector<double> centres; };
+    const std::vector<double> greekPitches { 186.0, 209.0, 236.0 };
+    // Greek: F1, F2, F3 from Sfakianaki, Table 1, women; F4, F5 and all bandwidths set here.
+    // Portuguese: F1, F2 and F0 from Escudero and others, Table I, women; F3 from the Greek women as above; F4, F5 and bandwidths set here.
+    const std::vector<Held> voices {
+        { { { 469, 2571, 3109, 4200, 4900 }, { 60, 115, 145, 185, 225 }, "Greek i women" }, { -53.0, 0.0 }, greekPitches },
+        { { { 687, 2231, 3051, 4200, 4900 }, { 85, 115, 145, 185, 225 }, "Greek e women" }, { -36.0, 3700.0 }, greekPitches },
+        { { { 873, 1699, 2713, 4200, 4900 }, { 110, 115, 145, 185, 225 }, "Greek a women" }, { -59.0, 0.0 }, greekPitches },
+        { { { 657, 1219, 2817, 4200, 4900 }, { 80, 100, 145, 185, 225 }, "Greek o women" }, { -41.5, 2600.0 }, greekPitches },
+        { { { 451, 955, 2804, 4200, 4900 }, { 55, 90, 145, 185, 225 }, "Greek u women" }, { -47.5, 0.0 }, greekPitches },
+        { { { 307, 2676, 3109, 4200, 4900 }, { 45, 115, 145, 185, 225 }, "Brazilian Portuguese i women" }, { -45.5, 4100.0 }, { 242.0 } },
+        { { { 425, 2468, 3051, 4200, 4900 }, { 55, 115, 145, 185, 225 }, "Brazilian Portuguese e women" }, { -38.5, 0.0 }, { 219.0 } },
+        { { { 646, 2271, 2882, 4200, 4900 }, { 80, 115, 145, 185, 225 }, "Brazilian Portuguese open e women" }, { -55.5, 3300.0 }, { 211.0 } },
+        { { { 910, 1627, 2713, 4200, 4900 }, { 115, 115, 145, 185, 225 }, "Brazilian Portuguese a women" }, { -42.5, 0.0 }, { 209.0 } },
+        { { { 681, 1054, 2765, 4200, 4900 }, { 85, 100, 145, 185, 225 }, "Brazilian Portuguese open o women" }, { -50.5, 2900.0 }, { 211.0 } },
+        { { { 442, 893, 2817, 4200, 4900 }, { 55, 90, 145, 185, 225 }, "Brazilian Portuguese o women" }, { -37.5, 0.0 }, { 225.0 } },
+        { { { 337, 812, 2804, 4200, 4900 }, { 45, 90, 145, 185, 225 }, "Brazilian Portuguese u women" }, { -44.5, 3500.0 }, { 252.0 } },
+        { { { 313, 2760, 3109, 4200, 4900 }, { 45, 115, 145, 185, 225 }, "European Portuguese i women" }, { -57.5, 0.0 }, { 216.0 } },
+        { { { 402, 2508, 3051, 4200, 4900 }, { 50, 115, 145, 185, 225 }, "European Portuguese e women" }, { -39.5, 4300.0 }, { 211.0 } },
+        { { { 511, 2360, 2882, 4200, 4900 }, { 65, 115, 145, 185, 225 }, "European Portuguese open e women" }, { -48.5, 0.0 }, { 205.0 } },
+        { { { 781, 1662, 2713, 4200, 4900 }, { 100, 115, 145, 185, 225 }, "European Portuguese a women" }, { -35.5, 2500.0 }, { 202.0 } },
+        { { { 592, 1118, 2765, 4200, 4900 }, { 75, 100, 145, 185, 225 }, "European Portuguese open o women" }, { -52.5, 0.0 }, { 204.0 } },
+        { { { 422, 921, 2817, 4200, 4900 }, { 55, 90, 145, 185, 225 }, "European Portuguese o women" }, { -43.5, 3900.0 }, { 211.0 } },
+        { { { 335, 862, 2804, 4200, 4900 }, { 45, 90, 145, 185, 225 }, "European Portuguese u women" }, { -40.5, 0.0 }, { 222.0 } } };
+    const auto judge = [] (const FormantScore& score, double limit, double levelLimit, const std::string& who)
+    {
+        chk (score.moveReal <= limit, "twelfth held out set, " + who + ", worst formant move against a real voice at the new pitch", score.moveReal * 100.0, "%");
+        if (score.ideal <= limit)
+            chk (score.move <= limit, "  worst formant move against the input", score.move * 100.0, "%");
+        else
+            note ("  worst formant move against the input (no verdict: a perfect shifter reads over the limit here, next line)", score.move * 100.0, "%");
+        note ("  what a perfect shifter reads on that line: the real voice at the new pitch itself against the input, worst", score.ideal * 100.0, "%");
+        note ("  and the tool's floor there", score.floor * 100.0, "%");
+        chk (score.move <= score.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", score.move * 100.0, "%");
+        chk (score.level <= levelLimit, "  level change, worst", score.level, "dB");
+        note ("  first formant against its surroundings, flatter than a real voice, worst", score.peakFlatter, "dB");
+        note ("  colour, worst", score.colour, "dB");
+    };
+    FormantScore high, low;
+    for (const auto& h : voices)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+        {
+            gEngine = 1;
+            for (int shift : { 4, -4, 3, -3, 1, -1 })
+                scoreFormants (high, h.v, centre, shift, wideRange);
+            gEngine = 0;
+            for (int shift : { 3, -3, 1, -1 })
+                scoreFormants (low, h.v, centre, shift, wideRange);
+        }
+    }
+    gStyle = {};
+    gEngine = 1;
+    judge (high, prolimits::hqFormantMove, prolimits::hqLevelChangeDb, "Greek and Portuguese women's vowels 186 to 252 Hz");
+    gEngine = 0;
+    judge (low, prolimits::llFormantMove, limits::levelChangeDb, "Greek and Portuguese women's vowels 186 to 252 Hz in Wide Range");
+    gEngine = 1;
+}
+
 // A vowel change in the middle of a glide, added for 1.5.0 with its limit set before it was first run. High Quality remembers each
 // harmonic's level over a voiced stretch; it must not carry the old vowel into the new one. After the change, the output's formants
 // are read against a real voice singing the new vowel at the new pitch, with the same tool and limit as the formant test.
@@ -4394,6 +4479,8 @@ int main (int argc, char** argv)
     // 221 Hz in High Quality, held u, y and o in Low Latency). It is not fixed, so it is not part of a full run, which would otherwise never
     // read clean; it runs by name. That is a known failing test, listed in README and CHANGELOG, not a passing one.
     if (only == "heldout11") testHeldOutEleventh();
+    // The twelfth set: written and committed before any of it was run (third pass, 2026-11-11), for a fix of what the eleventh found. By name only.
+    if (only == "heldout12") testHeldOutTwelfth();
     if (want ("heldout10")) testHeldOutTenth();   // had its one run on 2026-11-11 (tests/results-heldout10.txt); a regression test since
     if (want ("vowel")) testVowelChange();
     gEngine = 0;

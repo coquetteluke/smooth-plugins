@@ -1,7 +1,7 @@
 // Renders the real window to PNG, with real speech from macOS `say` and test music through the real processor and its real
 // background thread, with no host. Also measures the real window's CPU.
 // From the repo root: build/RenderWindow_artefacts/Release/RenderWindow [output folder]
-//                     build/RenderWindow_artefacts/Release/RenderWindow --live [runs] [seconds] [speech, music or silent]
+//                     build/RenderWindow_artefacts/Release/RenderWindow --live [runs] [seconds] [speech, music or silent] [locked]
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -137,6 +138,28 @@ static void setParam (PluginProcessor& p, const juce::String& id, float value)
     prm->setValueNotifyingHost (prm->convertTo0to1 (value));
 }
 
+// A reading built from what the window was last given, so a state the analyser cannot be asked for on demand can be drawn
+// over a real one: the circle, the keyboard, the tuning and the tempo all stay as the music left them.
+static smoothkey::Reading readingFrom (const PluginProcessor::Display& d)
+{
+    smoothkey::Reading r;
+    r.key = d.key;
+    r.minor = d.minor;
+    r.confidence = d.confidence;
+    r.altKey = d.altKey;
+    r.altMinor = d.altMinor;
+    r.altConfidence = d.altConfidence;
+    r.margin = d.margin;
+    r.unsure = d.unsure;
+    r.signal = d.signal;
+    r.tuningCents = 1200.0f * std::log2 (d.referenceHz / 440.0f);
+    r.tempoBpm = d.detectedBpm;
+    r.chroma = d.chroma;
+    r.candidates = d.candidates;
+    r.liveNotes = d.liveNotes;
+    return r;
+}
+
 static juce::String tempFile (const char* name)
 {
     return juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("KeyRenderWindow").getChildFile (name).getFullPathName();
@@ -195,6 +218,22 @@ struct Session
     {
         for (int i = 0; i < 30; ++i)
             editor->refresh();
+    }
+
+    // The background thread can be seconds behind after a fast play, more so on a busy machine. Wait for what it was asked for.
+    bool waitUntil (const std::function<bool (const PluginProcessor::Display&)>& ready)
+    {
+        bool ok = false;
+
+        for (int waited = 0; waited < 8000 && ! ok; waited += 20)
+        {
+            ok = ready (processor.getDisplay());
+            if (! ok) juce::Thread::sleep (20);
+        }
+
+        if (! ok) std::printf ("note: the state asked for never arrived\n");
+        settle();
+        return ok;
     }
 
     void save (const juce::File& folder, const juce::String& name, float scale)
@@ -281,7 +320,7 @@ static double analysisCpuSeconds()
     return total;
 }
 
-static int runLive (int repeats, int seconds, const juce::String& what)
+static int runLive (int repeats, int seconds, const juce::String& what, bool locked)
 {
     const bool silent = what == "silent";
     std::vector<float> audio;
@@ -368,6 +407,13 @@ static int runLive (int repeats, int seconds, const juce::String& what)
         // Long enough that a key is showing and the window is updating as it does in a song.
         juce::MessageManager::getInstance()->runDispatchLoopUntil (9000);
 
+        // With Lock on the key is held while it goes on listening, so the line under it says what it hears.
+        if (locked)
+        {
+            s.processor.getLockParameter().setValueNotifyingHost (1.0f);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (1000);
+        }
+
         const int paintsBefore = keyui::paintCount;
         const auto before = CpuReading::now();
         const double audioBefore = audioCpu.load(), mainBefore = threadCpuSeconds(), analysisBefore = analysisCpuSeconds();
@@ -385,10 +431,10 @@ static int runLive (int repeats, int seconds, const juce::String& what)
         getloadavg (load, 1);
         const auto builds = std::system ("exit $(pgrep -f 'clang|cmake --build' | wc -l)") >> 8;
 
-        std::printf ("%3d  %6.2f  %14.2f  %6.0f  %8.1f  %5.2f  %5.2f  %8.2f  %8.0f  %4.1f  %5d   key %s\n", run + 1, window * 100.0, rate / instructionsPerFastCoreSecond * 100.0,
+        std::printf ("%3d  %6.2f  %14.2f  %6.0f  %8.1f  %5.2f  %5.2f  %8.2f  %8.0f  %4.1f  %5d   key %s%s\n", run + 1, window * 100.0, rate / instructionsPerFastCoreSecond * 100.0,
                      (after.pCores - before.pCores) / juce::jmax (1.0e-6, after.total - before.total) * 100.0,
                      (double) (keyui::paintCount - paintsBefore) / wall, mainUsed / wall * 100.0, audioUsed / wall * 100.0, analysisUsed / wall * 100.0,
-                     rate * 1.0e-6, load[0], builds, editor.getKeyText().toRawUTF8());
+                     rate * 1.0e-6, load[0], builds, editor.getKeyText().toRawUTF8(), s.processor.getDisplay().locked ? ", locked" : "");
         std::fflush (stdout);
         results.push_back (window * 100.0);
         work.push_back (rate / instructionsPerFastCoreSecond * 100.0);
@@ -410,25 +456,30 @@ int main (int argc, char** argv)
     juce::ScopedJuceInitialiser_GUI gui;
 
     if (argc > 1 && juce::String (argv[1]) == "--live")
-        return runLive (argc > 2 ? atoi (argv[2]) : 5, argc > 3 ? atoi (argv[3]) : 6, argc > 4 ? argv[4] : "speech");
+        return runLive (argc > 2 ? atoi (argv[2]) : 5, argc > 3 ? atoi (argv[3]) : 6, argc > 4 ? argv[4] : "speech", argc > 5 && juce::String (argv[5]) == "locked");
 
     const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "docs/window");
     folder.createDirectory();
     const juce::String only = argc > 2 ? argv[2] : "";
     const auto wants = [&only] (const char* name) { return only.isEmpty() || only.contains (name); };
 
-    const auto voice = loadVoice();
+    // The speech is only made when it is asked for, so the other states can be drawn without writing a sound file.
+    std::vector<float> voiceTwice;
 
-    if (voice.empty())
+    if (wants ("speech"))
     {
-        std::printf ("FAILED could not render speech with say\n");
-        return 1;
+        const auto voice = loadVoice();
+
+        if (voice.empty())
+        {
+            std::printf ("FAILED could not render speech with say\n");
+            return 1;
+        }
+
+        std::printf ("speech: %.1f s from say\n", (double) voice.size() / kRate);
+        voiceTwice = voice;
+        voiceTwice.insert (voiceTwice.end(), voice.begin(), voice.end());
     }
-
-    std::printf ("speech: %.1f s from say\n", (double) voice.size() / kRate);
-
-    std::vector<float> voiceTwice = voice;
-    voiceTwice.insert (voiceTwice.end(), voice.begin(), voice.end());
 
     if (wants ("idle"))
     {
@@ -533,6 +584,65 @@ int main (int argc, char** argv)
         s.play (song);
         s.saveBoth (folder, "file-failed");
         blocker.deleteFile();
+    }
+
+    // ---- 1.7.0: the runner up, a close call, and Lock ----
+
+    if (wants ("runnerup"))
+    {
+        // Real music, as the analyser reads it.
+        Session s;
+        s.play (music (0, false, 26.0));
+        const auto d = s.processor.getDisplay();
+        std::printf ("runner up from the analyser: key %d over %d, confidence %.2f over %.2f, margin %.2f\n", d.key + (d.minor ? 12 : 0), d.altKey + (d.altMinor ? 12 : 0),
+                     (double) d.confidence, (double) d.altConfidence, (double) d.margin);
+        s.saveBoth (folder, "runner-up");
+    }
+
+    if (wants ("notsure"))
+    {
+        // Real music in E major, and then the close call set by hand on top of that reading: E major or A major, the key a
+        // fourth up, which shares six of its seven notes. The analyser decides when a call is close; this shows what it looks like.
+        Session s;
+        s.play (music (4, false, 26.0));
+        auto r = readingFrom (s.processor.getDisplay());
+        std::printf ("close call drawn over a real reading of key %d, confidence %.2f\n", r.key + (r.minor ? 12 : 0), (double) r.confidence);
+        r.key = 4;
+        r.minor = false;
+        r.altKey = 9;
+        r.altMinor = false;
+        r.confidence = 0.44f;
+        r.altConfidence = 0.43f;
+        r.margin = 0.03f;
+        r.unsure = true;
+        r.candidates[9] = r.candidates[4] * 0.97f;
+        s.processor.setReadingForTests (&r);
+        s.waitUntil ([] (const PluginProcessor::Display& d) { return d.unsure && d.key == 4 && d.altKey == 9; });
+        s.saveBoth (folder, "not-sure");
+        s.processor.setReadingForTests (nullptr);
+        s.waitUntil ([] (const PluginProcessor::Display& d) { return ! d.unsure; });   // r is not read again after this
+    }
+
+    if (wants ("locked"))
+    {
+        // Real music in G minor, Lock, then real music in D major: the key stays, and the window says what it hears meanwhile.
+        Session s;
+        s.play (song);
+        s.processor.getLockParameter().setValueNotifyingHost (1.0f);
+        s.waitUntil ([] (const PluginProcessor::Display& d) { return d.locked; });
+        s.play (music (2, false, 26.0));
+        s.waitUntil ([] (const PluginProcessor::Display& d) { return d.locked && d.heardKey == 2 && ! d.heardMinor; });
+        const auto d = s.processor.getDisplay();
+        std::printf ("locked on key %d, hearing key %d at %.2f\n", d.key + (d.minor ? 12 : 0), d.heardKey + (d.heardMinor ? 12 : 0), (double) d.heardConfidence);
+        s.saveBoth (folder, "locked");
+    }
+
+    if (wants ("waiting"))
+    {
+        Session s;
+        s.processor.getLockParameter().setValueNotifyingHost (1.0f);
+        s.waitUntil ([] (const PluginProcessor::Display& d) { return d.lockOn; });
+        s.saveBoth (folder, "lock-waiting");
     }
 
     if (wants ("smallest"))

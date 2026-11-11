@@ -37,8 +37,10 @@ namespace
     juce::String bpmText (float v) { return v < 1.0f ? juce::String ("None") : juce::String (v, 1); }
 
     const juce::Identifier windowWidthAttribute { "windowWidth" }, advancedOpenAttribute { "advancedOpen" };
+    // Lock is saved only when it is on, and the held key only when there is one, so a session with Lock off is saved exactly as before.
+    const juce::Identifier lockAttribute { "lock" }, lockedKeyAttribute { "lockedKey" }, lockedScaleAttribute { "lockedScale" };
 
-    int relativeKey (int key, bool minor) noexcept { return minor ? (key + 3) % 12 : (key + 9) % 12; }
+    int packKey (int key, bool minor) noexcept { return (key + 1) | (minor ? 1 << 8 : 0); }
 }
 
 // The one background thread: drains the queue, runs the analyser, publishes readings and writes the shared file.
@@ -94,7 +96,8 @@ public:
                 analyser.idle (now - lastTick);
             lastTick = now;
 
-            owner.workerPublish (analyser.reading());
+            const auto* given = owner.testReading.load (std::memory_order_acquire);
+            owner.workerPublish (given != nullptr ? *given : analyser.reading());
             writeFile (now);
             wait (25);
         }
@@ -112,12 +115,19 @@ private:
     // False when there is no key to report yet.
     bool currentState (smoothkey::KeyState& s) const noexcept
     {
-        const auto d = owner.getDisplay();
-        if (d.key < 0) return false;
-        s.key = d.key;
-        s.minor = d.minor;
-        s.confidence = d.confidence;
-        s.listening = d.active;
+        const auto& latest = owner.shown;
+        if (latest.key < 0) return false;
+        s.key = latest.key;
+        s.minor = latest.minor;
+        s.confidence = latest.confidence;
+        s.listening = owner.isListeningNow();
+        s.altKey = latest.altKey;
+        s.altMinor = latest.altMinor;
+        s.altConfidence = latest.altConfidence;
+        s.margin = latest.margin;
+        s.unsure = latest.unsure;
+        s.locked = latest.source == smoothkey::KeySource::locked;
+        s.source = (int) latest.source;
         return true;
     }
 
@@ -131,6 +141,12 @@ private:
             s = file.lastWritten();
             s.confidence = 0.0;
             s.listening = owner.isListeningNow();
+            s.altKey = -1;
+            s.altMinor = false;
+            s.altConfidence = 0.0;
+            s.margin = 1.0;
+            s.unsure = s.locked = false;
+            s.source = 0;
         }
         file.update (s, now, unixNow());
         owner.fileFailed.store (file.hasFailed(), std::memory_order_relaxed);
@@ -185,6 +201,11 @@ PluginProcessor::PluginProcessor (const juce::String& jsonPath, double minWriteS
     addParameter (confidenceReading = new ReadingParameter ("confidence", "Confidence", "%", 0.0f, 100.0f, 0.0f, percentText));
     addParameter (referenceReading = new ReadingParameter ("referencePitch", "Reference Pitch", "Hz", 415.0f, 466.0f, 440.0f, hertzText));
     addParameter (tempoReading = new ReadingParameter ("detectedTempo", "Detected Tempo", "BPM", 0.0f, 480.0f, 0.0f, bpmText));
+
+    // Added in 1.7.0, after every parameter there was, so none of them moves. An Audio Unit lists its parameters by version
+    // hint and then by a hash of the ID, and "lock" has the smallest hash of all: with hint 1 it would go first and push the
+    // rest down. Hint 2 keeps it last. It is not in the layout above because that would put it before the five readings.
+    addParameter (lock = new juce::AudioParameterBool (juce::ParameterID { "lock", 2 }, "Lock", false));
 
     for (auto& c : chroma) c.store (0.0f, std::memory_order_relaxed);
     for (auto& c : candidates) c.store (0.0f, std::memory_order_relaxed);
@@ -255,24 +276,35 @@ void PluginProcessor::processBlockBypassed (juce::AudioBuffer<float>&, juce::Mid
 
 void PluginProcessor::workerPublish (const smoothkey::Reading& r) noexcept
 {
-    int key = r.key;
-    bool minor = r.minor;
-    float confidence = r.confidence;
+    // The key a loaded session held is taken first and the control read second. setStateInformation sets the control first and
+    // the key second, so a held key that has arrived always finds Lock already on, and is never thrown away as if Lock were off.
+    const int fromSession = heldFromSession.exchange (-1, std::memory_order_acq_rel);
+    if (fromSession >= 0)
+        publisher.restore ((fromSession & 0xff) - 1, (fromSession & (1 << 8)) != 0);
 
-    if (isManual())
-    {
-        key = juce::jlimit (0, 11, juce::roundToInt (manualKey->load (std::memory_order_relaxed)));
-        minor = manualScale->load (std::memory_order_relaxed) >= 0.5f;
-        confidence = 1.0f;
-    }
-    else if (key >= 0 && swapRelative->load (std::memory_order_relaxed) >= 0.5f)
-    {
-        key = relativeKey (key, minor);
-        minor = ! minor;
-    }
+    smoothkey::ShowControls controls;
+    controls.lock = lock->get();
 
-    packedReading.store ((key + 1) | (minor ? 1 << 8 : 0) | (r.signal ? 1 << 9 : 0), std::memory_order_relaxed);
+    controls.manual = isManual();
+    controls.manualKey = juce::roundToInt (manualKey->load (std::memory_order_relaxed));
+    controls.manualMinor = manualScale->load (std::memory_order_relaxed) >= 0.5f;
+    controls.swapRelative = swapRelative->load (std::memory_order_relaxed) >= 0.5f;
+
+    shown = publisher.update (r, controls);
+    const int key = shown.key;
+    const bool minor = shown.minor;
+    const float confidence = shown.confidence;
+    const bool held = shown.source == smoothkey::KeySource::locked;
+    heldNow.store (held ? packKey (publisher.heldKey(), publisher.heldIsMinor()) : 0, std::memory_order_relaxed);
+
+    packedReading.store ((key + 1) | (minor ? 1 << 8 : 0) | (r.signal ? 1 << 9 : 0)
+                             | ((shown.altKey + 1) << 10) | (shown.altMinor ? 1 << 14 : 0) | (shown.unsure ? 1 << 15 : 0) | (held ? 1 << 16 : 0)
+                             | ((shown.heardKey + 1) << 17) | (shown.heardMinor ? 1 << 21 : 0),
+                         std::memory_order_relaxed);
     shownConfidence.store (confidence, std::memory_order_relaxed);
+    altConfidence.store (shown.altConfidence, std::memory_order_relaxed);
+    shownMargin.store (shown.margin, std::memory_order_relaxed);
+    heardConfidence.store (shown.heardConfidence, std::memory_order_relaxed);
     const float hz = 440.0f * std::pow (2.0f, r.tuningCents / 1200.0f);
     referenceHz.store (hz, std::memory_order_relaxed);
     detectedBpm.store (r.tempoBpm, std::memory_order_relaxed);
@@ -299,6 +331,16 @@ PluginProcessor::Display PluginProcessor::getDisplay() const noexcept
     d.minor = (packed & (1 << 8)) != 0;
     d.signal = (packed & (1 << 9)) != 0;
     d.confidence = shownConfidence.load (std::memory_order_relaxed);
+    d.altKey = ((packed >> 10) & 0xf) - 1;
+    d.altMinor = (packed & (1 << 14)) != 0;
+    d.altConfidence = altConfidence.load (std::memory_order_relaxed);
+    d.margin = shownMargin.load (std::memory_order_relaxed);
+    d.unsure = (packed & (1 << 15)) != 0;
+    d.locked = (packed & (1 << 16)) != 0;
+    d.lockOn = lock->get();
+    d.heardKey = ((packed >> 17) & 0xf) - 1;
+    d.heardMinor = (packed & (1 << 21)) != 0;
+    d.heardConfidence = heardConfidence.load (std::memory_order_relaxed);
     d.manual = isManual();
     d.active = isListeningNow();
     d.referenceHz = referenceHz.load (std::memory_order_relaxed);
@@ -345,6 +387,20 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
+
+        if (lock->get())
+        {
+            xml->setAttribute (lockAttribute, 1);
+            // A held key that was loaded and has not reached the background thread yet still counts.
+            const int waiting = heldFromSession.load (std::memory_order_acquire);
+            const int held = waiting >= 0 ? waiting : heldNow.load (std::memory_order_relaxed);
+            if ((held & 0xff) > 0)
+            {
+                xml->setAttribute (lockedKeyAttribute, (held & 0xff) - 1);
+                xml->setAttribute (lockedScaleAttribute, (held & (1 << 8)) != 0 ? 1 : 0);
+            }
+        }
+
         copyXmlToBinary (*xml, dest);
     }
 }
@@ -357,9 +413,22 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             if (xml->hasAttribute (windowWidthAttribute))
                 windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
             advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            // A session from before 1.7.0 has none of these: Lock is off, and it loads exactly as it always did.
+            // A saved session is outside input: Lock is on only for exactly 1, and a held key is a whole number from 0 to 11.
+            const bool lockOn = xml->getStringAttribute (lockAttribute).trim() == "1";
+            const auto keyText = xml->getStringAttribute (lockedKeyAttribute).trim();
+            const int lockedKey = keyText.isNotEmpty() && keyText.length() <= 2 && keyText.containsOnly ("0123456789") ? keyText.getIntValue() : -1;
+            const bool lockedMinor = xml->getStringAttribute (lockedScaleAttribute).trim() == "1";
+            const bool holds = lockOn && lockedKey >= 0 && lockedKey <= 11;
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (advancedOpenAttribute);
+            xml->removeAttribute (lockAttribute);
+            xml->removeAttribute (lockedKeyAttribute);
+            xml->removeAttribute (lockedScaleAttribute);
             applySafeState (apvts, *xml);
+            // The control first, then the key. workerPublish reads them the other way round, and says why.
+            lock->setValueNotifyingHost (lockOn ? 1.0f : 0.0f);
+            heldFromSession.store (holds ? packKey (lockedKey, lockedMinor) : 0, std::memory_order_release);
         }
 }
 

@@ -70,6 +70,49 @@ namespace keyui
         TypeBox typeBox;
     };
 
+    // The line under the reading. It names the runner up and how close it is, or both keys when it cannot tell them apart,
+    // or says the key is held by Lock and what it hears meanwhile. The block at its right end takes the other key by hand.
+    class SecondLine final : public juce::Component,
+                             public Hinted
+    {
+    public:
+        struct Content
+        {
+            juce::String tag;       // a solid block at the left, such as Locked or Not sure. Empty for none
+            bool tagRed = false;    // red needs a look, black is a setting that changes what the window says
+            juce::String label;     // soft, such as Runner up
+            juce::String text;      // black, the key or keys
+            juce::String detail;    // soft, such as 41%, close
+            juce::String action;    // the block at the right, such as Use A major. Empty for none
+        };
+
+        std::function<void()> onAction;
+
+        SecondLine();
+
+        bool set (const Content&);
+        const Content& get() const noexcept  { return content; }
+        juce::String allText() const;        // everything it says, left to right, for the tests
+        float wordsWidth() const;            // the room the words need
+        float actionWidth() const;           // the room the block needs, 0 with no block
+        juce::Button& actionButton() noexcept  { return action; }
+
+        void paint (juce::Graphics&) override;
+        void resized() override;
+
+    private:
+        struct ActionButton final : juce::Button, Hinted
+        {
+            ActionButton();
+            void paintButton (juce::Graphics&, bool isOver, bool isDown) override;
+        };
+
+        void placeAction();
+
+        Content content;
+        ActionButton action;
+    };
+
     // The circle of fifths. Each key's ink is how likely it looks right now. The key on show is red.
     // Drawn into one image, and only the keys that changed are redrawn.
     class CircleView final : public juce::Component,

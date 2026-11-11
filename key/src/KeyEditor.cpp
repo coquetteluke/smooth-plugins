@@ -18,6 +18,24 @@ namespace
         return amount < 0.12f ? 0.0f : juce::jmin (1.0f, amount);
     }
 
+    juce::String keyName (int key, bool minor)
+    {
+        return juce::String (smoothkey::keyNames[key]) + (minor ? " minor" : " major");
+    }
+
+    juce::String percentText (float share)
+    {
+        return juce::String (juce::roundToInt (share * 100.0f)) + "%";
+    }
+
+    // How clearly the key on show leads its runner up, in a word. The margin runs from 0, a tie, to 1, no contest.
+    constexpr float closeBelow = 0.5f, veryCloseBelow = 0.2f;
+
+    const char* leadWord (float margin)
+    {
+        return margin < veryCloseBelow ? "very close" : (margin < closeBelow ? "close" : "well behind");
+    }
+
     juce::String centsText (float hz)
     {
         const int cents = juce::roundToInt (1200.0f * std::log2 (hz / 440.0f));
@@ -90,6 +108,7 @@ struct KeyEditor::Panel final : juce::Component
           mode (p.apvts, "mode", { "Listen", "Manual" }, { 0, 1 }, "Listen finds the key. Manual lets you set it yourself."),
           listening (p.apvts, "listening", "Listening", "Turn off to freeze the reading where it is."),
           reset (p.apvts, "Forget everything heard so far and start listening again.", [&p] { p.requestReset(); }),
+          lock (p.getLockParameter(), "Lock", "Hold the key on show. Other plug-ins follow it until you turn Lock off.", true),
           source (p.apvts, "source", { "Full Mix", "Single Voice" }, { 0, 1 }, "Full Mix uses the bass and chords. Single Voice is for one vocal or instrument."),
           swap (p.apvts, "swapRelative", "Swap", "Show the relative key instead, for when it says C major and you hear A minor.", true),
           tempoScale (p.apvts, "tempoScale", { "Half", "Normal", "Double" }, { 1, 0, 2 }, "Halve or double the tempo shown, if it is counting at the wrong speed."),
@@ -108,7 +127,7 @@ struct KeyEditor::Panel final : juce::Component
         };
 
         addAll ({ &hero, &circle, &centreBig, &centreSmall, &keyboard, &title, &status, &tuningLabel, &tuningValue, &tuningNote, &tempoLabel, &tempoValue,
-                  &hintLine, &noteLine, &mode, &listening, &reset, &source, &swap, &tempoScale, &advancedHeader });
+                  &hintLine, &noteLine, &mode, &listening, &reset, &lock, &source, &swap, &tempoScale, &advancedHeader, &second });
         addChildComponent (response);
         addChildComponent (manualKey);
         addChildComponent (manualScale);
@@ -118,6 +137,9 @@ struct KeyEditor::Panel final : juce::Component
         addChildComponent (manualScaleLabel);
 
         noteLine.setComponentID ("note");
+        status.setComponentID ("status");
+        centreBig.setComponentID ("centreBig");
+        centreSmall.setComponentID ("centreSmall");
         title.setText ("Key");
         tuningLabel.setText ("Tuning");
         tempoLabel.setText ("Tempo");
@@ -153,6 +175,12 @@ struct KeyEditor::Panel final : juce::Component
         hero.onReset = resetManual;
         circle.onReset = resetManual;
         circle.onPick = [&e] (int key, bool minor) { e.setManualKey (key, minor ? 1 : 0); };
+        // The key the block named when it was last drawn, so a click takes the key that was read, not one that arrived since.
+        second.onAction = [this]
+        {
+            if (offeredKey >= 0)
+                owner.useKey (offeredKey, offeredMinor);
+        };
         keyboard.onPick = [&e] (int note) { e.setManualKey (note, -1); };
 
         // Hovering anything in the window updates the hint line.
@@ -178,9 +206,10 @@ struct KeyEditor::Panel final : juce::Component
         int x = margin + 66;
         mode.setBounds (x, rowY, 168, rowH);                  x += 168 + 10;
         listening.setBounds (x, rowY, 96, rowH);              x += 96 + 10;
-        reset.setBounds (x, rowY, 70, rowH);                  x += 70 + 28;
+        reset.setBounds (x, rowY, 70, rowH);                  x += 70 + 10;
+        lock.setBounds (x, rowY, 70, rowH);                   x += 70 + 28;
         source.setBounds (x, rowY, 214, rowH);
-        status.setBounds (W - margin - 220, rowY, 220, rowH);
+        status.setBounds (W - margin - 250, rowY, 250, rowH);
 
         const int footerTop = H - 40;
         const int bodyBottom = footerTop - 8 - juce::roundToInt ((float) advancedH * advanced);
@@ -189,8 +218,10 @@ struct KeyEditor::Panel final : juce::Component
         const int bodyTop = rowY + rowH + 20;
         const int bodyH = bandTop - 14 - bodyTop;
 
-        hero.setBounds (margin, bodyTop, rightX - 28 - margin, bodyH);
+        // The reading, and under it the line for the runner up.
+        hero.setBounds (margin, bodyTop, rightX - 28 - margin, bodyH - secondH - secondGap);
         swap.setBounds (hero.swapBounds().translated (hero.getX(), hero.getY()));
+        second.setBounds (margin, hero.getBottom() + secondGap, hero.getWidth(), secondH);
 
         const int diameter = juce::jmin (rightColumn, bodyH);
         circle.setBounds (rightX + (rightColumn - diameter) / 2, bodyTop + juce::jmin (6, bodyH - diameter), diameter, diameter);
@@ -287,7 +318,9 @@ struct KeyEditor::Panel final : juce::Component
         return count;
     }
 
-    static constexpr int noteWidth = 400;
+    static constexpr int noteWidth = 400, secondH = 34, secondGap = 8;
+    int offeredKey = -1;
+    bool offeredMinor = false;
 
     KeyEditor& owner;
     PluginProcessor& processor;
@@ -296,6 +329,7 @@ struct KeyEditor::Panel final : juce::Component
     HeroView hero;
     CircleView circle;
     KeyboardView keyboard;
+    SecondLine second;
     Readout centreBig { bold, 38.0f, tone::ink, Align::centre }, centreSmall { book, 15.0f, tone::soft, Align::centre };
     Readout title { heavy, 30.0f, tone::ink }, status { medium, 17.0f, tone::ink, Align::right };
     Readout tuningLabel { book, 15.0f, tone::soft }, tuningValue { semi, 34.0f, tone::ink }, tuningNote { book, 15.0f, tone::soft };
@@ -306,6 +340,7 @@ struct KeyEditor::Panel final : juce::Component
     Segments mode;
     Pill listening;
     ResetButton reset;
+    Pill lock;
     Segments source;
     Pill swap;
     Segments tempoScale, response;
@@ -419,6 +454,19 @@ void KeyEditor::setManualKey (int key, int scale)
         setAsGesture (scaleParam, (float) scale);
 }
 
+void KeyEditor::useKey (int key, bool minor)
+{
+    setManualKey (key, minor ? 1 : 0);
+    auto& modeParam = *processor.apvts.getParameter ("mode");
+
+    if (juce::roundToInt (modeParam.convertFrom0to1 (modeParam.getValue())) != 1)
+        setAsGesture (modeParam, 1.0f);
+}
+
+juce::String KeyEditor::getSecondLineText() const  { return panel->second.allText(); }
+juce::String KeyEditor::getUseText() const         { return panel->second.get().action; }
+juce::String KeyEditor::getCentreText() const      { return (panel->centreBig.getText() + " " + panel->centreSmall.getText()).trim(); }
+
 void KeyEditor::previewHover (const juce::String& componentId)
 {
     if (auto* c = panel->findChildWithID (componentId))
@@ -463,18 +511,29 @@ void KeyEditor::refresh()
 
     const bool bypassed = processor.apvts.getRawParameterValue ("bypass")->load (std::memory_order_relaxed) >= 0.5f;
 
-    if (d.manual) statusText = "Set by hand";
+    // A key is held, or Lock is on and still waiting for one.
+    const bool waiting = d.lockOn && ! d.locked;
+    // Picking a key by hand is for Manual, and not while a key is held: the held one would stay on show whatever was clicked.
+    const bool picking = d.manual && ! d.locked;
+
+    if (d.locked) statusText = "Locked";
+    else if (d.manual) statusText = "Set by hand";
     else if (bypassed) statusText = "Bypassed";
     else if (! d.active) statusText = "Paused";
+    else if (waiting) statusText = "Lock waiting for a sure key";
     else if (! d.signal) statusText = d.key >= 0 ? "No audio, last key heard" : "Waiting for audio";
+    else if (d.unsure) statusText = "Hearing audio, not sure";
     else statusText = d.key >= 0 ? "Hearing audio" : "Hearing audio, no key yet";
 
-    const bool dimmed = d.key < 0 || (! d.manual && (! d.signal || ! d.active));
+    // A held key is as certain as one set by hand, so it never fades.
+    const bool dimmed = d.key < 0 || (! d.manual && ! d.locked && (! d.signal || ! d.active));
 
     HeroView::Content hero;
     hero.hasKey = d.key >= 0;
-    hero.dimmed = dimmed;
-    hero.manual = d.manual;
+    // In a close call the big letters go grey, as they do for a key that is no longer sounding: from across the room a
+    // black key reads as an answer, and this is not one yet.
+    hero.dimmed = dimmed || d.unsure;
+    hero.manual = picking;
 
     if (d.key >= 0)
     {
@@ -493,6 +552,59 @@ void KeyEditor::refresh()
     hero.key = d.key >= 0 ? keyText : juce::String ("?");
     moved = p.hero.set (hero) || moved;
 
+    static const juce::String lockedHint { "Locked on this key. Turn Lock off to change it." };
+    p.hero.hint = d.locked ? lockedHint : (picking ? p.hero.manualHint : p.hero.listenHint);
+
+    // Under the reading: the runner up and how close it is, both keys when it cannot tell them apart, or the lock.
+    SecondLine::Content line;
+    const bool hearing = d.active && d.signal && d.heardKey >= 0;
+    p.offeredKey = -1;
+    p.second.hint = {};
+
+    if (d.locked)
+    {
+        line.tag = "Locked";
+        p.second.hint = "This key is held. Under it is what the music sounds like right now.";
+
+        if (hearing)
+        {
+            line.label = "Hears";
+            line.text = keyName (d.heardKey, d.heardMinor);
+            line.detail = percentText (d.heardConfidence);
+        }
+        else
+        {
+            line.label = "Holding this key";
+        }
+    }
+    else if (! d.manual && d.key >= 0 && d.altKey >= 0)
+    {
+        if (d.unsure)
+        {
+            line.tag = "Not sure";
+            line.tagRed = true;
+            line.text = keyName (d.key, d.minor) + " or " + keyName (d.altKey, d.altMinor);
+            p.second.hint = "Two keys fit about equally. Lock keeps the one on show, or use the other.";
+        }
+        else
+        {
+            line.label = "Runner up";
+            line.text = keyName (d.altKey, d.altMinor);
+            line.detail = percentText (d.altConfidence) + ", " + leadWord (d.margin);
+            p.second.hint = "The next most likely key, and how close it is to the one on show.";
+        }
+
+        line.action = "Use " + keyName (d.altKey, d.altMinor);
+        p.offeredKey = d.altKey;
+        p.offeredMinor = d.altMinor;
+    }
+    else if (waiting && ! d.manual)
+    {
+        line.label = "Lock is on. It will hold the first sure key.";
+    }
+
+    moved = p.second.set (line) || moved;
+
     // The circle shows what it hears, so it stays empty in Manual, where it is not listening.
     // Eased over about half a second, and a key only redraws when it has really moved, so the circle breathes and does not flicker.
     for (size_t k = 0; k < 24; ++k)
@@ -508,28 +620,39 @@ void KeyEditor::refresh()
     }
 
     const int shownKey = d.key >= 0 ? d.key + (d.minor ? 12 : 0) : -1;
-    moved = p.circle.set (candidateLevels, shownKey, dimmed, d.manual) || moved;
+    moved = p.circle.set (candidateLevels, shownKey, dimmed, picking) || moved;
 
-    moved = p.keyboard.setScale (d.key, d.minor, dimmed, d.manual) || moved;
+    moved = p.keyboard.setScale (d.key, d.minor, dimmed, picking) || moved;
+
+    if (d.locked)
+    {
+        p.circle.hint = lockedHint;
+        p.keyboard.hint = lockedHint;
+    }
 
     std::array<float, 12> notes {};
     if (d.active)
         notes = d.liveNotes;
     moved = p.keyboard.setNotes (notes) || moved;
 
-    // How sure, in the middle of the circle.
-    if (d.manual)
+    // How sure, in the middle of the circle. A held key is not a measure of anything, so it says Locked and no number.
+    if (d.locked)
+    {
+        moved = p.centreBig.setText ({}) || moved;
+        moved = p.centreSmall.set ("Locked", tone::ink) || moved;
+    }
+    else if (d.manual)
     {
         moved = p.centreBig.setText ({}) || moved;
         moved = p.centreSmall.set ("Click a key", tone::soft) || moved;
     }
     else
     {
-        moved = p.centreBig.set (d.key >= 0 ? juce::String (juce::roundToInt (d.confidence * 100.0f)) + "%" : juce::String(), dimmed ? tone::faint : tone::ink) || moved;
-        moved = p.centreSmall.set (d.key >= 0 ? "sure" : "No key yet", tone::soft) || moved;
+        moved = p.centreBig.set (d.key >= 0 ? percentText (d.confidence) : juce::String(), dimmed ? tone::faint : tone::ink) || moved;
+        moved = p.centreSmall.set (d.key >= 0 ? (d.unsure ? "not sure" : "sure") : "No key yet", d.unsure && d.key >= 0 ? tone::red : tone::soft) || moved;
     }
 
-    moved = p.status.set (statusText, dimmed && ! d.manual ? tone::soft : tone::ink) || moved;
+    moved = p.status.set (statusText, dimmed && ! d.manual && ! d.locked ? tone::soft : tone::ink) || moved;
     p.status.setDot (d.active && d.signal);
 
     noteText = processor.hasFileFailed() ? "Could not save key.json, so other plug-ins will not see this key" : "";
@@ -543,29 +666,34 @@ void KeyEditor::refresh()
     }
 
     juce::String tuning, tuningNote, tempo;
-    bool referenceOff = false;
+    bool referenceOff = false, tuningInk = false;
 
     if (d.manual)
     {
         tuning = "A 440 Hz";
         tempo = "No beat";
         tuningNote = "Not listening";
+        tuningInk = true;
     }
     else
     {
-        tuning = d.key >= 0 ? "A " + juce::String (d.referenceHz, 1) + " Hz" : "No reading";
-        referenceOff = d.key >= 0 && std::abs (d.referenceHz - 440.0f) >= 1.0f;
+        // Tuning is measured from the music, so under a held key it goes by what is heard.
+        const bool measured = d.locked ? d.heardKey >= 0 : d.key >= 0;
+        const bool live = d.locked ? hearing : ! dimmed;
+        tuning = measured ? "A " + juce::String (d.referenceHz, 1) + " Hz" : "No reading";
+        referenceOff = measured && std::abs (d.referenceHz - 440.0f) >= 1.0f;
         tempo = d.shownBpm >= 1.0f ? juce::String (d.shownBpm, 1) + " BPM" : "No beat";
-        tuningNote = referenceOff ? centsText (d.referenceHz) : (d.key >= 0 ? "In tune with A 440" : juce::String());
+        tuningNote = referenceOff ? centsText (d.referenceHz) : (measured ? "In tune with A 440" : juce::String());
+        tuningInk = measured && live;
     }
 
-    moved = p.tuningValue.set (tuning, referenceOff ? tone::red : (d.key >= 0 && ! dimmed ? tone::ink : tone::faint)) || moved;
+    moved = p.tuningValue.set (tuning, referenceOff ? tone::red : (tuningInk ? tone::ink : tone::faint)) || moved;
     moved = p.tuningNote.set (tuningNote, referenceOff ? tone::red : tone::soft) || moved;
     moved = p.tempoValue.set (tempo, d.shownBpm >= 1.0f && ! d.manual && ! dimmed ? tone::ink : tone::faint) || moved;
 
     // These do nothing in Manual, and say so. They still work, and automation still moves them.
     p.listening.setDimmed (d.manual);
-    p.swap.setDimmed (d.manual);
+    p.swap.setDimmed (d.manual || d.locked);
     p.source.setDimmed (d.manual);
     p.response.setDimmed (d.manual);
     p.tempoScale.setDimmed (d.manual);

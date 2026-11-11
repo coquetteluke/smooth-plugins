@@ -22,12 +22,18 @@ public:
     juce::String getKeyText() const { return keyText; }
     juce::String getStatusText() const { return statusText; }
     juce::String getNoteText() const { return noteText; }
+    juce::String getSecondLineText() const;   // the line under the reading: the runner up, a close call, or the lock
+    juce::String getUseText() const;          // the block that takes the other key, empty when it is not offered
+    juce::String getCentreText() const;       // the middle of the circle
 
     bool isAdvancedOpen() const noexcept;
     void setAdvancedOpen (bool shouldBeOpen, bool animate);
 
     // Sets Manual Key, and Manual Scale when scale is 0 or 1, as one gesture each.
     void setManualKey (int key, int scale);
+
+    // Takes a key by hand: Manual Key, Manual Scale and Mode to Manual, as one gesture each, and only those that change.
+    void useKey (int key, bool minor);
 
     // For the tests and the offline renders.
     juce::Component& getPanel();

@@ -206,10 +206,13 @@ private:
         tauCurrent = 0.0; dipCurrent = 1.0f; voiced = false; voicedAnalyses = 0; voicedVotes = 0; unvoicedVotes = 0; pendingVotes = 0; pendingTau = 0.0;
         markValid = false; finePeriod = 0.0; weakMarks = 0; markSeq = 0; lastMarkPosition = -1.0e12; mismatchVotes = 0;
         plainVotes = 0; plainTau = 1.0; plainVotedAt = -1; plainDipSum = 0.0f; lateSamples = 0; nearSince = -1;
+        lowEndedAt = -1;
     }
 
     void setUnvoiced() noexcept
     {
+        if (voiced && lowTauMax > tauMax && tauCurrent > (double) tauMax)
+            lowEndedAt = slowCount;
         voiced = false;
         plainVotes = 0;
         plainVotedAt = -1;
@@ -317,7 +320,12 @@ private:
                     // by something: a doubler in front, which Luke runs, lays a second voice a few ms and cents away over the first, and two
                     // periods of that fit better than one. A true low note leaves half its period with flipped even harmonics; a note at
                     // the half period does not. Behind Duo, 1.5.0 read 13 voice notes of 896 above 130 Hz an octave low where 1.4.4 read 7.
-                    for (int i = 0; i < numDips && take; ++i)
+                    // Only just after a followed low note ended (1.5.2): that is the case above, a word's last creak running into the
+                    // next word. A fresh start out of a creak, after a pause, is a low note and is followed: 1.5.1 refused those as
+                    // well, the votes then flipped between the creak and the note for 40 ms with no voice at all (take 10 at 23.69 s,
+                    // take 05 at 115.25 s), and time on the note under 98 Hz fell by a point.
+                    const bool lowJustEnded = lowEndedAt >= 0 && slowCount - lowEndedAt < (long long) (lowEndedWithin * slowRate);
+                    for (int i = 0; i < numDips && take && lowJustEnded; ++i)
                         if (std::abs (lowTau / (dipTau[(size_t) i] * 2.0) - 1.0) < 0.06 && dipValue[(size_t) i] < 0.6f && ! evenFlipsAt (dipTau[(size_t) i]))
                             take = false;
                 }
@@ -379,11 +387,33 @@ private:
         float dip = dipValue[(size_t) chosen];
         // A start (1.5.1): see startPeriod. Until a note is established its period is chosen there, when that rule has something to say.
         startRuleNow = 0;
+        bool creditHeld = false;
         if (! usingLow && rangeHasDip && (! voiced || voicedAnalyses * hop < 3 * window))
         {
             const double before = tau;
+            const float dipBefore = dip;
             if (startPeriod (chosen, numDips, limit, tau, dip))
                 startRuleNow = tau < before ? 1 : 2;
+            // A longer period than the first deep dip (1.5.2): while nothing is voiced it must come out the same twice in a row, and
+            // until then the first deep dip is weighed as it was before 1.5.1. Taken at once, with the longer period's deeper reading
+            // counting for the votes, it called 5 ms of a murmur at -46 dBFS a note (take 02 at 189.41 s: 516 Hz reading 0.37 to 0.48,
+            // twice its period 0.18 to 0.22), and the voices sang 30 ms of it: the leak inside phrases that 1.5.1 added.
+            if (startRuleNow == 2 && ! voiced)
+            {
+                longerVotes = longerVotes > 0 && std::abs (tau / longerTau - 1.0) < 0.08 ? longerVotes + 1 : 1;
+                longerTau = tau;
+                if (longerVotes < 2)
+                {
+                    // Would this analysis have been a vote for a start at the longer period? Then it counts as one once the next agrees,
+                    // so a start that keeps to the longer period is called no later than before.
+                    longerHeldOk = dip < voicedOn && ! isFricative() && evenDip (tau * decimation) <= evenLimit
+                                   && (dip < plainlyPeriodicDip || residualDip (tau) <= residualLimit);
+                    tau = before; dip = dipBefore; startRuleNow = 0;
+                }
+                creditHeld = longerVotes == 2 && longerHeldOk;
+            }
+            else
+                longerVotes = 0;
         }
         if (voiced) ++voicedAnalyses;
         // A note just called does not drop to two, three or four of its periods while its own period still holds: a multiple of a period
@@ -471,6 +501,7 @@ private:
                 plainVotes = plainSteady ? plainVotes + 1 : 1;
                 plainTau = tauCurrent;
                 plainDipSum = plainVotes == 1 ? dipCurrent : plainDipSum + dipCurrent;
+                if (creditHeld && plainVotes == 1) { plainVotes = 2; plainDipSum += dipCurrent; }
                 if (plainVotes == 3) plainVotedAt = slowCount;
 
                 // And once its formants are taken out it must still repeat (residualDip). Breath through a vowel passes every test above for a
@@ -488,6 +519,7 @@ private:
                     const bool steady = voicedVotes == 0 || std::abs (tauCurrent / votedTau - 1.0) < 0.05;
                     voicedVotes = steady ? voicedVotes + 1 : 1;
                     votedTau = tauCurrent;
+                    if (creditHeld && voicedVotes == 1) voicedVotes = 2;
                     if (voicedVotes >= 3)
                     {
                         voiced = true;
@@ -1128,6 +1160,12 @@ private:
     int pendingVotes = 0, voicedVotes = 0, unvoicedVotes = 0, mismatchVotes = 0, voicedAnalyses = 0;
     bool voiced = false;
     int whyNow = whyQuiet, startRuleNow = 0;
+    int longerVotes = 0;
+    bool longerHeldOk = false;
+    long long lowEndedAt = -1;                     // when the last followed note under the range ended, in slow samples
+    static constexpr double lowEndedWithin = 0.1;  // seconds
+
+    double longerTau = 1.0;
     int plainVotes = 0;
     double plainTau = 1.0;
     float plainDipSum = 0.0f;

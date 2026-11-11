@@ -2149,8 +2149,45 @@ int main (int argc, char** argv)
         {
             Dry d;
             if (! d.load (cwd.getChildFile (argv[a]))) return 1;
-            const TrackerTrace tr = traceTracker (d.x, info.inputType, info.tracking);
+            // With REALVOX_FEED the tracker hears the file of the same name from that folder (left and right mixed), less
+            // REALVOX_FEED_DELAY samples, and is judged against the dry take's notes, as in notes.
+            std::vector<float> heard = d.x;
+            if (const char* dir = std::getenv ("REALVOX_FEED"))
+            {
+                juce::AudioFormatManager m;
+                m.registerBasicFormats();
+                std::unique_ptr<juce::AudioFormatReader> reader (m.createReaderFor (juce::File (dir).getChildFile (juce::File (argv[a]).getFileName())));
+                if (reader == nullptr) { std::fprintf (stderr, "no %s in %s\n", argv[a], dir); return 1; }
+                juce::AudioBuffer<float> fb ((int) reader->numChannels, (int) reader->lengthInSamples);
+                reader->read (&fb, 0, fb.getNumSamples(), 0, true, true);
+                const int delay = std::getenv ("REALVOX_FEED_DELAY") != nullptr ? std::atoi (std::getenv ("REALVOX_FEED_DELAY")) : 0;
+                for (size_t i = 0; i < heard.size(); ++i)
+                {
+                    const int at = (int) i + delay;
+                    heard[i] = at < fb.getNumSamples() ? 0.5f * (fb.getSample (0, at) + fb.getSample (fb.getNumChannels() > 1 ? 1 : 0, at)) : 0.0f;
+                }
+            }
+            const TrackerTrace tr = traceTracker (heard, info.inputType, info.tracking);
             const long ticks = (long) tr.hz.size();
+            // Every pitched frame of the lead (5 ms), by its pitch: what the tracker says of it. T <take> <band> <frames> <right> <octave or
+            // twelfth high> <low> <another pitch> <no pitch>
+            {
+                long counts[3][5] = {};
+                for (int f = 0; f < d.frames(); ++f)
+                {
+                    const double hz = d.track[(size_t) f];
+                    if (hz <= 0.0 || d.hissy[(size_t) f]) continue;
+                    const int st = trackerStateAt (tr, d, d.frameSample (f));
+                    ++counts[hz < 98.0 ? 0 : hz < 130.0 ? 1 : 2][st == 0 ? 0 : st == 8 ? 1 : st == 9 ? 2 : st == 10 ? 3 : 4];
+                    // REALVOX_CALLS_FRAMES=<Hz>: every frame under that pitch, for a frame by frame diff of two versions
+                    if (const char* under = std::getenv ("REALVOX_CALLS_FRAMES"))
+                        if (hz < std::atof (under)) std::printf ("F %s %.3f %.1f %s\n", d.take.c_str(), d.frameTime (f), hz, stateNames[st]);
+                }
+                static const char* const bands[3] = { "under98", "98to130", "over130" };
+                for (int bnd = 0; bnd < 3; ++bnd)
+                    std::printf ("T %s %s %ld %ld %ld %ld %ld %ld\n", d.take.c_str(), bands[bnd], counts[bnd][0] + counts[bnd][1] + counts[bnd][2] + counts[bnd][3] + counts[bnd][4],
+                                 counts[bnd][0], counts[bnd][1], counts[bnd][2], counts[bnd][3], counts[bnd][4]);
+            }
             for (size_t si = 0; si < d.stretches.size(); ++si)
             {
                 const auto& s = d.stretches[si];

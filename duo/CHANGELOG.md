@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1, not installed: branch `level-matched-default`, waiting for Luke
+
+A new Duo, and the Natural Pair preset, open with Match Level on. The default then comes out as loud as the dry vocal instead of 1.6 to 1.8 dB over it, so it no longer pushes whatever comes after it harder. Nothing else about the default changes: the same two doubles at the same balance, the same pans.
+
+- On the 11 working takes the default is now within 0.16 dB (-0.16 to +0.05 dB, median -0.02 dB) of the dry over sung parts (it was +1.61 to +1.82 dB), and its peak is -7.5 dBFS (it was -5.7 dBFS).
+- What it costs: at the default the lead is your vocal turned down by 1.8 dB, not your vocal sample for sample. Switch Match Level off and it is exact again.
+- Sessions saved before keep Match Level off, so they sound and measure as they did. The other seven presets keep their level.
+- The null test still holds every case to the 0.2.0 sound bit for bit, with Match Level switched off for it.
+
 ## 0.4.0, 2026-11-11
 
 Three new switches in Advanced. With all three as an older session loads them, the sound is bit for bit what it was (the null test still passes for every preset).

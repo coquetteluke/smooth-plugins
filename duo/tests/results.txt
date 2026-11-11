@@ -22,29 +22,29 @@ PASS  sweeps finished, mono
 PASS  sweeps finished, stereo
 PASS  no NaN after silence
 PASS  no denormals decaying into silence = 0.000 samples
-PASS  recovers after NaN, inf and huge input, peak in the last second = 0.426 
-INFO  click test baseline step = 0.005 
-PASS  no click when Doubles jumps, biggest step = 0.005 
-PASS  no click when Tightness jumps, biggest step = 0.007 
-PASS  no click when Width jumps, biggest step = 0.004 
-PASS  no click when Lead Level jumps, biggest step = 0.007 
-PASS  no click when Double 1 Level jumps, biggest step = 0.009 
-PASS  no click when Double 2 Level jumps, biggest step = 0.006 
-PASS  no click when Double 3 Level jumps, biggest step = 0.006 
-PASS  no click when Timing Amount jumps, biggest step = 0.007 
-PASS  no click when Pitch Amount jumps, biggest step = 0.006 
-PASS  no click when Vibrato Variation jumps, biggest step = 0.006 
-PASS  no click when Timbre Variation jumps, biggest step = 0.006 
-PASS  no click when Lead Pan jumps, biggest step = 0.006 
-PASS  no click when Doubles Pan jumps, biggest step = 0.005 
-PASS  no click when Extra Delay jumps, biggest step = 0.007 
-PASS  no click when Vocal Range jumps, biggest step = 0.007 
-PASS  no click when Bypass jumps, biggest step = 0.006 
-PASS  no click when Precise Vibrato jumps, biggest step = 0.005 
-PASS  no click when Mono Safe jumps, biggest step = 0.006 
+PASS  recovers after NaN, inf and huge input, peak in the last second = 0.348 
+INFO  click test baseline step = 0.004 
+PASS  no click when Doubles jumps, biggest step = 0.004 
+PASS  no click when Tightness jumps, biggest step = 0.005 
+PASS  no click when Width jumps, biggest step = 0.003 
+PASS  no click when Lead Level jumps, biggest step = 0.004 
+PASS  no click when Double 1 Level jumps, biggest step = 0.004 
+PASS  no click when Double 2 Level jumps, biggest step = 0.005 
+PASS  no click when Double 3 Level jumps, biggest step = 0.005 
+PASS  no click when Timing Amount jumps, biggest step = 0.005 
+PASS  no click when Pitch Amount jumps, biggest step = 0.005 
+PASS  no click when Vibrato Variation jumps, biggest step = 0.005 
+PASS  no click when Timbre Variation jumps, biggest step = 0.005 
+PASS  no click when Lead Pan jumps, biggest step = 0.005 
+PASS  no click when Doubles Pan jumps, biggest step = 0.004 
+PASS  no click when Extra Delay jumps, biggest step = 0.005 
+PASS  no click when Vocal Range jumps, biggest step = 0.005 
+PASS  no click when Bypass jumps, biggest step = 0.005 
+PASS  no click when Precise Vibrato jumps, biggest step = 0.004 
+PASS  no click when Mono Safe jumps, biggest step = 0.005 
 PASS  no click when Match Level jumps, biggest step = 0.005 
 PASS  first preset equals the default state
-PASS  preset Natural Pair sounds, balanced, left = -23.061 dB
+PASS  preset Natural Pair sounds, balanced, left = -24.829 dB
 PASS  preset Tight Double sounds, balanced, left = -24.131 dB
 PASS  preset Quiet Thickener sounds, balanced, left = -24.290 dB
 PASS  preset Wide Stack sounds, balanced, left = -23.251 dB
@@ -93,7 +93,7 @@ PASS  mono in to stereo out is supported
 PASS  mono in to mono out is supported
 PASS  stereo in to stereo out is supported
 PASS  stereo in to mono out is refused
-PASS  mono to stereo at default settings: both sides sound, left = -15.084 dB
+PASS  mono to stereo at default settings: both sides sound, left = -16.851 dB
 PASS  mono to stereo at default settings: sides balanced within 0.5 dB, difference = 0.001 dB
 PASS  mono to stereo at default settings: the sides differ
 PASS  mono to stereo, Doubles 1 Width 100: balanced within 1 dB, difference = -0.004 dB
@@ -411,11 +411,11 @@ PASS  Match Level with one output: as loud as the input within 0.5 dB = -0.049 d
 PASS  Match Level with Bypass on: exact dry on both sides, largest difference = 0.000 
 PASS  Match Level with every voice off: silence, nothing blows up
 PASS  Mono Safe with Match Level: left plus right is the lead alone at the matched level, what is left = -147.234 dB
-PASS  a new Duo opens with Precise Vibrato on, Mono Safe off and Match Level off
+PASS  a new Duo opens with Precise Vibrato on, Mono Safe off and Match Level on
 PASS  a session saved before 0.4.0 loads with Precise Vibrato, Mono Safe and Match Level off
 PASS  and keeps its other settings
 PASS  a session saved by 0.4.0 keeps all three switches as saved
-PASS  preset Natural Pair: Precise Vibrato on, Mono Safe and Match Level off
+PASS  preset Natural Pair: Precise Vibrato on, Mono Safe off, Match Level on
 PASS  preset Tight Double: Precise Vibrato on, Mono Safe and Match Level off
 PASS  preset Quiet Thickener: Precise Vibrato on, Mono Safe and Match Level off
 PASS  preset Wide Stack: keeps the 0.3 vibrato it was made with, Mono Safe and Match Level off
@@ -525,7 +525,7 @@ PASS  block size 64 gives the same output as 512
 PASS  block size 4096 gives the same output as 512
 PASS  a playhead changes nothing
 PASS  prepare called again restarts cleanly, same bounce
-PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.021 
+PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.026 
 PASS  the sung recording loads
 PASS  null test: bit for bit the same as 0.2.0, no window, as first opened
 PASS  null test: bit for bit the same with the window open and drawing, as first opened

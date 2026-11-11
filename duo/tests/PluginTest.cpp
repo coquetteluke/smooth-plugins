@@ -46,6 +46,9 @@ static void apply (PluginProcessor& p, const Setup& s)
     setParam (p, "extradelay", s.extra);
     setParam (p, "range", (float) s.range);
     setParam (p, "bypass", 0.0f);
+    // A Setup names every level it wants. Match Level, which a new Duo now opens with, would turn them all into something else, so
+    // the tests that set levels switch it off; the tests of Match Level itself switch it on.
+    setParam (p, "matchlevel", 0.0f);
 }
 
 // One double alone: lead and the others off. Doubles stays at 3 so every voice is available.
@@ -1432,7 +1435,7 @@ static void testMonoSafe()
     std::vector<float> in ((size_t) n); noise (in.data(), n, 0.2);
     for (int preset : { 0, 3, 4, 6 })
     {
-        PluginProcessor p; p.setCurrentProgram (preset); setParam (p, "monosafe", 1.0f);
+        PluginProcessor p; p.setCurrentProgram (preset); setParam (p, "monosafe", 1.0f); setParam (p, "matchlevel", 0.0f); // the lead at its own level
         const auto name = p.getProgramName (preset).toStdString();
         prepareMonoToStereo (p, sr, 256);
         auto out = render (p, in, 256);
@@ -1578,7 +1581,7 @@ static void testOlderSessions()
     const auto flag = [] (PluginProcessor& p, const char* id) { return p.apvts.getRawParameterValue (id)->load() >= 0.5f; };
 
     PluginProcessor fresh;
-    check (flag (fresh, "precisevibrato") && ! flag (fresh, "monosafe") && ! flag (fresh, "matchlevel"), "a new Duo opens with Precise Vibrato on, Mono Safe off and Match Level off");
+    check (flag (fresh, "precisevibrato") && ! flag (fresh, "monosafe") && flag (fresh, "matchlevel"), "a new Duo opens with Precise Vibrato on, Mono Safe off and Match Level on");
 
     PluginProcessor saved; setParam (saved, "vibrato", 60.0f); setParam (saved, "tightness", 55.0f); setParam (saved, "monosafe", 1.0f); setParam (saved, "matchlevel", 1.0f);
     const auto old = stateWithout04 (saved);
@@ -1593,10 +1596,10 @@ static void testOlderSessions()
 
     for (int i = 0; i < fresh.getNumPrograms(); ++i)
     {
-        PluginProcessor q; setParam (q, "monosafe", 1.0f); setParam (q, "matchlevel", 1.0f); q.setCurrentProgram (i);
+        PluginProcessor q; setParam (q, "monosafe", 1.0f); setParam (q, "matchlevel", i == 0 ? 0.0f : 1.0f); q.setCurrentProgram (i);
         const bool usesVibrato = q.apvts.getRawParameterValue ("vibrato")->load() > 0.0f;
-        check (flag (q, "precisevibrato") == ! usesVibrato && ! flag (q, "monosafe") && ! flag (q, "matchlevel"),
-               "preset " + q.getProgramName (i).toStdString() + (usesVibrato ? ": keeps the 0.3 vibrato it was made with, Mono Safe and Match Level off" : ": Precise Vibrato on, Mono Safe and Match Level off"));
+        check (flag (q, "precisevibrato") == ! usesVibrato && ! flag (q, "monosafe") && flag (q, "matchlevel") == (i == 0),
+               "preset " + q.getProgramName (i).toStdString() + (usesVibrato ? ": keeps the 0.3 vibrato it was made with, Mono Safe and Match Level off" : i == 0 ? ": Precise Vibrato on, Mono Safe off, Match Level on" : ": Precise Vibrato on, Mono Safe and Match Level off"));
     }
 
     // The sound of an old session: Wide Stack's settings arriving as a pre 0.4.0 state give the same samples as the preset.

@@ -14,6 +14,8 @@ namespace
         float timing = 100.0f, pitch = 100.0f, vibrato = 0.0f, timbre = 0.0f, leadPan = 0.0f, doublesPan = 0.0f, extra = 0.0f;
         // The three presets that use Vibrato Variation were made on the 0.3 vibrato law and keep it, so they sound as they did.
         bool preciseVibrato = true;
+        // Only the default, Natural Pair, is level matched. The other presets keep the level they were made at.
+        bool matchLevel = false;
     };
 
     // The state of a session saved before 0.4.0 has no entry for a parameter added in 0.4.0.
@@ -27,7 +29,7 @@ namespace
 
     // The first preset is the default state of the plug-in.
     constexpr Preset presets[] = {
-        { "Natural Pair",      2, 30.0f,  70.0f,   0.0f,  -6.0f,  -6.0f,  -8.0f },
+        { "Natural Pair",      2, 30.0f,  70.0f,   0.0f,  -6.0f,  -6.0f,  -8.0f, 100.0f, 100.0f,  0.0f,  0.0f,   0.0f,  0.0f,  0.0f, true, true },
         { "Tight Double",      1, 10.0f,  50.0f,   0.0f,  -8.0f,  -8.0f,  -8.0f },
         { "Quiet Thickener",   2, 15.0f,  15.0f,   0.0f, -12.0f, -12.0f, -12.0f },
         { "Wide Stack",        3, 45.0f, 100.0f,  -1.0f,  -6.0f,  -6.0f,  -8.0f, 100.0f, 100.0f, 20.0f, 15.0f,   0.0f,  0.0f,  0.0f, false },
@@ -86,7 +88,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     // Added in 0.4.0, with a later version hint so the AU keeps the older parameters where they were.
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "precisevibrato", 2 }, "Precise Vibrato", true));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "monosafe", 2 }, "Mono Safe", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "matchlevel", 2 }, "Match Level", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "matchlevel", 2 }, "Match Level", d.matchLevel));
     return layout;
 }
 
@@ -217,7 +219,7 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("extradelay", pr.extra);
     set ("precisevibrato", pr.preciseVibrato ? 1.0f : 0.0f);
     set ("monosafe", 0.0f);
-    set ("matchlevel", 0.0f);
+    set ("matchlevel", pr.matchLevel ? 1.0f : 0.0f);
 }
 
 juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new DuoEditor (*this); }

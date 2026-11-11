@@ -25,7 +25,7 @@ Audio Units > Luke Garito > Duo. AU code: `aufx SDuo Luke`. Works mono to stereo
 | Doubles Pan | -100 to +100 % | Moves all copies together, on top of Width. |
 | Extra Delay | 0 to 100 ms | Adds a fixed delay to every copy. Turn it up for a slapback. Moving it bends the pitch for a moment, like moving a tape head. |
 | Mono Safe | on or off | Off unless you switch it on. Each double goes to left and right with opposite signs. Add left and right together and the doubles cancel, leaving your own voice alone: that is what a phone speaker plays, and what a tuner or harmony plug-in after Duo listens to (Choir Loft tracks left plus right). In stereo the doubles are all still there at the same level, wide and not placed anywhere. Width and Doubles Pan have nothing to move while it is on. With one output it does nothing. |
-| Match Level | on or off | Off unless you switch it on. Turns the lead and the doubles down together by what they add up to, so Duo comes out as loud as the vocal that went in (at the default that is 1.8 dB). The balance between you and the doubles, the pans and the width stay as set. With it on the lead is no longer the input sample for sample: it is the input, turned down. |
+| Match Level | on or off | On in a new Duo and in the Natural Pair preset, off in the other presets and in sessions saved before 0.4.1. Turns the lead and the doubles down together by what they add up to, so Duo comes out as loud as the vocal that went in (at the default that is 1.8 dB). The balance between you and the doubles, the pans and the width stay as set. With it on the lead is no longer the input sample for sample: it is the input, turned down. |
 | Bypass | on or off | Fades to the exact dry signal in 20 ms. |
 
 ## The window
@@ -47,7 +47,7 @@ Pictures are in `docs/window/`, made by `build/RenderWindow_artefacts/Release/Re
 
 ## Presets
 
-- **Natural Pair**: the default. 2 doubles, one on each side.
+- **Natural Pair**: the default. 2 doubles, one on each side, with Match Level on so it comes out as loud as the dry vocal.
 - **Tight Double**: 1 close copy, a moderate spread.
 - **Quiet Thickener**: 2 quiet copies, close to centre.
 - **Wide Stack**: 3 doubles, full Width, a little vibrato and timbre change. Precise Vibrato off, as it was made.
@@ -95,7 +95,7 @@ All in `tests/results.txt`, from `tests/PluginTest.cpp`, on synthetic signals. L
 
 ## Level
 
-Duo adds voices, so it is louder than the dry: at the default 1.6 to 1.8 dB over sung parts, which is the power sum the level controls set (+1.77 dB). The lead at Lead Level 0 dB is the input exactly, sample for sample. To have Duo come out at the level of the dry vocal, switch Match Level on: it turns the lead and the doubles down together (1.8 dB at the default) and leaves the balance alone. On Luke's takes the output is then within 0.2 dB of the dry at the default and within 0.15 dB at Wide Stack, Loose Gang and Doubles Only Wide. Doing it by hand gives the same: Lead -1.8 dB, Double 1 and 2 -7.8 dB. Peaks can pass 0 dBFS when the input is already near it and Match Level is off, never by more than every voice adding in phase allows. Logic mixes in floating point, so nothing clips inside the channel. There is no limiter.
+Duo adds voices, so without Match Level it is louder than the dry: 1.6 to 1.8 dB over sung parts with the default's levels, which is the power sum the level controls set (+1.77 dB). The default opens with Match Level on: it turns the lead and the doubles down together (1.8 dB at the default) and leaves the balance alone, so Duo comes out at the level of the dry vocal. With Match Level off the lead at Lead Level 0 dB is the input exactly, sample for sample. On Luke's takes the output is then within 0.2 dB of the dry at the default and within 0.15 dB at Wide Stack, Loose Gang and Doubles Only Wide. Doing it by hand gives the same: Lead -1.8 dB, Double 1 and 2 -7.8 dB. Peaks can pass 0 dBFS when the input is already near it and Match Level is off, never by more than every voice adding in phase allows. Logic mixes in floating point, so nothing clips inside the channel. There is no limiter.
 
 ## On real singing
 
@@ -116,4 +116,3 @@ Measured on the 11 working takes of Luke's Rode session (01, 02, 04, 05, 06, 07,
 - On Luke's voice as recorded, Vibrato Variation changes almost nothing, because he sings almost no vibrato. The first real-vocal check counted slides and wobble as vibrato and so read this as a fault; it still reads that way (0.98 against a limit of 0.5), and Duo is right not to flatten slides.
 - At Timbre Variation 100 the take's own mouth ticks come out with a changed shape in the doubles (up to 2.1 times as large in one of 24 cases, 1.07 times at the median). The shared click check does not know a reshaped copy from a new click, so it counts 24 events at Timbre 100 against 7 at Timbre 0.
 - Wide Stack, Loose Gang and Two Singers still use the 0.3 vibrato law. Moving them to Precise Vibrato changes how they sound, so that waits for Luke (branch `presets-precise-vibrato`).
-- The default is still 1.8 dB louder than the dry. Opening with Match Level on is on branch `level-matched-default`, for Luke.

@@ -55,6 +55,13 @@ namespace nulltest
         if (c.preset >= 0)
             p.setCurrentProgram (c.preset);
 
+        // The default now opens with Match Level on. The numbers this is held against are from 0.2.0, which had no such switch, so
+        // it is switched off here: with it off the sound is still the same bit for bit.
+        {
+            auto* prm = p.apvts.getParameter ("matchlevel");
+            prm->setValueNotifyingHost (0.0f);
+        }
+
         p.setPlayConfigDetails (c.inputs, c.outputs, c.rate, c.block);
         p.prepareToPlay (c.rate, c.block);
 

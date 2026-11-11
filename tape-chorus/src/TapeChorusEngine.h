@@ -7,6 +7,7 @@
 #include <memory>
 #include <vector>
 #include "FastOversampler.h"
+#include "CleanOversampler.h"
 
 // The whole signal path, free of plug-in framework code.
 //
@@ -58,6 +59,8 @@ public:
         float wowHz = defaultWowHz, flutterHz = defaultFlutterHz;
         float randomPct = 0.0f, randomHz = 1.0f, degradePct = 0.0f, degradeHz = 2.0f, noisePct = 0.0f;
         bool unsync = false, noiseGate = true;
+        // Added in 0.4.0. Off is the sound of every version before it, sample for sample.
+        bool clean = false;
     };
 
     void prepare (double sampleRate, const Params& p)
@@ -69,6 +72,11 @@ public:
         os->initProcessing ((size_t) tickLen);
         os->reset();
         wetLatency = (double) os->getLatencyInSamples();
+        cleanOs.prepare (1 << (int) stages, wetLatency, 2, tickLen);
+        cleanOs.reset();
+        cleanAmt = cleanAmtNext = p.clean ? 1.0f : 0.0f;
+        cleanRunning = p.clean; standardRunning = ! p.clean; cleanWarm = 0;
+        wowSmoothA = wowSmoothB = flutSmoothA = flutSmoothB = 0.0;
         minDelayMs = std::max (1.0, (wetLatency + 4.0) * 1000.0 / sr);
 
         const auto maxMs = 40.0 + 8.0 + maxWowMs + maxFlutterMs + maxRandomMs + maxOffsetMs + maxSpreadOffsetMs + 2.0;
@@ -91,6 +99,7 @@ public:
             preB0 = (V + K) / (1.0 + K); preB1 = (K - V) / (1.0 + K); preA1 = (K - 1.0) / (1.0 + K);
         }
         dcR = std::exp (-juce::MathConstants<double>::twoPi * 6.0 / sr);
+        dcRClean = std::exp (-juce::MathConstants<double>::twoPi * 1.0 / sr);
         { const double K = std::tan (juce::MathConstants<double>::pi * 2500.0 / sr); toneA = K / (1.0 + K); }
         wowHz = p.wowHz; flutterHz = p.flutterHz;
         setWowFilters(); setFlutterFilters();
@@ -291,6 +300,7 @@ private:
     {
         wowRatio = rateRatio (wowHz, defaultWowHz);
         wowNoiseC = 1.0 - std::exp (-juce::MathConstants<double>::twoPi * 0.9 * wowRatio * tickSec);
+        wowSmoothC = 1.0 - std::exp (-juce::MathConstants<double>::twoPi * 3.6 * wowRatio * tickSec);
     }
 
     void setFlutterFilters()
@@ -298,6 +308,7 @@ private:
         flutterRatio = rateRatio (flutterHz, defaultFlutterHz);
         flutNoiseLoC = 1.0 - std::exp (-juce::MathConstants<double>::twoPi * 16.0 * flutterRatio * tickSec);
         flutNoiseHiC = 1.0 - std::exp (-juce::MathConstants<double>::twoPi * 5.0 * flutterRatio * tickSec);
+        flutSmoothC = 1.0 - std::exp (-juce::MathConstants<double>::twoPi * 60.0 * flutterRatio * tickSec);
     }
 
     // Two one pole low passes in a row, from white noise. The scale gives an rms of 0.4 at any rate, so the swing does not change with speed.
@@ -355,6 +366,13 @@ private:
         const double scale = excursion > room ? std::max (room, 0.0) / excursion : 1.0;
         scaleNow = scale;
 
+        // The irregular part of Wow and Flutter is noise through one filter pole, which leaves a little of it at every speed up to the
+        // 1500 steps a second it is made at: hash around a held note (42 dB under a 3 kHz tone at Wow 15 and Flutter 10, 24 dB under
+        // at Flutter 100). Clean runs it through two more poles, so only the slow part that sounds like tape is left.
+        const double flutRaw = flutLo - flutHi;
+        const double wowIrregular = cleanAmtNext > 0.0f ? wowNoise + (double) cleanAmtNext * (wowSmoothB - wowNoise) : wowNoise;
+        const double flutIrregular = cleanAmtNext > 0.0f ? flutRaw + (double) cleanAmtNext * (flutSmoothB - flutRaw) : flutRaw;
+
         for (int side = 0; side < 2; ++side)
         {
             const double sideTurn = side * spread;
@@ -363,10 +381,10 @@ private:
             {
                 const double w = 0.62 * sinTurns (wowA + 0.37 * v + 0.25 * sideTurn)
                                + 0.26 * sinTurns (wowB + 0.61 * v + 0.40 * sideTurn)
-                               + 0.12 * wowNoise;
+                               + 0.12 * wowIrregular;
                 const double f = 0.55 * sinTurns (flutA + 0.23 * v + 0.25 * sideTurn)
                                + 0.28 * sinTurns (flutB + 0.71 * v + 0.40 * sideTurn)
-                               + 0.17 * (flutLo - flutHi);
+                               + 0.17 * flutIrregular;
                 const double l = sinTurns (lfo + voicePhase[(size_t) v] + (double) lfoSideTurn * sideTurn);
                 const double rn = randomVal[0][(size_t) v] + (double) unsyncAmt * side * (randomVal[1][(size_t) v] - randomVal[0][(size_t) v]);
                 const double ms = centre + scale * (voiceOffset[(size_t) v] + sideOffset + depth * l + wow * w + flutter * f + random * rn);
@@ -427,6 +445,20 @@ private:
         flutHi += flutNoiseHiC * (flutLo - flutHi);
         flutLo = juce::jlimit (-1.0, 1.0, flutLo);
         flutHi = juce::jlimit (-1.0, 1.0, flutHi);
+        // For Clean. They always run, so they are ready when it is switched on, and nothing reads them while it is off.
+        wowSmoothA += wowSmoothC * (wowNoise - wowSmoothA); wowSmoothB += wowSmoothC * (wowSmoothA - wowSmoothB);
+        flutSmoothA += flutSmoothC * ((flutLo - flutHi) - flutSmoothA); flutSmoothB += flutSmoothC * (flutSmoothA - flutSmoothB);
+
+        // Clean fades in and out over 30 ms. Both clip stages run during the fade, and the one that was resting gets 8 ticks (5 ms at
+        // 48 kHz) to fill its filters before the fade starts. They have the same delay, so the fade is between two signals in step.
+        cleanAmt = cleanAmtNext;
+        if (target.clean && ! cleanRunning) { cleanOs.reset(); cleanRunning = true; cleanWarm = 8; }
+        if (! target.clean && ! standardRunning) { os->reset(); standardRunning = true; cleanWarm = 8; }
+        if (cleanWarm > 0) --cleanWarm;
+        else slew (cleanAmtNext, target.clean ? 1.0f : 0.0f, gainSlew);
+        // A stage rests only once the fade away from it is over and the switch still points the other way.
+        if (target.clean && cleanAmt >= 1.0f && cleanAmtNext >= 1.0f) standardRunning = false;
+        if (! target.clean && cleanAmt <= 0.0f && cleanAmtNext <= 0.0f) cleanRunning = false;
 
         // Random and Degrade have their own noise source, one for each voice.
         const auto slowWhite = [this]
@@ -563,6 +595,14 @@ private:
         constexpr float bias = 0.05f; // tape's slight asymmetry: adds even harmonics
         return (std::tanh (g * (x + bias)) - std::tanh (g * bias)) / den;
     }
+    // Clean: the slope at silence is exactly 1 at every drive, so quiet sounds keep their level and only the peaks are rounded off.
+    // (The standard curve holds a -12 dBFS sine level instead, which lifts anything quieter: 4.4 dB at Saturation 100.)
+    static float saturateClean (float x, float g)
+    {
+        constexpr float bias = 0.05f;
+        const float centre = std::tanh (g * bias);
+        return (std::tanh (g * (x + bias)) - centre) / (g * (1.0f - centre * centre));
+    }
     // Keeps a -12 dBFS sine at about the same level at every drive.
     static float driveDenominator (float g) { return 4.0f * std::tanh (g * 0.25f); }
 
@@ -588,7 +628,15 @@ private:
             }
         }
 
+        // Clean's own clip stage works on a copy, taken before the standard stage writes over the input.
+        std::array<float, tickLen> cleanL, cleanR;
+        float* cleanWork[2] = { cleanL.data(), cleanR.data() };
+        if (cleanRunning)
+            for (int ch = 0; ch < numLines; ++ch)
+                std::copy_n (work[ch], n, cleanWork[ch]);
+
         // Soft clip, oversampled. The filters always run, so nothing changes in level or timing when drive starts.
+        if (standardRunning)
         {
             juce::dsp::AudioBlock<float> block (work, (size_t) numLines, (size_t) n);
             auto up = os->processSamplesUp (block);
@@ -619,6 +667,31 @@ private:
                 }
             }
             os->processSamplesDown (block);
+        }
+
+        if (cleanRunning)
+        {
+            const int upN = n * cleanOs.getFactor();
+            const float g0 = lerpTick (drive, driveNext, tickPos), g1 = lerpTick (drive, driveNext, tickPos + n);
+            const float gStep = (g1 - g0) / (float) upN;
+            const float a0 = lerpTick (cleanAmt, cleanAmtNext, tickPos), a1 = lerpTick (cleanAmt, cleanAmtNext, tickPos + n);
+            for (int ch = 0; ch < numLines; ++ch)
+            {
+                float* d = cleanOs.up (ch, cleanWork[ch], n);
+                if (g0 > 1.0e-4f || g1 > 1.0e-4f)
+                {
+                    float g = g0;
+                    for (int i = 0; i < upN; ++i, g += gStep)
+                        if (g > 1.0e-4f)
+                            d[i] = saturateClean (d[i], g);
+                }
+                cleanOs.down (ch, cleanWork[ch], n);
+                if (! standardRunning)
+                    std::copy_n (cleanWork[ch], n, work[ch]);
+                else
+                    for (int i = 0; i < n; ++i)
+                        work[ch][i] += (a0 + (a1 - a0) * (float) i / (float) n) * (cleanWork[ch][i] - work[ch][i]);
+            }
         }
 
         const int numOutSides = numOut >= 2 ? 2 : 1;
@@ -658,8 +731,13 @@ private:
                 // Exact inverse of the pre-emphasis.
                 const double deY = (x + preA1 * st.deIn - preB1 * st.deOut) / preB0;
                 st.deIn = x; st.deOut = deY;
-                const double dc = deY - st.dcX + dcR * st.dcY;
-                st.dcX = deY; st.dcY = dc;
+                const double dcStandard = deY - st.dcX + dcR * st.dcY;
+                // Clean's DC filter sits at 1 Hz, not 6: at 6 Hz it turns the phase of a low note enough to bring it in early
+                // (4.6 samples at 100 Hz), which read as 0.13 and 0.22 sample of delay error on the two lowest sung takes.
+                const double dcClean = deY - st.dcX + dcRClean * st.dcYClean;
+                st.dcX = deY; st.dcY = dcStandard; st.dcYClean = dcClean;
+                const float cleanNow = cleanAmt + tp * (cleanAmtNext - cleanAmt);
+                const double dc = cleanNow > 0.0f ? dcStandard + (double) cleanNow * (dcClean - dcStandard) : dcStandard;
                 const float onTape = (float) (inputScale * (dc + (double) hissTo[ch]) + (double) (fbNow * backTo[ch]));
                 line[(size_t) ch][(size_t) writeIndex] = onTape;
                 tapeMost = std::max (tapeMost, std::abs (onTape));
@@ -796,7 +874,7 @@ private:
 
     struct ChannelState
     {
-        double pre = 0, deIn = 0, deOut = 0, dcX = 0, dcY = 0, toneZ = 0, loopLp = 0, loopHp = 0;
+        double pre = 0, deIn = 0, deOut = 0, dcX = 0, dcY = 0, dcYClean = 0, toneZ = 0, loopLp = 0, loopHp = 0;
         Cut low, high;
     };
 
@@ -806,9 +884,14 @@ private:
     int mask = 0, writeIndex = 0, tickLeft = 0, tickPos = 0;
     double wetLatency = 0.0, minDelayMs = 1.0;
     std::unique_ptr<FastOversampler> os;
+    CleanOversampler cleanOs;
+    float cleanAmt = 0.0f, cleanAmtNext = 0.0f;
+    bool cleanRunning = false, standardRunning = true;
+    int cleanWarm = 0;
+    double wowSmoothC = 0.0, flutSmoothC = 0.0, wowSmoothA = 0.0, wowSmoothB = 0.0, flutSmoothA = 0.0, flutSmoothB = 0.0;
     std::array<std::vector<float>, 2> line;
     std::array<ChannelState, 2> chan;
-    double preB0 = 1, preB1 = 0, preA1 = 0, dcR = 0.999, toneA = 0.1;
+    double preB0 = 1, preB1 = 0, preA1 = 0, dcR = 0.999, dcRClean = 0.9999, toneA = 0.1;
     double cSlow = 0.1, cMid = 0.1, cFast = 0.1, cVoice = 0.1, cVoiceSoft = 0.1, cVoiceFade = 0.1;
     float gainSlew = 0.1f, mixSlew = 0.1f;
     double wowNoiseC = 0, flutNoiseLoC = 0, flutNoiseHiC = 0;

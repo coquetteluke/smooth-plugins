@@ -15,6 +15,8 @@ namespace
         float random = 0.0f, randomRate = 1.0f;
         bool unsync = false;
         float degrade = 0.0f, degradeRate = 2.0f, noise = 0.0f;
+        // Added in 0.4.0. Off for every preset that existed before it.
+        bool clean = false;
     };
 
     constexpr float lowOff = TapeChorusEngine::lowCutOffHz, highOff = TapeChorusEngine::highCutOffHz;
@@ -35,6 +37,11 @@ namespace
         { "Lo-Fi Tape Double",   2, 0.4f,  0.8f, 22.0f, 40.0f, 35.0f, 50.0f, -4.0f,  70.0f, 40.0f,  0.0f, 250.0f,  5000.0f, 0.7f,   9.0f,       10.0f, 1.0f, true,  35.0f, 3.0f, 30.0f },
         { "Random Drift Double", 2, 0.2f,  0.3f, 16.0f,  5.0f,  3.0f, 10.0f, -2.0f,  80.0f, 32.0f,  0.0f, 150.0f,  highOff, wowDef, flutterDef, 45.0f, 0.8f, true,  0.0f, 2.0f,  0.0f },
         { "Resonant Tape Swirl", 3, 0.35f, 2.0f,  9.0f, 15.0f,  8.0f, 20.0f, -2.0f, 100.0f, 40.0f, 55.0f, 220.0f,  9000.0f, wowDef, flutterDef, 10.0f, 0.5f, true,  0.0f, 2.0f,  0.0f },
+        // New in 0.4.0, after the 13 above so their numbers do not move. All three have Clean on.
+        { "Clean Vocal Double",  2, 0.5f,  1.0f, 16.0f,  8.0f,  3.0f, 15.0f, -1.0f,  70.0f, 30.0f,  0.0f, 120.0f,  highOff, wowDef, flutterDef, 10.0f, 0.6f, true,  0.0f, 2.0f,  0.0f, true },
+        { "Clean Wide Stack",    6, 0.3f,  1.2f, 18.0f, 10.0f,  4.0f, 12.0f, -2.0f, 100.0f, 35.0f,  0.0f, 180.0f,  highOff, wowDef, flutterDef, 15.0f, 0.5f, true,  0.0f, 2.0f,  0.0f, true },
+        // Worn Cassette, control for control, with Clean on: the same wobble and drive without the hash and the lifted S sounds.
+        { "Worn Cassette Clean", 2, 0.35f, 1.0f, 12.0f, 60.0f, 45.0f, 55.0f, -7.0f,  50.0f, 50.0f,  0.0f, lowOff,  highOff, wowDef, flutterDef,  0.0f, 1.0f, false, 0.0f, 2.0f,  0.0f, true },
     };
 
     juce::NormalisableRange<float> skewed (float lo, float hi, float step, float centre)
@@ -88,6 +95,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     floatParam ("degradeRate", "Degrade Rate", skewed (0.2f, 20.0f, 0.001f, 2.5f), 2.0f, "Hz");
     floatParam ("noise", "Noise", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, "%");
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "noiseGate", 1 }, "Noise Gate", true));
+
+    // Added in 0.4.0, last. Off is the sound of 0.3.1.
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "clean", 1 }, "Clean", false));
     return layout;
 }
 
@@ -121,6 +131,7 @@ PluginProcessor::PluginProcessor()
     degradeRate = apvts.getRawParameterValue ("degradeRate");
     noiseAmount = apvts.getRawParameterValue ("noise");
     noiseGate = apvts.getRawParameterValue ("noiseGate");
+    clean = apvts.getRawParameterValue ("clean");
 
     // Readings sit outside the value tree: never saved, never automated.
     inputLevel = new Reading ("inputLevel", "Input Level", "dB", -60.0f, 24.0f, 1, "-inf", juce::AudioProcessorParameter::inputMeter);
@@ -174,6 +185,7 @@ TapeChorusEngine::Params PluginProcessor::readParams() const
     p.degradeHz = degradeRate->load();
     p.noisePct = noiseAmount->load();
     p.noiseGate = noiseGate->load() > 0.5f;
+    p.clean = clean->load() > 0.5f;
     return p;
 }
 
@@ -254,6 +266,7 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("degradeRate", pr.degradeRate);
     set ("noise", pr.noise);
     set ("noiseGate", 1.0f);
+    set ("clean", pr.clean ? 1.0f : 0.0f);
     set ("inputGain", 0.0f);
     set ("outputGain", 0.0f);
 }

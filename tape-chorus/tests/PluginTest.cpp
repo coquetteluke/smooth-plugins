@@ -1734,6 +1734,247 @@ static void testArrival()
     }
 }
 
+// 2026-11-11, real vocal pass: the Clean switch (0.4.0). Off is 0.3.1, sample for sample (the null tests above and tests/au_null.sh).
+// On, it has to do the three things 0.3.1 could not without changing its sound. Each limit was set before Clean existed.
+// TAPE_CHORUS_TEST_CLEAN_OFF=1 runs these with the switch left off: they then fail the way 0.3.1 does.
+static void testClean()
+{
+    const bool on = std::getenv ("TAPE_CHORUS_TEST_CLEAN_OFF") == nullptr;
+    const auto clean = [on] (PluginProcessor& p) { set (p, "clean", on ? 1.0f : 0.0f); };
+    const double sr = 48000.0;
+
+    // 1. Fold back. This is the first limit of the fold back test above: -70 dB at 23 kHz too. The first build agent measured -53.8 dB
+    //    there and turned the line into a reading. It is back, and it passes.
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "saturation", 100.0f);
+        clean (p);
+        prepare (p, 2, sr, 512);
+        std::vector<float> in (48000);
+        sine (in.data(), 48000, 5000.0, sr, 0.5);
+        auto out = render (p, in, 512);
+        const float* y = out.getReadPointer (0) + 12000;
+        const double fund = toneDb (y, 24000, 5000.0, sr);
+        double worst = -300;
+        for (double f : { 2000.0, 3000.0, 7000.0, 8000.0, 12000.0, 13000.0, 17000.0, 18000.0, 22000.0, 23000.0 })
+            worst = std::max (worst, toneDb (y, 24000, f, sr));
+        check (worst - fund < -70.0, "Clean, Saturation 100, 5 kHz sine: worst fold back from 2 to 23 kHz, below the tone", worst - fund, "dB");
+        check (toneDb (y, 24000, 23000.0, sr) - fund < -70.0, "Clean, Saturation 100, 5 kHz sine: the 23 kHz line, below the tone (the limit that was dropped)", toneDb (y, 24000, 23000.0, sr) - fund, "dB");
+    }
+    // The same at 44.1 kHz, where the 5th harmonic of 4.5 kHz (22.5 kHz) sits just over half the rate and folds to 21.6 kHz.
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "saturation", 100.0f);
+        clean (p);
+        prepare (p, 2, 44100.0, 512);
+        std::vector<float> in (44100);
+        sine (in.data(), 44100, 4500.0, 44100.0, 0.5);
+        auto out = render (p, in, 512);
+        const float* y = out.getReadPointer (0) + 11025;
+        const double fund = toneDb (y, 22050, 4500.0, 44100.0);
+        check (toneDb (y, 22050, 21600.0, 44100.0) - fund < -70.0, "Clean at 44.1 kHz, Saturation 100, 4.5 kHz sine: the 21.6 kHz line, below the tone", toneDb (y, 22050, 21600.0, 44100.0) - fund, "dB");
+    }
+
+    // 2. Hash from Wow and Flutter around a held note: what lies further than 200 Hz from a 3 kHz tone, one still voice.
+    {
+        const auto hash = [&] (float wow, float flutter)
+        {
+            PluginProcessor p;
+            plain (p, 1);
+            set (p, "wow", wow); set (p, "flutter", flutter);
+            clean (p);
+            prepare (p, 2, sr, 512);
+            const int n = 8 * 48000, order = 16, size = 1 << order;
+            std::vector<float> in ((size_t) n);
+            sine (in.data(), n, 3000.0, sr, 0.25);
+            auto out = render (p, in, 512);
+            std::vector<float> data ((size_t) (2 * size), 0.0f);
+            std::copy_n (out.getReadPointer (0) + 5 * 48000, size, data.data());
+            juce::dsp::WindowingFunction<float> window ((size_t) size, juce::dsp::WindowingFunction<float>::blackmanHarris);
+            window.multiplyWithWindowingTable (data.data(), (size_t) size);
+            juce::dsp::FFT fft (order);
+            fft.performFrequencyOnlyForwardTransform (data.data());
+            const double bin = sr / size;
+            double carrier = 0, rest = 0;
+            for (int k = (int) (100.0 / bin); k <= (int) (20000.0 / bin); ++k)
+                (std::abs (k * bin - 3000.0) <= 200.0 ? carrier : rest) += (double) data[(size_t) k] * data[(size_t) k];
+            return 10.0 * std::log10 (std::max (rest, 1.0e-30) / std::max (carrier, 1.0e-30));
+        };
+        check (hash (15.0f, 10.0f) < -50.0, "Clean, Wow 15 and Flutter 10 (the default): hash further than 200 Hz from a 3 kHz tone", hash (15.0f, 10.0f), "dB");
+        check (hash (100.0f, 100.0f) < -40.0, "Clean, Wow 100 and Flutter 100: hash further than 200 Hz from a 3 kHz tone", hash (100.0f, 100.0f), "dB");
+    }
+    // Wow and Flutter still move as far as they say with Clean on.
+    {
+        const auto swing = [&] (const char* id, float pct)
+        {
+            PluginProcessor p;
+            plain (p, 1);
+            set (p, id, pct);
+            clean (p);
+            prepare (p, 2, sr, 512);
+            const int n = 40 * 48000;
+            std::vector<float> in ((size_t) n);
+            sine (in.data(), n, 1000.0, sr, 0.25);
+            auto out = render (p, in, 512);
+            return analyse (trackDelayMs (out.getReadPointer (0), n, 1000.0, sr, 4, 15.0), sr, 1.0).amp;
+        };
+        const double w = swing ("wow", 100.0f), f = swing ("flutter", 100.0f);
+        check (w <= 2.5 && w >= 1.25, "Clean, Wow 100: peak swing, between half of 2.5 ms and all of it", w, "ms");
+        check (f <= 0.25 && f >= 0.125, "Clean, Flutter 100: peak swing, between half of 0.25 ms and all of it", f, "ms");
+    }
+
+    // 3. Saturation and level. A quiet sound keeps its level at every Saturation, and nothing gets louder.
+    {
+        const auto level = [&] (float sat, double amp)
+        {
+            PluginProcessor p;
+            plain (p, 1);
+            set (p, "saturation", sat);
+            clean (p);
+            prepare (p, 2, sr, 512);
+            std::vector<float> in (48000);
+            sine (in.data(), 48000, 1000.0, sr, amp);
+            auto out = render (p, in, 512);
+            return toneDb (out.getReadPointer (0) + 12000, 24000, 1000.0, sr);
+        };
+        for (float sat : { 20.0f, 50.0f, 100.0f })
+        {
+            const double quiet = level (sat, 0.01) - level (0.0f, 0.01), loud = level (sat, 0.25) - level (0.0f, 0.25);
+            check (std::abs (quiet) < 0.1, "Clean, Saturation " + std::to_string ((int) sat) + ": level change of a -40 dBFS tone", quiet, "dB");
+            check (loud <= 0.0 && loud > -6.0, "Clean, Saturation " + std::to_string ((int) sat) + ": level change of a -12 dBFS tone, never up", loud, "dB");
+        }
+    }
+
+    if (! on) return;   // the rest only makes sense with the switch
+
+    // 4. The delay is still the delay you set, to the fraction of a sample, at every rate, and latency is still 0.
+    for (double rate : { 44100.0, 48000.0, 88200.0, 96000.0 })
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "clean", 1.0f);
+        prepare (p, 2, rate, 512);
+        const int n = (int) (2.0 * rate);
+        std::vector<float> in ((size_t) n);
+        sine (in.data(), n, 3000.0, rate, 0.25);
+        auto out = render (p, in, 512);
+        const auto d = trackDelayMs (out.getReadPointer (0), n, 3000.0, rate, 10, 15.0);
+        double mean = 0; int cnt = 0;
+        for (size_t i = d.size() / 2; i < d.size(); ++i) { mean += d[i]; ++cnt; }
+        const double errSamples = (mean / cnt - 15.0) * 0.001 * rate;
+        check (std::abs (errSamples) < 0.05, "Clean: Delay Time 15 ms at " + std::to_string ((int) rate) + " Hz, one still voice against the control", errSamples, "samples");
+        check (p.getLatencySamples() == 0, "Clean: reported latency at " + std::to_string ((int) rate) + " Hz", p.getLatencySamples(), "samples");
+        // Flat where it is heard: 1 kHz and 15 kHz come through within 0.1 dB of the standard path.
+        const auto through = [&] (double hz, bool cleanOn)
+        {
+            PluginProcessor q;
+            plain (q, 1);
+            set (q, "clean", cleanOn ? 1.0f : 0.0f);
+            prepare (q, 2, rate, 512);
+            std::vector<float> x ((size_t) rate);
+            sine (x.data(), (int) rate, hz, rate, 0.25);
+            auto o = render (q, x, 512);
+            return toneDb (o.getReadPointer (0) + (int) (rate / 4), (int) (rate / 2), hz, rate);
+        };
+        check (std::abs (through (1000.0, true) - through (1000.0, false)) < 0.1, "Clean against standard at " + std::to_string ((int) rate) + " Hz: level at 1 kHz", through (1000.0, true) - through (1000.0, false), "dB");
+        check (std::abs (through (15000.0, true) - through (15000.0, false)) < 0.1, "Clean against standard at " + std::to_string ((int) rate) + " Hz: level at 15 kHz", through (15000.0, true) - through (15000.0, false), "dB");
+    }
+
+    // 5. Switching it under sound: a steady 200 Hz tone at Saturation 50, where the two clip stages differ by 1.3 dB, switched 8 times a
+    //    second. What the switch adds above 8 kHz stays 90 dB under the tone (or within 3 dB of never switching, if that is higher).
+    {
+        const auto above8k = [&] (bool switching)
+        {
+            PluginProcessor p;
+            set (p, "saturation", 50.0f); set (p, "wow", 0.0f); set (p, "flutter", 0.0f);   // nothing else above 8 kHz, so the switch shows
+            prepare (p, 2, sr, 128);
+            const int n = 4 * 48000;
+            std::vector<float> in ((size_t) n);
+            sine (in.data(), n, 200.0, sr, 0.25);
+            auto out = render (p, in, 128, nullptr, [&] (int idx) { if (switching && idx % 47 == 0) set (p, "clean", (idx / 47) % 2 == 1 ? 1.0f : 0.0f); });
+            // Six high passes in a row: two leave the 1 kHz tone itself at -72 dB, which would hide a tick.
+            juce::IIRFilter hp[6];
+            for (auto& f : hp) f.setCoefficients (juce::IIRCoefficients::makeHighPass (sr, 8000.0));
+            double most = 0;
+            for (int i = 0; i < n; ++i)
+            {
+                float v = out.getSample (0, i);
+                for (auto& f : hp) v = f.processSingleSampleRaw (v);
+                if (i > 24000) most = std::max (most, (double) std::abs (v));
+            }
+            static juce::AudioBuffer<float> never;
+            if (! switching) never = out;
+            else
+            {
+                // Proof that the switch did something in this test: the render differs from the one never switched.
+                double d = 0;
+                for (int i = 24000; i < n; ++i) d = std::max (d, (double) std::abs (out.getSample (0, i) - never.getSample (0, i)));
+                check (d > 0.003, "Clean switched under a 200 Hz tone: the switch changes the output, largest difference from never switching", d);
+            }
+            return toDb (most / 0.25);
+        };
+        const double quiet = above8k (false), switched = above8k (true);
+        check (switched < std::max (-90.0, quiet + 3.0), "Clean switched under a 200 Hz tone at Saturation 50: loudest moment above 8 kHz, below the tone (never switched: " + juce::String (quiet, 1).toStdString() + " dB)", switched, "dB");
+    }
+
+    // 6. Same output whatever the block size, no allocations, finite, with Clean and everything else on.
+    {
+        const auto run = [&] (int block)
+        {
+            PluginProcessor p;
+            set (p, "voices", 8.0f); set (p, "feedback", 60.0f); set (p, "saturation", 80.0f); set (p, "random", 50.0f); set (p, "degrade", 50.0f);
+            set (p, "noise", 30.0f); set (p, "wow", 80.0f); set (p, "flutter", 80.0f); set (p, "clean", 1.0f);
+            prepare (p, 2, sr, block);
+            std::vector<float> in (96000);
+            noise (in.data(), 96000, 0.3, 3);
+            const long before = testkit::allocs.load();
+            auto out = render (p, in, block);
+            return std::make_pair (out, testkit::allocs.load() - before);
+        };
+        const auto a = run (512), b = run (37), c = run (1);
+        double e1 = 0, e2 = 0;
+        for (int i = 0; i < 96000; ++i)
+        {
+            e1 = std::max (e1, (double) std::abs (a.first.getSample (0, i) - b.first.getSample (0, i)));
+            e2 = std::max (e2, (double) std::abs (a.first.getSample (0, i) - c.first.getSample (0, i)));
+        }
+        check (e1 < 1.0e-5, "Clean, everything on: same output at block 512 and block 37, largest difference", toDb (e1), "dB");
+        check (e2 < 1.0e-5, "Clean, everything on: same output at block 512 and block 1, largest difference", toDb (e2), "dB");
+        check (countNonFinite (a.first) == 0 && countDenormals (a.first) == 0, "Clean, everything on: finite, no denormals");
+    }
+
+    // 7. The 13 presets that existed before Clean leave it off, a 0.3.1 session opens with it off, and the new presets come after them.
+    {
+        PluginProcessor p;
+        bool allOff = true;
+        const char* first13[] = { "Default Tape Chorus", "Soft Vocal Double", "Wide Four Voices", "Worn Cassette", "Slow Drift", "Fast Shimmer", "Mono Thickener",
+                                  "Eight Voice Stack", "Clean Reel Lift", "Cassette Backing", "Lo-Fi Tape Double", "Random Drift Double", "Resonant Tape Swirl" };
+        bool namesHold = true;
+        for (int i = 0; i < 13; ++i)
+        {
+            set (p, "clean", 1.0f);
+            p.setCurrentProgram (i);
+            allOff = allOff && p.apvts.getRawParameterValue ("clean")->load() < 0.5f;
+            namesHold = namesHold && p.getProgramName (i) == first13[i];
+        }
+        check (allOff, "the 13 presets from before 0.4.0 all switch Clean off");
+        check (namesHold, "the 13 presets from before 0.4.0 keep their numbers and names");
+        check (p.getNumPrograms() > 13, "new presets come after the old ones", (double) p.getNumPrograms());
+        check (p.apvts.getParameter ("clean")->getDefaultValue() == 0.0f, "Clean is off by default");
+        auto params = p.getParameters();
+        int cleanAt = -1, lastWritable = -1;
+        for (int i = 0; i < params.size(); ++i)
+        {
+            const auto id = idOf (params[i]);
+            if (id == "clean") cleanAt = i;
+            if (id != "inputLevel" && id != "outputLevel" && id != "pitchSwing") lastWritable = i;
+        }
+        check (cleanAt == lastWritable, "Clean is the last control in the list, after every control 0.3.1 had");
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -1773,5 +2014,6 @@ int main()
     testOldSession();
     testDelayToTheSample();
     testArrival();
+    testClean();
     return finish();
 }

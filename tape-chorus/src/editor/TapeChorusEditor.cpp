@@ -234,7 +234,8 @@ TapeChorusEditor::Panel::Panel (TapeChorusEditor& e, PluginProcessor& p)
       lowCut (p.apvts, "lowCut", "Low Cut", "Keeps low end out of the voices. The dry signal keeps it.", small (ParamStrip::Unit::lowCut)),
       highCut (p.apvts, "highCut", "High Cut", "Darkens the voices, and every repeat a little more.", small (ParamStrip::Unit::highCut)),
       unsync (p.apvts, "unsync", "Unsync", "On: left and right wander on their own, which widens the sound.", ParamSwitch::Kind::column),
-      noiseGate (p.apvts, "noiseGate", "Noise Gate", "On: the hiss fades out when the input goes quiet.", ParamSwitch::Kind::column)
+      noiseGate (p.apvts, "noiseGate", "Noise Gate", "On: the hiss fades out when the input goes quiet.", ParamSwitch::Kind::column),
+      clean (p.apvts, "clean", "Clean", "On: no fold back from Saturation, steady level, no grain in Wow and Flutter.", ParamSwitch::Kind::column)
 {
     setOpaque (true);
     presets = std::make_unique<PresetBox> (p);
@@ -249,7 +250,7 @@ TapeChorusEditor::Panel::Panel (TapeChorusEditor& e, PluginProcessor& p)
     for (juce::Component* c : std::initializer_list<juce::Component*> { &inputGain, &voices, &rate, &depth, &delay, &feedback, &spread, &mix, &outputGain, &inputLevel, &pitchSwing, &outputLevel })
         addAndMakeVisible (c);
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &wow, &wowRate, &flutter, &flutterRate, &random, &randomRate, &unsync, &saturation, &degrade, &degradeRate, &noise, &noiseGate, &tone, &lowCut, &highCut })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &wow, &wowRate, &flutter, &flutterRate, &random, &randomRate, &unsync, &saturation, &clean, &degrade, &degradeRate, &noise, &noiseGate, &tone, &lowCut, &highCut })
         addChildComponent (c);
 
     hintLine.setFont (font (Weight::medium, 12.5f));
@@ -294,7 +295,7 @@ int TapeChorusEditor::Panel::countAdvancedChanges() const
 {
     int changed = 0;
 
-    for (const char* id : { "wow", "wowRate", "flutter", "flutterRate", "random", "randomRate", "unsync", "saturation", "degrade", "degradeRate", "noise", "noiseGate", "tone", "lowCut", "highCut" })
+    for (const char* id : { "wow", "wowRate", "flutter", "flutterRate", "random", "randomRate", "unsync", "saturation", "clean", "degrade", "degradeRate", "noise", "noiseGate", "tone", "lowCut", "highCut" })
     {
         const auto* prm = processor.apvts.getParameter (id);
         changed += std::abs (prm->getValue() - prm->getDefaultValue()) > 1.0e-4f ? 1 : 0;
@@ -338,7 +339,7 @@ void TapeChorusEditor::Panel::layoutColumns()
     place (flutter, 1, rowOne);    place (flutterRate, 1, rowTwo);
     place (random, 2, rowOne);     place (randomRate, 2, rowTwo);
     place (unsync, 3, rowOne);
-    place (saturation, 4, rowOne);
+    place (saturation, 4, rowOne); place (clean, 4, rowTwo);
     place (degrade, 5, rowOne);    place (degradeRate, 5, rowTwo);
     place (noise, 6, rowOne);      place (noiseGate, 6, rowTwo);
     place (tone, 7, rowOne);

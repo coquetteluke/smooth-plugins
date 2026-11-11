@@ -61,7 +61,7 @@ private:
                       * saturation = nullptr, *tone = nullptr, *spread = nullptr, *mix = nullptr,
                       * feedback = nullptr, *inputGain = nullptr, *outputGain = nullptr, *lowCut = nullptr, *highCut = nullptr,
                       * wowRate = nullptr, *flutterRate = nullptr, *randomDepth = nullptr, *randomRate = nullptr, *unsync = nullptr,
-                      * degrade = nullptr, *degradeRate = nullptr, *noiseAmount = nullptr, *noiseGate = nullptr;
+                      * degrade = nullptr, *degradeRate = nullptr, *noiseAmount = nullptr, *noiseGate = nullptr, *clean = nullptr;
     Reading* inputLevel = nullptr, *outputLevel = nullptr, *pitchSwing = nullptr;
     juce::AudioParameterBool* bypass = nullptr;
     TapeChorusEngine engine;

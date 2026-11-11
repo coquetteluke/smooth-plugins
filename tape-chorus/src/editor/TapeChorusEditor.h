@@ -62,7 +62,7 @@ private:
         ui::Readout inputLevel, pitchSwing, outputLevel;
 
         ui::ParamStrip wow, wowRate, flutter, flutterRate, random, randomRate, saturation, degrade, degradeRate, noise, tone, lowCut, highCut;
-        ui::ParamSwitch unsync, noiseGate;
+        ui::ParamSwitch unsync, noiseGate, clean;
 
         juce::Label hintLine;
         float advancedAmount = 0.0f;   // 0 closed, 1 open

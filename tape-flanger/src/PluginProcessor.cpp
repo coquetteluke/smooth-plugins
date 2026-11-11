@@ -15,6 +15,7 @@ namespace
     constexpr double kLoopHighHz = 20.0;   // stops DC building up in the loop, low enough not to pull the comb peaks off pitch
     constexpr double kToneHz = 4000.0;
     constexpr int kTick = 16;              // oversampled samples between LFO updates
+    constexpr double kBypassFadeMs = 20.0; // Bypass going on or off, a raised cosine so it has no corner to tick
     constexpr float kSatRef = 0.125f;      // -18 dBFS passes at the same level at every Saturation setting
     constexpr double kTwoPi = 6.283185307179586476925286766559;
     const juce::Identifier kWindowWidth { "windowWidth" };
@@ -201,10 +202,16 @@ void PluginProcessor::configure (double sampleRate, int samplesPerBlock)
     const int needed = (int) std::ceil ((kDryDelayMs + kMaxDelayMs + kMaxDepthMs + kMaxDriftMs + 1.0) * 0.001 * osRate) + 16;
     const int size = juce::nextPowerOfTwo (needed);
     mask = size - 1;
+    // Bypass reads the input back after exactly the reported latency. Room for that plus one block, written before it is read.
+    throughDelay = total;
+    const int throughSize = juce::nextPowerOfTwo (total + maxBlock + 1);
+    throughMask = throughSize - 1;
+    effectStep = (float) (1.0 / (kBypassFadeMs * 0.001 * hostRate));
     for (auto& c : channels)
     {
         c.line.assign ((size_t) size, 0.0f);
         c.dry.assign ((size_t) size, 0.0f);
+        c.through.assign ((size_t) throughSize, 0.0f);
     }
 
     const auto tickCoeff = [this] (double seconds) { return (float) (1.0 - std::exp (-(double) kTick / (seconds * osRate))); };
@@ -225,7 +232,7 @@ void PluginProcessor::configure (double sampleRate, int samplesPerBlock)
 
 void PluginProcessor::snapToParameters()
 {
-    readTargets (false);
+    readTargets();
     depthNow = depthTarget;
     spreadNow = spreadTarget;
     toneNow = toneTarget;
@@ -233,7 +240,7 @@ void PluginProcessor::snapToParameters()
     feedbackNow = feedbackTarget;
     polarityNow = polarityTarget;
     mixNow = mixTarget;
-    onNow = onTarget;
+    effectNow = bypass->get() ? 0.0f : 1.0f;
     flangeNow = flangeTarget;
     gateNow = gateTarget;
     delayNow = delayTarget;
@@ -262,6 +269,7 @@ void PluginProcessor::snapToParameters()
     driftA.reset (0x2F6E2B1u);
     driftB.reset (0x9E3779B1u);
     writeIndex = 0;
+    throughWrite = 0;
     tickCountdown = 0;
     firstBlock = true;
     for (size_t ch = 0; ch < channels.size(); ++ch)
@@ -269,6 +277,7 @@ void PluginProcessor::snapToParameters()
         auto& c = channels[ch];
         std::fill (c.line.begin(), c.line.end(), 0.0f);
         std::fill (c.dry.begin(), c.dry.end(), 0.0f);
+        std::fill (c.through.begin(), c.through.end(), 0.0f);
         c.tone = {};
         c.loopLow = c.loopHigh = 0.0f;
         c.highA = c.highB = c.lowA = c.lowB = 0.0f;
@@ -285,7 +294,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     configure (sampleRate, samplesPerBlock);
 }
 
-void PluginProcessor::readTargets (bool forceBypass)
+void PluginProcessor::readTargets()
 {
     depthTarget = juce::jlimit (0.0f, (float) kMaxDepthMs, depthMs->load());
     spreadTarget = juce::jlimit (0.0f, 180.0f, spreadDeg->load()) / 360.0f; // in turns
@@ -295,7 +304,6 @@ void PluginProcessor::readTargets (bool forceBypass)
     feedbackTarget = fb;
     polarityTarget = fb < 0.0f ? -1.0f : 1.0f; // negative feedback flips the wet path, which keeps the comb deep on that side too
     mixTarget = juce::jlimit (0.0f, 100.0f, mixPct->load()) * 0.01f;
-    onTarget = (forceBypass || bypass->get()) ? 0.0f : 1.0f;
 
     if (invert->get())
         polarityTarget = -polarityTarget;
@@ -495,14 +503,14 @@ void PluginProcessor::renderOversampled (juce::dsp::AudioBlock<float>& block) no
         smoothTo (feedbackNow, feedbackTarget, sampleCoeffFeedback);
         smoothTo (polarityNow, polarityTarget, sampleCoeffFast);
         smoothTo (mixNow, mixTarget, sampleCoeffFast);
-        smoothTo (onNow, onTarget, sampleCoeffFast);
         smoothTo (inGainNow, inGainTarget, sampleCoeffFast);
         smoothTo (outGainNow, outGainTarget, sampleCoeffFast);
         if (gateNow != gateTarget)
             gateNow = gateNow < gateTarget ? juce::jmin (gateTarget, gateNow + gateStep) : juce::jmax (gateTarget, gateNow - gateStep);
-        const float m = mixNow * onNow * gateNow;
-        // Bypass passes the input at its own level
-        const float inGain = 1.0f + onNow * (inGainNow - 1.0f), outGain = 1.0f + onNow * (outGainNow - 1.0f);
+        const float m = mixNow * gateNow;
+        // Bypass is not done here any more (see run). The gains keep the arithmetic they had while it was, so every
+        // setting gives the same samples as 1.2.1.
+        const float inGain = 1.0f + (inGainNow - 1.0f), outGain = 1.0f + (outGainNow - 1.0f);
 
         for (int ch = 0; ch < numCh; ++ch)
         {
@@ -547,8 +555,9 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
         return;
     numActive = numCh;
 
-    readTargets (forceBypass);
+    readTargets();
     followHostTransport();
+    const float effectTarget = (forceBypass || bypass->get()) ? 0.0f : 1.0f;
 
     for (int ch = 0; ch < 2; ++ch)
         readIn[ch].store (ch < numCh ? buffer.getMagnitude (ch, 0, total) : 0.0f, std::memory_order_relaxed);
@@ -556,10 +565,41 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
     for (int pos = 0; pos < total;)
     {
         const int len = juce::jmin (maxBlock, total - pos);
+        // Keep the input as it came in, before the effect writes over it
+        for (int ch = 0; ch < numCh; ++ch)
+        {
+            const auto* in = buffer.getReadPointer (ch, pos);
+            auto* through = channels[(size_t) ch].through.data();
+            for (int i = 0; i < len; ++i)
+                through[(size_t) ((throughWrite + i) & throughMask)] = in[i];
+        }
+
         juce::dsp::AudioBlock<float> host (buffer.getArrayOfWritePointers(), (size_t) numCh, (size_t) pos, (size_t) len);
         auto up = oversampler->processSamplesUp (host);
         renderOversampled (up);
         oversampler->processSamplesDown (host);
+
+        // Bypass. Fully on, the output is the kept input after exactly the reported latency: no filter, no gain, no rounding.
+        // On the way there and back it fades between that and the effect. With Bypass off and no fade left, nothing here runs.
+        if (effectNow != 1.0f || effectTarget != 1.0f)
+        {
+            for (int i = 0; i < len; ++i)
+            {
+                if (effectNow != effectTarget)
+                    effectNow = effectNow < effectTarget ? juce::jmin (effectTarget, effectNow + effectStep) : juce::jmax (effectTarget, effectNow - effectStep);
+                const float amount = effectNow <= 0.0f ? 0.0f : (effectNow >= 1.0f ? 1.0f : 0.5f - 0.5f * std::cos (juce::MathConstants<float>::pi * effectNow));
+                for (int ch = 0; ch < numCh; ++ch)
+                {
+                    auto* out = buffer.getWritePointer (ch, pos);
+                    const float kept = channels[(size_t) ch].through[(size_t) ((throughWrite + i - throughDelay) & throughMask)];
+                    if (amount <= 0.0f)
+                        out[i] = kept;
+                    else if (amount < 1.0f)
+                        out[i] = kept + amount * (out[i] - kept);
+                }
+            }
+        }
+        throughWrite = (throughWrite + len) & throughMask;
         pos += len;
     }
 
@@ -619,7 +659,7 @@ void PluginProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, ju
 {
     juce::ScopedNoDenormals noDenormals;
     sanitiseInput (buffer);
-    run (buffer, true); // same path and same delay, with the wet faded out
+    run (buffer, true); // the input, delayed by the reported latency
 }
 
 PluginProcessor::Readings PluginProcessor::getReadings() const noexcept

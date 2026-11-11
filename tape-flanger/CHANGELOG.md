@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.2, 2026-11-10
+
+Bypass is now a true bypass. Found on Luke's real vocal takes: with Bypass on, the output did not null against the input, it sat 66 to 74 dB under it for the whole take. Bypass used to be Mix 0, and the dry path runs through the oversampling filters, which have a ripple of a few thousandths of a dB and roll off above 21 kHz. Now the bypassed output is the input itself, delayed by the reported latency (324 samples at 48 kHz, unchanged), bit for bit.
+
+- Switching Bypass fades between the effect and the input over 20 ms on a raised cosine. The old fade left a tick 76 dB under a steady tone above 8 kHz, the new one is at -125 dB.
+- The effect keeps running under Bypass, so switching back picks up exactly where it would have been. Before, the wet came back 0.01 % low and stayed there.
+- The sound with Bypass off is the same samples as 1.2.1: the default and every preset at four formats are bit identical through the real AU, and so are renders with every control but Bypass moving at random.
+- One test changed what it compares with: "Bypass against Mix 0" could only pass while Bypass was Mix 0, and it is why the tests never saw this. It now holds Bypass to the delayed input at -120 dB, and the old reading is printed next to it.
+
 ## 1.2.1, 2026-11-07
 
 Renamed to Tape Flanger, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.

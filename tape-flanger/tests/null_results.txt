@@ -1,11 +1,16 @@
-Null of 1.2.0 against 1.1.1, both rendered through the real AU. s48b128: 48 kHz stereo, 128 frame blocks. s44b64: 44.1 kHz stereo, 64. s96b512: 96 kHz stereo, 512. m48b256: 48 kHz mono, 256. auto: random automation and preset changes. Input is speech, a sweep and silence. The previous null, 1.1.1 against 1.1.0, is in git history.
-auto0_s48b128.raw                    bit identical  signal peak 1.11
-auto1_s48b128.raw                    bit identical  signal peak 1.86
-auto2_s48b128.raw                    bit identical  signal peak 0.77
-auto3_s48b128.raw                    bit identical  signal peak 1.07
-auto4_s44b64.raw                     bit identical  signal peak 0.57
-auto5_s96b512.raw                    bit identical  signal peak 3.79
-auto6_m48b256.raw                    bit identical  signal peak 1.47
+Null of 1.2.2 against 1.2.1, both rendered through the real AU. s48b128: 48 kHz stereo, 128 frame blocks. s44b64: 44.1 kHz stereo, 64. s96b512: 96 kHz stereo, 512. m48b256: 48 kHz mono, 256. auto: random automation and preset changes. Input is speech, a sweep and silence. The previous null, 1.2.0 against 1.1.1, is in git history.
+
+1.2.2 changes Bypass only. The default and every preset, at all four formats, are bit identical to 1.2.1: 56 files. The 7 auto files differ, and they must: the random automation moves every control, Bypass among them, and Bypass now gives the input itself where 1.2.1 gave Mix 0 and fed the delay line without Input Gain meanwhile. The lines at the end show it is Bypass and nothing else: with every control but Bypass moving at random, on two of Luke's real takes, 1.2.2 is bit identical to 1.2.1.
+
+Hashes of the 1.2.2 renders are in tests/baseline/renders-1.2.2.sha256, for the next version to null against. The 1.2.1 renders had the same hashes as tests/baseline/renders-1.1.1.sha256.
+
+auto0_s48b128.raw                    peak   -15.7 dBFS  rms   -47.6 dBFS  signal peak 1.11
+auto1_s48b128.raw                    peak    -1.2 dBFS  rms   -36.7 dBFS  signal peak 1.86
+auto2_s48b128.raw                    peak   -17.9 dBFS  rms   -48.8 dBFS  signal peak 0.77
+auto3_s48b128.raw                    peak   -15.6 dBFS  rms   -46.9 dBFS  signal peak 1.07
+auto4_s44b64.raw                     peak   -13.4 dBFS  rms   -45.5 dBFS  signal peak 0.57
+auto5_s96b512.raw                    peak   -12.5 dBFS  rms   -43.3 dBFS  signal peak 3.79
+auto6_m48b256.raw                    peak    -9.9 dBFS  rms   -40.7 dBFS  signal peak 1.47
 m48b256_default.raw                  bit identical  signal peak 0.44
 m48b256_preset0.raw                  bit identical  signal peak 0.44
 m48b256_preset1.raw                  bit identical  signal peak 0.43
@@ -62,4 +67,28 @@ s96b512_preset6.raw                  bit identical  signal peak 0.38
 s96b512_preset7.raw                  bit identical  signal peak 0.50
 s96b512_preset8.raw                  bit identical  signal peak 0.48
 s96b512_preset9.raw                  bit identical  signal peak 0.44
-files 63  bit identical 63  worst none  over the -114 dBFS limit 0
+files 63  bit identical 56  worst -1 dBFS (auto1_s48b128.raw)  over the -114 dBFS limit 7
+
+Real takes (Rode NT1, 48 kHz, 128 frame blocks, the AU bundles loaded side by side in separate runs, output compared as 32 bit floats):
+take 05, default: Tape Flanger 1.2.1 against Tape Flanger 1.2.2: bit identical, 20121600 samples, signal peak -9.2 dBFS
+  control, 1.2.1 against 1.2.1 rendered again: bit identical, 20121600 samples, signal peak -9.2 dBFS
+  control, 1.2.1 against 1.2.1 with Mix moved from 50 to 50.1: 19721526 of 20121600 samples differ, residual peak -63.7 dBFS, residual -55.0 dB re the signal, signal peak -9.2 dBFS
+take 05, Takeoff Roar: Tape Flanger 1.2.1 against Tape Flanger 1.2.2: bit identical, 20121600 samples, signal peak -9.0 dBFS
+take 05, Wandering Tape: Tape Flanger 1.2.1 against Tape Flanger 1.2.2: bit identical, 20121600 samples, signal peak -9.2 dBFS
+take 05, default|Input Gain=0.2|Output Gain=0.3: Tape Flanger 1.2.1 against Tape Flanger 1.2.2: bit identical, 20121600 samples, signal peak -39.0 dBFS
+take 10, default: Tape Flanger 1.2.1 against Tape Flanger 1.2.2: bit identical, 18604800 samples, signal peak -16.5 dBFS
+take 10, Takeoff Roar: Tape Flanger 1.2.1 against Tape Flanger 1.2.2: bit identical, 18604800 samples, signal peak -15.8 dBFS
+take 10, Wandering Tape: Tape Flanger 1.2.1 against Tape Flanger 1.2.2: bit identical, 18604800 samples, signal peak -16.6 dBFS
+take 10, default|Input Gain=0.2|Output Gain=0.3: Tape Flanger 1.2.1 against Tape Flanger 1.2.2: bit identical, 18604800 samples, signal peak -46.5 dBFS
+take 05, first minute, random automation seed 1, without-bypass (3555 moves (0 of Bypass)): 1.2.1 against 1.2.2: bit identical, 5760000 samples, signal peak -0.2 dBFS
+take 05, first minute, random automation seed 1, with-bypass (3555 moves (120 of Bypass)): 1.2.1 against 1.2.2: 5642550 of 5760000 samples differ, residual peak -15.0 dBFS, residual -22.4 dB re the signal, signal peak -1.7 dBFS
+take 05, first minute, random automation seed 2, without-bypass (3555 moves (0 of Bypass)): 1.2.1 against 1.2.2: bit identical, 5760000 samples, signal peak 2.4 dBFS
+take 05, first minute, random automation seed 2, with-bypass (3555 moves (111 of Bypass)): 1.2.1 against 1.2.2: 5352193 of 5760000 samples differ, residual peak -13.4 dBFS, residual -24.4 dB re the signal, signal peak -0.6 dBFS
+take 05, first minute, random automation seed 3, without-bypass (3555 moves (0 of Bypass)): 1.2.1 against 1.2.2: bit identical, 5760000 samples, signal peak 0.2 dBFS
+take 05, first minute, random automation seed 3, with-bypass (3555 moves (116 of Bypass)): 1.2.1 against 1.2.2: 5661514 of 5760000 samples differ, residual peak -23.9 dBFS, residual -27.8 dB re the signal, signal peak -7.5 dBFS
+take 10, first minute, random automation seed 1, without-bypass (3555 moves (0 of Bypass)): 1.2.1 against 1.2.2: bit identical, 5760000 samples, signal peak -10.8 dBFS
+take 10, first minute, random automation seed 1, with-bypass (3555 moves (120 of Bypass)): 1.2.1 against 1.2.2: 5642596 of 5760000 samples differ, residual peak -29.2 dBFS, residual -22.5 dB re the signal, signal peak -17.3 dBFS
+take 10, first minute, random automation seed 2, without-bypass (3555 moves (0 of Bypass)): 1.2.1 against 1.2.2: bit identical, 5760000 samples, signal peak -11.6 dBFS
+take 10, first minute, random automation seed 2, with-bypass (3555 moves (111 of Bypass)): 1.2.1 against 1.2.2: 5352245 of 5760000 samples differ, residual peak -26.7 dBFS, residual -21.6 dB re the signal, signal peak -21.7 dBFS
+take 10, first minute, random automation seed 3, without-bypass (3555 moves (0 of Bypass)): 1.2.1 against 1.2.2: bit identical, 5760000 samples, signal peak -15.1 dBFS
+take 10, first minute, random automation seed 3, with-bypass (3555 moves (116 of Bypass)): 1.2.1 against 1.2.2: 5661520 of 5760000 samples differ, residual peak -32.5 dBFS, residual -25.7 dB re the signal, signal peak -19.8 dBFS

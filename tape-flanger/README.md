@@ -55,7 +55,7 @@ Pictures are in `docs/window/`. `RenderWindow` makes them from real speech throu
 | Low Cut | Off, 21 to 1000 Hz | Two gentle poles on the wet only. Keeps the flange out of the low end of a voice. |
 | High Cut | 1 to 20 kHz, Off | Two gentle poles on the wet only. Keeps the flange off S sounds. |
 | Feedback Compensation | on, off | On holds the broadband level as Feedback rises. Off is louder and more resonant at high Feedback, with a soft ceiling on the delay line. |
-| Bypass | off, on | Fades the wet out and keeps the same delay. Input Gain and Output Gain drop out too. |
+| Bypass | off, on | Passes the input through untouched, delayed by the reported latency so it stays in time. Switching fades over 20 ms. Input Gain and Output Gain drop out too. The effect keeps running underneath, so switching back picks up where the sweep is. |
 
 ## Presets
 
@@ -88,6 +88,8 @@ input -> oversample (4x up to 60 kHz host rate, 2x above) -> Input Gain
         -> High Cut -> Low Cut -> Fade and Mix ---------------+-> Output Gain -> oversample down -> output
   feedback: read at a length equal to the distance from the dry path (never under 0.25 ms)
         -> head loss at 12 kHz -> low cut at 20 Hz -> limiter -> back to the line
+
+Bypass: input -> whole sample delay of the reported latency -> output. It does not go through the oversampling.
 ```
 
 The feedback loop length follows the wet to dry distance, so comb peaks and Mix notches move together. It is rounded off at 0.25 ms near the crossing so the loop never reaches zero length.
@@ -138,6 +140,14 @@ Added in 1.1.0, limits set before the first run:
 - All new controls together: same output at block 64 and 1024, after a second prepare, and with or without a playhead, null -240 dB.
 
 These are synthetic test signals. They do not prove it sounds good on a real voice.
+
+Added in 1.2.2, after the real vocal runs. Limits set before the fix:
+
+- Bypass is the input delayed by the reported latency and nothing else: null -240 dB (identical samples) against the delayed input on white noise at 44.1, 48, 88.2 and 96 kHz, stereo and mono, with the parameter and with the host's bypass call, switched on under audio, and with every control at an extreme. One sample in comes out as one sample. 1.2.1 measured -21.4 dB on white noise and -66 to -74 dB on a real voice.
+- Bypass off again: one second later the output is identical to never having bypassed, null -240 dB (1.2.1: -81.8 dB).
+- Switching Bypass under a 220 or 500 Hz tone at -18 dBFS: biggest step 1.000 times the signal's own, and above 8 kHz nothing over -125 dB re the tone (1.2.1: -76 dB).
+- Mix 0 is not a bypass: its dry path runs through the oversampling filters. It nulls 66 to 74 dB against the dry on a real voice, and -21 dB on white noise, where the top of the band above 21 kHz counts.
+- Same sound with Bypass off: the default and every preset at four formats, 56 renders through the real AU, are bit identical to 1.2.1. So are two real takes at the default, two presets and low gains, and with every control but Bypass moving at random. The 7 random automation renders that also switch Bypass differ, as they must (`tests/null_results.txt`). Hashes of the 1.2.2 renders are in `tests/baseline/renders-1.2.2.sha256`.
 
 Added in 1.2.0, the window. Saved in `tests/window_results.txt`, `tests/null_results.txt` and `docs/window-cpu.md`:
 

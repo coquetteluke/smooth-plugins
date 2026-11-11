@@ -813,13 +813,20 @@ static void testMix()
         check (db <= -50.0, "Mix 0 nulls against the delayed input at " + std::to_string ((int) f) + " Hz", db, "dB");
     }
 
-    // Bypass is the same as Mix 0, same delay. Limit: 80 dB null once the fade is done.
+    // Bypass, same delay as Mix 0. Until 1.2.2 these two lines read "Bypass against Mix 0" with an 80 dB limit: Bypass was Mix 0
+    // then (the dry path through the oversampling filters), so the two could only agree, and the test could not see that neither
+    // was the input (-21 dB on this noise, -66 to -74 dB on a real voice). Bypass is now the input itself and Mix 0 is not, so the
+    // same reading is -21 dB by design. The check holds Bypass to the delayed input instead, at the 120 dB of a true bypass, and
+    // the old reading is printed for the record.
     {
         Settings s = base; s.bypass = true;
         auto p = makeProc (s, sr);
         auto out = render (*p, in, 512);
-        const double db = nullDb (out.getReadPointer (0) + n / 2, dry.getReadPointer (0) + n / 2, n / 2, ref);
-        check (db <= -80.0, "Bypass against Mix 0", db, "dB");
+        const int latency = p->getLatencySamples();
+        const double inRef = rms (in.data() + n / 2, n / 2 - latency);
+        const double db = nullDb (out.getReadPointer (0) + n / 2 + latency, in.data() + n / 2, n / 2 - latency, inRef);
+        check (db <= -120.0, "Bypass against the delayed input", db, "dB");
+        info ("Bypass against Mix 0 (was a check until 1.2.2, see the note above it)", nullDb (out.getReadPointer (0) + n / 2, dry.getReadPointer (0) + n / 2, n / 2, ref), "dB");
 
         auto q = makeProc (base, sr);
         juce::AudioBuffer<float> buf (2, 512);
@@ -831,8 +838,10 @@ static void testMix()
             q->processBlockBypassed (buf, midi);
             capture.copyFrom (0, pos, buf, 0, 0, 512);
         }
-        const double db2 = nullDb (capture.getReadPointer (0) + n / 2, dry.getReadPointer (0) + n / 2, (n - n / 2) / 512 * 512, ref);
-        check (db2 <= -80.0, "host bypass call against Mix 0", db2, "dB");
+        const int whole = (n - n / 2) / 512 * 512;
+        const double db2 = nullDb (capture.getReadPointer (0) + n / 2 + latency, in.data() + n / 2, whole - latency, inRef);
+        check (db2 <= -120.0, "host bypass call against the delayed input", db2, "dB");
+        info ("host bypass call against Mix 0 (was a check until 1.2.2)", nullDb (capture.getReadPointer (0) + n / 2, dry.getReadPointer (0) + n / 2, whole, ref), "dB");
     }
 }
 

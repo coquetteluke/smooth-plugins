@@ -67,7 +67,7 @@ private:
 
     void configure (double sampleRate, int samplesPerBlock);
     void snapToParameters();
-    void readTargets (bool forceBypass);
+    void readTargets();
     void followHostTransport();
     void controlTick() noexcept;
     double relativeDelaySamples (int ch, double cyclePos, double transport) const noexcept;
@@ -114,6 +114,7 @@ private:
     struct Channel
     {
         std::vector<float> line, dry;
+        std::vector<float> through; // the input at the host rate, untouched: what Bypass plays, delayed by the reported latency
         flanger::ShelfState tone;
         float loopLow = 0.0f, loopHigh = 0.0f;
         float highA = 0.0f, highB = 0.0f, lowA = 0.0f, lowB = 0.0f; // High Cut and Low Cut on the wet path
@@ -124,6 +125,10 @@ private:
     int numActive = 2;
     int mask = 0, writeIndex = 0;
     int dryDelay = 0; // oversampled samples
+    // Bypass. The effect keeps running and the output moves between it and the untouched input, after the oversampling,
+    // so a bypassed output is the input delayed by a whole number of samples and nothing else.
+    int throughMask = 0, throughWrite = 0, throughDelay = 0; // host samples
+    float effectNow = 1.0f, effectStep = 0.0f; // 1 is the effect, 0 is Bypass, and how far that moves per host sample
 
     // LFO. phase covers a pair of cycles, so Swing can give them different lengths.
     double phase = 0.0, increment = 0.0, correction = 0.0;
@@ -134,9 +139,9 @@ private:
     bool firstBlock = true;
 
     // Targets read at the top of each block
-    float depthTarget = 0, spreadTarget = 0, toneTarget = 0, satTarget = 0, feedbackTarget = 0, polarityTarget = 1, mixTarget = 0, onTarget = 1;
+    float depthTarget = 0, spreadTarget = 0, toneTarget = 0, satTarget = 0, feedbackTarget = 0, polarityTarget = 1, mixTarget = 0;
     // Smoothed values
-    float depthNow = 0, spreadNow = 0, toneNow = 0, satNow = 0, feedbackNow = 0, polarityNow = 1, mixNow = 0, onNow = 1;
+    float depthNow = 0, spreadNow = 0, toneNow = 0, satNow = 0, feedbackNow = 0, polarityNow = 1, mixNow = 0;
     float flangeTarget = 0, fadeSeconds = 0.01f, gateTarget = 1, delayTarget = 0, modeTarget = 0, shapeTarget = 0.5f, riseTarget = 0.5f, offsetTarget = 0, swingTarget = 0.5f;
     float wowTarget = 0, flutterTarget = 0, randomTarget = 0, unsyncTarget = 0, compTarget = 1, inGainTarget = 1, outGainTarget = 1;
     float lowCutTarget = 20, highCutTarget = 20000, lowOnTarget = 0, highOnTarget = 0;

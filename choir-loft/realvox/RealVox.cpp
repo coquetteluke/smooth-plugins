@@ -53,6 +53,7 @@
 #include "../tests/Analysis.h"
 
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -95,6 +96,25 @@ void setParam (PluginProcessor& p, const juce::String& id, float value)
     prm->setValueNotifyingHost (prm->convertTo0to1 (value));
 }
 
+// Settings from the environment, for every mode: REALVOX_PRESET=<factory preset number>, then REALVOX_SET="id=value,id=value" in each
+// parameter's own units (inputType=3 is Wide Range). An id this build does not have is reported and skipped.
+void applyEnvironment (PluginProcessor& p)
+{
+    if (const char* preset = std::getenv ("REALVOX_PRESET")) p.setCurrentProgram (std::atoi (preset));
+    if (const char* set = std::getenv ("REALVOX_SET"))
+    {
+        juce::StringArray items;
+        items.addTokens (set, ",", "");
+        for (const auto& item : items)
+        {
+            const auto id = item.upToFirstOccurrenceOf ("=", false, false).trim();
+            if (id.isEmpty()) continue;
+            if (auto* prm = p.apvts.getParameter (id)) prm->setValueNotifyingHost (prm->convertTo0to1 (item.fromFirstOccurrenceOf ("=", false, false).getFloatValue()));
+            else std::fprintf (stderr, "no parameter %s in this build\n", id.toRawUTF8());
+        }
+    }
+}
+
 void prepare (PluginProcessor& p)
 {
     p.releaseResources();
@@ -123,6 +143,7 @@ struct Render
 Render render (const std::vector<float>& x, bool singingOnly, int key, int scale, double referenceHz)
 {
     auto p = makeProcessor();
+    applyEnvironment (*p);
     setParam (*p, "reference", (float) referenceHz);
     setParam (*p, "key", (float) key);
     setParam (*p, "scale", (float) scale);
@@ -638,6 +659,7 @@ int demo (const juce::File& in, const juce::File& outFile, double fromSec, doubl
     const auto x = loadMono (in);
     if (x.empty()) return 1;
     auto p = makeProcessor();
+    applyEnvironment (*p);
     prepare (*p);
     const int n = (int) x.size();
     juce::AudioBuffer<float> all (2, n), buf (2, block);
@@ -666,6 +688,1311 @@ int demo (const juce::File& in, const juce::File& outFile, double fromSec, doubl
     std::printf ("wrote %s, %.1f s, peak %.1f dBFS\n", outFile.getFullPathName().toRawUTF8(), len / SR, toDb (slice.getMagnitude (0, len)));
     return 0;
 }
+
+// =====================================================================================================================================
+// Held notes (added for 1.5.0). Luke: "it misses low notes a lot".
+//
+//   RealVox notes <records file> <take.wav> ...        every held note of each take: did each voice sing it, and if not, why
+//   RealVox notesreport <records file>                  the table by lead pitch and by cause
+//   RealVox notescompare <new records> <old records>    both tables and the pass rule below
+//
+// Render: the default preset, Reference A4 at its default of 440 (the takes are in their songs' keys at A440, and that is what Luke gets in
+// Logic), Key and Scale found from the take's pitch on the A440 grid (TAKES.txt has no key filled in), Consonants and Breath 0 so anything
+// a voice puts out is singing, voice 1 hard left and voice 2 hard right, lead off. REALVOX_SET changes parameters, for example
+// REALVOX_SET="inputType=3" is Wide Range. REALVOX_SHIFT=<samples> puts that much silence in front of the take: the plug-in's random
+// choices then fall elsewhere, so two runs of one version give the noise floor of every number here.
+//
+// A held note: inside a voiced stretch of the reference track, 200 ms or more where the lead's pitch stays within 70 cents of the note's
+// own average so far (one or two frames outside it are passed over), with at most a fifth of it hiss (half or more of the energy above
+// 2.5 kHz: the reference track reads a pitch of 500 Hz and up into some S and T sounds, and those are not notes). Its pitch is the median. Three bands: under 98 Hz (below Alto/Tenor's
+// range), 98 to 130 Hz, 130 Hz and up.
+//
+// Each voice, every 5 ms of the note, at the moment that voice plays that part of the lead (latency plus the voice's lag):
+//   silent    more than 12 dB under the voice's steady level against the lead
+//   on note   the harmony of the note the lead is on (a third up for voice 1, a fifth up for voice 2, in the key), within 50 cents, or as
+//             far off it as the lead is off its own note. The same test as the phrase start measure.
+//   octave    on note once its pitch is halved or doubled
+//   unshifted within 50 cents of the lead itself
+//   other     some other pitch, or audible with no pitch found
+// One verdict per voice and note, the first that applies:
+//   missed    silent for half the note or more and on note for under a quarter of it
+//   octave    30 ms or more in a row an octave off
+//   wrong     on note for under half of the note past its first 80 ms
+//   dropout   after it first sang the note, silent for 30 ms or more in a row, not counting the note's last 30 ms
+//   late      first on its note (held 20 ms) more than 80 ms into the note, the limit past which a listener hears a note skipped
+//             (onsetSoundWorstMs in tests/PassLimits.h)
+//   ok
+// And every pitched moment of the lead, held or not (rap has few held notes): stretches of 100 ms or more, without their first 40 ms and
+// last 20 ms, without moments more than 20 dB under the take's usual sung level and without hiss as above. Share of that time each voice is on its note, silent,
+// an octave off, unshifted or elsewhere, with what the tracker was doing whenever the voice was not on its note. A voice gliding between
+// two notes is not on either, so this share is under 1 even when nothing is wrong: it is for comparing bands and versions.
+// Cause of each verdict that is not ok, from a copy of the plug-in's own tracker run on the take with the same Input Type and Tracking,
+// read every ms (12 ms later than the reference frame, about what its window lags). Each ms the tracker is either right (voiced, within
+// 100 cents of the reference), an octave or a twelfth high or low, on another pitch, or not voiced for one of its own reasons: quiet (its
+// -60 dBFS gate), no dip or rough (not periodic enough for the Tracking setting: fry, breathy), hiss, even or residual (the two start
+// checks from 1.4.1 and 1.4.2), votes (waiting for three steady readings). The cause is
+//   range       the note is under the lowest pitch the Input Type tracks (what the tracker did instead is kept too)
+//   downstream  the tracker was right for 90% of the note or more (97% for a dropout; for a late note, 80% of its first 100 ms), so the
+//               fault is after it: the voicing look up, the level match, the glide
+//   otherwise   whatever the tracker was doing most while it was not right (for a late note, in its first 100 ms)
+//
+// Pass rule for a fix, committed with this code before any change to the plug-in was measured with it (the measures were shaped on 1.4.4
+// renders of the working set only). The slack on each "no worse" rule is the noise floor: 1.4.4 against itself with REALVOX_SHIFT=1009 and
+// 2003 on the working set moved the ok share by 0.0015 (98 to 130 Hz) and 0.0004 (130 Hz and up), the on note share of time by 0.0006
+// and 0.0008, the octave share of time by 0.0001, and the octave and late counts not at all (6, 6, 6 and 0, 0, 0). Slack: 0.002 and
+// 0.001 on the ok shares, 0.001 on the shares of time, 0.0005 on the octave share of time, and on the counts one held note, which is 2
+// voice notes, since no count moved.
+//   H1 target: under 98 Hz, share of voice notes that are ok, higher by 0.20 or more
+//   H2 target: under 98 Hz, share of time on note, higher by 0.20 or more
+//   H3 98 to 130 Hz: ok share no lower than old minus 0.002         H4 130 Hz and up: ok share no lower than old minus 0.001
+//   H5 98 to 130 Hz: share of time on note no lower than old minus 0.001      H6 130 Hz and up: the same
+//   H7 octave verdicts, all bands: no more than old plus 2           H8 octave share of time, all bands: no more than old plus 0.0005
+//   H9 late verdicts, 98 Hz and up: no more than old plus 2
+//   H10 latency of every take the same as old
+// and the 1.4.2 rule above still holds as far as it guards (O1 to O9; T1 to T3 were that version's targets and are printed, not required).
+// =====================================================================================================================================
+
+struct Note { int a = 0, b = 0; double hz = 0.0; bool first = false; };
+
+// The dry take and what is found in it, the same way measureTake does, on the A440 grid.
+struct Dry
+{
+    std::string take;
+    std::vector<float> x;
+    std::vector<double> track;
+    std::vector<Stretch> stretches;
+    std::vector<Note> notes;
+    std::vector<char> hissy;      // per frame: half or more of its energy is above 2.5 kHz. The reference track finds a "pitch" of 500 Hz and up
+                                  // in some S and T sounds; those are consonants, not notes, and are left out of the notes and the every moment table.
+    double floorRms = 0.0;
+    double referenceHz = 440.0;
+    int key = 0, scale = 1;
+    bool inScale[12] = {};
+    static constexpr double rate = 12000.0;
+    static constexpr int tauMax = (int) (rate / 60.0) + 1, W = tauMax + 40;
+
+    int frames() const { return (int) track.size(); }
+    double frameTime (int f) const { return measure::referenceTime (f, SR, hopSec); }
+    long frameSample (int f) const { return (long) (frameTime (f) * SR); }
+    int frameOf (long inputSample) const { return (int) std::lround ((inputSample / SR * rate - tauMax - 0.5 * W) / (hopSec * rate)); }
+    double leadHzAt (long inputSample) const
+    {
+        const int f = frameOf (inputSample);
+        return f >= 0 && f < frames() ? track[(size_t) f] : 0.0;
+    }
+    double semitoneOf (double hz) const { return 69.0 + 12.0 * std::log2 (hz / referenceHz); }
+    double noteHz (double note) const { return referenceHz * std::pow (2.0, (note - 69.0) / 12.0); }
+    std::vector<int> leadNotes (double m) const
+    {
+        std::vector<int> out;
+        const int n = (int) std::lround (m);
+        if (std::abs (m - n) <= 0.35 && inScale[((n % 12) + 12) % 12]) { out.push_back (n); return out; }
+        int below = (int) std::floor (m), above = (int) std::ceil (m);
+        if (above == below) ++above;
+        while (! inScale[((below % 12) + 12) % 12]) --below;
+        while (! inScale[((above % 12) + 12) % 12]) ++above;
+        out.push_back (below);
+        out.push_back (above);
+        return out;
+    }
+    int harmonyOf (int note, int v) const
+    {
+        int steps = v == 0 ? 2 : 4;
+        while (steps > 0) { ++note; while (! inScale[((note % 12) + 12) % 12]) ++note; --steps; }
+        return note;
+    }
+    double searchAround (double leadHz, int v) const
+    {
+        double around = 0.0;
+        for (int c : leadNotes (semitoneOf (leadHz))) around = std::max (around, noteHz (harmonyOf (c, v)));
+        return around;
+    }
+    bool onNote (double voiceHz, double leadHz, int v) const
+    {
+        const double m = semitoneOf (leadHz);
+        for (int c : leadNotes (m))
+        {
+            const double off = 100.0 * (semitoneOf (voiceHz) - harmonyOf (c, v)), bend = 100.0 * (m - c);
+            if (off >= std::min (0.0, bend) - 50.0 && off <= std::max (0.0, bend) + 50.0) return true;
+        }
+        return false;
+    }
+    // Cents from the harmony note nearest to where the voice is, for a lead at leadHz
+    double centsOffHarmony (double voiceHz, double leadHz, int v) const
+    {
+        double best = 1.0e9;
+        for (int c : leadNotes (semitoneOf (leadHz)))
+        {
+            const double off = 100.0 * (semitoneOf (voiceHz) - harmonyOf (c, v));
+            if (std::abs (off) < std::abs (best)) best = off;
+        }
+        return best;
+    }
+
+    bool load (const juce::File& file)
+    {
+        x = loadMono (file);
+        take = file.getFileNameWithoutExtension().toStdString();
+        if (x.empty()) return false;
+        if (const char* sh = std::getenv ("REALVOX_SHIFT")) x.insert (x.begin(), (size_t) std::max (0, std::atoi (sh)), 0.0f);
+
+        track = measure::referenceTrack (x, SR, hopSec);
+        const int F = frames();
+        for (int f = 1; f + 1 < F; ++f)
+            if (track[(size_t) f] <= 0.0 && track[(size_t) f - 1] > 0.0)
+            {
+                int g = f;
+                while (g < F && track[(size_t) g] <= 0.0 && g - f < 3) ++g;
+                if (g < F && g - f <= 2 && track[(size_t) g] > 0.0)
+                    for (int k = f; k < g; ++k) track[(size_t) k] = track[(size_t) f - 1];
+            }
+        const int frame = (int) (0.01 * SR);
+        std::vector<double> levels;
+        for (long i = 0; i + frame < (long) x.size(); i += frame) levels.push_back (rmsOf (x, i, frame));
+        floorRms = std::max (std::pow (10.0, -90.0 / 20.0), levels.empty() ? 0.0 : measure::percentile (levels, 10.0));
+        for (int f = 0; f < F; ++f)
+        {
+            if (track[(size_t) f] <= 0.0) continue;
+            int g = f;
+            while (g + 1 < F && track[(size_t) g + 1] > 0.0) ++g;
+            Stretch s;
+            s.a = f; s.b = g;
+            s.onset = (long) ((frameTime (f) - 0.5 * W / rate - 1.0 / track[(size_t) f]) * SR);
+            s.end = (long) ((frameTime (g) + 0.5 * W / rate) * SR);
+            if (rmsOf (x, s.onset, s.end - s.onset) >= floorRms * 3.98) stretches.push_back (s);
+            else for (int k = f; k <= g; ++k) track[(size_t) k] = 0.0;
+            f = g;
+        }
+        // Key on the A440 grid
+        static const double major[12] = { 6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88 };
+        static const double minor[12] = { 6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17 };
+        double hist[12] = {};
+        for (double hz : track) if (hz > 0.0) hist[(((int) std::lround (semitoneOf (hz))) % 12 + 12) % 12] += 1.0;
+        double best = -1.0e9;
+        for (int k = 0; k < 12; ++k)
+            for (int m = 0; m < 2; ++m)
+            {
+                const double* prof = m == 0 ? major : minor;
+                double mh = 0, mp = 0;
+                for (int i = 0; i < 12; ++i) { mh += hist[i] / 12.0; mp += prof[i] / 12.0; }
+                double c = 0, eh = 0, ep = 0;
+                for (int i = 0; i < 12; ++i) { const double a = hist[(i + k) % 12] - mh, b = prof[i] - mp; c += a * b; eh += a * a; ep += b * b; }
+                const double r = c / std::sqrt (eh * ep + 1.0e-20);
+                if (r > best) { best = r; key = k; scale = m == 0 ? 1 : 2; }
+            }
+        static const int majorSteps[7] = { 0, 2, 4, 5, 7, 9, 11 }, minorSteps[7] = { 0, 2, 3, 5, 7, 8, 10 };
+        for (int i = 0; i < 7; ++i) inScale[(key + (scale == 1 ? majorSteps[i] : minorSteps[i])) % 12] = true;
+        {
+            smoothharmony::Biquad hp;
+            hp.highPass (2500.0, SR, 0.707);
+            std::vector<float> high (x.size());
+            for (size_t i = 0; i < x.size(); ++i) high[i] = (float) hp.process (x[i]);
+            hissy.assign ((size_t) F, 0);
+            for (int f = 0; f < F; ++f)
+            {
+                const double all = rmsOf (x, frameSample (f) - 240, 480), h = rmsOf (high, frameSample (f) - 240, 480);
+                hissy[(size_t) f] = h * h >= 0.5 * all * all ? 1 : 0;
+            }
+        }
+        findNotes();
+        return true;
+    }
+
+    void findNotes()
+    {
+        for (const auto& s : stretches)
+        {
+            int f = s.a;
+            while (f <= s.b)
+            {
+                double sum = std::log2 (track[(size_t) f]);
+                int n = 1, g = f;
+                const auto out = [&] (int h) { return std::abs (1200.0 * (std::log2 (track[(size_t) h]) - sum / n)) > 70.0; };
+                while (g + 1 <= s.b)
+                {
+                    int h = g + 1;
+                    while (h <= s.b && h - g <= 2 && out (h)) ++h;
+                    if (h > s.b || out (h)) break;
+                    g = h;
+                    sum += std::log2 (track[(size_t) g]);
+                    ++n;
+                }
+                int hiss = 0;
+                for (int k = f; k <= g; ++k) hiss += hissy[(size_t) k];
+                if (g - f + 1 >= 40 && hiss <= (g - f + 1) / 5)
+                {
+                    Note nt;
+                    nt.a = f; nt.b = g; nt.first = f == s.a;
+                    std::vector<double> hz (track.begin() + f, track.begin() + g + 1);
+                    nt.hz = measure::median (hz);
+                    notes.push_back (nt);
+                }
+                f = g + 1;
+            }
+        }
+    }
+};
+
+const char* bandOf (double hz) { return hz < 98.0 ? "under98" : (hz < 130.0 ? "98to130" : "over130"); }
+
+// The plug-in's own tracker, run on the take the way the processor runs it, read once a ms.
+struct TrackerTrace { std::vector<unsigned char> why; std::vector<float> hz; double lowHz = 0.0, highHz = 0.0; };
+
+TrackerTrace traceTracker (const std::vector<float>& x, int inputType, float tracking)
+{
+    TrackerTrace t;
+#ifdef REALVOX_OLD_TREE
+    static const double ranges[4][2] = { { 150.0, 1300.0 }, { 98.0, 1000.0 }, { 65.0, 600.0 }, { 65.0, 1300.0 } };
+    t.lowHz = ranges[std::clamp (inputType, 0, 3)][0];
+    t.highHz = ranges[std::clamp (inputType, 0, 3)][1];
+#else
+    PluginProcessor::trackingRange (inputType, t.lowHz, t.highHz);
+#endif
+    smoothharmony::PitchTracker tr;
+    tr.prepare (SR);
+#ifdef REALVOX_OLD_TREE
+    tr.setRange (t.lowHz, t.highHz);
+#else
+    PluginProcessor::prepareTrackerLike (tr, inputType);
+#endif
+    tr.setVoicingLimit (0.10f + 0.004f * tracking);
+    const int tickSamples = (int) std::lround (SR * 0.001);
+    for (size_t i = 0; i < x.size(); ++i)
+    {
+        tr.push (x[i]);
+        if ((int) ((i + 1) % (size_t) tickSamples) == 0)
+        {
+            const double p = tr.period();
+#ifdef REALVOX_OLD_TREE
+            t.why.push_back (p > 0.0 ? 0 : 3);
+#else
+            t.why.push_back ((unsigned char) (p > 0.0 ? 0 : std::max (1, tr.why())));
+#endif
+            t.hz.push_back (p > 0.0 ? (float) (SR / p) : 0.0f);
+        }
+    }
+    return t;
+}
+
+// Tracker states for the cause: 0 right, 1 to 7 the tracker's own reasons, 8 octave or twelfth high, 9 low, 10 another pitch
+constexpr int numStates = 11;
+const char* const stateNames[numStates] = { "right", "quiet", "nodip", "rough", "hiss", "even", "residual", "votes", "highoctave", "lowoctave", "otherpitch" };
+
+int trackerStateAt (const TrackerTrace& t, const Dry& d, long inputSample)
+{
+    const long tick = (inputSample + (long) (0.012 * SR)) / (long) std::lround (SR * 0.001);
+    if (tick < 0 || tick >= (long) t.hz.size()) return 1;
+    const double ref = d.leadHzAt (inputSample), hz = t.hz[(size_t) tick];
+    if (hz <= 0.0) return std::clamp ((int) t.why[(size_t) tick], 1, 7);
+    if (ref <= 0.0) return 10;
+    const double c = measure::cents (hz, ref);
+    if (std::abs (c) <= 100.0) return 0;
+    if (std::abs (c - 1200.0) <= 100.0 || std::abs (c - 1902.0) <= 100.0) return 8;
+    if (std::abs (c + 1200.0) <= 100.0 || std::abs (c + 1902.0) <= 100.0) return 9;
+    return 10;
+}
+
+struct RenderInfo { int inputType = 1; float tracking = 50.0f; };
+RenderInfo renderInfo()
+{
+    auto p = makeProcessor();
+    applyEnvironment (*p);
+    RenderInfo r;
+    r.inputType = (int) p->apvts.getRawParameterValue ("inputType")->load();
+    r.tracking = p->apvts.getRawParameterValue ("tracking")->load();
+    return r;
+}
+
+double steadyLevel (const Dry& d, const Render& r, int v)
+{
+    const long L = r.latency;
+    const int half = (int) (0.005 * SR);
+    std::vector<double> rel;
+    for (const auto& s : d.stretches)
+        for (int f = s.a + 30; f <= s.b; ++f)
+        {
+            const long i = d.frameSample (f);
+            const long at = i + L + (long) std::lround (r.lagSamplesAt (v, i + L));
+            if (at < (long) d.x.size())
+                rel.push_back (toDb (rmsAround (r.ch[(size_t) v], at, half)) - toDb (rmsAround (d.x, at - L - (long) std::lround (r.lagSamplesAt (v, at)), half)));
+        }
+    return rel.empty() ? 0.0 : measure::median (rel);
+}
+
+void notesTake (const juce::File& file, std::ofstream& out)
+{
+    Dry d;
+    if (! d.load (file)) { std::fprintf (stderr, "could not load %s\n", file.getFullPathName().toRawUTF8()); return; }
+    double under98 = 0.0;
+    for (const auto& s : d.stretches) for (int f = s.a; f <= s.b; ++f) if (d.track[(size_t) f] < 98.0) under98 += hopSec;
+    std::printf ("  %s: %.1f s, %d held notes, key %d scale %d, %.1f s of pitch under 98 Hz, rendering\n", d.take.c_str(), d.x.size() / SR, (int) d.notes.size(), d.key, d.scale, under98);
+    std::fflush (stdout);
+
+    const Render z = render (d.x, true, d.key, d.scale, 440.0);
+    const RenderInfo info = renderInfo();
+    const TrackerTrace tr = traceTracker (d.x, info.inputType, info.tracking);
+    const long L = z.latency;
+    out << "L " << d.take << " " << L << "\n";
+    out << "R " << d.take << " " << info.inputType << " " << tr.lowHz << " " << tr.highHz << "\n";
+    const int half = (int) (0.005 * SR);
+    double steady[2];
+    for (int v = 0; v < 2; ++v) steady[v] = steadyLevel (d, z, v);
+
+    // What a voice is doing while it plays frame f of the lead: S silent, N on note, O an octave off, U unshifted, W another pitch, X no pitch found
+    const auto classify = [&] (int f, int v, double* hzOut = nullptr, double* lvlOut = nullptr)
+    {
+        const long i = d.frameSample (f);
+        const long at = i + L + (long) std::lround (z.lagSamplesAt (v, i + L));
+        if (at + half >= (long) d.x.size()) return 'S';
+        const long in = at - L - (long) std::lround (z.lagSamplesAt (v, at));
+        const double lead = d.track[(size_t) f];
+        const double lvl = toDb (rmsAround (z.ch[(size_t) v], at, half)) - toDb (rmsAround (d.x, in, half)) - steady[v];
+        char c = 'S';
+        double hz = 0.0;
+        if (lvl >= -12.0)
+        {
+            const double around = d.searchAround (lead, v);
+            hz = pitchAround (z.ch[(size_t) v], at, around);
+            if (hz > 0.0 && d.onNote (hz, lead, v)) c = 'N';
+            else
+            {
+                const double up = pitchAround (z.ch[(size_t) v], at, around * 2.0), down = pitchAround (z.ch[(size_t) v], at, around * 0.5);
+                if ((up > 0.0 && d.onNote (up * 0.5, lead, v)) || (down > 0.0 && d.onNote (down * 2.0, lead, v))) c = 'O';
+                else if (hz > 0.0 && std::abs (measure::cents (hz, lead)) <= 50.0) c = 'U';
+                else c = hz > 0.0 ? 'W' : 'X';
+            }
+        }
+        if (hzOut != nullptr) *hzOut = hz;
+        if (lvlOut != nullptr) *lvlOut = lvl;
+        return c;
+    };
+
+    // Every pitched moment of the lead, not only held notes: stretches of 100 ms or more, without their first 40 ms and last 20 ms, and
+    // without moments more than 20 dB under the take's usual sung level (tails that die away under the plug-in's -60 dBFS gate are not notes)
+    {
+        std::vector<double> sung;
+        for (const auto& s : d.stretches) for (int f = s.a; f <= s.b; ++f) sung.push_back (toDb (rmsAround (d.x, d.frameSample (f), half)));
+        const double usual = sung.empty() ? -30.0 : measure::median (sung);
+        out << "U " << d.take << " " << usual << "\n";
+        std::map<std::string, std::array<std::array<int, 6>, 2>> frameCounts;
+        std::map<std::string, std::array<std::array<int, numStates>, 2>> frameCauses;
+        static const char order[] = "SNOUWX";
+        for (const auto& s : d.stretches)
+        {
+            if (s.b - s.a + 1 < 20) continue;
+            for (int f = s.a + 8; f <= s.b - 4; ++f)
+            {
+                if (toDb (rmsAround (d.x, d.frameSample (f), half)) < usual - 20.0 || d.hissy[(size_t) f]) continue;
+                const std::string band = bandOf (d.track[(size_t) f]);
+                const int st = trackerStateAt (tr, d, d.frameSample (f));
+                for (int v = 0; v < 2; ++v)
+                {
+                    const char c = classify (f, v);
+                    ++frameCounts[band][(size_t) v][(size_t) (std::strchr (order, c) - order)];
+                    if (c != 'N') ++frameCauses[band][(size_t) v][(size_t) st];
+                    if (c != 'N' && v == 0 && std::getenv ("REALVOX_DUMP") != nullptr)
+                        std::printf ("dump %s %.3f s  lead %.1f Hz  level %.1f dBFS  voice %c  tracker %s\n", d.take.c_str(), d.frameTime (f), d.track[(size_t) f],
+                                     toDb (rmsAround (d.x, d.frameSample (f), half)), c, stateNames[st]);
+                }
+            }
+        }
+        for (const auto& [band, counts] : frameCounts)
+            for (int v = 0; v < 2; ++v)
+            {
+                out << "T " << d.take << " " << band << " " << v + 1;
+                for (int k = 0; k < 6; ++k) out << " " << counts[(size_t) v][(size_t) k];
+                out << "\n";
+                out << "TC " << d.take << " " << band << " " << v + 1;
+                for (int k = 0; k < numStates; ++k) out << " " << frameCauses[band][(size_t) v][(size_t) k];
+                out << "\n";
+            }
+    }
+
+    const char* traceAt = std::getenv ("REALVOX_TRACE");
+    for (const auto& nt : d.notes)
+    {
+        const double sec = d.frameTime (nt.a);
+        const bool tracing = traceAt != nullptr && std::abs (std::atof (traceAt) - sec) < 0.006;
+        // The tracker over the note
+        int states[numStates] = {}, first[numStates] = {}, ticks = 0, firstTicks = 0;
+        const long from = d.frameSample (nt.a), to = d.frameSample (nt.b);
+        for (long s = from; s <= to; s += (long) std::lround (SR * 0.001))
+        {
+            const int st = trackerStateAt (tr, d, s);
+            ++states[st]; ++ticks;
+            if (s < from + (long) (0.1 * SR)) { ++first[st]; ++firstTicks; }
+            if (tracing && (s - from) % (long) (0.005 * SR) == 0)
+                std::printf ("  tracker %+7.1f ms  ref %6.1f  tracker %6.1f  %s\n", 1000.0 * (s - from) / SR, d.leadHzAt (s),
+                             tr.hz[(size_t) std::min ((long) tr.hz.size() - 1, (s + (long) (0.012 * SR)) / 48)], stateNames[st]);
+        }
+        const auto dominant = [] (const int* c)
+        {
+            int best = 1;
+            for (int i = 2; i < numStates; ++i) if (c[i] > c[best]) best = i;
+            return c[best] > 0 ? best : 0;
+        };
+
+        for (int v = 0; v < 2; ++v)
+        {
+            const int n = nt.b - nt.a + 1;
+            std::string seq ((size_t) n, 'S');
+            for (int f = nt.a; f <= nt.b; ++f)
+            {
+                double hz = 0.0, lvl = 0.0;
+                const char c = classify (f, v, &hz, &lvl);
+                seq[(size_t) (f - nt.a)] = c;
+                if (tracing) std::printf ("  voice %d %+7.1f ms  lead %6.1f  voice %6.1f  lvl %6.1f  %c\n", v + 1, 5.0 * (f - nt.a), d.track[(size_t) f], hz, lvl, c);
+            }
+            const auto count = [&] (char c, int fromFrame = 0) { int k = 0; for (int i = fromFrame; i < n; ++i) if (seq[(size_t) i] == c) ++k; return k; };
+            const auto longestRun = [&] (char c, int fromFrame, int toFrame)
+            {
+                int run = 0, best = 0;
+                for (int i = fromFrame; i < toFrame; ++i) { run = seq[(size_t) i] == c ? run + 1 : 0; best = std::max (best, run); }
+                return best;
+            };
+            int firstOn = -1;
+            for (int i = 0; i + 3 < n && firstOn < 0; ++i)
+                if (seq[(size_t) i] == 'N' && seq[(size_t) i + 1] == 'N' && seq[(size_t) i + 2] == 'N' && seq[(size_t) i + 3] == 'N') firstOn = i;
+            const int nS = count ('S'), nN = count ('N'), body = n - 16;
+            std::string verdict = "ok";
+            if (nS >= 0.5 * n && nN < 0.25 * n) verdict = "missed";
+            else if (longestRun ('O', 0, n) >= 6) verdict = "octave";
+            else if (count ('N', 16) < 0.5 * body) verdict = "wrong";
+            else if (firstOn >= 0 && longestRun ('S', firstOn, n - 6) >= 6) verdict = "dropout";
+            else if (firstOn < 0 || firstOn > 16) verdict = "late";
+
+            std::string cause = "none";
+            if (verdict != "ok")
+            {
+                const double rightAll = ticks > 0 ? (double) states[0] / ticks : 0.0, rightFirst = firstTicks > 0 ? (double) first[0] / firstTicks : 0.0;
+                if (nt.hz < tr.lowHz) cause = std::string ("range/") + stateNames[dominant (states)];
+                else if (verdict == "late") cause = rightFirst >= 0.8 ? "downstream" : stateNames[dominant (first)];
+                else cause = rightAll >= (verdict == "dropout" ? 0.97 : 0.9) ? "downstream" : stateNames[dominant (states)];
+            }
+            char line[512];
+            std::snprintf (line, sizeof line, "N %s %.3f %d %.1f %s %d %d %s %d %d %d %d %d %d %d %s %.3f\n", d.take.c_str(), sec, 5 * n, nt.hz, bandOf (nt.hz), nt.first ? 1 : 0, v + 1,
+                           verdict.c_str(), n, nS, nN, count ('O'), count ('U'), count ('W') + count ('X'), firstOn < 0 ? -1 : 5 * firstOn, cause.c_str(),
+                           ticks > 0 ? (double) states[0] / ticks : 0.0);
+            out << line;
+        }
+    }
+    out.flush();
+}
+
+struct NoteTable
+{
+    std::map<std::string, std::map<std::string, int>> verdicts;   // band, verdict
+    std::map<std::string, std::map<std::string, int>> causes;     // band, "verdict cause"
+    std::map<std::string, int> total, latency;
+    std::map<std::string, double> seconds;
+    std::map<std::string, std::array<long, 6>> frames;            // band: silent, on note, octave, unshifted, other pitch, no pitch
+    std::map<std::string, std::array<long, numStates>> frameCauses;
+    long framesOf (const std::string& band) const { auto f = frames.find (band); long n = 0; if (f != frames.end()) for (long k : f->second) n += k; return n; }
+    double onNoteShare (const std::string& band) const { auto f = frames.find (band); const long n = framesOf (band); return n > 0 ? (double) f->second[1] / n : 0.0; }
+    double frameShare (const std::string& band, int k) const { auto f = frames.find (band); const long n = framesOf (band); return n > 0 ? (double) f->second[(size_t) k] / n : 0.0; }
+    int count (const std::string& band, const std::string& verdict) const
+    {
+        auto b = verdicts.find (band);
+        if (b == verdicts.end()) return 0;
+        auto v = b->second.find (verdict);
+        return v == b->second.end() ? 0 : v->second;
+    }
+    int totalOf (const std::string& band) const { auto t = total.find (band); return t == total.end() ? 0 : t->second; }
+    double okShare (const std::string& band) const { return totalOf (band) > 0 ? (double) count (band, "ok") / totalOf (band) : 0.0; }
+};
+
+NoteTable readNotes (const std::string& path)
+{
+    NoteTable t;
+    std::ifstream in (path);
+    std::string line;
+    while (std::getline (in, line))
+    {
+        std::istringstream ls (line);
+        std::string tag, take;
+        ls >> tag >> take;
+        if (tag == "L") { int l = 0; ls >> l; t.latency[take] = l; }
+        if (tag == "T" || tag == "TC")
+        {
+            std::string band; int voice = 0;
+            ls >> band >> voice;
+            for (const std::string b : { band, std::string ("all") })
+            {
+                long k = 0;
+                std::istringstream copy (line);
+                std::string skip; copy >> skip >> skip >> skip >> skip;
+                if (tag == "T") { auto& f = t.frames[b]; for (int i = 0; i < 6 && (copy >> k); ++i) f[(size_t) i] += k; }
+                else { auto& f = t.frameCauses[b]; for (int i = 0; i < numStates && (copy >> k); ++i) f[(size_t) i] += k; }
+            }
+        }
+        if (tag != "N") continue;
+        double sec = 0.0, hz = 0.0; int ms = 0, first = 0, voice = 0; std::string band, verdict, cause;
+        int n, nS, nN, nO, nU, nW, firstOn;
+        ls >> sec >> ms >> hz >> band >> first >> voice >> verdict >> n >> nS >> nN >> nO >> nU >> nW >> firstOn >> cause;
+        for (const std::string b : { band, std::string ("all") })
+        {
+            ++t.verdicts[b][verdict];
+            ++t.total[b];
+            t.seconds[b] += 0.001 * ms;
+            if (verdict != "ok") ++t.causes[b][cause];
+        }
+    }
+    return t;
+}
+
+const char* const bandNames[] = { "under98", "98to130", "over130", "all" };
+const char* const verdictNames[] = { "ok", "missed", "octave", "wrong", "dropout", "late" };
+
+void printNotes (const NoteTable& t, const char* label)
+{
+    std::printf ("%s\n", label);
+    for (const auto& [take, l] : t.latency) { std::printf ("  latency %.2f ms (%s", 1000.0 * l / SR, take.c_str()); break; }
+    bool same = true;
+    for (const auto& [take, l] : t.latency) same = same && l == t.latency.begin()->second;
+    std::printf ("%s)\n", same ? ", every take the same" : ", NOT the same on every take");
+    std::printf ("  %-9s %7s %7s %7s %7s %7s %7s %7s %8s\n", "band", "notes", "ok", "missed", "octave", "wrong", "dropout", "late", "ok share");
+    for (const char* b : bandNames)
+    {
+        std::printf ("  %-9s %7d", b, t.totalOf (b));
+        for (const char* v : verdictNames) std::printf (" %7d", t.count (b, v));
+        std::printf (" %8.4f\n", t.okShare (b));
+    }
+    std::printf ("  (notes are voice notes: each held note counts once for each of the two voices)\n");
+    std::printf ("  every pitched moment of the lead (voice seconds), what the voice does while it plays it:\n");
+    std::printf ("  %-9s %8s %8s %8s %8s %9s %8s\n", "band", "seconds", "on note", "silent", "octave", "unshifted", "other");
+    for (const char* b : bandNames)
+        std::printf ("  %-9s %8.1f %8.4f %8.4f %8.4f %9.4f %8.4f\n", b, 0.005 * t.framesOf (b), t.onNoteShare (b), t.frameShare (b, 0), t.frameShare (b, 2), t.frameShare (b, 3),
+                     t.frameShare (b, 4) + t.frameShare (b, 5));
+    for (const char* b : bandNames)
+    {
+        auto c = t.frameCauses.find (b);
+        if (c == t.frameCauses.end()) continue;
+        long bad = 0;
+        for (long k : c->second) bad += k;
+        std::printf ("  not on note, %s (%.1f s), what the tracker was doing:", b, 0.005 * bad);
+        std::vector<std::pair<long, std::string>> sorted;
+        for (int i = 0; i < numStates; ++i) if (c->second[(size_t) i] > 0) sorted.push_back ({ c->second[(size_t) i], stateNames[i] });
+        std::sort (sorted.rbegin(), sorted.rend());
+        for (const auto& [k, name] : sorted) std::printf ("  %s %.0f%%", name.c_str(), 100.0 * k / std::max (1L, bad));
+        std::printf ("\n");
+    }
+    for (const char* b : bandNames)
+    {
+        auto c = t.causes.find (b);
+        if (c == t.causes.end()) continue;
+        int bad = 0;
+        for (const auto& [name, k] : c->second) bad += k;
+        std::printf ("  causes, %s (%d not ok):", b, bad);
+        std::vector<std::pair<int, std::string>> sorted;
+        for (const auto& [name, k] : c->second) sorted.push_back ({ k, name });
+        std::sort (sorted.rbegin(), sorted.rend());
+        for (const auto& [k, name] : sorted) std::printf ("  %s %d (%.0f%%)", name.c_str(), k, 100.0 * k / std::max (1, bad));
+        std::printf ("\n");
+    }
+}
+
+int compareNotes (const std::string& newPath, const std::string& oldPath)
+{
+    const NoteTable n = readNotes (newPath), o = readNotes (oldPath);
+    printNotes (n, ("new " + newPath).c_str());
+    printNotes (o, ("old " + oldPath).c_str());
+    int fails = 0;
+    const auto rule = [&] (bool ok, const char* what, double nv, double ov)
+    {
+        if (! ok) ++fails;
+        std::printf ("%s  %s: new %.4f, old %.4f\n", ok ? "PASS" : "FAIL", what, nv, ov);
+    };
+    const auto countFrom98 = [] (const NoteTable& t, const char* v) { return t.count ("98to130", v) + t.count ("over130", v); };
+    const auto octaveShare = [] (const NoteTable& t) { return t.frameShare ("all", 2); };
+    rule (n.okShare ("under98") >= o.okShare ("under98") + 0.20, "H1 under 98 Hz, ok share higher by 0.20 or more", n.okShare ("under98"), o.okShare ("under98"));
+    rule (n.onNoteShare ("under98") >= o.onNoteShare ("under98") + 0.20, "H2 under 98 Hz, share of time on note higher by 0.20 or more", n.onNoteShare ("under98"), o.onNoteShare ("under98"));
+    rule (n.okShare ("98to130") >= o.okShare ("98to130") - 0.002, "H3 98 to 130 Hz, ok share no lower than old minus 0.002", n.okShare ("98to130"), o.okShare ("98to130"));
+    rule (n.okShare ("over130") >= o.okShare ("over130") - 0.001, "H4 130 Hz and up, ok share no lower than old minus 0.001", n.okShare ("over130"), o.okShare ("over130"));
+    rule (n.onNoteShare ("98to130") >= o.onNoteShare ("98to130") - 0.001, "H5 98 to 130 Hz, share of time on note no lower than old minus 0.001", n.onNoteShare ("98to130"), o.onNoteShare ("98to130"));
+    rule (n.onNoteShare ("over130") >= o.onNoteShare ("over130") - 0.001, "H6 130 Hz and up, share of time on note no lower than old minus 0.001", n.onNoteShare ("over130"), o.onNoteShare ("over130"));
+    rule (n.count ("all", "octave") <= o.count ("all", "octave") + 2, "H7 octave verdicts, no more than old plus 2", n.count ("all", "octave"), o.count ("all", "octave"));
+    rule (octaveShare (n) <= octaveShare (o) + 0.0005, "H8 octave share of time, no more than old plus 0.0005", octaveShare (n), octaveShare (o));
+    rule (countFrom98 (n, "late") <= countFrom98 (o, "late") + 2, "H9 late verdicts from 98 Hz up, no more than old plus 2", countFrom98 (n, "late"), countFrom98 (o, "late"));
+    bool sameLatency = n.latency.size() == o.latency.size();
+    for (const auto& [take, l] : n.latency) { auto it = o.latency.find (take); sameLatency = sameLatency && it != o.latency.end() && it->second == l; }
+    rule (sameLatency, "H10 latency of every take the same as old (samples, first take)", n.latency.empty() ? 0.0 : n.latency.begin()->second, o.latency.empty() ? 0.0 : o.latency.begin()->second);
+    std::printf ("%s  %d of the held note rules failed\n", fails ? "RESULT FAIL" : "RESULT PASS", fails);
+    return fails ? 1 : 0;
+}
+
+// =====================================================================================================================================
+// Bit for bit: RealVox hash <take.wav> ... renders each take at the plug-in's untouched defaults (stereo in and out, 128 sample blocks),
+// or at REALVOX_PRESET and REALVOX_SET, and prints a 64 bit hash of every output sample. With REALVOX_RAW=<folder> the output is also
+// written there as raw 32 bit floats, left then right interleaved, for RealVox diff <a> <b>.
+// =====================================================================================================================================
+int hashTakes (int argc, char** argv)
+{
+    const auto cwd = juce::File::getCurrentWorkingDirectory();
+    for (int a = 2; a < argc; ++a)
+    {
+        const auto file = cwd.getChildFile (argv[a]);
+        const auto x = loadMono (file);
+        if (x.empty()) return 1;
+        auto p = makeProcessor();
+        applyEnvironment (*p);
+        prepare (*p);
+        const int n = (int) x.size();
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        std::uint64_t h = 1469598103934665603ull;
+        std::vector<float> raw;
+        const char* rawDir = std::getenv ("REALVOX_RAW");
+        if (rawDir != nullptr) raw.reserve ((size_t) n * 2);
+        float peak = 0.0f;
+        for (int pos = 0; pos < n; pos += block)
+        {
+            const int len = std::min (block, n - pos);
+            buf.setSize (2, len, false, false, true);
+            for (int c = 0; c < 2; ++c) std::copy_n (x.data() + pos, len, buf.getWritePointer (c));
+            midi.clear();
+            p->processBlock (buf, midi);
+            for (int i = 0; i < len; ++i)
+                for (int c = 0; c < 2; ++c)
+                {
+                    const float s = buf.getSample (c, i);
+                    std::uint32_t bits;
+                    std::memcpy (&bits, &s, 4);
+                    for (int k = 0; k < 4; ++k) { h ^= (bits >> (8 * k)) & 0xFFu; h *= 1099511628211ull; }
+                    peak = std::max (peak, std::abs (s));
+                    if (rawDir != nullptr) raw.push_back (s);
+                }
+        }
+        const char* preset = std::getenv ("REALVOX_PRESET");
+        const char* set = std::getenv ("REALVOX_SET");
+        std::printf ("H %s preset %s set %s latency %d samples %d hash %016llx peak %.2f dBFS\n", file.getFileNameWithoutExtension().toRawUTF8(),
+                     preset != nullptr ? p->getProgramName (std::atoi (preset)).toRawUTF8() : "default", set != nullptr ? set : "none", p->getLatencySamples(), n,
+                     (unsigned long long) h, toDb (peak));
+        std::fflush (stdout);
+        if (rawDir != nullptr)
+        {
+            const auto outFile = juce::File (rawDir).getChildFile (file.getFileNameWithoutExtension() + ".f32");
+            outFile.deleteFile();
+            juce::FileOutputStream os (outFile);
+            os.write (raw.data(), raw.size() * sizeof (float));
+        }
+    }
+    return 0;
+}
+
+int diffRaw (const juce::File& a, const juce::File& b)
+{
+    juce::MemoryBlock ma, mb;
+    if (! a.loadFileAsData (ma) || ! b.loadFileAsData (mb)) { std::fprintf (stderr, "could not read both files\n"); return 2; }
+    const size_t n = std::min (ma.getSize(), mb.getSize()) / (2 * sizeof (float));
+    const float* pa = (const float*) ma.getData();
+    const float* pb = (const float*) mb.getData();
+    long differing = 0, firstAt = -1, lastAt = -1;
+    double worst = 0.0, sumD = 0.0, sumA = 0.0;
+    std::vector<int> perSecond (n / (size_t) SR + 1, 0);
+    for (size_t i = 0; i < n; ++i)
+    {
+        const double dl = (double) pa[2 * i] - pb[2 * i], dr = (double) pa[2 * i + 1] - pb[2 * i + 1];
+        sumD += dl * dl + dr * dr;
+        sumA += (double) pb[2 * i] * pb[2 * i] + (double) pb[2 * i + 1] * pb[2 * i + 1];
+        if (dl != 0.0 || dr != 0.0)
+        {
+            ++differing;
+            if (firstAt < 0) firstAt = (long) i;
+            lastAt = (long) i;
+            worst = std::max ({ worst, std::abs (dl), std::abs (dr) });
+            ++perSecond[i / (size_t) SR];
+        }
+    }
+    if (ma.getSize() != mb.getSize()) std::printf ("lengths differ: %zu and %zu bytes\n", ma.getSize(), mb.getSize());
+    if (differing == 0) { std::printf ("IDENTICAL %s: %zu samples a side, bit for bit\n", a.getFileNameWithoutExtension().toRawUTF8(), n); return 0; }
+    int seconds = 0;
+    for (int k : perSecond) if (k > 0) ++seconds;
+    std::printf ("DIFFERENT %s: %ld of %zu samples differ (%.3f%%), in %d of %zu seconds, first at %.3f s, last at %.3f s, largest %.1f dBFS, difference %.1f dB against the old render\n",
+                 a.getFileNameWithoutExtension().toRawUTF8(), differing, n, 100.0 * differing / n, seconds, perSecond.size(), firstAt / SR, lastAt / SR, toDb (worst),
+                 10.0 * std::log10 (std::max (sumD, 1.0e-30) / std::max (sumA, 1.0e-30)));
+    if (std::getenv ("REALVOX_DIFF_SECONDS") != nullptr)
+    {
+        std::printf ("  seconds with a difference:");
+        for (size_t s = 0; s < perSecond.size(); ++s) if (perSecond[s] > 0) std::printf (" %zu", s);
+        std::printf ("\n");
+    }
+    return 1;
+}
+
+// =====================================================================================================================================
+// Robot or human (added for 1.5.0). Luke: "the voices sound robotic like really robotic".
+//
+//   RealVox robot <records file> <take.wav> ...     how each voice moves against how Luke himself moves, note by note
+//   RealVox robotreport <records file>              pooled numbers
+//
+// Same render as the held notes (singing only, voices apart), plus the default render for the consonants. Everything is measured the same
+// way on the lead and on a voice: same estimator, same window length (3 periods of the lead), same frames.
+//   P  held notes of 400 ms or more, their body (120 ms in to 60 ms before the end), per voice: pitch spread (SD in cents) of lead and voice,
+//      split at 150 ms into slow and fast movement; how far the voice's movement follows the lead's (correlation); the voice's average
+//      against its harmony note and the lead's against its own note (cents); strongest steady wobble from 3 to 8 Hz (rate, depth, and how
+//      much of the movement it is: 1 is a pure sine); spread of the voice's level against the lead's (dB) and how alike the two level
+//      curves are (correlation).
+//   Q  the same notes, voice 1 against voice 2: correlation of their pitch movement, and the spread of the interval between them (cents).
+//   G  note changes inside a stretch (150 cents or more, 120 ms or less between two held notes): time from 10% to 90% of the way, lead and
+//      each voice, and how long after the lead the voice passes half way.
+//   E  phrase starts: when the lead and each voice first reach a tenth of the level they hold 100 to 250 ms in. F: the same at the end of
+//      a stretch followed by 250 ms or more without pitch.
+//   Z  how far a voice's spectrum shape sits from the lead's, as a scale on frequency (1.00 is the same throat).
+//   X  S sounds (default render): how alike two voices' S are at the best lag within 60 ms, each voice's against the lead's, and level.
+// A real double of the same singer, for comparison: Luke sang with the track, so a chorus he sang twice lines up with itself at one fixed
+// lag. The lag (8 s or more) at which most of the take's pitch matches itself within 70 cents is found, and where at least 60% of 2 s
+// matches, the two passes are compared the way a voice is compared with the lead: DN held notes (average pitch apart, movement in
+// common, spread of the interval, level), DO starts and DE ends (how far apart in time), ZD spectrum shape.
+// =====================================================================================================================================
+
+double meanOf (const std::vector<double>& v) { double s = 0; int n = 0; for (double x : v) if (std::isfinite (x)) { s += x; ++n; } return n > 0 ? s / n : std::nan (""); }
+double sdOf (const std::vector<double>& v)
+{
+    const double m = meanOf (v);
+    double s = 0; int n = 0;
+    for (double x : v) if (std::isfinite (x)) { s += (x - m) * (x - m); ++n; }
+    return n > 1 ? std::sqrt (s / n) : std::nan ("");
+}
+double corrOf (const std::vector<double>& a, const std::vector<double>& b)
+{
+    double ma = 0, mb = 0; int n = 0;
+    for (size_t i = 0; i < a.size() && i < b.size(); ++i) if (std::isfinite (a[i]) && std::isfinite (b[i])) { ma += a[i]; mb += b[i]; ++n; }
+    if (n < 8) return std::nan ("");
+    ma /= n; mb /= n;
+    double c = 0, ea = 0, eb = 0;
+    for (size_t i = 0; i < a.size() && i < b.size(); ++i)
+        if (std::isfinite (a[i]) && std::isfinite (b[i])) { c += (a[i] - ma) * (b[i] - mb); ea += (a[i] - ma) * (a[i] - ma); eb += (b[i] - mb) * (b[i] - mb); }
+    return ea > 1.0e-12 && eb > 1.0e-12 ? c / std::sqrt (ea * eb) : std::nan ("");
+}
+double validShare (const std::vector<double>& v) { int n = 0; for (double x : v) if (std::isfinite (x)) ++n; return v.empty() ? 0.0 : (double) n / v.size(); }
+std::vector<double> movingAverage (const std::vector<double>& v, int width)
+{
+    std::vector<double> out (v.size(), std::nan (""));
+    const int half = width / 2;
+    for (int i = 0; i < (int) v.size(); ++i)
+    {
+        double s = 0; int n = 0;
+        for (int k = std::max (0, i - half); k <= std::min ((int) v.size() - 1, i + half); ++k) if (std::isfinite (v[(size_t) k])) { s += v[(size_t) k]; ++n; }
+        if (n >= half) out[(size_t) i] = s / n;
+    }
+    return out;
+}
+std::vector<double> minus (const std::vector<double>& a, const std::vector<double>& b)
+{
+    std::vector<double> out (a.size(), std::nan (""));
+    for (size_t i = 0; i < a.size() && i < b.size(); ++i) if (std::isfinite (a[i]) && std::isfinite (b[i])) out[i] = a[i] - b[i];
+    return out;
+}
+
+// Strongest steady wobble from 3 to 8 Hz in a pitch series at 5 ms a frame: rate, depth in cents, and its share of the movement (1 is a pure sine)
+void wobble (const std::vector<double>& series, double& rateHz, double& depth, double& regular)
+{
+    rateHz = depth = regular = std::nan ("");
+    const double sd = sdOf (series);
+    if (! std::isfinite (sd) || series.size() < 84) return;
+    depth = 0.0;
+    for (double hz = 3.0; hz <= 8.01; hz += 0.25)
+    {
+        const double dpt = measure::sineDepth (series, hopSec, hz);
+        if (dpt > depth) { depth = dpt; rateHz = hz; }
+    }
+    regular = sd > 1.0e-9 ? std::min (1.5, depth / (std::sqrt (2.0) * sd)) : std::nan ("");
+}
+
+// Pitch between two limits over a window of a set length, shortest strong period first. 0 if nothing periodic.
+double pitchWide (const std::vector<float>& y, long centre, double loHz, double hiHz, int win)
+{
+    const int tMin = std::max (4, (int) std::floor (SR / hiHz)), tMax = (int) std::ceil (SR / loHz);
+    const long start = centre - (win + tMax) / 2;
+    if (start < 0 || start + win + tMax + 2 >= (long) y.size()) return 0.0;
+    const float* a = y.data() + start;
+    double ea = 0.0;
+    for (int i = 0; i < win; i += 2) ea += (double) a[i] * a[i];
+    std::vector<double> r ((size_t) tMax + 3, -2.0);
+    double best = -2.0;
+    for (int lag = tMin - 1; lag <= tMax + 1; ++lag)
+    {
+        double c = 0.0, eb = 0.0;
+        for (int i = 0; i < win; i += 2) { c += (double) a[i] * a[i + lag]; eb += (double) a[i + lag] * a[i + lag]; }
+        const double den = std::sqrt (ea * eb);
+        r[(size_t) lag] = den > 1.0e-12 ? c / den : 0.0;
+        if (lag >= tMin && lag <= tMax) best = std::max (best, r[(size_t) lag]);
+    }
+    if (best < 0.5) return 0.0;
+    for (int lag = tMin; lag <= tMax; ++lag)
+        if (r[(size_t) lag] >= 0.9 * best && r[(size_t) lag] >= r[(size_t) lag - 1] && r[(size_t) lag] >= r[(size_t) lag + 1])
+        {
+            const double p0 = r[(size_t) lag - 1], p1 = r[(size_t) lag], p2 = r[(size_t) lag + 1], den = p0 - 2.0 * p1 + p2;
+            return SR / (lag + (std::abs (den) > 1.0e-12 ? 0.5 * (p0 - p2) / den : 0.0));
+        }
+    return 0.0;
+}
+
+double centsOf (double hz) { return hz > 0.0 ? 1200.0 * std::log2 (hz / 440.0) : std::nan (""); }
+
+// First (or last) moment a signal's 10 ms level is a tenth of a reference level or more, searched in 1 ms steps. -1 if never.
+long levelEdge (const std::vector<float>& s, long from, long to, double refRms, bool last)
+{
+    const long step = (long) (0.001 * SR), len = (long) (0.01 * SR);
+    long found = -1;
+    for (long t = from; t <= to; t += step)
+        if (rmsOf (s, t - len / 2, len) >= 0.1 * refRms) { found = t; if (! last) break; }
+    return found;
+}
+
+struct Double2 { long lag = 0; std::vector<char> inRegion; double matchedSec = 0.0; };
+
+// Where the take repeats itself: one lag for the whole take, and the frames where 2 s around them match
+Double2 findDouble (const Dry& d)
+{
+    Double2 out;
+    const int F = d.frames();
+    std::vector<float> semis ((size_t) F, -1000.0f);
+    for (int f = 0; f < F; ++f) if (d.track[(size_t) f] > 0.0) semis[(size_t) f] = (float) (12.0 * std::log2 (d.track[(size_t) f] / 440.0));
+    int bestLag = 0, bestCount = 0;
+    for (int lag = 1600; lag < F - 1600; lag += 2)
+    {
+        int count = 0;
+        for (int f = 0; f + lag < F; f += 2)
+            if (semis[(size_t) f] > -900.0f && semis[(size_t) (f + lag)] > -900.0f && std::abs (semis[(size_t) f] - semis[(size_t) (f + lag)]) < 0.7f) ++count;
+        if (count > bestCount) { bestCount = count; bestLag = lag; }
+    }
+    if (bestCount < 600) return out;   // under 6 s in common
+    for (int lag = bestLag - 1; lag <= bestLag + 1; lag += 2)
+    {
+        int count = 0;
+        for (int f = 0; f + lag < F; f += 2)
+            if (semis[(size_t) f] > -900.0f && semis[(size_t) (f + lag)] > -900.0f && std::abs (semis[(size_t) f] - semis[(size_t) (f + lag)]) < 0.7f) ++count;
+        if (count > bestCount) { bestCount = count; bestLag = lag; }
+    }
+    out.lag = bestLag;
+    out.inRegion.assign ((size_t) F, 0);
+    for (int f = 200; f + bestLag + 200 < F; ++f)
+    {
+        int voicedA = 0, match = 0;
+        for (int k = f - 200; k <= f + 200; k += 2)
+        {
+            if (semis[(size_t) k] > -900.0f) ++voicedA;
+            if (semis[(size_t) k] > -900.0f && semis[(size_t) (k + bestLag)] > -900.0f && std::abs (semis[(size_t) k] - semis[(size_t) (k + bestLag)]) < 0.7f) ++match;
+        }
+        if (voicedA >= 40 && match >= 0.6 * voicedA) { out.inRegion[(size_t) f] = 1; out.matchedSec += hopSec; }
+    }
+    return out;
+}
+
+void robotTake (const juce::File& file, std::ofstream& out)
+{
+    Dry d;
+    if (! d.load (file)) { std::fprintf (stderr, "could not load %s\n", file.getFullPathName().toRawUTF8()); return; }
+    std::printf ("  %s: %.1f s, %d held notes, rendering\n", d.take.c_str(), d.x.size() / SR, (int) d.notes.size());
+    std::fflush (stdout);
+    const Render y = render (d.x, false, d.key, d.scale, 440.0);
+    const Render z = render (d.x, true, d.key, d.scale, 440.0);
+    const long L = z.latency, N = (long) d.x.size();
+    const int half = (int) (0.005 * SR);
+    out << "L " << d.take << " " << L << "\n";
+    char line[768];
+
+    struct Body { std::vector<double> lead, voice[2], leadDb, voiceDb[2]; };
+    const auto bodyOf = [&] (const Note& nt, const std::vector<float>& leadSig, long leadShift, bool voicesToo)
+    {
+        Body b;
+        for (int f = nt.a + 24; f <= nt.b - 12; ++f)
+        {
+            const long i = d.frameSample (f);
+            const double ref = d.track[(size_t) f];
+            const double hz = measure::pitchNear (leadSig.data(), (long) leadSig.size(), i + leadShift, leadShift == 0 ? ref : d.leadHzAt (i + leadShift) > 0.0 ? d.leadHzAt (i + leadShift) : ref, SR, 0.06, 3.0);
+            b.lead.push_back (centsOf (hz));
+            b.leadDb.push_back (toDb (rmsAround (leadSig, i + leadShift, half)));
+            if (! voicesToo) continue;
+            for (int v = 0; v < 2; ++v)
+            {
+                const long at = i + L + (long) std::lround (z.lagSamplesAt (v, i + L));
+                double fine = 0.0;
+                if (at + half < N)
+                {
+                    const double coarse = pitchAround (z.ch[(size_t) v], at, d.searchAround (ref, v));
+                    if (coarse > 0.0 && d.onNote (coarse, ref, v))
+                        fine = measure::pitchNear (z.ch[(size_t) v].data(), N, at, coarse, SR, 0.06, 3.0, 3.0 / ref);
+                }
+                b.voice[v].push_back (centsOf (fine));
+                b.voiceDb[v].push_back (at + half < N ? toDb (rmsAround (z.ch[(size_t) v], at, half)) : std::nan (""));
+            }
+        }
+        return b;
+    };
+    const auto split = [] (const std::vector<double>& s, double& slow, double& fast)
+    {
+        const auto avg = movingAverage (s, 31);
+        slow = sdOf (avg);
+        fast = sdOf (minus (s, avg));
+    };
+
+    // P and Q: held notes
+    for (const auto& nt : d.notes)
+    {
+        const int n = nt.b - nt.a + 1;
+        if (n < 80) continue;
+        const Body b = bodyOf (nt, d.x, 0, true);
+        if (validShare (b.lead) < 0.7) continue;
+        const double sec = d.frameTime (nt.a);
+        double slowL, fastL, rateL, depthL, regL;
+        split (b.lead, slowL, fastL);
+        if (n >= 120) wobble (b.lead, rateL, depthL, regL); else rateL = depthL = regL = std::nan ("");
+        const double m = d.semitoneOf (nt.hz);
+        double leadOff = 1.0e9;
+        for (int c : d.leadNotes (m)) if (std::abs (100.0 * (m - c)) < std::abs (leadOff)) leadOff = 100.0 * (m - c);
+        for (int v = 0; v < 2; ++v)
+        {
+            if (validShare (b.voice[v]) < 0.7) continue;
+            double slowV, fastV, rateV, depthV, regV;
+            split (b.voice[v], slowV, fastV);
+            if (n >= 120) wobble (b.voice[v], rateV, depthV, regV); else rateV = depthV = regV = std::nan ("");
+            const double meanVoiceHz = 440.0 * std::pow (2.0, meanOf (b.voice[v]) / 1200.0);
+            const double meanLeadHz = 440.0 * std::pow (2.0, meanOf (b.lead) / 1200.0);
+            const double voiceOff = d.centsOffHarmony (meanVoiceHz, meanLeadHz, v);
+            const auto levelDiff = minus (b.voiceDb[v], b.leadDb);
+            std::snprintf (line, sizeof line, "P %s %.3f %d %.1f %d %.2f %.2f %.2f %.2f %.2f %.2f %.3f %.2f %.2f %.2f %.2f %.3f %.2f %.2f %.3f %.3f %.3f\n", d.take.c_str(), sec, 5 * n, nt.hz, v + 1,
+                           sdOf (b.lead), sdOf (b.voice[v]), fastL, fastV, slowL, slowV, corrOf (b.voice[v], b.lead), voiceOff, leadOff,
+                           rateL, depthL, regL, rateV, depthV, regV, sdOf (levelDiff), corrOf (b.voiceDb[v], b.leadDb));
+            out << line;
+        }
+        if (validShare (b.voice[0]) >= 0.7 && validShare (b.voice[1]) >= 0.7)
+        {
+            std::snprintf (line, sizeof line, "Q %s %.3f %d %.1f %.3f %.2f\n", d.take.c_str(), sec, 5 * n, nt.hz, corrOf (b.voice[0], b.voice[1]), sdOf (minus (b.voice[0], b.voice[1])));
+            out << line;
+        }
+    }
+
+    // G: note changes
+    const auto glide = [&] (const std::vector<float>& sig, long tFrom, long tTo, long shift, double c1, double c2, double lo, double hi, int win, double& ms, long& t50)
+    {
+        std::vector<std::pair<long, double>> pts;
+        for (long t = tFrom; t <= tTo; t += (long) (0.002 * SR))
+        {
+            const double hz = pitchWide (sig, t + shift, lo, hi, win);
+            if (hz > 0.0) pts.push_back ({ t, (centsOf (hz) - c1) / (c2 - c1) });
+        }
+        ms = std::nan (""); t50 = -1;
+        int i50 = -1;
+        for (int i = 0; i + 3 < (int) pts.size() && i50 < 0; ++i)
+            if (pts[(size_t) i].second >= 0.5 && pts[(size_t) i + 1].second >= 0.5 && pts[(size_t) i + 2].second >= 0.5 && pts[(size_t) i + 3].second >= 0.5) i50 = i;
+        if (i50 <= 0) return;
+        int i10 = i50, i90 = i50;
+        while (i10 >= 0 && pts[(size_t) i10].second > 0.1) --i10;
+        while (i90 < (int) pts.size() && pts[(size_t) i90].second < 0.9) ++i90;
+        if (i10 < 0 || i90 >= (int) pts.size()) return;
+        ms = 1000.0 * (double) (pts[(size_t) i90].first - pts[(size_t) i10].first) / SR;
+        t50 = pts[(size_t) i50].first;
+    };
+    const auto voiceMedian = [&] (const Note& nt, int v)
+    {
+        std::vector<double> c;
+        for (int f = nt.a + 16; f <= nt.b - 6; ++f)
+        {
+            const long i = d.frameSample (f);
+            const long at = i + L + (long) std::lround (z.lagSamplesAt (v, i + L));
+            if (at + half >= N) continue;
+            const double hz = pitchAround (z.ch[(size_t) v], at, d.searchAround (d.track[(size_t) f], v));
+            if (hz > 0.0 && d.onNote (hz, d.track[(size_t) f], v)) c.push_back (centsOf (hz));
+        }
+        return (int) c.size() >= 8 ? measure::median (c) : std::nan ("");
+    };
+    for (size_t k = 0; k + 1 < d.notes.size(); ++k)
+    {
+        const auto& n1 = d.notes[k];
+        const auto& n2 = d.notes[k + 1];
+        if (n2.a - n1.b > 24 || n2.a <= n1.b) continue;
+        bool sameStretch = true;
+        for (int f = n1.b; f <= n2.a; ++f) if (d.track[(size_t) f] <= 0.0) sameStretch = false;
+        const double interval = measure::cents (n2.hz, n1.hz);
+        if (! sameStretch || std::abs (interval) < 150.0) continue;
+        const long tFrom = d.frameSample (n1.b) - (long) (0.15 * SR), tTo = d.frameSample (n2.a) + (long) (0.2 * SR);
+        const int win = (int) (2.5 * SR / std::min (n1.hz, n2.hz));
+        double leadMs; long lead50;
+        glide (d.x, tFrom, tTo, 0, centsOf (n1.hz), centsOf (n2.hz), std::min (n1.hz, n2.hz) * 0.84, std::max (n1.hz, n2.hz) * 1.19, win, leadMs, lead50);
+        if (! std::isfinite (leadMs)) continue;
+        for (int v = 0; v < 2; ++v)
+        {
+            const double c1 = voiceMedian (n1, v), c2 = voiceMedian (n2, v);
+            if (! std::isfinite (c1) || ! std::isfinite (c2) || std::abs (c2 - c1) < 80.0) continue;
+            const double h1 = 440.0 * std::pow (2.0, c1 / 1200.0), h2 = 440.0 * std::pow (2.0, c2 / 1200.0);
+            const long shift = L + (long) std::lround (z.lagSamplesAt (v, d.frameSample (n2.a) + L));
+            double voiceMs; long voice50;
+            glide (z.ch[(size_t) v], tFrom, tTo + (long) (0.1 * SR), shift, c1, c2, std::min (h1, h2) * 0.84, std::max (h1, h2) * 1.19, win, voiceMs, voice50);
+            std::snprintf (line, sizeof line, "G %s %.3f %.0f %.1f %d %.1f %.1f %.0f\n", d.take.c_str(), d.frameTime (n2.a), interval, leadMs, v + 1, voiceMs,
+                           voice50 >= 0 ? 1000.0 * (voice50 - lead50) / SR : std::nan (""), c2 - c1);
+            out << line;
+        }
+    }
+
+    // E and F: starts and ends
+    for (size_t si = 0; si < d.stretches.size(); ++si)
+    {
+        const auto& s = d.stretches[si];
+        if (s.b - s.a + 1 < 60) continue;
+        const int gapBefore = si == 0 ? s.a : s.a - d.stretches[si - 1].b - 1;
+        const int gapAfter = si + 1 == d.stretches.size() ? 1000 : d.stretches[si + 1].a - s.b - 1;
+        if (gapBefore >= 50 && s.onset - (long) (0.1 * SR) >= 0)
+        {
+            const long a = s.onset + (long) (0.1 * SR), len = (long) (0.15 * SR);
+            const long tl = levelEdge (d.x, s.onset - (long) (0.04 * SR), s.onset + (long) (0.3 * SR), rmsOf (d.x, a, len), false);
+            double tv[2];
+            for (int v = 0; v < 2; ++v)
+            {
+                const long shift = L + (long) std::lround (z.lagSamplesAt (v, s.onset + L));
+                const long t = levelEdge (z.ch[(size_t) v], s.onset + L - (long) (0.04 * SR), s.onset + L + (long) (0.3 * SR), rmsOf (z.ch[(size_t) v], a + shift, len), false);
+                tv[v] = t < 0 ? std::nan ("") : 1000.0 * (t - L - s.onset) / SR;
+            }
+            std::snprintf (line, sizeof line, "E %s %.3f %.1f %.1f %.1f\n", d.take.c_str(), s.onset / SR, tl < 0 ? std::nan ("") : 1000.0 * (tl - s.onset) / SR, tv[0], tv[1]);
+            out << line;
+        }
+        if (gapAfter >= 50 && s.end + (long) (0.5 * SR) < N)
+        {
+            const long a = s.end - (long) (0.2 * SR), len = (long) (0.15 * SR);
+            const long tl = levelEdge (d.x, s.end - (long) (0.1 * SR), s.end + (long) (0.4 * SR), rmsOf (d.x, a, len), true);
+            double tv[2];
+            for (int v = 0; v < 2; ++v)
+            {
+                const long shift = L + (long) std::lround (z.lagSamplesAt (v, s.end + L));
+                const long t = levelEdge (z.ch[(size_t) v], s.end + L - (long) (0.1 * SR), s.end + L + (long) (0.4 * SR), rmsOf (z.ch[(size_t) v], a + shift, len), true);
+                tv[v] = t < 0 ? std::nan ("") : 1000.0 * (t - L - s.end) / SR;
+            }
+            std::snprintf (line, sizeof line, "F %s %.3f %.1f %.1f %.1f\n", d.take.c_str(), s.end / SR, tl < 0 ? std::nan ("") : 1000.0 * (tl - s.end) / SR, tv[0], tv[1]);
+            out << line;
+        }
+    }
+
+    // Z: spectrum shape of each voice against the lead, and of voice 2 against voice 1
+    {
+        const auto lead = measure::smoothSpectrumDb (d.x.data(), N, SR, 250.0);
+        const auto v1 = measure::smoothSpectrumDb (z.ch[0].data(), N, SR, 250.0), v2 = measure::smoothSpectrumDb (z.ch[1].data(), N, SR, 250.0);
+        out << "Z " << d.take << " 1 " << measure::shapeScale (lead, v1, 300.0, 3500.0) << "\n";
+        out << "Z " << d.take << " 2 " << measure::shapeScale (lead, v2, 300.0, 3500.0) << "\n";
+        out << "Z " << d.take << " 12 " << measure::shapeScale (v1, v2, 300.0, 3500.0) << "\n";
+    }
+
+    // X: S sounds on the default render
+    {
+        const auto highOf = [] (const std::vector<float>& s)
+        {
+            smoothharmony::Biquad hp;
+            hp.highPass (3500.0, SR, 0.707);
+            std::vector<float> o (s.size());
+            for (size_t i = 0; i < s.size(); ++i) o[i] = (float) hp.process (s[i]);
+            return o;
+        };
+        const auto xh = highOf (d.x), y1 = highOf (y.ch[0]), y2 = highOf (y.ch[1]);
+        const int frame = (int) (0.01 * SR);
+        std::vector<std::pair<long, long>> regions;
+        long runFrom = -1;
+        for (long i = 0; i + frame < N; i += frame)
+        {
+            const double all = rmsOf (d.x, i, frame), high = rmsOf (xh, i, frame);
+            const bool s = all > std::pow (10.0, -50.0 / 20.0) && high * high >= 0.6 * all * all;
+            if (s && runFrom < 0) runFrom = i;
+            if (! s && runFrom >= 0) { if (i - runFrom >= 4 * frame) regions.push_back ({ runFrom, i }); runFrom = -1; }
+        }
+        const auto best = [] (const float* a, const float* b, int n, int minLag, int maxLag)
+        {
+            double ea = 0.0;
+            for (int i = 0; i < n; i += 2) ea += (double) a[i] * a[i];
+            double top = 0.0;
+            for (int lag = minLag; lag <= maxLag; ++lag)
+            {
+                double c = 0.0, eb = 0.0;
+                for (int i = 0; i < n; i += 2) { c += (double) a[i] * b[i + lag]; eb += (double) b[i + lag] * b[i + lag]; }
+                const double den = std::sqrt (ea * eb);
+                if (den > 1.0e-12) top = std::max (top, std::abs (c) / den);
+            }
+            return top;
+        };
+        const size_t stepBy = std::max<size_t> (1, regions.size() / 60);
+        for (size_t r = 0; r < regions.size(); r += stepBy)
+        {
+            const long s = regions[r].first, e = std::min (regions[r].second, regions[r].first + (long) (0.08 * SR));
+            const int n = (int) (e - s), reach = (int) (0.06 * SR), far = (int) (0.12 * SR);
+            if (s - reach < 0 || e + L + far + reach + 8 >= N) continue;
+            const double c12 = best (y1.data() + s + L + reach, y2.data() + s + L + reach, n, -reach, reach);
+            const double c1 = best (xh.data() + s, y1.data() + s + L, n, 0, far), c2 = best (xh.data() + s, y2.data() + s + L, n, 0, far);
+            const double in = rmsOf (xh, s, e - s);
+            std::snprintf (line, sizeof line, "X %s %.3f %.3f %.3f %.3f %.1f %.1f\n", d.take.c_str(), s / SR, c12, c1, c2,
+                           toDb (rmsOf (y1, s + L, e - s + reach)) - toDb (in), toDb (rmsOf (y2, s + L, e - s + reach)) - toDb (in));
+            out << line;
+        }
+    }
+
+    // A real double: the take against itself where it repeats
+    const Double2 dbl = findDouble (d);
+    std::snprintf (line, sizeof line, "DD %s %.3f %.1f\n", d.take.c_str(), dbl.lag * hopSec, dbl.matchedSec);
+    out << line;
+    if (dbl.lag > 0 && dbl.matchedSec >= 6.0)
+    {
+        const long lagSamples = (long) std::lround (dbl.lag * hopSec * SR);
+        for (const auto& nt : d.notes)
+        {
+            const int n = nt.b - nt.a + 1;
+            if (n < 80 || ! dbl.inRegion[(size_t) nt.a] || ! dbl.inRegion[(size_t) nt.b]) continue;
+            const Body a = bodyOf (nt, d.x, 0, false), b = bodyOf (nt, d.x, lagSamples, false);
+            // the second pass must be on the same note for the body
+            int same = 0;
+            for (size_t i = 0; i < a.lead.size(); ++i) if (std::isfinite (a.lead[i]) && std::isfinite (b.lead[i]) && std::abs (a.lead[i] - b.lead[i]) < 150.0) ++same;
+            if (same < 0.7 * (double) a.lead.size()) continue;
+            std::vector<double> bl = b.lead;
+            for (size_t i = 0; i < bl.size(); ++i) if (std::isfinite (a.lead[i]) && std::isfinite (bl[i]) && std::abs (a.lead[i] - bl[i]) >= 150.0) bl[i] = std::nan ("");
+            std::snprintf (line, sizeof line, "DN %s %.3f %d %.1f %.2f %.3f %.2f %.2f %.3f\n", d.take.c_str(), d.frameTime (nt.a), 5 * n, nt.hz, meanOf (bl) - meanOf (a.lead),
+                           corrOf (a.lead, bl), sdOf (minus (bl, a.lead)), sdOf (minus (b.leadDb, a.leadDb)), corrOf (a.leadDb, b.leadDb));
+            out << line;
+        }
+        for (size_t si = 0; si < d.stretches.size(); ++si)
+        {
+            const auto& s = d.stretches[si];
+            if (s.b - s.a + 1 < 60 || ! dbl.inRegion[(size_t) s.a]) continue;
+            const int gapBefore = si == 0 ? s.a : s.a - d.stretches[si - 1].b - 1;
+            const int gapAfter = si + 1 == d.stretches.size() ? 1000 : d.stretches[si + 1].a - s.b - 1;
+            for (size_t sj = si + 1; sj < d.stretches.size(); ++sj)
+            {
+                const auto& t = d.stretches[sj];
+                const int gapBeforeT = t.a - d.stretches[sj - 1].b - 1;
+                const int gapAfterT = sj + 1 == d.stretches.size() ? 1000 : d.stretches[sj + 1].a - t.b - 1;
+                if (gapBefore >= 50 && gapBeforeT >= 50 && std::abs ((t.onset - s.onset) - lagSamples) < (long) (0.15 * SR) && s.onset - (long) (0.1 * SR) >= 0)
+                {
+                    const long len = (long) (0.15 * SR);
+                    const long ta = levelEdge (d.x, s.onset - (long) (0.04 * SR), s.onset + (long) (0.3 * SR), rmsOf (d.x, s.onset + (long) (0.1 * SR), len), false);
+                    const long tb = levelEdge (d.x, t.onset - (long) (0.04 * SR), t.onset + (long) (0.3 * SR), rmsOf (d.x, t.onset + (long) (0.1 * SR), len), false);
+                    if (ta >= 0 && tb >= 0) { std::snprintf (line, sizeof line, "DO %s %.3f %.1f\n", d.take.c_str(), s.onset / SR, 1000.0 * (tb - ta - lagSamples) / SR); out << line; }
+                }
+                if (gapAfter >= 50 && gapAfterT >= 50 && std::abs ((t.end - s.end) - lagSamples) < (long) (0.15 * SR) && t.end + (long) (0.5 * SR) < N)
+                {
+                    const long len = (long) (0.15 * SR);
+                    const long ta = levelEdge (d.x, s.end - (long) (0.1 * SR), s.end + (long) (0.4 * SR), rmsOf (d.x, s.end - (long) (0.2 * SR), len), true);
+                    const long tb = levelEdge (d.x, t.end - (long) (0.1 * SR), t.end + (long) (0.4 * SR), rmsOf (d.x, t.end - (long) (0.2 * SR), len), true);
+                    if (ta >= 0 && tb >= 0) { std::snprintf (line, sizeof line, "DE %s %.3f %.1f\n", d.take.c_str(), s.end / SR, 1000.0 * (tb - ta - lagSamples) / SR); out << line; }
+                }
+            }
+        }
+        // Spectrum shape of the second pass against the first, over the matched part
+        int fa = -1, fb = -1;
+        for (int f = 0; f < d.frames(); ++f) if (dbl.inRegion[(size_t) f]) { if (fa < 0) fa = f; fb = f; }
+        if (fa >= 0)
+        {
+            const long sa = d.frameSample (fa), len = std::min (d.frameSample (fb) - sa, N - lagSamples - sa - 1);
+            if (len > (long) (4.0 * SR))
+            {
+                const auto a = measure::smoothSpectrumDb (d.x.data() + sa, len, SR, 250.0), b = measure::smoothSpectrumDb (d.x.data() + sa + lagSamples, len, SR, 250.0);
+                out << "ZD " << d.take << " " << measure::shapeScale (a, b, 300.0, 3500.0) << "\n";
+            }
+        }
+    }
+    out.flush();
+}
+
+struct Pool
+{
+    std::map<std::string, std::vector<double>> v;
+    void add (const std::string& k, double x) { if (std::isfinite (x)) v[k].push_back (x); }
+    double med (const std::string& k) const { auto it = v.find (k); return it == v.end() || it->second.empty() ? std::nan ("") : measure::median (it->second); }
+    double pct (const std::string& k, double p) const { auto it = v.find (k); return it == v.end() || it->second.empty() ? std::nan ("") : measure::percentile (it->second, p); }
+    double mean (const std::string& k) const { auto it = v.find (k); return it == v.end() ? std::nan ("") : meanOf (it->second); }
+    int n (const std::string& k) const { auto it = v.find (k); return it == v.end() ? 0 : (int) it->second.size(); }
+};
+
+Pool readRobot (const std::string& path)
+{
+    Pool p;
+    std::ifstream in (path);
+    std::string lineText;
+    const auto num = [] (std::istringstream& ls) { std::string s; ls >> s; return s == "nan" || s.empty() ? std::nan ("") : std::atof (s.c_str()); };
+    while (std::getline (in, lineText))
+    {
+        std::istringstream ls (lineText);
+        std::string tag, take;
+        ls >> tag >> take;
+        if (tag == "P")
+        {
+            const double sec = num (ls), ms = num (ls), hz = num (ls); const int v = (int) num (ls);
+            juce::ignoreUnused (sec, ms, hz);
+            const double sdL = num (ls), sdV = num (ls), fastL = num (ls), fastV = num (ls), slowL = num (ls), slowV = num (ls), corr = num (ls), voiceOff = num (ls), leadOff = num (ls);
+            const double rateL = num (ls), depthL = num (ls), regL = num (ls), rateV = num (ls), depthV = num (ls), regV = num (ls), lvlSd = num (ls), lvlCorr = num (ls);
+            if (v == 1) { p.add ("lead sd", sdL); p.add ("lead fast", fastL); p.add ("lead slow", slowL); p.add ("lead off", std::abs (leadOff)); p.add ("lead wobble rate", rateL); p.add ("lead wobble depth", depthL); p.add ("lead wobble share", regL); }
+            p.add ("voice sd", sdV); p.add ("voice fast", fastV); p.add ("voice slow", slowV); p.add ("voice follows lead", corr);
+            p.add ("voice off", std::abs (voiceOff)); p.add ("voice off signed", voiceOff);
+            p.add (v == 1 ? "voice 1 off signed" : "voice 2 off signed", voiceOff);
+            p.add ("voice wobble rate", rateV); p.add ("voice wobble depth", depthV); p.add ("voice wobble share", regV);
+            p.add ("voice level sd", lvlSd); p.add ("voice level corr", lvlCorr);
+        }
+        else if (tag == "Q") { num (ls); num (ls); num (ls); p.add ("voices move together", num (ls)); p.add ("interval sd", num (ls)); }
+        else if (tag == "G")
+        {
+            num (ls); const double cents = num (ls), leadMs = num (ls); const int v = (int) num (ls); const double voiceMs = num (ls), delay = num (ls);
+            juce::ignoreUnused (cents);
+            if (v == 1) p.add ("lead glide", leadMs);
+            p.add ("voice glide", voiceMs); p.add ("voice glide delay", delay);
+            if (std::isfinite (voiceMs)) p.add ("lead glide where voice measured", leadMs);
+        }
+        else if (tag == "E")
+        {
+            num (ls); const double tl = num (ls), t1 = num (ls), t2 = num (ls);
+            p.add ("start voice 1 after lead", t1 - tl); p.add ("start voice 2 after lead", t2 - tl); p.add ("start voices apart", std::abs (t1 - t2));
+            p.add ("start voice after lead", t1 - tl); p.add ("start voice after lead", t2 - tl);
+        }
+        else if (tag == "F")
+        {
+            num (ls); const double tl = num (ls), t1 = num (ls), t2 = num (ls);
+            p.add ("end voice 1 after lead", t1 - tl); p.add ("end voice 2 after lead", t2 - tl); p.add ("end voices apart", std::abs (t1 - t2));
+        }
+        else if (tag == "Z") { std::string which; ls >> which; p.add ("shape " + which, num (ls)); }
+        else if (tag == "ZD") p.add ("double shape", num (ls));
+        else if (tag == "X") { num (ls); p.add ("s voices alike", num (ls)); p.add ("s voice like lead", num (ls)); p.add ("s voice like lead", num (ls)); p.add ("s level", num (ls)); p.add ("s level", num (ls)); }
+        else if (tag == "DD") { num (ls); p.add ("double seconds", num (ls)); }
+        else if (tag == "DN")
+        {
+            num (ls); num (ls); num (ls);
+            const double apart = num (ls), corr = num (ls), isd = num (ls), lsd = num (ls), lcorr = num (ls);
+            p.add ("double apart", std::abs (apart)); p.add ("double moves together", corr); p.add ("double interval sd", isd); p.add ("double level sd", lsd); p.add ("double level corr", lcorr);
+        }
+        else if (tag == "DO") { num (ls); p.add ("double start", num (ls)); }
+        else if (tag == "DE") { num (ls); p.add ("double end", num (ls)); }
+    }
+    return p;
+}
+
+double spreadAboutMedian (const Pool& p, const std::string& k)
+{
+    auto it = p.v.find (k);
+    if (it == p.v.end() || it->second.empty()) return std::nan ("");
+    const double m = measure::median (it->second);
+    std::vector<double> a;
+    for (double x : it->second) a.push_back (std::abs (x - m));
+    return measure::median (a);
+}
+
+void printRobot (const Pool& p, const char* label)
+{
+    std::printf ("%s\n", label);
+    std::printf ("  held notes of 400 ms or more: %d voice notes\n", p.n ("voice sd"));
+    std::printf ("  pitch spread inside a note, median SD: lead %.1f cents, voice %.1f cents\n", p.med ("lead sd"), p.med ("voice sd"));
+    std::printf ("    fast part (under 150 ms): lead %.1f, voice %.1f.  slow part: lead %.1f, voice %.1f\n", p.med ("lead fast"), p.med ("voice fast"), p.med ("lead slow"), p.med ("voice slow"));
+    std::printf ("  voice movement follows the lead's, median correlation: %.2f.  voice 1 and voice 2 move together: %.2f\n", p.med ("voice follows lead"), p.med ("voices move together"));
+    std::printf ("  interval between the two voices, spread inside a note, median SD: %.1f cents (90th percentile %.1f)\n", p.med ("interval sd"), p.pct ("interval sd", 90.0));
+    std::printf ("  note average against its note: voice median %.1f cents, 95th percentile %.1f (signed mean %.1f; voice 1 %.1f, voice 2 %.1f); lead against its own note median %.1f, 95th percentile %.1f\n",
+                 p.med ("voice off"), p.pct ("voice off", 95.0), p.mean ("voice off signed"), p.mean ("voice 1 off signed"), p.mean ("voice 2 off signed"), p.med ("lead off"), p.pct ("lead off", 95.0));
+    std::printf ("  steady wobble 3 to 8 Hz (notes of 600 ms or more, %d): lead depth %.1f cents at %.2f Hz, share of its movement %.2f; voice depth %.1f cents at %.2f Hz, share %.2f\n",
+                 p.n ("voice wobble depth"), p.med ("lead wobble depth"), p.med ("lead wobble rate"), p.med ("lead wobble share"), p.med ("voice wobble depth"), p.med ("voice wobble rate"), p.med ("voice wobble share"));
+    std::printf ("  level against the lead inside a note: spread %.2f dB median, level curves alike %.2f\n", p.med ("voice level sd"), p.med ("voice level corr"));
+    std::printf ("  note changes (%d voice changes): 10 to 90%% time, lead %.0f ms median (all %d lead changes %.0f), voice %.0f ms; voice passes half way %.0f ms after the lead\n",
+                 p.n ("voice glide"), p.med ("lead glide where voice measured"), p.n ("lead glide"), p.med ("lead glide"), p.med ("voice glide"), p.med ("voice glide delay"));
+    std::printf ("  phrase starts (%d): voice 1 %.1f ms after the lead, voice 2 %.1f ms (median); the two voices apart %.1f ms median, %.1f at the 90th percentile; both voices, 90th percentile after the lead %.1f ms\n",
+                 p.n ("start voices apart"), p.med ("start voice 1 after lead"), p.med ("start voice 2 after lead"), p.med ("start voices apart"), p.pct ("start voices apart", 90.0), p.pct ("start voice after lead", 90.0));
+    std::printf ("  ends (%d): voice 1 %.1f ms after the lead's end, voice 2 %.1f ms; the two voices apart %.1f ms median\n", p.n ("end voices apart"), p.med ("end voice 1 after lead"), p.med ("end voice 2 after lead"), p.med ("end voices apart"));
+    std::printf ("  spectrum shape against the lead (1.00 is the same throat): voice 1 %.3f, voice 2 %.3f, voice 2 against voice 1 %.3f\n", p.med ("shape 1"), p.med ("shape 2"), p.med ("shape 12"));
+    std::printf ("  S sounds (%d): two voices alike %.2f, a voice like the lead's %.2f, level against the lead's %.1f dB\n", p.n ("s voices alike"), p.med ("s voices alike"), p.med ("s voice like lead"), p.med ("s level"));
+    std::printf ("  a real double (Luke singing the same part twice, %d notes in %d takes):\n", p.n ("double apart"), p.n ("double shape"));
+    std::printf ("    note averages apart %.1f cents median (95th percentile %.1f); movement in common %.2f; interval spread inside a note %.1f cents; level spread %.2f dB, level curves alike %.2f\n",
+                 p.med ("double apart"), p.pct ("double apart", 95.0), p.med ("double moves together"), p.med ("double interval sd"), p.med ("double level sd"), p.med ("double level corr"));
+    std::printf ("    starts (%d) apart %.1f ms (median distance from their median); ends (%d) apart %.1f ms; spectrum shape %.3f\n", p.n ("double start"), spreadAboutMedian (p, "double start"),
+                 p.n ("double end"), spreadAboutMedian (p, "double end"), p.med ("double shape"));
+}
 } // namespace
 
 int main (int argc, char** argv)
@@ -682,7 +2009,21 @@ int main (int argc, char** argv)
     }
     if (mode == "report" && argc >= 3) { printSummary (readRecords (argv[2]), argv[2]); return 0; }
     if (mode == "compare" && argc >= 4) return compare (argv[2], argv[3]);
+    if ((mode == "notes" || mode == "robot") && argc >= 4)
+    {
+        std::ofstream out (argv[2]);
+        for (int i = 3; i < argc; ++i) { if (mode == "notes") notesTake (cwd.getChildFile (argv[i]), out); else robotTake (cwd.getChildFile (argv[i]), out); }
+        if (mode == "notes") printNotes (readNotes (argv[2]), argv[2]); else printRobot (readRobot (argv[2]), argv[2]);
+        return 0;
+    }
+    if (mode == "notesreport" && argc >= 3) { printNotes (readNotes (argv[2]), argv[2]); return 0; }
+    if (mode == "notescompare" && argc >= 4) return compareNotes (argv[2], argv[3]);
+    if (mode == "robotreport" && argc >= 3) { printRobot (readRobot (argv[2]), argv[2]); return 0; }
+    if (mode == "hash" && argc >= 3) return hashTakes (argc, argv);
+    if (mode == "diff" && argc >= 4) return diffRaw (cwd.getChildFile (argv[2]), cwd.getChildFile (argv[3]));
     if (mode == "demo" && argc >= 6) return demo (cwd.getChildFile (argv[2]), cwd.getChildFile (argv[3]), std::atof (argv[4]), std::atof (argv[5]));
-    std::fprintf (stderr, "usage: RealVox measure <records> <wav>... | report <records> | compare <new> <old> | demo <wav> <out.wav> <from s> <secs>\n");
+    std::fprintf (stderr, "usage: RealVox measure <records> <wav>... | report <records> | compare <new> <old> | demo <wav> <out.wav> <from s> <secs>\n"
+                          "       RealVox notes <records> <wav>... | notesreport <records> | notescompare <new> <old>\n"
+                          "       RealVox robot <records> <wav>... | robotreport <records> | hash <wav>... | diff <a.f32> <b.f32>\n");
     return 2;
 }

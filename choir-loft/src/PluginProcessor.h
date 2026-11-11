@@ -116,6 +116,10 @@ public:
 
     // Latency in samples for an Input Type at a sample rate.
     static int latencyFor (int inputType, double sampleRate) noexcept;
+    // The pitch range an Input Type tracks, in Hz. For measuring tools.
+    static void trackingRange (int inputType, double& lowestHz, double& highestHz) noexcept;
+    // Sets a tracker up for an Input Type, exactly as the processor sets up its own.
+    static void prepareTrackerLike (smoothharmony::PitchTracker&, int inputType) noexcept;
 
     // Tests only: what the worker thread and message thread do.
     void applyPendingLatencyNow() { handleAsyncUpdate(); }

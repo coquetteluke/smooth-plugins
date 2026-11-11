@@ -36,6 +36,11 @@ target_sources(RealVox PRIVATE
     "${CHOIR_SRC}/src/editor/StageView.cpp"
     "${CHOIR_SRC}/src/editor/HarmonyEditor.cpp")
 target_include_directories(RealVox PRIVATE "${CHOIR_SRC}/src")
+# A tree from before 1.5.0 has no tracker reason codes and no range look up: -DCHOIR_OLD=ON
+option(CHOIR_OLD "The source tree is older than 1.5.0" OFF)
+if(CHOIR_OLD)
+    target_compile_definitions(RealVox PRIVATE REALVOX_OLD_TREE=1)
+endif()
 target_compile_definitions(RealVox PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_DISPLAY_SPLASH_SCREEN=0 JUCE_REPORT_APP_USAGE=0
                            JUCE_STRICT_REFCOUNTEDPOINTER=1 JUCE_MODAL_LOOPS_PERMITTED=0)
 target_link_libraries(RealVox PRIVATE RealVoxAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)

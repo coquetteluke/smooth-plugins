@@ -311,6 +311,19 @@ int PluginProcessor::latencyFor (int type, double sampleRate) noexcept
     return PitchTracker::requiredLatency (sampleRate, range.lowHz, VoiceShifter::interpolatorReach);
 }
 
+void PluginProcessor::trackingRange (int type, double& lowestHz, double& highestHz) noexcept
+{
+    const auto& range = inputRanges[(size_t) juce::jlimit (0, numInputTypes - 1, type)];
+    lowestHz = range.lowHz;
+    highestHz = range.highHz;
+}
+
+void PluginProcessor::prepareTrackerLike (smoothharmony::PitchTracker& t, int type) noexcept
+{
+    const auto& range = inputRanges[(size_t) juce::jlimit (0, numInputTypes - 1, type)];
+    t.setRange (range.lowHz, range.highHz);
+}
+
 bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 {
     const auto in = l.getMainInputChannelSet(), out = l.getMainOutputChannelSet();
@@ -418,8 +431,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
 void PluginProcessor::applyInputType (int type) noexcept
 {
     typeNow = juce::jlimit (0, numInputTypes - 1, type);
-    const auto& range = inputRanges[(size_t) typeNow];
-    tracker.setRange (range.lowHz, range.highHz);
+    prepareTrackerLike (tracker, typeNow);
     latencyNow = latencyFor (typeNow, sr);
     for (auto& voice : voices)
     {

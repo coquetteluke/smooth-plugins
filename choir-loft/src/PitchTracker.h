@@ -152,7 +152,10 @@ public:
 
         // A hiss-like sound shows at once, long before the difference function has moved. Consonants must not be shifted.
         if (voiced && envFull > 3.0 * envLow + 1.0e-12 && envFull > 1.0e-9)
+        {
             setUnvoiced();
+            whyNow = whyHiss;
+        }
 
         if (voiced)
             stepMarks();
@@ -170,6 +173,10 @@ public:
 
     // Best period right now in input samples, 0 when not voiced.
     double period() const noexcept { return ! voiced ? 0.0 : (markValid ? finePeriod : coarsePeriod()); }
+
+    // Why the newest analysis called the sound voiced or not. For measuring tools only: nothing in the audio path reads it.
+    enum Why { whyVoiced = 0, whyQuiet, whyNoDip, whyRough, whyHiss, whyEven, whyResidual, whyVotes };
+    int why() const noexcept { return whyNow; }
 
     // Marks count up by sequence number. Valid sequence numbers are firstMark() to lastMark().
     long long lastMark() const noexcept { return markSeq - 1; }
@@ -207,6 +214,7 @@ private:
         if (e0 / (float) window < gateEnergy)
         {
             noPitch();
+            whyNow = whyQuiet;
             return;
         }
 
@@ -240,6 +248,7 @@ private:
         if (numDips == 0 || lowest > 0.9f)
         {
             noPitch();
+            whyNow = whyNoDip;
             return;
         }
 
@@ -289,6 +298,7 @@ private:
 
         // Voiced or not, with votes so one lucky frame of noise does nothing.
         const bool looksVoiced = dipCurrent < (voiced ? voicedOff : voicedOn) && ! isFricative();
+        whyNow = looksVoiced ? (voiced ? whyVoiced : whyVotes) : (isFricative() ? whyHiss : whyRough);
         if (looksVoiced)
         {
             unvoicedVotes = 0;
@@ -300,6 +310,7 @@ private:
                 voicedVotes = 0;
                 plainVotes = 0;
                 plainVotedAt = -1;
+                whyNow = whyEven;
             }
             else if (! voiced)
             {
@@ -318,6 +329,7 @@ private:
                 if (! plainlyPeriodic && ! heldClean && residualDip (tauCurrent) > residualLimit)
                 {
                     voicedVotes = 0;
+                    whyNow = whyResidual;
                 }
                 else
                 {
@@ -327,6 +339,7 @@ private:
                     if (voicedVotes >= 3)
                     {
                         voiced = true;
+                        whyNow = whyVoiced;
                         markValid = false;
                         lateSamples = plainVotes >= 3 && plainVotedAt >= 0 ? (slowCount - plainVotedAt) * decimation : 0;
                         if (nearSince >= 0) lateSamples = std::max (lateSamples, (slowCount - nearSince) * decimation);
@@ -771,6 +784,7 @@ private:
     float dipCurrent = 1.0f;
     int pendingVotes = 0, voicedVotes = 0, unvoicedVotes = 0, mismatchVotes = 0, voicedAnalyses = 0;
     bool voiced = false;
+    int whyNow = whyQuiet;
     int plainVotes = 0;
     double plainTau = 1.0;
     float plainDipSum = 0.0f;

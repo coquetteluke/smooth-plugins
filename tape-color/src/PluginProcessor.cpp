@@ -9,6 +9,11 @@ namespace
     constexpr float kLowCutOff = 20.0f, kHighCutOff = 20000.0f;
     constexpr double kEps = 1.0e-10; // detector floor, about -100 dBFS
 
+    // Head Azimuth as -1 to 1. The control moves in steps of 0.1 and its middle comes back from the host as 0.0000015, not 0. Left like
+    // that, each channel read through the moving head's interpolation a hair either side of a whole sample, and left and right of a
+    // mono signal differed in the last bit. Anything under half a step is the middle.
+    inline float tiltAmount (float percent) noexcept { return std::abs (percent) < 0.05f ? 0.0f : percent * 0.01f; }
+
     // The last input that stood perfectly still, per lane, with its exact curve value.
     struct HeldCurve { double in[2] {}, out[2] {}; };
 
@@ -57,24 +62,40 @@ namespace
         const char* name;
         float drive, bias; int speed; float wowAmt, flutterAmt, noiseAmt, ageAmt, low, high, mixAmt, out; bool autoOn;
         float hard, space, tilt, rnd, stereo, dropD, dropR; int comp; float enc, dec, tex; int dev; float devMix;
+        bool old; // keeps 0.3.1's response: the presets whose sound hangs on Mix under 100, High Cut, the compander, or Auto Level on darkened tape
     };
     // speed: 0 = 3.75, 1 = 7.5, 2 = 15, 3 = 30 inches per second. comp: 0 off, 1 fixed, 2 soft, 3 strong.
     // dev: 0 off, 1 Small Radio, 2 Telephone, 3 Small Speaker, 4 Dictation Machine, 5 Old Console.
     const juce::Identifier windowWidthAttribute { "windowWidth" }, windowHeightAttribute { "windowHeight" }, advancedOpenAttribute { "advancedOpen" };
+    // Which response a saved session uses: 1 is 0.3.1's, 2 is the lined up one. It is written after the settings, as eight bytes that
+    // follow the XML, so the settings themselves read exactly as before in every version. A session from before 0.4.0 has no such bytes.
+    constexpr char responseTag[4] = { 'T', 'C', 'r', 's' };
+    constexpr int responseOld = 1, responseLinedUp = 2;
+
+    int savedResponse (const void* data, int size) noexcept
+    {
+        if (size < 9)
+            return 0;
+        const auto* bytes = static_cast<const juce::uint8*> (data);
+        const size_t tailAt = 8 + (size_t) juce::ByteOrder::littleEndianInt (bytes + 4) + 1; // magic, length, the XML and its closing zero
+        if (tailAt + 8 > (size_t) size || std::memcmp (bytes + tailAt, responseTag, 4) != 0)
+            return 0;
+        return (int) bytes[tailAt + 4];
+    }
 
     constexpr Preset presets[] = {
-        //                  drive   bias sp   wow flutter noise    age  low        high         mix   out auto    hard space  tilt   rnd stereo dropD dropR comp   enc    dec   tex dev devMix
-        { "Tape Start",     12.0f,   0.0f, 2,  0.0f,  0.0f,  0.0f,   0.0f, kLowCutOff, kHighCutOff, 100.0f, 0.0f, true,  50.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  0.0f, 0, 100.0f },
-        { "Clean Reel",      6.0f,   0.0f, 3,  0.0f,  0.0f,  0.0f,   0.0f, kLowCutOff, kHighCutOff, 100.0f, 0.0f, true,  35.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  0.0f, 0, 100.0f },
-        { "Vocal Glue",     13.0f,  15.0f, 2,  3.0f,  4.0f,  0.0f,   0.0f, 40.0f,      kHighCutOff, 100.0f, 0.0f, true,  50.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  0.0f, 0, 100.0f },
-        { "Warm Lead",      17.0f,  30.0f, 2,  4.0f,  6.0f,  5.0f,   8.0f, 70.0f,      kHighCutOff, 100.0f, 0.0f, true,  50.0f, 10.0f, 0.0f,  5.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  5.0f, 0, 100.0f },
-        { "Airy Encode",     8.0f,   5.0f, 3,  0.0f,  3.0f,  0.0f,   0.0f, 60.0f,      kHighCutOff, 100.0f, 0.0f, true,  40.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 2,  60.0f,   0.0f,  0.0f, 0, 100.0f },
-        { "Parallel Body",  26.0f,  35.0f, 2,  0.0f,  0.0f,  0.0f,   0.0f, 80.0f,      12000.0f,     40.0f, 0.0f, true,  70.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  0.0f, 0, 100.0f },
-        { "Slow Reel Haze", 14.0f,  10.0f, 1, 15.0f, 12.0f, 15.0f,  20.0f, 50.0f,      kHighCutOff, 100.0f, 0.0f, true,  50.0f, 25.0f, 8.0f, 20.0f, 25.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f, 10.0f, 0, 100.0f },
-        { "Starved Grit",   10.0f, -70.0f, 1,  5.0f, 10.0f, 10.0f,  10.0f, 90.0f,      kHighCutOff, 100.0f, 0.0f, true,  75.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f, 30.0f, 0, 100.0f },
-        { "Worn Cassette",  15.0f, -15.0f, 0, 35.0f, 30.0f, 20.0f, 100.0f, 90.0f,      kHighCutOff, 100.0f, 0.0f, true,  60.0f, 30.0f, 15.0f, 40.0f, 30.0f, 35.0f, 0.7f, 2, 100.0f,  60.0f, 25.0f, 0, 100.0f },
-        { "Old Radio Voice", 16.0f,  10.0f, 1, 10.0f, 15.0f, 15.0f,  25.0f, kLowCutOff, kHighCutOff, 100.0f, 0.0f, true,  60.0f, 0.0f, 0.0f, 10.0f,  0.0f, 10.0f, 0.5f, 0, 100.0f, 100.0f, 25.0f, 1, 100.0f },
-        { "Phone Call",     18.0f,   0.0f, 2,  0.0f,  8.0f, 10.0f,   0.0f, kLowCutOff, kHighCutOff, 100.0f, 0.0f, true,  70.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f, 15.0f, 2, 100.0f },
+        //                  drive   bias sp   wow flutter noise    age  low        high         mix   out auto    hard space  tilt   rnd stereo dropD dropR comp   enc    dec   tex dev devMix old
+        { "Tape Start",     12.0f,   0.0f, 2,  0.0f,  0.0f,  0.0f,   0.0f, kLowCutOff, kHighCutOff, 100.0f, 0.0f, true,  50.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  0.0f, 0, 100.0f, false },
+        { "Clean Reel",      6.0f,   0.0f, 3,  0.0f,  0.0f,  0.0f,   0.0f, kLowCutOff, kHighCutOff, 100.0f, 0.0f, true,  35.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  0.0f, 0, 100.0f, false },
+        { "Vocal Glue",     13.0f,  15.0f, 2,  3.0f,  4.0f,  0.0f,   0.0f, 40.0f,      kHighCutOff, 100.0f, 0.0f, true,  50.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  0.0f, 0, 100.0f, false },
+        { "Warm Lead",      17.0f,  30.0f, 2,  4.0f,  6.0f,  5.0f,   8.0f, 70.0f,      kHighCutOff, 100.0f, 0.0f, true,  50.0f, 10.0f, 0.0f,  5.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  5.0f, 0, 100.0f, false },
+        { "Airy Encode",     8.0f,   5.0f, 3,  0.0f,  3.0f,  0.0f,   0.0f, 60.0f,      kHighCutOff, 100.0f, 0.0f, true,  40.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 2,  60.0f,   0.0f,  0.0f, 0, 100.0f, true },
+        { "Parallel Body",  26.0f,  35.0f, 2,  0.0f,  0.0f,  0.0f,   0.0f, 80.0f,      12000.0f,     40.0f, 0.0f, true,  70.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f,  0.0f, 0, 100.0f, true },
+        { "Slow Reel Haze", 14.0f,  10.0f, 1, 15.0f, 12.0f, 15.0f,  20.0f, 50.0f,      kHighCutOff, 100.0f, 0.0f, true,  50.0f, 25.0f, 8.0f, 20.0f, 25.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f, 10.0f, 0, 100.0f, true },
+        { "Starved Grit",   10.0f, -70.0f, 1,  5.0f, 10.0f, 10.0f,  10.0f, 90.0f,      kHighCutOff, 100.0f, 0.0f, true,  75.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f, 30.0f, 0, 100.0f, true },
+        { "Worn Cassette",  15.0f, -15.0f, 0, 35.0f, 30.0f, 20.0f, 100.0f, 90.0f,      kHighCutOff, 100.0f, 0.0f, true,  60.0f, 30.0f, 15.0f, 40.0f, 30.0f, 35.0f, 0.7f, 2, 100.0f,  60.0f, 25.0f, 0, 100.0f, true },
+        { "Old Radio Voice", 16.0f,  10.0f, 1, 10.0f, 15.0f, 15.0f,  25.0f, kLowCutOff, kHighCutOff, 100.0f, 0.0f, true,  60.0f, 0.0f, 0.0f, 10.0f,  0.0f, 10.0f, 0.5f, 0, 100.0f, 100.0f, 25.0f, 1, 100.0f, true },
+        { "Phone Call",     18.0f,   0.0f, 2,  0.0f,  8.0f, 10.0f,   0.0f, kLowCutOff, kHighCutOff, 100.0f, 0.0f, true,  70.0f,  0.0f, 0.0f,  0.0f,  0.0f,  0.0f, 1.0f, 0, 100.0f, 100.0f, 15.0f, 2, 100.0f, false },
     };
 }
 
@@ -197,10 +218,33 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     // The record boost makes high tones hit the curve very hard, which is why this needs so much.
     osStages = sr <= 50000.0 ? 4 : (sr <= 100000.0 ? 3 : 2);
     osRate = sr * (double) (1 << osStages);
-    oversampler = std::make_unique<FastOversampler> ((size_t) preparedChannels, (size_t) osStages, true); // linear phase, whole sample latency
+    oversampler = std::make_unique<FastOversampler> ((size_t) preparedChannels, (size_t) osStages, false); // linear phase, its own delay is not a whole sample
     oversampler->initProcessing ((size_t) kChunk);
 
-    osLatency = (int) std::lround (oversampler->getLatencyInSamples());
+    // The wet path's delay, made exactly a whole number of samples.
+    // Up to 0.3.1 the oversampling filters were rounded up to a whole sample with an all pass, and nothing counted what sits between them:
+    // the curve's averaging (half a sample at the high rate) and the two top end filters, which at the default tone (15 ips, Age 0) are flat
+    // in the band but still 11.7 microseconds late. So the wet signal came out 0.56 sample after the reported latency at 48 kHz and 1.11
+    // after it at 96 kHz. Now the filters keep their own delay, those 11.7 microseconds are counted, and a short delay at the high rate
+    // fills the rest up to the next whole sample. Tape Speed, Bias, Age and Head Spacing still move their filters, as any tone filter does.
+    {
+        const double factor = (double) (1 << osStages);
+        const double between = flatToneDelay (osRate);
+        const double filtersAlone = (double) oversampler->getLatencyInSamples();
+        osLatency = (int) std::ceil (filtersAlone + (between + 1.0) / factor - 1.0e-9);
+        trimLinedUp = ((double) osLatency - filtersAlone) * factor - between; // 1 or more
+
+        // The old response puts the wet path back where 0.3.1 had it against the dry: the all pass, and whole samples for the rest.
+        double part = 1.0 - (filtersAlone - std::floor (filtersAlone));
+        if (part > 1.0 - 1.0e-6)
+            part = 0.0;
+        else if (part < 0.618)
+            part += 1.0;
+        oldAllPassUsed = part > 0.0;
+        oldAllPass = (float) ((1.0 - part) / (1.0 + part));
+        trimOld = ((double) osLatency - std::round (filtersAlone + part)) * factor;
+        jassert (trimLinedUp >= 1.0 && trimOld >= 0.0 && std::max (trimLinedUp, trimOld) + 3.0 < (double) trimSize);
+    }
     modCentre = (int) std::ceil (kModCentreMs * 0.001 * sr);
     setLatencySamples (osLatency + modCentre);
 
@@ -252,6 +296,8 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     textureSm.reset (sr, 0.03);
     deviceMixSm.reset (sr, 0.02);
     deviceFadeSm.reset (sr, 0.015);
+    oldBlendSm.reset (sr, 0.03);
+    oldToneSm.reset (sr, 0.02);
 
     dcC = onePoleCoef (4.0, sr);
     detectHpC = onePoleCoef (40.0, sr);
@@ -345,12 +391,17 @@ void PluginProcessor::reset()
         c.grainEnv = 0.0;
         c.grainRng.state = ch == 0 ? 0x1B873593u : 0x4CF5AD43u;
         c.pre = {}; c.de = {};
-        c.gap = {}; c.ageLp = {}; c.bump = {}; c.dip = {}; c.lowCutF = {}; c.highCutF = {}; c.detectIn = {}; c.detectOut = {};
+        c.gap = {}; c.ageLp = {}; c.bump = {}; c.dip = {}; c.lowCutF = {}; c.highCutF = {}; c.highCutMatched = {}; c.detectIn = {}; c.detectOut = {};
+        c.detectGap = {}; c.detectAge = {}; c.detectSpace = {};
+        c.allPassIn = c.allPassOut = 0.0f;
         c.dc = {}; c.ageHp = {}; c.noiseLp = {}; c.noiseHp = {}; c.detectInHp = {}; c.detectOutHp = {};
         c.rng.state = ch == 0 ? 0x2F6E2B1u : 0x51ED270Bu;
     }
     if (oversampler != nullptr)
         oversampler->reset();
+    for (auto& t : trimLine)
+        t = Lanes { 0.0, 0.0 };
+    trimPos = 0;
     dryPos = linePos = gainPos = 0;
     phaseWow = phaseWow2 = phaseFlutter = phaseFlutter2 = phaseWander1 = phaseWander2 = phaseWander3 = 0.0;
     flutterRandom.reset (0x3C6EF372u);
@@ -372,8 +423,16 @@ void PluginProcessor::reset()
         c.encoder.boostDb = c.decoder.boostDb = start;
         const double encDb = start * (double) encodeSm.getCurrentValue(), decDb = start * (double) decodeSm.getCurrentValue();
         const double gE = std::pow (10.0, encDb / 20.0), gD = std::pow (10.0, decDb / 20.0);
-        c.encoder.coefs.set (kCompanderHz / std::sqrt (gE), gE, sr);
-        c.decoder.coefs.set (kCompanderHz / std::sqrt (gD), gD, sr);
+        if (companderOld)
+        {
+            c.encoder.coefs.set (kCompanderHz / std::sqrt (gE), gE, sr);
+            c.decoder.coefs.set (kCompanderHz / std::sqrt (gD), gD, sr);
+        }
+        else
+        {
+            setMatchedShelf (c.encoder.coefs, kCompanderHz / std::sqrt (gE), gE, sr);
+            setMatchedShelf (c.decoder.coefs, kCompanderHz / std::sqrt (gD), gD, sr);
+        }
     }
     std::fill (gainRing.begin(), gainRing.end(), juce::Decibels::decibelsToGain (driveSm.getCurrentValue()));
     for (auto& c : chans)
@@ -405,12 +464,24 @@ void PluginProcessor::updateCoefs() noexcept
     ageHpC = onePoleCoef (ageHighpassHz (a), sr);
     wanderTarget = ageWanderDb (a);
 
+    // The same losses for Auto Level's ear, at the session rate. Two equal one pole filters are one two pole filter with a Q of 0.5.
+    detectGapOn = gapHz < kDetectToneHz;
+    detectAgeOn = ageHz < kDetectToneHz;
+    detectSpaceOn = spaceHz > 0.0 && spaceHz < kDetectToneHz;
+    if (detectGapOn)
+        detectGapCoefs.setMatchedLow (gapHz, sr);
+    if (detectAgeOn)
+        detectAgeCoefs.setMatchedLow (ageHz, sr);
+    if (detectSpaceOn)
+        detectSpaceCoefs.setMatchedLow (spaceHz, sr, 0.5);
+
     // Hiss is dulled by the same losses as the signal. Its gain follows from the filter, so its level holds at every setting.
     noiseLpC = onePoleCoef (spaceHz <= 0.0 ? std::min (gapHz, ageHz) : std::min ({ gapHz, ageHz, spaceHz }), sr);
     noiseNorm = std::sqrt (3.0 * (2.0 - noiseLpC) / noiseLpC);
 
     lowCutCoefs.setLowOrHigh ((double) lowCutSm.getCurrentValue(), sr);
-    highCutCoefs.setLowOrHigh ((double) highCutSm.getCurrentValue(), sr);
+    highCutCoefs.setLowOrHigh ((double) highCutSm.getCurrentValue(), sr);       // the old response: falls faster near the top of the band
+    highCutMatchedCoefs.setMatchedLow ((double) highCutSm.getCurrentValue(), sr); // 12 dB per octave all the way up
 }
 
 double PluginProcessor::curveOffset() const noexcept
@@ -441,7 +512,7 @@ void PluginProcessor::snapControls() noexcept
 
     hardSm.setCurrentAndTargetValue (hardness->load() * 0.01f);
     spacingSm.setCurrentAndTargetValue (spacing->load() * 0.01f);
-    azimuthSm.setCurrentAndTargetValue (azimuth->load() * 0.01f);
+    azimuthSm.setCurrentAndTargetValue (tiltAmount (azimuth->load()));
     randomSm.setCurrentAndTargetValue (randomDrift->load() * 0.01f);
     stereoSm.setCurrentAndTargetValue (stereoDrift->load() * 0.01f);
     dropSm.setCurrentAndTargetValue (dropDepth->load() * 0.01f);
@@ -449,6 +520,10 @@ void PluginProcessor::snapControls() noexcept
     decodeSm.setCurrentAndTargetValue (decodeAmt->load() * 0.01f);
     textureSm.setCurrentAndTargetValue ((float) textureAmount (texture->load() * 0.01));
     deviceMixSm.setCurrentAndTargetValue (deviceMix->load() * 0.01f);
+    oldBlendSm.setCurrentAndTargetValue (wantsOldBlend() ? 1.0f : 0.0f);
+    oldToneSm.setCurrentAndTargetValue (oldResponse.load (std::memory_order_relaxed) ? 1.0f : 0.0f);
+    companderOld = oldResponse.load (std::memory_order_relaxed);
+    trimNow = trimFor ((double) oldBlendSm.getCurrentValue());
     activeDevice = (int) device->load();
     deviceFadeSm.setCurrentAndTargetValue (activeDevice > 0 ? 1.0f : 0.0f);
 
@@ -485,7 +560,7 @@ void PluginProcessor::pushTargets (bool forceBypass) noexcept
     highCutSm.setTargetValue (high);
     hardSm.setTargetValue (hardness->load() * 0.01f);
     spacingSm.setTargetValue (spacing->load() * 0.01f);
-    azimuthSm.setTargetValue (azimuth->load() * 0.01f);
+    azimuthSm.setTargetValue (tiltAmount (azimuth->load()));
     randomSm.setTargetValue (randomDrift->load() * 0.01f);
     stereoSm.setTargetValue (stereoDrift->load() * 0.01f);
     dropSm.setTargetValue (dropDepth->load() * 0.01f);
@@ -493,6 +568,27 @@ void PluginProcessor::pushTargets (bool forceBypass) noexcept
     decodeSm.setTargetValue (decodeAmt->load() * 0.01f);
     textureSm.setTargetValue ((float) textureAmount (texture->load() * 0.01));
     deviceMixSm.setTargetValue (deviceMix->load() * 0.01f);
+    oldBlendSm.setTargetValue (wantsOldBlend() ? 1.0f : 0.0f);
+    oldToneSm.setTargetValue (oldResponse.load (std::memory_order_relaxed) ? 1.0f : 0.0f);
+}
+
+// The old response only moves the wet path while there is dry signal to blend with. At Mix 100 the wet path stays on the reported latency.
+bool PluginProcessor::wantsOldBlend() const noexcept
+{
+    return oldResponse.load (std::memory_order_relaxed) && mix->load() < 99.95f;
+}
+
+bool PluginProcessor::responseMatters() const noexcept
+{
+    if (mix->load() < 99.95f || highCut->load() < kHighCutOff - 0.5f || (int) compander->load() != compOff)
+        return true;
+    // Auto Level with a top end loss in reach of its detector
+    if (! autoLevel->get())
+        return false;
+    const double pos = (double) speed->load(), space = spacingHz ((double) spacing->load() * 0.01, pos);
+    return lookupLog (kGapHz, pos) * overBiasGapScale ((double) bias->load() * 0.01) < kDetectToneHz
+        || ageLowpassHz ((double) age->load() * 0.01) < kDetectToneHz
+        || (space > 0.0 && space < kDetectToneHz);
 }
 
 bool PluginProcessor::statesAreFinite() const noexcept
@@ -501,7 +597,8 @@ bool PluginProcessor::statesAreFinite() const noexcept
     {
         const auto& c = chans[(size_t) ch];
         if (! (c.gap.isFinite() && c.ageLp.isFinite() && c.bump.isFinite() && c.dip.isFinite() && c.lowCutF.isFinite() && c.highCutF.isFinite()
-               && c.detectIn.isFinite() && c.detectOut.isFinite()
+               && c.highCutMatched.isFinite() && std::isfinite (c.allPassOut) && c.detectIn.isFinite() && c.detectOut.isFinite()
+               && c.detectGap.isFinite() && c.detectAge.isFinite() && c.detectSpace.isFinite()
                && std::isfinite (c.pre.y1) && std::isfinite (c.de.y1) && std::isfinite (c.dc.lp) && std::isfinite (c.ageHp.lp) && std::isfinite (c.noiseLp.lp)))
             return false;
     }
@@ -509,7 +606,7 @@ bool PluginProcessor::statesAreFinite() const noexcept
 }
 
 // The oversampled path. Both channels run side by side in the two lanes of one register. With one channel the second lane just repeats the first.
-void PluginProcessor::runHighRate (float* left, float* right, int numChannels, int total, double offset1, double tanh1, double norm1, double dead1, double head1) noexcept
+void PluginProcessor::runHighRate (float* left, float* right, int numChannels, int total, double offset1, double tanh1, double norm1, double dead1, double head1, double trimTarget) noexcept
 {
     auto& cL = chans[0];
     auto& cR = chans[(size_t) numChannels - 1];
@@ -530,6 +627,13 @@ void PluginProcessor::runHighRate (float* left, float* right, int numChannels, i
     double headroomInverse = 1.0 / head1;
     Lanes v { 0.0, 0.0 }, lost { 0.0, 0.0 };
     HeldCurve heldMain { { offset1, offset1 }, { tanh1, tanh1 } }, heldDead {};
+    // The short delay that lands the wet path on a whole sample. It only moves while the old response fades in or out.
+    const bool trimMoves = trimTarget != trimNow;
+    const double trimStep = (trimTarget - trimNow) * step;
+    const int trimMask = trimSize - 1;
+    double trimAmount = trimNow, taps[4];
+    int trimFrom = 0, trimAt = trimPos;
+    trimTaps (trimAmount, trimFrom, taps);
 
     for (int i = 0; i < total; ++i)
     {
@@ -602,9 +706,21 @@ void PluginProcessor::runHighRate (float* left, float* right, int numChannels, i
             space2 += spaceC * (space1 - space2);
             out = space2;
         }
-        right[i] = (float) out[1];
-        left[i] = (float) out[0];
+
+        if (trimMoves)
+        {
+            trimAmount += trimStep;
+            trimTaps (trimAmount, trimFrom, taps);
+        }
+        trimLine[(size_t) trimAt] = out;
+        const Lanes late = taps[0] * trimLine[(size_t) ((trimAt - trimFrom) & trimMask)] + taps[1] * trimLine[(size_t) ((trimAt - trimFrom - 1) & trimMask)]
+                         + taps[2] * trimLine[(size_t) ((trimAt - trimFrom - 2) & trimMask)] + taps[3] * trimLine[(size_t) ((trimAt - trimFrom - 3) & trimMask)];
+        trimAt = (trimAt + 1) & trimMask;
+        right[i] = (float) late[1];
+        left[i] = (float) late[0];
     }
+    trimPos = trimAt;
+    trimNow = trimTarget;
 
     if (! useSpacing)
         space1 = space2 = lost;
@@ -667,6 +783,12 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
     // The compander's boost moves from one piece to the next. Each side's shelf is set from what its own side chain heard.
     const int compMode = (int) compander->load();
     const double encodeNow = (double) encodeSm.skip (n), decodeNow = (double) decodeSm.skip (n);
+    if (const bool old = oldResponse.load (std::memory_order_relaxed); old != companderOld)
+    {
+        companderOld = old;
+        for (auto& c : chans)
+            c.encoder.coefsSet = c.decoder.coefsSet = false;
+    }
     const double compSlew = juce::jmin (1.0, companderSlewPerSample * (double) n);
     for (int ch = 0; ch < numChannels; ++ch)
     {
@@ -681,7 +803,10 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
             if (! side.coefsSet || db != side.setFor)
             {
                 const double g = std::pow (10.0, db / 20.0);
-                side.coefs.set (kCompanderHz / std::sqrt (g), g, sr);
+                if (companderOld)
+                    side.coefs.set (kCompanderHz / std::sqrt (g), g, sr);
+                else
+                    setMatchedShelf (side.coefs, kCompanderHz / std::sqrt (g), g, sr);
                 side.setFor = db;
                 side.coefsSet = true;
             }
@@ -745,7 +870,8 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
 
     juce::dsp::AudioBlock<float> workBlock (work);
     auto high = oversampler->processSamplesUp (workBlock.getSubBlock (0, (size_t) n));
-    runHighRate (high.getChannelPointer (0), high.getChannelPointer ((size_t) numChannels - 1), numChannels, n << osStages, offset1, tanh1, norm1, dead1, head1);
+    const double oldBlendFrom = (double) oldBlendSm.getCurrentValue(), oldBlendTo = (double) oldBlendSm.skip (n);
+    runHighRate (high.getChannelPointer (0), high.getChannelPointer ((size_t) numChannels - 1), numChannels, n << osStages, offset1, tanh1, norm1, dead1, head1, trimFor (oldBlendTo));
     lastOffset = offset1;
     lastTanh = tanh1;
     lastNorm = norm1;
@@ -764,16 +890,38 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
     {
         // Head bump, low end loss from Age, and the level detector.
         const double g = (double) gainDelayed[(size_t) i];
+        const float oldBlend = (float) (oldBlendFrom + (oldBlendTo - oldBlendFrom) * (double) (i + 1) / (double) n);
         double wet[2] = { 0.0, 0.0 };
         double powerIn = 0.0, powerOut = 0.0;
         for (int ch = 0; ch < numChannels; ++ch)
         {
             auto& c = chans[(size_t) ch];
-            double v = c.dc.high ((double) work.getReadPointer (ch)[i], dcC);
+            // The old response's all pass, on the wet path only while it is blended with dry.
+            float fresh = work.getReadPointer (ch)[i];
+            if (oldAllPassUsed)
+            {
+                const float passed = c.allPassIn + oldAllPass * (fresh - c.allPassOut);
+                c.allPassIn = fresh;
+                c.allPassOut = passed;
+                if (oldBlend >= 1.0f)
+                    fresh = passed;
+                else if (oldBlend > 0.0f)
+                    fresh += oldBlend * (passed - fresh);
+            }
+            double v = c.dc.high ((double) fresh, dcC);
             v = c.dip.bell (c.bump.bell (v, bumpCoefs), dipCoefs);
             v = c.ageHp.high (v, ageHpC);
             wet[ch] = v;
-            const double a = c.detectIn.bell (c.detectInHp.high ((double) encodedNear.getReadPointer (ch)[i], detectHpC), detectCoefs);
+            // Auto Level compares the dry signal with the tape. Up to 0.3.1 the dry side had none of the tape's top end losses, so on sound
+            // that is mostly top end (an S through Age, slow tape or Head Spacing) it read the loss as saturation and turned it back up.
+            double heard = (double) encodedNear.getReadPointer (ch)[i];
+            if (! companderOld)
+            {
+                if (detectGapOn)   heard = c.detectGap.mixed (heard, detectGapCoefs);
+                if (detectAgeOn)   heard = c.detectAge.mixed (heard, detectAgeCoefs);
+                if (detectSpaceOn) heard = c.detectSpace.mixed (heard, detectSpaceCoefs);
+            }
+            const double a = c.detectIn.bell (c.detectInHp.high (heard, detectHpC), detectCoefs);
             const double b = c.detectOut.bell (c.detectOutHp.high (v / g, detectHpC), detectCoefs);
             powerIn += a * a;
             powerOut += b * b;
@@ -853,8 +1001,10 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
             }
             if (dropActive && --dropHold <= 0)
                 dropActive = false;
-            dropEnv += (dropActive ? dropDownC : dropUpC) * ((dropActive ? 1.0 : 0.0) - dropEnv);
-            dropGain = std::pow (10.0, -kDropoutMaxDb * dropAmt * dropSeverity * dropEnv / 20.0);
+            // The envelope heads for this dropout's own depth. Up to 0.3.1 the depth multiplied an envelope that headed for 1, so a dropout
+            // that began before the last one had recovered jumped to its new depth in one sample: a click. One dropout alone is unchanged.
+            dropEnv += (dropActive ? dropDownC : dropUpC) * ((dropActive ? dropSeverity : 0.0) - dropEnv);
+            dropGain = std::pow (10.0, -kDropoutMaxDb * dropAmt * dropEnv / 20.0);
         }
 
         const double grainAmt = (double) textureSm.getNextValue();
@@ -866,6 +1016,7 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
         const double outGain = (double) outputSm.getNextValue();
         const double lowOn = (double) lowOnSm.getNextValue(), highOn = (double) highOnSm.getNextValue();
         const double deviceAmt = (double) deviceMixSm.getNextValue() * (double) deviceFadeSm.getNextValue();
+        const double oldTone = (double) oldToneSm.getNextValue();
 
         for (int ch = 0; ch < numChannels; ++ch)
         {
@@ -889,7 +1040,8 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
             d.env += (power > d.env ? sideAttackC : sideReleaseC) * (power - d.env);
 
             v += lowOn * (c.lowCutF.high (v, lowCutCoefs) - v);
-            v += highOn * (c.highCutF.low (v, highCutCoefs) - v);
+            const double cutOld = c.highCutF.low (v, highCutCoefs), cutMatched = c.highCutMatched.mixed (v, highCutMatchedCoefs);
+            v += highOn * ((cutMatched + oldTone * (cutOld - cutMatched)) - v);
 
             // Device: direct convolution with a short filter. Only runs while one is selected.
             if (activeDevice > 0)
@@ -1048,6 +1200,7 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("texture", v.tex);
     set ("device", (float) v.dev);
     set ("devicemix", v.devMix);
+    oldResponse.store (v.old, std::memory_order_relaxed);
 }
 
 int PluginProcessor::programMatchingSettings() const
@@ -1064,7 +1217,7 @@ int PluginProcessor::programMatchingSettings() const
             && same ("output", v.out) && same ("autolevel", v.autoOn ? 1.0f : 0.0f) && same ("hardness", v.hard) && same ("spacing", v.space)
             && same ("azimuth", v.tilt) && same ("random", v.rnd) && same ("stereodrift", v.stereo) && same ("dropdepth", v.dropD) && same ("droprate", v.dropR)
             && same ("compander", (float) v.comp) && same ("encode", v.enc) && same ("decode", v.dec) && same ("texture", v.tex) && same ("device", (float) v.dev)
-            && same ("devicemix", v.devMix);
+            && same ("devicemix", v.devMix) && (! responseMatters() || oldResponse.load (std::memory_order_relaxed) == v.old);
     };
 
     if (juce::isPositiveAndBelow (currentProgram, (int) std::size (presets)) && matches (presets[currentProgram]))
@@ -1085,6 +1238,9 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
         xml->setAttribute (windowHeightAttribute, windowHeight.load (std::memory_order_relaxed));
         xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, dest);
+        const char tail[8] = { responseTag[0], responseTag[1], responseTag[2], responseTag[3],
+                               (char) (oldResponse.load (std::memory_order_relaxed) ? responseOld : responseLinedUp), 0, 0, 0 };
+        dest.append (tail, sizeof (tail));
     }
 }
 
@@ -1102,7 +1258,11 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (windowHeightAttribute);
             xml->removeAttribute (advancedOpenAttribute);
+            const int response = savedResponse (data, size);
             applySafeState (apvts, *xml);
+            // A session saved before 0.4.0 says nothing about its response. It keeps 0.3.1's if it uses anything the two treat differently,
+            // so it sounds as it did. With Mix at 100, High Cut off and the compander off there is nothing to keep.
+            oldResponse.store (response == responseOld || (response != responseLinedUp && responseMatters()), std::memory_order_relaxed);
         }
 }
 

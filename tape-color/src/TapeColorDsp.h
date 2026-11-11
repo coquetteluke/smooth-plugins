@@ -63,6 +63,31 @@ namespace tapecolor
     inline double ageHeadroomDb (double age) noexcept { return 6.0 * age; }
     inline double ageWanderDb (double age) noexcept   { return 1.5 * age * age; }
 
+    // ---- The wet path's own delay at the default tone ----
+    // Between the oversampling filters sit the curve's averaging (half a sample at the high rate) and the two top end filters. At the
+    // default tone (15 ips, Bias 0, Age 0) those filters are flat in the band but still late: 11.7 microseconds together. In samples at
+    // the high rate. The plug-in takes this off the wet path so it comes out on a whole sample, and the window's picture allows for it.
+    inline double flatToneDelay (double highRate) noexcept
+    {
+        const auto lowPassDelay = [highRate] (double hz) { return 0.70710678118654752 / std::tan (kPi * std::min (hz, 0.47 * highRate) / highRate); };
+        return 0.5 + lowPassDelay (kGapHz[2]) + lowPassDelay (ageLowpassHz (0.0));
+    }
+
+    // A top end loss with its corner under this is copied into Auto Level's detector. Above it the loss is past what the detector weighs,
+    // and the default tone (24 kHz) stays out, so the default is untouched.
+    constexpr double kDetectToneHz = 20000.0;
+
+    // Four point interpolation for a delay of trim samples: the first tap is `whole` samples back, the weights follow.
+    inline void trimTaps (double trim, int& whole, double taps[4]) noexcept
+    {
+        whole = std::max (0, (int) std::floor (trim) - 1);
+        const double p = trim - (double) whole; // 0 to 2
+        taps[0] = -(p - 1.0) * (p - 2.0) * (p - 3.0) / 6.0;
+        taps[1] = p * (p - 2.0) * (p - 3.0) / 2.0;
+        taps[2] = -p * (p - 1.0) * (p - 3.0) / 2.0;
+        taps[3] = p * (p - 1.0) * (p - 2.0) / 6.0;
+    }
+
     // ---- Noise: 1 to 100 percent is -90 to -45 dBFS, below 1 percent it fades to exactly nothing ----
     inline double noiseRms (double percent) noexcept
     {
@@ -176,6 +201,28 @@ namespace tapecolor
         }
     };
 
+    // The same shelf with its response held to the analog shape at 0 Hz, at the middle of the shelf and at half the sample rate.
+    // At the session rate the plain form above runs up to 0.5 dB over the analog curve at 10 kHz for a 10 dB shelf, and 1.3 dB for 20 dB.
+    inline void setMatchedShelf (EmphasisCoefs& c, double cornerHz, double ratio, double fs) noexcept
+    {
+        if (ratio <= 1.0 + 1.0e-9)
+        {
+            c.b0 = 1.0; c.b1 = 0.0; c.a1 = 0.0; c.ib0 = 1.0; c.ib1 = 0.0; c.ia1 = 0.0;
+            return;
+        }
+        const double topHz = cornerHz * ratio, halfRate = 0.5 * fs;
+        const double atHalfRate = (1.0 + (halfRate / cornerHz) * (halfRate / cornerHz)) / (1.0 + (halfRate / topHz) * (halfRate / topHz)); // power
+        const double middle = kTwoPi * std::min (cornerHz * std::sqrt (ratio), 0.45 * fs) / fs;
+        const double t = std::sqrt (std::max ((atHalfRate - ratio) / (ratio - 1.0), 1.0e-12)) * std::tan (0.5 * middle);
+        const double gain = std::sqrt (atHalfRate);
+        c.a1 = (t - 1.0) / (t + 1.0);
+        c.b0 = 0.5 * ((1.0 + c.a1) + gain * (1.0 - c.a1));
+        c.b1 = 0.5 * ((1.0 + c.a1) - gain * (1.0 - c.a1));
+        c.ib0 = 1.0 / c.b0;
+        c.ib1 = c.a1 / c.b0;
+        c.ia1 = c.b1 / c.b0;
+    }
+
     struct FirstOrder
     {
         double x1 = 0, y1 = 0;
@@ -188,10 +235,49 @@ namespace tapecolor
         }
     };
 
+    // A 12 dB per octave low pass as a plain two pole filter, y = b0 x + b1 x1 - a1 y1 - a2 y2, whose response follows the analog shape
+    // all the way up: exact at 0 Hz and at the corner, and close at half the sample rate (Vicanek's matched design).
+    // The usual form bends the frequency scale, so near the top of the band it falls much faster than 12 dB per octave.
+    struct MatchedLow
+    {
+        double b0 = 1, b1 = 0, a1 = 0, a2 = 0;
+
+        void set (double hz, double fs, double q = 0.70710678118654752) noexcept
+        {
+            const double w = kTwoPi * std::min (hz, 0.47 * fs) / fs, d = 0.5 / q, e = std::exp (-d * w);
+            a1 = -2.0 * e * (d <= 1.0 ? std::cos (std::sqrt (1.0 - d * d) * w) : std::cosh (std::sqrt (d * d - 1.0) * w));
+            a2 = e * e;
+            const double atZero = 1.0 + a1 + a2, atHalf = 1.0 - a1 + a2;
+            const double s = std::sin (0.5 * w), p1 = s * s, p0 = 1.0 - p1;
+            const double atCorner = (atZero * atZero * p0 + atHalf * atHalf * p1 - 4.0 * a2 * 4.0 * p0 * p1) * q * q;
+            const double top = std::sqrt (std::max ((atCorner - atZero * atZero * p0) / p1, 0.0));
+            b0 = 0.5 * (atZero + top);
+            b1 = atZero - b0;
+        }
+    };
+
     // The trapezoidal state variable filter. Coefficients can change between samples without clicks.
     struct SvfCoefs
     {
         double a1 = 1, a2 = 0, a3 = 0, k = 1.41421356237, m1 = 0;
+        double mixHigh = 0, mixBand = 0, mixLow = 1; // for mixed(): any two pole filter is some blend of this filter's three outputs
+
+        // The matched low pass above, run in this filter so it can move without clicks: its poles set g and k, its zero sets the blend.
+        void setMatchedLow (double hz, double fs, double q = 0.70710678118654752) noexcept
+        {
+            MatchedLow m;
+            m.set (hz, fs, q);
+            const double under = 1.0 - m.a1 + m.a2, scale = 4.0 / under;
+            const double gSquared = (1.0 + m.a1 + m.a2) / under, g = std::sqrt (gSquared);
+            k = (2.0 - 2.0 * m.a2) / under / g;
+            a1 = 1.0 / (1.0 + g * (g + k));
+            a2 = g * a1;
+            a3 = g * a2;
+            m1 = 0.0;
+            mixLow = scale * (m.b0 + m.b1) / (4.0 * gSquared);
+            mixHigh = scale * (m.b0 - m.b1) / 4.0;
+            mixBand = scale * m.b0 / (2.0 * g);
+        }
 
         void setLowOrHigh (double hz, double fs, double q = 0.70710678118654752) noexcept
         {
@@ -230,6 +316,7 @@ namespace tapecolor
         double low (double x, const SvfCoefs& c) noexcept  { run (x, c); return v2; }
         double high (double x, const SvfCoefs& c) noexcept { run (x, c); return x - c.k * v1 - v2; }
         double bell (double x, const SvfCoefs& c) noexcept { run (x, c); return x + c.m1 * v1; }
+        double mixed (double x, const SvfCoefs& c) noexcept { run (x, c); return c.mixHigh * (x - c.k * v1 - v2) + c.mixBand * v1 + c.mixLow * v2; }
         bool isFinite() const noexcept { return std::isfinite (ic1) && std::isfinite (ic2); }
     };
 

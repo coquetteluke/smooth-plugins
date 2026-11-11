@@ -67,6 +67,13 @@ public:
     /** The factory preset the settings match right now, or -1. */
     int programMatchingSettings() const;
 
+    // The old response: Mix, High Cut, the compander and Auto Level exactly as 0.3.1 had them. Not a control: it is set by the session or preset
+    // that needs it (one saved before 0.4.0 that uses something the two treat differently, and six factory presets), so nothing
+    // made with 0.3.1 changes its sound. Everything else gets the response that is lined up and follows the analog shapes.
+    std::atomic<bool> oldResponse { false };
+    /** True while a setting is in use that the two responses treat differently. */
+    bool responseMatters() const noexcept;
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
@@ -80,7 +87,9 @@ private:
     bool statesAreFinite() const noexcept;
     double curveOffset() const noexcept;
     void buildDeviceFilters();
-    void runHighRate (float* left, float* right, int numChannels, int total, double offset1, double tanh1, double norm1, double dead1, double head1) noexcept;
+    void runHighRate (float* left, float* right, int numChannels, int total, double offset1, double tanh1, double norm1, double dead1, double head1, double trimTarget) noexcept;
+    double trimFor (double oldAmount) const noexcept { return trimLinedUp + oldAmount * (trimOld - trimLinedUp); }
+    bool wantsOldBlend() const noexcept;
 
     static constexpr int kChunk = 32;
 
@@ -115,6 +124,18 @@ private:
     int preparedChannels = 2, osStages = 4, osLatency = 0, modCentre = 240;
     std::unique_ptr<FastOversampler> oversampler;
 
+    // A short delay at the high rate that brings the wet path out on a whole sample (see prepareToPlay). Four point interpolation
+    // between samples at 768 kHz is flat far past hearing. All three in samples at the high rate.
+    static constexpr int trimSize = 32;
+    std::array<tapecolor::Lanes, trimSize> trimLine {};
+    int trimPos = 0;
+    double trimLinedUp = 1.0, trimOld = 0.0, trimNow = 1.0;
+
+    // What 0.3.1 did instead, kept for the old response: an all pass that rounded the oversampling filters up to a whole sample.
+    float oldAllPass = 0.0f;
+    bool oldAllPassUsed = false, companderOld = false;
+    juce::SmoothedValue<float> oldBlendSm, oldToneSm;
+
     // Smoothed controls
     juce::SmoothedValue<float> driveSm, biasSm, speedSm, ageSm, wowSm, flutterSm, noiseSm, mixSm, depthSm, outputSm, autoSm, onSm, lowOnSm, highOnSm,
                                hardSm, spacingSm, azimuthSm, randomSm, stereoSm, dropSm, encodeSm, decodeSm, textureSm, deviceMixSm, deviceFadeSm;
@@ -128,7 +149,10 @@ private:
 
     tapecolor::SincTable sinc;
     tapecolor::EmphasisCoefs emphasis;
-    tapecolor::SvfCoefs gapCoefs, ageLpCoefs, bumpCoefs, dipCoefs, lowCutCoefs, highCutCoefs, detectCoefs;
+    tapecolor::SvfCoefs gapCoefs, ageLpCoefs, bumpCoefs, dipCoefs, lowCutCoefs, highCutCoefs, highCutMatchedCoefs, detectCoefs;
+    // Auto Level hears the dry signal through copies of the tape's top end losses, so it learns the saturation loss and nothing else.
+    tapecolor::SvfCoefs detectGapCoefs, detectAgeCoefs, detectSpaceCoefs;
+    bool detectGapOn = false, detectAgeOn = false, detectSpaceOn = false;
     double ageHpC = 0, dcC = 0, detectHpC = 0, envC = 0, ratioC = 0, noiseLpC = 1, noiseHpC = 0, noiseNorm = 1;
     double wanderDb = 0, wanderTarget = 0;
     double spacingC = 1, grainLpC = 0, grainHpC = 0, grainNorm = 1, grainEnvC = 0;
@@ -155,7 +179,8 @@ private:
         tapecolor::Random grainRng;
         double grainEnv = 0;
         tapecolor::Curve main, dead;
-        tapecolor::Svf gap, ageLp, bump, dip, lowCutF, highCutF, detectIn, detectOut;
+        tapecolor::Svf gap, ageLp, bump, dip, lowCutF, highCutF, highCutMatched, detectIn, detectOut, detectGap, detectAge, detectSpace;
+        float allPassIn = 0.0f, allPassOut = 0.0f;
         tapecolor::OnePole dc, ageHp, noiseLp, noiseHp, detectInHp, detectOutHp;
         tapecolor::Random rng;
     };

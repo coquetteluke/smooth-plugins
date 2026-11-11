@@ -16,6 +16,7 @@ namespace tapecolor::display
         int compander = 0, device = 0;
         double encode = 1.0, decode = 1.0, companderBoostDb = 0.0, deviceMix = 1.0;
         double sampleRate = 48000.0;
+        bool oldResponse = false; // 0.3.1's Mix, High Cut and compander, as the processor's oldResponse
     };
 
     inline int oversamplingFor (double sr) noexcept { return sr <= 50000.0 ? 16 : (sr <= 100000.0 ? 8 : 4); }
@@ -55,11 +56,14 @@ namespace tapecolor::display
 
     inline Cx onePoleHigh (double hz, double cornerHz, double fs) noexcept { return 1.0 - onePoleLow (hz, cornerHz, fs); }
 
-    inline Cx shelf (double hz, double boostDb, double fs, bool decode) noexcept
+    inline Cx shelf (double hz, double boostDb, double fs, bool decode, bool oldResponse) noexcept
     {
         const double g = std::pow (10.0, boostDb / 20.0);
         EmphasisCoefs c;
-        c.set (kCompanderHz / std::sqrt (g), g, fs);
+        if (oldResponse)
+            c.set (kCompanderHz / std::sqrt (g), g, fs);
+        else
+            setMatchedShelf (c, kCompanderHz / std::sqrt (g), g, fs);
         const Cx z = zInverse (hz, fs);
         return decode ? (c.ib0 + c.ib1 * z) / (1.0 + c.ia1 * z) : (c.b0 + c.b1 * z) / (1.0 + c.a1 * z);
     }
@@ -87,16 +91,33 @@ namespace tapecolor::display
             wet *= onePoleHigh (hz, ageHp, sr);
 
         if (s.compander != compOff)
-            wet *= shelf (hz, s.companderBoostDb * s.encode, sr, false) * shelf (hz, s.companderBoostDb * s.decode, sr, true);
+            wet *= shelf (hz, s.companderBoostDb * s.encode, sr, false, s.oldResponse) * shelf (hz, s.companderBoostDb * s.decode, sr, true, s.oldResponse);
 
         if (s.lowCut > 20.01)
             wet *= svfHigh (hz, s.lowCut, sr);
         if (s.highCut < 19999.5)
-            wet *= svfLow (hz, s.highCut, sr);
+        {
+            if (s.oldResponse)
+            {
+                wet *= svfLow (hz, s.highCut, sr);
+            }
+            else
+            {
+                MatchedLow m;
+                m.set (s.highCut, sr);
+                const Cx z = zInverse (std::min (hz, 0.499 * sr), sr);
+                wet *= (m.b0 + m.b1 * z) / (1.0 + m.a1 * z + m.a2 * z * z);
+            }
+        }
 
         // The Device filter is minimum phase, and its magnitude is what the shape sets. Blending by magnitude is close enough to draw.
         if (s.device > 0)
             wet *= 1.0 + s.deviceMix * (std::pow (10.0, deviceShapeDb (s.device - 1, hz) / 20.0) - 1.0);
+
+        // The wet path is lined up with the dry: the delay its filters have at the default tone is taken off (the curve's own half
+        // sample is not in this picture). The old response leaves it on while there is dry to blend with, as 0.3.1 did.
+        if (! s.oldResponse)
+            wet *= std::polar (1.0, kTwoPi * hz * (flatToneDelay (os) - 0.5) / os);
 
         const Cx total = 1.0 + s.mix * (wet - 1.0);
         return 20.0 * std::log10 (std::max (std::abs (total), 1.0e-6));

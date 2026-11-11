@@ -27,6 +27,7 @@ namespace
         float enc = 100.0f, dec = 100.0f, tex = 0.0f;
         int dev = 0;
         float devMix = 100.0f;
+        bool old = false; // 0.3.1's response for Mix, High Cut and the compander
     };
 
     void setParam (PluginProcessor& p, const char* id, float plain)
@@ -63,6 +64,7 @@ namespace
         setParam (p, "texture", s.tex);
         setParam (p, "device", (float) s.dev);
         setParam (p, "devicemix", s.devMix);
+        p.oldResponse.store (s.old);
     }
 
     std::unique_ptr<PluginProcessor> makeProc (const Settings& s, double sr = 48000.0, int channels = 2, int block = 512)
@@ -633,9 +635,10 @@ static void testAge()
 
 // ---- Low Cut and High Cut ----
 // Limits: -3 dB at the set corner within 0.5 dB, relative to the same run with that filter off, at every rate.
-// One octave out, Low Cut is 12.3 dB down within 2 dB. High Cut is at least 10.3 dB down: the first limit was within 2 dB both ways, which was wrong,
-// because a High Cut near the top of the band is steeper than 12 dB per octave by design (the digital filter reaches zero at half the sample rate).
-// Only the corner is meant to be exact there, and a steeper fall above it is not a fault.
+// One octave out, Low Cut and High Cut are 12.3 dB down within 2 dB.
+// Up to 0.3.1 the High Cut limit here had been changed to "at least 10.3 dB down", because the filter fell far faster near the top of the
+// band (27.5 dB an octave above 10 kHz at 48 kHz). Since 0.4.0 the High Cut follows the analog shape all the way up and the first limit
+// is back. The old filter is still there for the old response, and is held to 0.3.1's own figures in testOldResponse.
 static void testCuts()
 {
     for (double sr : { 44100.0, 48000.0, 96000.0 })
@@ -659,7 +662,7 @@ static void testCuts()
             if (hz * 2.0 < 0.42 * sr)
             {
                 const double oct = toneGainDb (on, hz * 2.0, sr) - toneGainDb (off, hz * 2.0, sr);
-                check (oct <= -10.3, "High Cut " + num (hz) + " Hz, octave above" + tag, oct, "dB");
+                check (std::abs (oct + 12.3) <= 2.0, "High Cut " + num (hz) + " Hz, octave above" + tag, oct, "dB");
             }
         }
     }
@@ -797,9 +800,9 @@ static void testMix()
             check (worst >= -1.5, std::string ("Mix 50 against the quieter path, worst across 30 Hz to 16 kHz, ") + (moving ? "Wow and Flutter 100, " : "still, ") + num (sr / 1000.0, 1) + " kHz", worst, "dB");
         }
     // Heavy tape settings: the wet path's top end losses turn its phase, so parallel mixing leaves one broad dip where wet and dry differ most.
-    // A comb is many notches in a row, so this counts notches. Limit: at most one notch 3 dB deep or more.
-    // The first limit here was a -6 dB ceiling on that one dip, which was the wrong test: it measured -8.6 dB and is a low pass mixed with dry, not a comb.
-    // The dip is reported below as a figure and in the README.
+    // Limit: no more than 6 dB under the average of the two paths anywhere, and at most one notch 3 dB deep or more.
+    // Up to 0.3.1 the 6 dB limit had been dropped for the notch count alone, after the dip measured 8.6 dB. Most of that dip was not the low
+    // pass: the wet path came out 0.56 sample after the dry (see testTrueDelay). With the wet path lined up it is 4.5 dB and the limit is back.
     {
         const auto countNotches = [] (const std::vector<double>& db)
         {
@@ -832,7 +835,7 @@ static void testMix()
         const int notches = countNotches (shape), combNotches = countNotches (combShape);
         check (notches <= 1, "Mix 50, slow tape and Age: notches 3 dB deep or more", (double) notches);
         check (combNotches >= 5, "the notch counter catches a real comb, 1 ms out of line", (double) combNotches);
-        info ("Mix 50, slow tape and Age: the one broad dip against the average of both paths", worst, "dB");
+        check (worst >= -6.0, "Mix 50, slow tape and Age: the one broad dip against the average of both paths", worst, "dB");
     }
     // Mix 0 is the input, delayed.
     {
@@ -862,7 +865,8 @@ static void testMix()
         auto out = render (*p, in, 512);
         int at = 0; double best = 0;
         for (int i = 0; i < n; ++i) if (std::abs (out.getSample (0, i)) > best) { best = std::abs (out.getSample (0, i)); at = i; }
-        check (std::abs (at - 2000 - p->getLatencySamples()) <= 1, "wet impulse lands on the reported latency, offset", (double) (at - 2000 - p->getLatencySamples()), "samples");
+        // Until 0.3.1 this allowed one sample either way, which is how a wet path 0.56 sample late got through. Now it is the exact sample.
+        check (at - 2000 == p->getLatencySamples(), "wet impulse lands on the reported latency, offset", (double) (at - 2000 - p->getLatencySamples()), "samples");
     }
     // Mix follows its setting: Mix 50 between Drive 30 wet and dry.
     {
@@ -1140,8 +1144,9 @@ static void testAzimuth()
         auto out = render (*p, in, 512);
         double diff = 0;
         for (int i = 0; i < n; ++i) diff = std::max (diff, (double) std::abs (out.getSample (0, i) - out.getSample (1, i)));
-        // The first limit here was an exact match. It was too strict: the oversampling library rounds the last bit of a float differently per channel, which is nowhere near audible.
-        check (toDb (diff) <= -120.0, "Head Azimuth 0: channels match, under -120 dBFS", toDb (diff), "dB");
+        // An exact match. Up to 0.3.1 this had been changed to "under -120 dBFS" and blamed on the oversampling library. The cause was the
+        // control: its middle is not exactly 0 (0.0000015), so each channel read through the moving head's interpolation. Fixed in 0.4.0.
+        check (diff == 0.0, "Head Azimuth 0: channels identical, biggest difference", diff);
     }
     {
         Settings a; a.tilt = 100.0f;
@@ -1150,7 +1155,7 @@ static void testAzimuth()
         auto x = render (*m, in, 512), y = render (*st, in, 512);
         double diff = 0;
         for (int i = 0; i < n; ++i) diff = std::max (diff, (double) std::abs (x.getSample (0, i) - y.getSample (0, i)));
-        check (toDb (diff) <= -120.0, "mono ignores Head Azimuth, under -120 dBFS", toDb (diff), "dB");
+        check (diff == 0.0, "mono ignores Head Azimuth, biggest difference", diff);
     }
 }
 
@@ -1220,7 +1225,9 @@ static void testDropouts()
         const double base = -30.0 + toneGainDb (Settings {}, 1000.0, sr, -30.0);
         Result r;
         bool down = false;
-        for (int pos = (int) (sr * 0.5); pos + frame <= n; pos += frame) // skips the latency at the start
+        // From the first whole frame after the latency. The first form of this loop began at 0 and read the plug-in's own 7.4 ms of latency,
+        // where nothing can have come out yet, as a dropout of any depth. It had then been moved to half a second in, which skipped real output.
+        for (int pos = ((p->getLatencySamples() + frame - 1) / frame) * frame; pos + frame <= n; pos += frame)
         {
             const double d = rmsDb (out, 0, pos, frame) + 3.01 - base; // RMS of a sine is 3.01 dB under its level
             r.deepest = std::min (r.deepest, d);
@@ -1262,15 +1269,14 @@ static void testTexture()
     check (peak (out.getReadPointer (0), out.getNumSamples()) == 0.0, "Texture 100 on silence stays silent, peak", peak (out.getReadPointer (0), out.getNumSamples()));
 }
 
-// What a compander shelf should do at one frequency.
-// Worked out from the digital filter's coefficients, not the analog shape it comes from, because near the top of the band the two differ by more than the limit.
-static double shelfDb (double hz, double boostDb, double sr = 48000.0)
+// What a compander shelf should do at one frequency: the analog shape.
+// Up to 0.3.1 this had been changed to the digital filter's own response, because near the top of the band the filter ran over the analog
+// shape by more than the limit (0.50 dB at 10 kHz for 10 dB, 1.3 dB for 20 dB). Since 0.4.0 the shelf is matched to the analog shape and
+// the first form of this is back. The old shelf is still there for the old response (testOldResponse).
+static double shelfDb (double hz, double boostDb)
 {
-    const double g = fromDb (boostDb);
-    EmphasisCoefs c;
-    c.set (kCompanderHz / std::sqrt (g), g, sr);
-    const std::complex<double> z = std::polar (1.0, -kTwoPi * hz / sr);
-    return 20.0 * std::log10 (std::abs ((c.b0 + c.b1 * z) / (1.0 + c.a1 * z)));
+    const double g = fromDb (boostDb), lo = kCompanderHz / std::sqrt (g), hi = kCompanderHz * std::sqrt (g);
+    return 10.0 * std::log10 ((1.0 + juce::square (hz / lo)) / (1.0 + juce::square (hz / hi)));
 }
 
 // Compander. Limits are on each line. A fixed shelf must match its shape within 0.5 dB and undo itself within 0.2 dB.
@@ -1301,11 +1307,11 @@ static void testCompander()
         Settings s; s.comp = 1; s.dec = 0.0f;
         for (double hz : { 3000.0, 10000.0 })
         {
-            const double got = against (s, hz, -36.0), want = shelfDb (hz, 10.0, sr);
+            const double got = against (s, hz, -36.0), want = shelfDb (hz, 10.0);
             check (std::abs (got - want) <= 0.5, "Fixed Emphasis, encode only, " + num (hz) + " Hz, expected " + num (want, 2) + " dB", got, "dB");
         }
         Settings d; d.comp = 1; d.enc = 0.0f;
-        const double got = against (d, 10000.0, -36.0), want = -shelfDb (10000.0, 10.0, sr);
+        const double got = against (d, 10000.0, -36.0), want = -shelfDb (10000.0, 10.0);
         check (std::abs (got - want) <= 0.5, "Fixed Emphasis, decode only, 10 kHz, expected " + num (want, 2) + " dB", got, "dB");
         Settings both; both.comp = 1;
         for (double hz : { 1000.0, 5000.0, 10000.0 })
@@ -1314,7 +1320,7 @@ static void testCompander()
             check (std::abs (g) <= 0.2, "Fixed Emphasis, both sides undo each other, " + num (hz) + " Hz", g, "dB");
         }
         Settings half; half.comp = 1; half.enc = 50.0f; half.dec = 0.0f;
-        const double gh = against (half, 10000.0, -36.0), wh = shelfDb (10000.0, 5.0, sr);
+        const double gh = against (half, 10000.0, -36.0), wh = shelfDb (10000.0, 5.0);
         check (std::abs (gh - wh) <= 0.7, "Encode Amount 50, 10 kHz, expected " + num (wh, 2) + " dB", gh, "dB");
         Settings dh; dh.comp = 1; dh.enc = 0.0f; dh.dec = 50.0f;
         const double gd = against (dh, 10000.0, -36.0);
@@ -1469,6 +1475,7 @@ static tapecolor::display::Settings modelOf (const Settings& s, double sr)
     m.device = s.dev;
     m.deviceMix = s.devMix * 0.01;
     m.sampleRate = sr;
+    m.oldResponse = s.old;
     return m;
 }
 
@@ -1494,28 +1501,55 @@ static void testWindowPictureIsTrue()
     for (const auto& c : cases)
     {
         const auto model = modelOf (c.s, sr);
-        const double measuredRef = toneGainDb (c.s, 1000.0, sr), drawnRef = tapecolor::display::responseDb (model, 1000.0);
-        double worst = 0.0, worstHz = 0.0;
+        // Each tone is read on its own: the power within 150 Hz of it (3 percent higher up), with the hiss in that same band, from a
+        // silent render, taken off. The first form of this test read plain RMS and failed by 8 dB at 10 kHz at Age 100, which was the hiss.
+        // It had then been changed to take the whole hiss off and skip every tone within 6 dB of it. Read in a band, no point is skipped
+        // for hiss: every point on the chart has to be readable (3 dB over the hiss in its band) and within 1 dB of the line.
         constexpr double toneDb = -36.0;
-        const double floorDb = silenceRmsDb (c.s, sr);
-        // Age brings hiss, and RMS counts it. The floor's power comes off, and a tone within 6 dB of the floor cannot be read at all.
-        // The first run failed on this: the 8 dB was the hiss at 10 kHz at Age 100, not the line. The 1 dB limit stays.
-        const auto toneOnly = [&] (double gainDb)
+        constexpr int size = 8192;
+        const auto bandPower = [&] (const juce::AudioBuffer<float>& out, int from, double hz)
         {
-            if (floorDb < -200.0)
-                return gainDb;
-            const double power = std::pow (10.0, (gainDb + toneDb) * 0.1) - std::pow (10.0, floorDb * 0.1);
-            return 10.0 * std::log10 (std::max (power, 1.0e-20)) - toneDb;
+            const double half = std::max (150.0, 0.03 * hz);
+            std::vector<std::complex<double>> a ((size_t) size);
+            double sum = 0; int frames = 0;
+            for (int start = from; start + size <= out.getNumSamples(); start += size / 2)
+            {
+                for (int i = 0; i < size; ++i)
+                    a[(size_t) i] = (double) out.getSample (0, start + i) * (0.5 - 0.5 * std::cos (juce::MathConstants<double>::twoPi * i / size));
+                fft (a);
+                for (int k = std::max (1, (int) std::ceil ((hz - half) * size / sr)); k <= (int) std::floor ((hz + half) * size / sr) && k < size / 2; ++k)
+                    sum += std::norm (a[(size_t) k]);
+                ++frames;
+            }
+            return 2.0 * sum / ((double) size * size * 0.375) / std::max (1, frames); // mean square of what is in the band
         };
-        const double referenceOnly = toneOnly (measuredRef);
+        juce::AudioBuffer<float> silent;
+        {
+            auto p = makeProc (c.s, sr);
+            std::vector<float> none ((size_t) (sr * 3.0), 0.0f);
+            silent = render (*p, none, 512);
+        }
+        int unreadable = 0;
+        const auto toneGain = [&] (double hz)
+        {
+            auto p = makeProc (c.s, sr);
+            const int n = (int) (sr * (hz < 400.0 ? 2.0 : 0.6));
+            std::vector<float> in ((size_t) n);
+            sine (in.data(), n, hz, sr, fromDb (toneDb));
+            auto out = render (*p, in, 512);
+            const double all = bandPower (out, n - size - size / 2, hz), floor = bandPower (silent, (int) sr, hz);
+            if (all < 2.0 * floor)
+                ++unreadable;
+            return 10.0 * std::log10 (std::max (all - floor, 1.0e-20)) - (toneDb - 3.01);
+        };
+        const double measuredRef = toneGain (1000.0), drawnRef = tapecolor::display::responseDb (model, 1000.0);
+        double worst = 0.0, worstHz = 0.0;
         for (double hz : { 40.0, 70.0, 110.0, 200.0, 400.0, 2000.0, 4000.0, 7000.0, 10000.0, 14000.0, 18000.0 })
         {
             const double drawn = tapecolor::display::responseDb (model, hz) - drawnRef;
             if (drawn < -26.0) // off the bottom of the chart
                 continue;
-            if (referenceOnly + drawn + toneDb < floorDb + 6.0)
-                continue;
-            const double measured = toneOnly (toneGainDb (c.s, hz, sr)) - referenceOnly;
+            const double measured = toneGain (hz) - measuredRef;
             if (std::abs (drawn - measured) > std::abs (worst))
             {
                 worst = drawn - measured;
@@ -1523,6 +1557,7 @@ static void testWindowPictureIsTrue()
             }
         }
         check (std::abs (worst) <= 1.0, std::string ("window: drawn tone against real tones, ") + c.name + ", worst at " + num (worstHz) + " Hz", worst, "dB");
+        check (unreadable == 0, std::string ("window: every point of the line could be read over the hiss, ") + c.name + ", points that could not", (double) unreadable);
     }
 
     // The Top end number against the bandwidth measured in testAge. Limit: within 8 percent.
@@ -1841,6 +1876,434 @@ static void testWindowLeavesAudioAlone()
     }
 }
 
+
+// ---- The wet path's delay, to a fraction of a sample (added 2026-11-11, limits written before the fix) ----
+// The real vocal baseline measured 356 samples where 355 are reported. Logic lines tracks up by the reported number, so the wet signal has to
+// come out exactly that much later, not within a sample of it.
+// Limits: with the tone controls flat (the default: 15 ips, Age 0, no cuts, no Device) the wet signal is the reported latency late, read
+// from the phase between input and output from 300 Hz to 8 kHz, at 44.1, 48, 88.2 and 96 kHz:
+//   a low level impulse (the tape path is linear down there, and latency is a small signal number): within 1.04 microseconds, which is
+//   0.05 sample at 48 kHz; in each third of the band (300 Hz to 1 kHz, 1 to 3 kHz, 3 to 8 kHz) within 2.08 microseconds (0.1 sample);
+//   noise at -20 dBFS, white up to 20 kHz (the same signal at every rate): within 2.08 microseconds, the whole band and each third.
+// What Drive and each tone control add is written out, not limited: the tone controls are minimum phase filters, and the delay below the
+// corner of such a filter is part of how it sounds.
+// The first draft of these limits, run once on 0.3.1 before any fix, was in samples (0.05 for both signals at every rate), used plain white
+// noise, and asked Drive 0 and Drive 30 to stay within 0.05 sample of the default on it. 0.3.1 read 0.52, 0.56, 1.02 and 1.11 samples late
+// at the four rates: the same 11.7 microseconds everywhere, so the limits are now in time. On plain white noise Drive 30 moved the reading
+// by 0.09 sample at 48 kHz and 0.34 at 96 kHz, and with the fix in one third of the band still read 3.9 microseconds at 88.2 and 96 kHz.
+// The reason is the test signal: at those rates half of white noise's power sits above 24 kHz, where no microphone signal has any, and the
+// record boost pushes that part hardest into the curve. The noise is now white up to 20 kHz, the same signal at every rate, and with it
+// Drive 0 to 30 moves the reading by 0.16 microsecond at most. Drive is written out rather than limited.
+namespace
+{
+    struct FineDelay { double whole = 0, low = 0, mid = 0, high = 0, top = 0; };
+
+    // Delay of out behind in, minus lat, in samples: a line through the phase of the cross spectrum, weighted by its size.
+    FineDelay fineDelay (const std::vector<float>& in, const juce::AudioBuffer<float>& out, int lat, double sr, int channel = 0)
+    {
+        constexpr int n = 4096;
+        std::vector<std::complex<double>> x ((size_t) n), y ((size_t) n), cross ((size_t) n / 2 + 1);
+        const float* o = out.getReadPointer (channel);
+        const int total = juce::jmin ((int) in.size(), out.getNumSamples() - lat);
+        for (int start = 0; start + n <= total; start += n / 2)
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                const double w = 0.5 - 0.5 * std::cos (juce::MathConstants<double>::twoPi * i / n);
+                x[(size_t) i] = w * (double) in[(size_t) (start + i)];
+                y[(size_t) i] = w * (double) o[start + i + lat];
+            }
+            fft (x); fft (y);
+            for (size_t k = 0; k < cross.size(); ++k) cross[k] += std::conj (x[k]) * y[k];
+        }
+        const auto slope = [&] (double lo, double hi)
+        {
+            double numer = 0, den = 0;
+            for (int k = (int) std::ceil (lo * n / sr); k <= (int) std::floor (hi * n / sr); ++k)
+            {
+                const double w = std::abs (cross[(size_t) k]), ph = std::arg (cross[(size_t) k]), a = juce::MathConstants<double>::twoPi * k / n;
+                numer += w * a * ph; den += w * a * a;
+            }
+            return den > 0 ? -numer / den : 0.0;
+        };
+        return { slope (300.0, 8000.0), slope (300.0, 1000.0), slope (1000.0, 3000.0), slope (3000.0, 8000.0), slope (8000.0, 16000.0) };
+    }
+
+    Settings shippedDefault()
+    {
+        Settings s; s.drive = 12.0f; s.autoLevel = true;
+        return s;
+    }
+
+    FineDelay noiseDelay (const Settings& s, double sr, double levelDb, int channel = 0)
+    {
+        auto p = makeProc (s, sr);
+        const int n = (int) (sr * 3.0);
+        std::vector<float> in ((size_t) n);
+        noise (in.data(), n, fromDb (levelDb));
+        // The same noise at every rate: white up to 20 kHz (four second order low passes). At 88.2 and 96 kHz plain white noise has half
+        // its power above 24 kHz, where no microphone signal has any, and the record boost drives exactly that part hardest into the curve.
+        {
+            const double w = juce::MathConstants<double>::twoPi * 20000.0 / sr, cs = std::cos (w), alpha = std::sin (w) / (2.0 * 0.70710678), a0 = 1.0 + alpha;
+            const double b0 = (1.0 - cs) * 0.5 / a0, b1 = (1.0 - cs) / a0, a1 = -2.0 * cs / a0, a2 = (1.0 - alpha) / a0;
+            for (int pass = 0; pass < 4; ++pass)
+            {
+                double z1 = 0, z2 = 0;
+                for (auto& v : in)
+                {
+                    const double y = b0 * v + z1;
+                    z1 = b1 * v - a1 * y + z2;
+                    z2 = b0 * v - a2 * y;
+                    v = (float) y;
+                }
+            }
+        }
+        auto out = render (*p, in, 512);
+        // leave the first second out: Auto Level and the smoothers settle
+        std::vector<float> late (in.begin() + (int) sr, in.end());
+        juce::AudioBuffer<float> outLate (out.getNumChannels(), n - (int) sr);
+        for (int ch = 0; ch < out.getNumChannels(); ++ch) outLate.copyFrom (ch, 0, out, ch, (int) sr, n - (int) sr);
+        return fineDelay (late, outLate, p->getLatencySamples(), sr, channel);
+    }
+}
+
+static void testTrueDelay()
+{
+    for (double sr : { 44100.0, 48000.0, 88200.0, 96000.0 })
+    {
+        const auto tag = " at " + num (sr / 1000.0, 1) + " kHz";
+        // A low level impulse: the tape path is linear down there
+        {
+            auto p = makeProc (shippedDefault(), sr);
+            const int n = 16384;
+            std::vector<float> in ((size_t) n, 0.0f);
+            in[6000] = 0.001f;
+            auto out = render (*p, in, 512);
+            std::vector<float> piece (in.begin() + 4096, in.begin() + 8192);
+            juce::AudioBuffer<float> outPiece (1, 4096 + p->getLatencySamples());
+            outPiece.copyFrom (0, 0, out, 0, 4096, 4096 + p->getLatencySamples());
+            // no window for an impulse: it sits in the middle of the piece and its answer is short
+            constexpr int m = 4096;
+            std::vector<std::complex<double>> x ((size_t) m), y ((size_t) m);
+            for (int i = 0; i < m; ++i) { x[(size_t) i] = (double) piece[(size_t) i]; y[(size_t) i] = (double) outPiece.getSample (0, i + p->getLatencySamples()); }
+            fft (x); fft (y);
+            const auto slope = [&] (double lo, double hi)
+            {
+                double numer = 0, den = 0;
+                for (int k = (int) std::ceil (lo * m / sr); k <= (int) std::floor (hi * m / sr); ++k)
+                {
+                    const auto c = std::conj (x[(size_t) k]) * y[(size_t) k];
+                    const double w = std::abs (c), ph = std::arg (c), a = juce::MathConstants<double>::twoPi * k / m;
+                    numer += w * a * ph; den += w * a * a;
+                }
+                return -numer / den;
+            };
+            const double us = 1.0e6 / sr; // microseconds in a sample
+            const double whole = slope (300.0, 8000.0);
+            check (std::abs (whole) * us <= 1.04, "impulse: wet delay minus reported latency, 300 Hz to 8 kHz" + tag, whole * us, "microseconds");
+            info ("the same in samples" + tag, whole, "samples");
+            const double worstThird = std::max ({ std::abs (slope (300.0, 1000.0)), std::abs (slope (1000.0, 3000.0)), std::abs (slope (3000.0, 8000.0)) });
+            check (worstThird * us <= 2.08, "impulse: the same in each third of the band, worst" + tag, worstThird * us, "microseconds");
+            info ("impulse: wet delay minus reported, 8 to 16 kHz" + tag, slope (8000.0, 16000.0) * us, "microseconds");
+            // The whole sample the wet impulse lands on is the reported latency
+            int at = 0; double best = 0;
+            for (int i = 0; i < n; ++i) if (std::abs (out.getSample (0, i)) > best) { best = std::abs (out.getSample (0, i)); at = i; }
+            check (at - 6000 == p->getLatencySamples(), "impulse: the wet peak is on the reported sample, offset" + tag, (double) (at - 6000 - p->getLatencySamples()), "samples");
+        }
+        // Broadband noise at a level a voice reaches
+        {
+            const double us = 1.0e6 / sr;
+            const auto d = noiseDelay (shippedDefault(), sr, -20.0);
+            check (std::abs (d.whole) * us <= 2.08, "noise at -20 dBFS: wet delay minus reported latency, 300 Hz to 8 kHz" + tag, d.whole * us, "microseconds");
+            info ("the same in samples" + tag, d.whole, "samples");
+            const double worstThird = std::max ({ std::abs (d.low), std::abs (d.mid), std::abs (d.high) });
+            check (worstThird * us <= 2.08, "noise: the same in each third of the band, worst" + tag, worstThird * us, "microseconds");
+            Settings clean = shippedDefault(); clean.drive = 0.0f;
+            Settings hot = shippedDefault(); hot.drive = 30.0f;
+            info ("noise at -20 dBFS, Drive 0 against the default" + tag, (noiseDelay (clean, sr, -20.0).whole - d.whole) * us, "microseconds");
+            info ("noise at -20 dBFS, Drive 30 against the default" + tag, (noiseDelay (hot, sr, -20.0).whole - d.whole) * us, "microseconds");
+            info ("the right channel, noise" + tag, noiseDelay (shippedDefault(), sr, -20.0, 1).whole * us, "microseconds");
+        }
+    }
+    // What each tone control adds at 48 kHz, 1 to 3 kHz, noise at -30 dBFS. Not limited.
+    {
+        const double sr = 48000.0;
+        const double base = noiseDelay (shippedDefault(), sr, -30.0).mid;
+        const auto tell = [&] (const std::string& what, const Settings& s)
+        {
+            const auto d = noiseDelay (s, sr, -30.0);
+            info ("delay added, 300 Hz to 1 kHz / 1 to 3 kHz / 3 to 8 kHz: " + what + " " + num (d.low - base, 2) + " / " + num (d.mid - base, 2) + " /", d.high - base, "samples");
+        };
+        { Settings s = shippedDefault(); s.speed = 0; tell ("3.75 ips", s); }
+        { Settings s = shippedDefault(); s.speed = 1; tell ("7.5 ips", s); }
+        { Settings s = shippedDefault(); s.speed = 3; tell ("30 ips", s); }
+        { Settings s = shippedDefault(); s.bias = 100.0f; tell ("Bias +100", s); }
+        { Settings s = shippedDefault(); s.bias = -100.0f; tell ("Bias -100", s); }
+        { Settings s = shippedDefault(); s.hard = 100.0f; tell ("Hardness 100", s); }
+        { Settings s = shippedDefault(); s.age = 25.0f; s.autoLevel = true; tell ("Age 25 (the head moves too)", s); }
+        { Settings s = shippedDefault(); s.space = 50.0f; tell ("Head Spacing 50", s); }
+        { Settings s = shippedDefault(); s.space = 100.0f; tell ("Head Spacing 100", s); }
+        { Settings s = shippedDefault(); s.comp = 1; tell ("Compander Fixed, both sides", s); }
+        { Settings s = shippedDefault(); s.comp = 2; s.enc = 60.0f; s.dec = 0.0f; tell ("Dynamic Soft, encode 60 only", s); }
+        { Settings s = shippedDefault(); s.low = 100.0f; tell ("Low Cut 100 Hz", s); }
+        { Settings s = shippedDefault(); s.high = 12000.0f; tell ("High Cut 12 kHz", s); }
+        { Settings s = shippedDefault(); s.high = 5000.0f; tell ("High Cut 5 kHz", s); }
+        for (int d = 1; d <= kNumDevices; ++d) { Settings s = shippedDefault(); s.dev = d; tell ("Device " + num (d), s); }
+        { Settings s = shippedDefault(); s.tex = 100.0f; tell ("Texture 100", s); }
+        { Settings s = shippedDefault(); s.mix = 50.0f; tell ("Mix 50", s); }
+    }
+}
+
+// ---- A dropout is a dip, never a click (added 2026-11-11, limit written before the fix) ----
+// The real vocal check found the gain between a render with dropouts and the same render without jumping by 13 percent from one sample to the
+// next. Limit: at Depth 100 that gain never moves more than 1 percent between two samples, at 2 and at 10 dropouts a second, over 60 s.
+// (The steepest part of an honest dropout, 24 dB with an 8 ms fall, moves 0.72 percent a sample.)
+static void testDropoutsNeverClick()
+{
+    const double sr = 48000.0;
+    for (float rate : { 2.0f, 10.0f })
+    {
+        const int n = (int) (sr * 60.0);
+        std::vector<float> in ((size_t) n, 0.25f); // a steady level, so every sample reads the gain
+        Settings with; with.dropD = 100.0f; with.dropR = rate;
+        Settings without;
+        // The DC blocker would take a steady level away, so use a slow square the blocker passes: 200 Hz
+        for (int i = 0; i < n; ++i) in[(size_t) i] = ((i / 120) % 2 == 0) ? 0.05f : -0.05f;
+        auto a = makeProc (with, sr), b = makeProc (without, sr);
+        auto outA = render (*a, in, 512), outB = render (*b, in, 512);
+        double worst = 0, last = 0; bool have = false;
+        for (int i = (int) sr; i < n; ++i)
+        {
+            const double ref = outB.getSample (0, i);
+            if (std::abs (ref) < 0.02) { have = false; continue; }
+            const double g = outA.getSample (0, i) / ref;
+            if (have) worst = std::max (worst, std::abs (g - last));
+            last = g; have = true;
+        }
+        check (worst <= 0.01, "Dropout Depth 100 at " + num (rate) + " per second: largest move of the gain between two samples", worst);
+    }
+}
+
+
+// ---- Auto Level leaves the tone alone (added 2026-11-11, limit written before the fix) ----
+// README: Auto Level only learns the saturation loss, so it does not undo the tone controls. On the real voice it did: at Age 100 the S
+// frames came out 2.6 dB hotter against the voice with Auto Level on than off. Its detector compared the dry signal with the tape after
+// the top end losses, so on sound that is mostly top end it turned the level back up.
+// Limit: what Age 100, 3.75 ips and Head Spacing 100 take off a tone at 3, 6 and 10 kHz is the same with Auto Level on as off, within
+// 0.5 dB, at Drive 12 and a level where the saturation itself costs under 0.1 dB.
+// The first form of this test used tones at -30 dBFS read by plain RMS (autoLevelAgainstTone below, still used to hold the old response to
+// 0.3.1). On 0.3.1 it read up to 14.2 dB. With the fix in every case passed but Age 100 at 10 kHz, which read 1.67 dB, and that was the
+// test: Age 100 brings hiss at -50 dBFS, which plain RMS counts next to a tone that Age has taken down to -44 dBFS (1.0 dB), and Age takes
+// 6 dB of headroom while the record boost adds 9 dB at 10 kHz, so that tone was not under 0.1 dB of saturation at all (0.3 dB, which Auto
+// Level is meant to make up). The tones are now at -40 dBFS and each is read in its own band with the hiss in that band taken off.
+// The 0.5 dB limit is the one written first.
+static double toneAloneGainDb (const Settings& s, double hz, double sr, double levelDb)
+{
+    constexpr int size = 8192;
+    const auto bandPower = [&] (const juce::AudioBuffer<float>& out, int from)
+    {
+        const double half = std::max (150.0, 0.03 * hz);
+        std::vector<std::complex<double>> a ((size_t) size);
+        double sum = 0; int frames = 0;
+        for (int start = from; start + size <= out.getNumSamples(); start += size / 2)
+        {
+            for (int i = 0; i < size; ++i)
+                a[(size_t) i] = (double) out.getSample (0, start + i) * (0.5 - 0.5 * std::cos (juce::MathConstants<double>::twoPi * i / size));
+            fft (a);
+            for (int k = std::max (1, (int) std::ceil ((hz - half) * size / sr)); k <= (int) std::floor ((hz + half) * size / sr) && k < size / 2; ++k)
+                sum += std::norm (a[(size_t) k]);
+            ++frames;
+        }
+        return 2.0 * sum / ((double) size * size * 0.375) / std::max (1, frames);
+    };
+    auto quiet = makeProc (s, sr);
+    std::vector<float> none ((size_t) (sr * 3.0), 0.0f);
+    const auto silent = render (*quiet, none, 512);
+    auto p = makeProc (s, sr);
+    const int n = (int) (sr * 2.0);
+    std::vector<float> in ((size_t) n);
+    sine (in.data(), n, hz, sr, fromDb (levelDb));
+    const auto out = render (*p, in, 512);
+    return 10.0 * std::log10 (std::max (bandPower (out, n / 2) - bandPower (silent, (int) sr), 1.0e-20)) - (levelDb - 3.01);
+}
+
+static double autoLevelAgainstTone (const Settings& tone, double hz, bool old = false)
+{
+    const double sr = 48000.0;
+    const auto loss = [&] (bool autoOn)
+    {
+        Settings with = tone; with.drive = 12.0f; with.autoLevel = autoOn; with.old = old;
+        Settings flat; flat.drive = 12.0f; flat.autoLevel = autoOn; flat.old = old;
+        return toneGainDb (with, hz, sr, -30.0) - toneGainDb (flat, hz, sr, -30.0);
+    };
+    return loss (true) - loss (false);
+}
+
+static void testAutoLevelLeavesToneAlone()
+{
+    struct Case { const char* name; Settings s; };
+    std::vector<Case> cases;
+    { Settings s; s.age = 100.0f; cases.push_back ({ "Age 100", s }); }
+    { Settings s; s.speed = 0; cases.push_back ({ "3.75 ips", s }); }
+    { Settings s; s.space = 100.0f; cases.push_back ({ "Head Spacing 100", s }); }
+    { Settings s; s.age = 50.0f; s.speed = 1; s.space = 30.0f; cases.push_back ({ "Age 50, 7.5 ips, Head Spacing 30", s }); }
+    for (const auto& c : cases)
+        for (double hz : { 3000.0, 6000.0, 10000.0 })
+        {
+            const auto loss = [&] (bool autoOn, bool old)
+            {
+                Settings with = c.s; with.drive = 12.0f; with.autoLevel = autoOn; with.old = old;
+                Settings flat; flat.drive = 12.0f; flat.autoLevel = autoOn; flat.old = old;
+                return toneAloneGainDb (with, hz, 48000.0, -40.0) - toneAloneGainDb (flat, hz, 48000.0, -40.0);
+            };
+            const double d = loss (true, false) - loss (false, false);
+            check (std::abs (d) <= 0.5, std::string ("Auto Level on against off, what ") + c.name + " takes off " + num (hz) + " Hz", d, "dB");
+            // The same reading still finds the fault where it is left in: the old response at the top of the band
+            if (hz == 10000.0)
+            {
+                const double was = loss (true, true) - loss (false, true);
+                check (was > 3.0, std::string ("the same reading on the old response, ") + c.name + ", 10 kHz (the fault is still seen)", was, "dB");
+            }
+        }
+}
+
+
+// ---- The old response (added in 0.4.0) ----
+// 0.4.0 lines the wet path up with the dry, makes High Cut and the compander follow their analog shapes, and stops Auto Level from turning
+// the top end back up. Sessions and presets made with 0.3.1 that use any of that keep 0.3.1's response so they sound as they did. It is
+// not a control.
+// Limits: with the old response on, the figures 0.3.1 itself printed for those three things come back (tests/results.txt of 0.3.1):
+// Mix 50 on slow aged tape dips 7.873 dB within 0.1; Mix 50 against the quieter path is -0.823 dB within 0.05; High Cut 10 kHz is 27.486 dB
+// down an octave above within 0.05; the Fixed shelf boosts 10 kHz by 9.527 dB within 0.02. At Mix 100 the old response leaves the wet path on
+// the reported latency within 1.04 microseconds. A session saved by 0.3.1 gets the old response only if it uses one of those three things,
+// a session saved now keeps what it had, and each factory preset sets its own. Switching between the two while playing does not click.
+static void testOldResponse()
+{
+    const double sr = 48000.0;
+    {
+        Settings base; base.old = true; base.speed = 0; base.age = 40.0f; base.bias = 50.0f; base.wow = 40.0f; base.flutter = 40.0f;
+        double worst = 100.0;
+        for (double hz = 30.0; hz < 16000.0; hz *= 1.06)
+        {
+            Settings w = base; w.mix = 100.0f;
+            Settings h = base; h.mix = 50.0f;
+            worst = std::min (worst, toneGainDb (h, hz, sr) - (20.0 * std::log10 (0.5 * (fromDb (toneGainDb (w, hz, sr)) + 1.0))));
+        }
+        check (std::abs (worst + 7.873) <= 0.1, "old response: Mix 50, slow tape and Age, the dip 0.3.1 had (-7.873 dB)", worst, "dB");
+    }
+    {
+        Settings base; base.old = true; base.speed = 3;
+        double worst = 100.0;
+        for (double hz = 30.0; hz < 16000.0; hz *= 1.25)
+        {
+            Settings w = base; w.mix = 100.0f;
+            Settings h = base; h.mix = 50.0f;
+            Settings d = base; d.mix = 0.0f;
+            worst = std::min (worst, toneGainDb (h, hz, sr) - std::min (toneGainDb (w, hz, sr), toneGainDb (d, hz, sr)));
+        }
+        check (std::abs (worst + 0.823) <= 0.05, "old response: Mix 50 against the quieter path, as 0.3.1 (-0.823 dB)", worst, "dB");
+    }
+    {
+        Settings off; off.old = true; off.speed = 3;
+        Settings on = off; on.high = 10000.0f;
+        const double oct = toneGainDb (on, 20000.0, sr) - toneGainDb (off, 20000.0, sr);
+        check (std::abs (oct + 27.486) <= 0.05, "old response: High Cut 10 kHz, octave above, as 0.3.1 (-27.486 dB)", oct, "dB");
+    }
+    {
+        Settings s; s.old = true; s.comp = 1; s.dec = 0.0f;
+        Settings off = s; off.comp = 0;
+        const double got = toneGainDb (s, 10000.0, sr, -36.0) - toneGainDb (off, 10000.0, sr, -36.0);
+        check (std::abs (got - 9.527) <= 0.02, "old response: Fixed Emphasis, encode only, 10 kHz, as 0.3.1 (9.527 dB)", got, "dB");
+    }
+    // Auto Level as 0.3.1 had it: it turned the top end back up. The figures are 0.3.1's, read with this test before the fix.
+    {
+        Settings age; age.age = 100.0f;
+        Settings slow; slow.speed = 0;
+        Settings space; space.space = 100.0f;
+        const double a = autoLevelAgainstTone (age, 6000.0, true), b = autoLevelAgainstTone (slow, 10000.0, true), c = autoLevelAgainstTone (space, 10000.0, true);
+        check (std::abs (a - 6.368) <= 0.05, "old response: Auto Level against Age 100 at 6 kHz, as 0.3.1 (6.368 dB)", a, "dB");
+        check (std::abs (b - 5.359) <= 0.05, "old response: Auto Level against 3.75 ips at 10 kHz, as 0.3.1 (5.359 dB)", b, "dB");
+        check (std::abs (c - 11.977) <= 0.05, "old response: Auto Level against Head Spacing 100 at 10 kHz, as 0.3.1 (11.977 dB)", c, "dB");
+    }
+    {
+        Settings s = shippedDefault(); s.old = true;
+        const double late = noiseDelay (s, sr, -20.0).whole * 1.0e6 / sr;
+        check (std::abs (late) <= 1.04, "old response at Mix 100: the wet path stays on the reported latency", late, "microseconds");
+    }
+    // Which response a state gets
+    {
+        const auto stateOf = [] (PluginProcessor& p) { juce::MemoryBlock m; p.getStateInformation (m); return m; };
+        const auto withoutResponse = [&] (PluginProcessor& p)
+        {
+            juce::MemoryBlock m = stateOf (p);
+            auto xml = juce::AudioProcessor::getXmlFromBinary (m.getData(), (int) m.getSize()); // the settings alone, as 0.3.1 wrote them
+            juce::MemoryBlock old;
+            juce::AudioProcessor::copyXmlToBinary (*xml, old);
+            return old;
+        };
+        int wrong = 0;
+        {
+            PluginProcessor a, b;   // a 0.3.1 session at the default: nothing to keep
+            auto m = withoutResponse (a);
+            b.oldResponse.store (true);
+            b.setStateInformation (m.getData(), (int) m.getSize());
+            wrong += b.oldResponse.load() ? 1 : 0;
+        }
+        for (const char* id : { "mix", "highcut", "compander", "speed", "age", "spacing" })
+        {
+            PluginProcessor a, b;   // a 0.3.1 session that uses one of the things the two responses treat differently
+            auto* prm = a.apvts.getParameter (id);
+            const std::string which = id;
+            prm->setValueNotifyingHost (which == "compander" || which == "age" || which == "spacing" ? 1.0f : (which == "speed" ? 0.0f : 0.5f));
+            auto m = withoutResponse (a);
+            b.setStateInformation (m.getData(), (int) m.getSize());
+            wrong += b.oldResponse.load() ? 0 : 1;
+        }
+        {
+            PluginProcessor a, b;   // saved now with Mix 50 and the lined up response: stays lined up
+            a.apvts.getParameter ("mix")->setValueNotifyingHost (0.5f);
+            auto m = stateOf (a);
+            b.oldResponse.store (true);
+            b.setStateInformation (m.getData(), (int) m.getSize());
+            wrong += b.oldResponse.load() ? 1 : 0;
+        }
+        {
+            PluginProcessor a, b;   // saved now with the old response: stays old
+            a.oldResponse.store (true);
+            auto m = stateOf (a);
+            b.setStateInformation (m.getData(), (int) m.getSize());
+            wrong += b.oldResponse.load() ? 0 : 1;
+        }
+        check (wrong == 0, "old response: a saved session gets the response it was made with, wrong", (double) wrong);
+
+        PluginProcessor p;
+        int presetsWrong = 0;
+        for (int i = 0; i < p.getNumPrograms(); ++i)
+        {
+            p.setCurrentProgram (i);
+            const auto name = p.getProgramName (i);
+            const bool wantOld = name == "Parallel Body" || name == "Airy Encode" || name == "Worn Cassette"
+                              || name == "Slow Reel Haze" || name == "Starved Grit" || name == "Old Radio Voice";
+            if (p.oldResponse.load() != wantOld || p.programMatchingSettings() != i)
+                ++presetsWrong;
+        }
+        check (presetsWrong == 0, "old response: the six presets that use what changed keep it, the other five do not, wrong", (double) presetsWrong);
+    }
+    // Switching while playing
+    {
+        Settings s; s.mix = 50.0f; s.high = 8000.0f; s.comp = 1;
+        auto p = makeProc (s, sr, 2, 256);
+        std::vector<float> in ((size_t) sr);
+        sine (in.data(), (int) sr, 220.0, sr, 0.125);
+        render (*p, in, 256);
+        const auto base = render (*p, in, 256);
+        const auto out = render (*p, in, 256, nullptr, [&] (int idx) { if (idx % 37 == 18) p->oldResponse.store (idx % 74 < 37); });
+        const double still = maxJump (base.getReadPointer (0), base.getNumSamples()), moving = maxJump (out.getReadPointer (0), out.getNumSamples());
+        check (moving <= still * 1.5 + 1.0e-4, "old response: no click when it switches, biggest step against " + num (still, 4), moving);
+    }
+}
+
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -1853,6 +2316,42 @@ int main (int argc, char** argv)
         if (only == "compander") testCompander();
         if (only == "device") testDevice();
         if (only == "behaviour") testOutputAndBehaviour();
+        if (only == "delay") testTrueDelay();
+        if (only == "lr")
+        {
+            const double sr = 48000.0; const int n = (int) sr;
+            std::vector<float> in ((size_t) n);
+            sine (in.data(), n, 1000.0, sr, fromDb (-30.0));
+            const auto tell = [&] (const char* what, const Settings& st, int block)
+            {
+                auto p = makeProc (st, sr, 2, block);
+                auto out = render (*p, in, block);
+                int count = 0, first = -1; double diff = 0;
+                for (int i = 0; i < n; ++i)
+                    if (out.getSample (0, i) != out.getSample (1, i)) { ++count; if (first < 0) first = i; diff = std::max (diff, (double) std::abs (out.getSample (0, i) - out.getSample (1, i))); }
+                std::printf ("%-28s block %4d: %6d samples differ, first %6d, biggest %.3g\n", what, block, count, first, diff);
+            };
+            Settings d; tell ("test default (drive 0)", d, 512); tell ("test default (drive 0)", d, 32); tell ("test default (drive 0)", d, 64);
+            { Settings x; x.mix = 0.0f; tell ("mix 0", x, 512); }
+            { Settings x; x.bypass = true; tell ("bypass", x, 512); }
+            { Settings x; x.drive = 12.0f; x.autoLevel = true; tell ("shipped default", x, 512); }
+            { Settings x; x.speed = 3; tell ("30 ips", x, 512); }
+            { Settings x; x.high = 5000.0f; x.low = 100.0f; tell ("cuts on", x, 512); }
+        }
+        if (only == "oslat")
+            for (size_t stages : { (size_t) 4, (size_t) 3, (size_t) 2 })
+            {
+                FastOversampler raw (2, stages, false), whole (2, stages, true);
+                raw.initProcessing (32); whole.initProcessing (32);
+                std::printf ("stages %d: filters alone %.6f samples, made whole %.6f\n", (int) stages, (double) raw.getLatencyInSamples(), (double) whole.getLatencyInSamples());
+            }
+        if (only == "dropclick") testDropoutsNeverClick();
+        if (only == "old") testOldResponse();
+        if (only == "autotone") testAutoLevelLeavesToneAlone();
+        if (only == "cuts") testCuts();
+        if (only == "picture") testWindowPictureIsTrue();
+        if (only == "latency") testLatency();
+        if (only == "mix") testMix();
         if (only == "window")
         {
             testWindowPictureIsTrue();
@@ -1873,14 +2372,18 @@ int main (int argc, char** argv)
     testCuts();
     testAliasing();
     testAutoLevel();
+    testAutoLevelLeavesToneAlone();
     testMix();
     testLatency();
+    testTrueDelay();
     testHardness();
     testSpacing();
     testAzimuth();
     testRandom();
     testStereoDrift();
     testDropouts();
+    testDropoutsNeverClick();
+    testOldResponse();
     testTexture();
     testCompander();
     testDevice();

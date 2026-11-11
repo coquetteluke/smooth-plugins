@@ -465,6 +465,7 @@ void TapeColorEditor::updateSettings()
     s.lowCut = (double) lastValues[9];
     s.highCut = (double) lastValues[10];
     s.mix = (double) lastValues[11] * 0.01;
+    s.oldResponse = processorRef.oldResponse.load (std::memory_order_relaxed);
     s.compander = companderMode;
     s.encode = encodeAmount;
     s.decode = decodeAmount;

@@ -49,12 +49,29 @@ Noise reduction:
 
 Finish:
 
-- **Low Cut** (Off, then 20 to 800 Hz, default Off) and **High Cut** (1 to 20 kHz, then Off, default Off): 12 dB per octave filters.
+- **Low Cut** (Off, then 20 to 800 Hz, default Off) and **High Cut** (1 to 20 kHz, then Off, default Off): 12 dB per octave filters. High Cut holds that slope all the way to the top of the band.
 - **Device** (Off, Small Radio, Telephone, Small Speaker, Dictation Machine, Old Console, default Off) and **Device Mix** (0 to 100 %, default 100): a short filter with the shape of small old equipment. These shapes are my own design, not captures of real hardware.
-- **Mix** (0 to 100 %, default 100): blends dry and wet before the moving read head, and the depth of the head movement follows Mix. Wet and dry share one read head, so wow and flutter cannot comb against the dry signal. Mix 0 is the input, delayed.
+- **Mix** (0 to 100 %, default 100): blends dry and wet before the moving read head, and the depth of the head movement follows Mix. Wet and dry share one read head, so wow and flutter cannot comb against the dry signal. The tape comes out on the same sample as the dry signal, so a blend does not lose top end to a timing gap. Mix 0 is the input, delayed.
 - **Output** (-24 to +24 dB, default 0).
 - **Auto Level** (on or off, default on): holds the level steady across Drive. It only learns the saturation loss, so it does not undo the tone controls or the compander.
 - **Bypass**: fades to the delayed dry signal. Latency stays the same.
+
+## The old response
+
+0.4.0 changed four things that had been wrong, and each of them changes the sound of a setting:
+
+- The tape now comes out exactly on the reported latency. Up to 0.3.1 it came out 11.7 microseconds after it (0.56 sample at 48 kHz), so any Mix under 100 lost top end where the two paths met out of time.
+- High Cut now falls 12 dB per octave all the way up. The old one fell much faster near the top of the band (27 dB in the octave above 10 kHz at 48 kHz).
+- The compander's shelves now follow the analog shape. The old ones ran up to 0.5 dB over it at 10 kHz for a 10 dB boost, and 1.3 dB for 20 dB.
+- Auto Level now leaves the tone alone. The old one compared the dry signal with the tape after its top end losses, so on sound that is mostly top end it took the loss for saturation and turned it back up: with Age at 100 it gave a 10 kHz tone back all 14 dB that Age had taken, and on a real voice the S sounds came out 2.6 dB hotter against the voice than with Auto Level off.
+
+So that nothing made with 0.3.1 changes its sound, the plug-in keeps the old response for whatever was made with it:
+
+- Six factory presets keep it, because their sound hangs on one of those four things: Parallel Body (Mix 40 and High Cut), Airy Encode (compander), Worn Cassette (compander, and Auto Level on dark tape), Slow Reel Haze, Starved Grit and Old Radio Voice (Auto Level on slow tape). They sound as they did.
+- A session saved before 0.4.0 keeps it if it uses Mix under 100, High Cut, the compander, or Auto Level together with slow tape, Age over about 40, Head Spacing over about 30 or Bias over about 55. With none of those in use there is nothing to keep.
+- Everything else gets the new response: a new instance, the other five presets (Tape Start, Clean Reel, Vocal Glue, Warm Lead, Phone Call), and any session saved from 0.4.0 on keeps whichever it had.
+
+It is not a control and has no button: it travels with the preset or the session, in eight bytes after the saved settings. Picking a preset sets it for that preset. At Mix 100 the old response also leaves the tape on the reported latency, so the timing fix reaches every session.
 
 ## Presets
 
@@ -64,12 +81,12 @@ Finish:
 | Clean Reel | Light Drive at 30 ips on soft tape |
 | Vocal Glue | Drive 13, a touch of Bias, faint wow and flutter |
 | Warm Lead | Drive 17, Bias 30, light Age, a little hiss and grain |
-| Airy Encode | Dynamic Soft encode only, for air on a vocal |
-| Parallel Body | Drive 26 on hard tape, High Cut 12 kHz, Mix 40 |
-| Slow Reel Haze | 7.5 ips, Age 20, Random and Stereo Drift, head spacing |
-| Starved Grit | Bias -70 on hard tape with grain |
-| Worn Cassette | 3.75 ips, Age 100, dropouts, mismatched compander |
-| Old Radio Voice | Small Radio device with tape wear |
+| Airy Encode | Dynamic Soft encode only, for air on a vocal. Keeps the old response |
+| Parallel Body | Drive 26 on hard tape, High Cut 12 kHz, Mix 40. Keeps the old response |
+| Slow Reel Haze | 7.5 ips, Age 20, Random and Stereo Drift, head spacing. Keeps the old response |
+| Starved Grit | Bias -70 on hard tape with grain. Keeps the old response |
+| Worn Cassette | 3.75 ips, Age 100, dropouts, mismatched compander. Keeps the old response |
+| Old Radio Voice | Small Radio device with tape wear. Keeps the old response |
 | Phone Call | Telephone device with hot tape |
 
 ## Signal flow
@@ -79,7 +96,7 @@ Input > dry delay (the oversampling's latency) > Mix
 Input > compander encode > Drive > oversample up (16x at 44.1 and 48 kHz, 8x at 88.2 and 96 kHz) > record boost > curve > boost taken out > top end losses from Tape Speed, Age and Head Spacing > oversample down > DC blocker > head bump and dip > low end loss from Age > Auto Level gain > level drift and dropouts > Texture > Noise > compander decode > Low Cut > High Cut > Device > Mix > moving read head for Wow, Flutter, Random, Stereo Drift and Azimuth > Output
 
 - The curve is tanh, averaged between samples through its antiderivative, plus a smaller tanh that makes the starved dead zone. That removes most of the aliasing the oversampling leaves behind.
-- Latency is the oversampling plus 6 ms of tape path, in whole samples, always the same. Bypass is the input delayed by exactly that.
+- Latency is the oversampling plus 6 ms of tape path, in whole samples, always the same. Bypass is the input delayed by exactly that, and the tape comes out exactly then too: the oversampling filters keep their own delay, the 11.7 microseconds of the curve and the two top end filters at the default tone are counted, and a short delay at the high rate fills the rest up to a whole sample. Tape Speed, Bias, Age, Head Spacing, the cuts and the Device still add the small delay any tone filter has below its corner.
 - The read head uses a 16 point windowed sinc. With no movement it reads whole samples and changes nothing.
 - All randomness uses fixed seeds, so a bounce is the same every time, with a playhead or without one.
 
@@ -97,28 +114,33 @@ Offline, from `tests/PluginTest.cpp`. Full list in `tests/results.txt`. All test
 - **Age 0, 50, 100:** bandwidth 24.0, 14.1, 4.6 kHz. Noise floor silent, -62.4, -50.3 dBFS. Read head movement 0, 0.21, 0.83 ms RMS. Level swing 0, 0.7, 2.8 dB. Fresh end: 0.04 % THD at Drive 0, -0.15 dB at 10 kHz.
 - **Low Cut and High Cut:** -3.01 dB at the corner at 48 kHz, within 0.5 dB at 44.1, 48 and 96 kHz.
 - **Aliasing:** 15.1 kHz at -6 dBFS, Drive 30: non harmonic energy -73.7 dB against the tone.
-- **Auto Level:** spread across Drive 0 to 30 is 0.05 dB on 1 kHz at -18 dBFS, 0.14 dB at -6 dBFS, 0.72 dB on a voice like test signal.
-- **Mix:** at Mix 50 the worst drop below the quieter path is 0.8 dB, the same with Wow and Flutter at 100. Mix 0 nulls with the delayed input at -141 dB.
-- **Heavy tape at Mix 50 (3.75 ips, Age 40, Bias 50):** one broad dip of 7.9 dB where the filtered wet path turns its phase. It is one dip, not a comb. A deliberate 1 ms misalignment does trigger the notch counter, as a control.
-- **Compander:** Fixed boosts 10 kHz by 9.5 dB and both sides undo each other within 0.01 dB. Dynamic Soft boosts 9.5 dB at -50 dBFS and 0 dB at -6 dBFS. Dynamic Strong boosts 18.5 dB at -60 dBFS. Hiss falls 7.4, 7.4, 11.2 dB by type.
+- **Auto Level:** spread across Drive 0 to 30 is 0.05 dB on 1 kHz at -18 dBFS, 0.14 dB at -6 dBFS, 0.72 dB on a voice like test signal. What Age 100, 3.75 ips or Head Spacing 100 take off a tone at 3, 6 and 10 kHz is the same with Auto Level on as off within 0.2 dB (up to 0.3.1 Auto Level gave back 5 to 14 dB at 10 kHz).
+- **Mix:** at Mix 50 the worst drop below the quieter path is 0.06 dB (0.8 dB up to 0.3.1), the same with Wow and Flutter at 100. Mix 0 nulls with the delayed input at -141 dB.
+- **Heavy tape at Mix 50 (3.75 ips, Age 40, Bias 50):** one broad dip of 4.5 dB where the filtered wet path turns its phase (7.9 dB up to 0.3.1, when the wet path was also late). It is one dip, not a comb. A deliberate 1 ms misalignment does trigger the notch counter, as a control.
+- **Compander:** Fixed boosts 10 kHz by 9.1 dB (the analog shape is 9.03) and both sides undo each other within 0.01 dB. Dynamic Soft boosts 9.1 dB at -50 dBFS and 0 dB at -6 dBFS. Dynamic Strong boosts 17.4 dB at -60 dBFS. Hiss falls 7.1, 7.1, 10.9 dB by type.
 - **Head Spacing:** -11.98 dB at 10 kHz at 100 % and 15 ips. **Head Azimuth:** 0.100 ms between channels at 100 % and 15 ips.
-- **Dropouts:** 48 dips in 30 s at a rate of 2 per second (limit 60 within 30 %), deepest -23.8 dB. **Texture:** -22.1 dB against the tone at 100 %.
+- **Dropouts:** 49 dips in 30 s at a rate of 2 per second (limit 60 within 30 %), deepest -23.8 dB. The gain never moves more than 0.7 % from one sample to the next (up to 0.3.1 a dropout that began before the last had recovered jumped by up to 25 %). **Texture:** -22.1 dB against the tone at 100 %.
 - **Device:** within 0.04 dB of each set shape at 48 and 96 kHz.
-- **Latency:** 355 samples at 48 kHz (7.40 ms): 67 for oversampling, 288 for the tape path. The same when bypassed. Bypass nulls with the delayed input.
+- **Latency:** 355 samples at 48 kHz (7.40 ms): 67 for oversampling, 288 for the tape path. 332 at 44.1 kHz, 596 at 88.2 kHz, 642 at 96 kHz. The same when bypassed. Bypass nulls with the delayed input. The tape itself comes out 0.22 microsecond (0.01 sample at 48 kHz) after the reported latency at all four rates, read from the phase of a low level impulse from 300 Hz to 8 kHz, and its peak lands on the reported sample. Up to 0.3.1 it came out 11.7 microseconds late (0.52, 0.56, 1.02 and 1.11 samples at the four rates), so at 88.2 kHz and up the reported number is one sample more than before.
+- **Left and right:** a mono signal comes out with both channels identical, bit for bit, and a mono instance gives the same samples as the left of a stereo one.
 - **CPU:** through the real AU at 48 kHz with 128 frame blocks, percent of one core: default 2.6, worst preset 3.7 (Old Radio Voice), worst single block 5. The test suite with everything on measures about 4.
 - **Same sound after the CPU work:** `tests/null_results.txt` holds the null of 0.2.1 against 0.2.0 for the default, every preset and random automation. Worst peak -114.4 dBFS, on a signal at 24 times full scale.
 
-Three test limits changed after a first run, each because the limit itself was wrong. Why is written beside each one in `tests/PluginTest.cpp`:
+The limits that had been changed after a first run are back where they started, each with the fault it was covering fixed (0.4.0). Why is written beside each one in `tests/PluginTest.cpp`:
 
-- High Cut one octave out is now one sided: digital filters fall faster near the top of the band.
-- Heavy tape Mix now counts notches rather than capping the one dip.
-- Channels at Head Azimuth 0 must match under -120 dBFS rather than exactly. They measure -168 dB, which is float rounding in the oversampling.
+- High Cut one octave out: within 2 dB of 12.3 dB again. It had been made one sided because the filter fell too fast near the top of the band. The filter now follows the analog shape (12.3, 12.3, 12.3, 11.4 dB an octave above 1.5, 3, 6 and 10 kHz at 48 kHz).
+- Heavy tape Mix: the dip is held to 6 dB again. It had been swapped for a notch count when the dip measured 8.6 dB. Most of that dip was the wet path being late, not the low pass. It is 4.5 dB now.
+- Channels at Head Azimuth 0: identical again. It had been relaxed to -120 dBFS and put down to float rounding in the oversampling. The cause was the control: its middle came back as 0.0000015 and not 0, so both channels read through the moving head's interpolation.
+- The compander's shelf: held to the analog shape again. It had been compared with the digital filter's own response instead, because that ran over the analog shape near the top of the band. The shelf is now matched to the analog shape (within 0.08 dB at 10 kHz for 10 dB).
+- Dropouts are counted from the first frame after the latency. The first form read the latency's own silence as a dropout, and it had been moved half a second in.
+- New in 0.4.0, from the real vocal checks: the tape path against the reported latency in microseconds, a dropout that never steps, and Auto Level against the top end losses.
+- The window's tone line is read at every point on the chart. It had skipped tones near the hiss. Each tone is now read in its own narrow band, so none is skipped.
 
 ## The window, measured
 
-- **Same sound:** `tests/null_results.txt` holds 55 renders through the real AU against 0.2.1: the default, every preset and random automation at three rates and in mono. All 55 are bit identical. `tests/baseline/renders-0.2.1.sha256` lists their checksums. `tests/PluginTest.cpp` also checks a window open against closed, with the tap running: not one bit differs.
+- **Same sound (0.3.0 against 0.2.1):** `tests/null_results.txt` holds 55 renders through the real AU against 0.2.1: the default, every preset and random automation at three rates and in mono. All 55 are bit identical. From 0.4.0 the tape path sits 11.7 microseconds earlier, so renders no longer match 0.3.1 bit for bit; what changed and what did not is in CHANGELOG.md. `tests/baseline/renders-0.2.1.sha256` lists their checksums. `tests/PluginTest.cpp` also checks a window open against closed, with the tap running: not one bit differs.
 - **The picture tells the truth:** the drawn tone against real tones through the real processor, in 12 settings: worst difference 0.48 dB (limit 1 dB). Top end against the measured bandwidth: 14.0 and 4.5 kHz against 14.1 and 4.6. Hiss: 0.3 dB from the real floor. The saturation number against a real signal: worst 0.07 dB. Tones within 6 dB of the hiss at high Age cannot be measured, so those points are skipped, and the Device blend is drawn by magnitude.
-- **Real controls:** all 26 parameters have a control and nothing lives only in the window. Each block types, automates, carries begin and end gestures and resets. The window opened and closed 40 times with audio running and 10 times with none.
+- **Real controls:** all 26 parameters have a control and nothing lives only in the window. The window's tone line follows the response in use, old or new. Each block types, automates, carries begin and end gestures and resets. The window opened and closed 40 times with audio running and 10 times with none.
 - **Window CPU**, real window, Retina, Warm Lead on real speech, `RenderWindow --live`, the method in `~/smooth-resonance/docs/window-cpu.md`. One other test running. Six runs, percent of one core: 2.6, 2.8, 7.4, 9.8, 7.3, 5.0. The work never changed, 1.9 to 2.2 % of a fast core. The readings follow which cores macOS picked: 2.6 and 2.8 had over 90 % of it on fast cores, 7.4, 9.8 and 7.3 had 14 to 43 %. So it is under the 5 % budget on fast cores and over it on slow ones. Forced onto slow cores: 9.8, 9.5, 8.5. Silent, nothing moving: 0.7, 0.7, 1.0.
 - **Audio CPU** through the real AU with AuBench, no window open: default 2.6, worst preset 3.7, the same as 0.2.1. Worst single block 8 against 7, which is run to run noise.
 - **What made the difference:** the reel is far from the spectrum, so its repaint stretched the area being drawn to cover every label in between. Keeping that text and the ribbon in cached images took the work from 3.9 to 2.1 % of a fast core.

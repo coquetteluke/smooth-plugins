@@ -1240,6 +1240,147 @@ void testHeldOutNinth()
     chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
 }
 
+// A tenth held out set, written on 2026-11-11 for the second pass on Luke's real takes, and committed before any of it was run. All nine sets
+// above have been used. It exists because three changes to the formant path are about to be made (Low Latency's grains from 98 to 140 Hz in
+// Alto/Tenor, High Quality's pitch control read in line, Alto/Tenor's low notes read in time); it is to be run once, after them, on the new
+// build and on 1.6.0. Formants from a published source and a language none of the earlier sets used: French, the ten oral vowels in two
+// hours of broadcast news, measured automatically.
+//   Gendrot, C. and Adda-Decker, M. (2005), Impact of duration on F1/F2 formant values of oral vowels: an automatic analysis of large
+//   broadcast news corpora in French and German, Proceedings of Interspeech 2005, Lisbon, 2453 to 2456, ISCA Archive
+//   (gendrot05_interspeech), Table 5, measured mean values of the first three formants of French by vowel and speaker sex, in hertz.
+// The numbers below are copied as Table 5 prints them, from the ISCA Archive PDF. The women's columns were checked against a second
+// printing of the same table: Georgeton, Paillereau, Landron, Gao and Kamiyama (2012), Analyse formantique des voyelles orales du francais
+// en contexte isole, JEP-TALN-RECITAL 2012, 145 to 152, ACL Anthology F12-1019, Tableau 1, column G&A: all 30 women's numbers agree. The
+// men's columns have no second printing that I could reach. Table 5's header lost two of its ten vowel signs in the PDF's text; the order
+// i, y, e, open e, a, open eu, eu, open o, o, u was fixed from the women's numbers in that second printing.
+// These are vowels in running speech, so they sit nearer the middle than the earlier sets' read vowels: u and o have a second formant over
+// 1000 Hz. That is what they are in a song too. Speaker groups none of the earlier sets used: French men and women. Vowels: u, o, front
+// rounded y, eu and a for men speaking; i, u, open eu and open o for women speaking; a, open e, e, o and y for women singing; open e and
+// open o for men singing at tenor pitches. Pitches none of the earlier sets or the tuning voices used: men speaking at 96, 103, 114, 131
+// and 143 Hz (the glide reaches 0.71 of its centre, so 96 Hz goes down to 67.9 Hz, inside Low Male's 65 Hz floor); women speaking at 178, 201
+// and 228 Hz; women singing at 398, 483, 601 and 750 Hz; men singing at 286 and 388 Hz.
+// F4, F5 and bandwidths were set here, before running, by the earlier sets' conventions: F4 and F5 inside the range those sets used for each
+// sex, in a pairing none of them used (men 3450 and 4350, women 4050 and 5000); the first formant's bandwidth an eighth of its frequency,
+// rounded to 5 Hz, 45 Hz at least; F2 bandwidth rising with F2 (men 80 below 1000 Hz, 90 to 1600, 100 above; women 90, 100, 115 on the same
+// steps); F3 to F5 bandwidths as the sixth to ninth sets'. Women's sources a little breathier than men's. Breath and source tone vary from
+// voice to voice, chosen to differ from every earlier set's. Nothing was tuned on these, and none of it was chosen by looking at output.
+//
+// Metrics. High Quality: the sixth to ninth sets' metrics and limits, with the speaking line read as the ninth set's now is (see there and
+// tests/heldout9-reference.txt): the output against a real voice at the new pitch at 4%, the output against the input against the floor
+// plus 2%, and the output against the input at the old 4% as a limit only if a perfect shifter can meet it on this set (the real voice
+// itself against the input reads 4% or less); otherwise that number prints without a verdict.
+// Low Latency, new with this set, because two of the three changes are to Low Latency and no held out set has ever been run on it: the
+// same speaking voices at +/-1 and +/-3 semitones, the shifts Low Latency's own formant test uses, men in Low Male and in Alto/Tenor (Luke's
+// Input Type; its centres start at 103 Hz, whose glide reaches 72.8 Hz, inside the 70 Hz it follows), women in Wide Range. Limits are Low
+// Latency's own from PassLimits.h, written before any Tune Pro DSP: formant move 5% (against a real voice at the new pitch, and against
+// the input by the same rule as above) and level 1.5 dB. All of this was fixed before the first run.
+void testHeldOutTenth()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; int type; std::vector<double> centres; };
+    // F1, F2, F3 from Gendrot and Adda-Decker (2005), Table 5; F4, F5 and all bandwidths set here.
+    const std::vector<Held> speaking {
+        { { { 371, 1105, 2470, 3450, 4350 }, { 45, 90, 130, 165, 215 }, "French u men" }, { -58.0, 0.0 }, lowMale, { 96.0, 103.0, 114.0, 131.0, 143.0 } },
+        { { { 397, 1041, 2477, 3450, 4350 }, { 50, 90, 130, 165, 215 }, "French o men" }, { -50.0, 3600.0 }, lowMale, { 96.0, 103.0, 114.0, 131.0, 143.0 } },
+        { { { 336, 1803, 2425, 3450, 4350 }, { 45, 100, 130, 165, 215 }, "French y men" }, { -55.0, 0.0 }, lowMale, { 96.0, 103.0, 114.0, 131.0, 143.0 } },
+        { { { 384, 1474, 2405, 3450, 4350 }, { 50, 90, 130, 165, 215 }, "French eu men" }, { -46.0, 4700.0 }, lowMale, { 96.0, 103.0, 114.0, 131.0, 143.0 } },
+        { { { 557, 1444, 2438, 3450, 4350 }, { 70, 90, 130, 165, 215 }, "French a men" }, { -63.0, 2700.0 }, lowMale, { 96.0, 103.0, 114.0, 131.0, 143.0 } },
+        { { { 348, 2365, 3130, 4050, 5000 }, { 45, 115, 145, 185, 225 }, "French i women" }, { -44.0, 3100.0 }, wideRange, { 178.0, 201.0, 228.0 } },
+        { { { 404, 1153, 2742, 4050, 5000 }, { 50, 100, 145, 185, 225 }, "French u women" }, { -41.0, 0.0 }, wideRange, { 178.0, 201.0, 228.0 } },
+        { { { 436, 1643, 2715, 4050, 5000 }, { 55, 115, 145, 185, 225 }, "French open eu women" }, { -49.0, 4500.0 }, wideRange, { 178.0, 201.0, 228.0 } },
+        { { { 528, 1347, 2743, 4050, 5000 }, { 65, 100, 145, 185, 225 }, "French open o women" }, { -38.0, 2000.0 }, wideRange, { 178.0, 201.0, 228.0 } } };
+    const std::vector<Held> singing {
+        { { { 685, 1677, 2735, 4050, 5000 }, { 85, 115, 145, 185, 225 }, "French a women" }, { -45.0, 0.0 }, wideRange, { 398.0, 483.0, 601.0, 750.0 } },
+        { { { 526, 2016, 2800, 4050, 5000 }, { 65, 115, 145, 185, 225 }, "French open e women" }, { -42.0, 3800.0 }, wideRange, { 398.0, 483.0, 601.0, 750.0 } },
+        { { { 423, 2176, 2860, 4050, 5000 }, { 55, 115, 145, 185, 225 }, "French e women" }, { -48.0, 0.0 }, wideRange, { 398.0, 483.0, 601.0, 750.0 } },
+        { { { 438, 1140, 2790, 4050, 5000 }, { 55, 100, 145, 185, 225 }, "French o women" }, { -40.0, 2300.0 }, wideRange, { 398.0, 483.0, 601.0, 750.0 } },
+        { { { 371, 2063, 2745, 4050, 5000 }, { 45, 115, 145, 185, 225 }, "French y women" }, { -51.0, 4200.0 }, wideRange, { 398.0, 483.0, 601.0, 750.0 } },
+        { { { 438, 1717, 2490, 3450, 4350 }, { 55, 100, 130, 165, 215 }, "French open e men" }, { -57.0, 0.0 }, wideRange, { 286.0, 388.0 } },
+        { { { 456, 1203, 2420, 3450, 4350 }, { 55, 90, 130, 165, 215 }, "French open o men" }, { -52.0, 3000.0 }, wideRange, { 286.0, 388.0 } } };
+
+    FormantScore low;
+    for (const auto& h : speaking)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 4, -4, 3, -3, 1, -1 })
+                scoreFormants (low, h.v, centre, shift, h.type);
+    }
+    const auto againstInput = [] (const FormantScore& score, double limit, const std::string& what)
+    {
+        // A limit only where a perfect shifter can meet it: see the ninth set.
+        if (score.ideal <= limit)
+            chk (score.move <= limit, what, score.move * 100.0, "%");
+        else
+            note (what + " (no verdict: a perfect shifter reads over the limit here, next line)", score.move * 100.0, "%");
+        note ("  what a perfect shifter reads on that line: the real voice at the new pitch itself against the input, worst", score.ideal * 100.0, "%");
+        note ("  and the tool's floor there", score.floor * 100.0, "%");
+        chk (score.move <= score.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", score.move * 100.0, "%");
+    };
+    chk (low.moveReal <= prolimits::hqFormantMoveReal, "tenth held out set, French men 96 to 143 Hz and women 178 to 228 Hz, worst formant move against a real voice at the new pitch", low.moveReal * 100.0, "%");
+    againstInput (low, prolimits::hqFormantMove, "  worst formant move against the input");
+    chk (low.level <= prolimits::hqLevelChangeDb, "  level change, worst", low.level, "dB");
+    note ("  first formant against its surroundings, flatter than a real voice, worst", low.peakFlatter, "dB");
+    note ("  colour, worst", low.colour, "dB");
+
+    FormantScore high;
+    double heldMean = 0.0, heldRms = 0.0;
+    int heldCount = 0;
+    for (const auto& h : singing)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 3, -3, 2, -2 })
+            {
+                scoreFormants (high, h.v, centre, shift, h.type);
+                const auto held = heldNoteError (h.v, centre, shift, h.type);
+                heldMean += held.rmsDb;
+                heldRms = std::max (heldRms, held.rmsDb);
+                ++heldCount;
+                if (std::getenv ("TUNE_DUMP") != nullptr)
+                    std::printf ("  held note, vowel %s, %.0f Hz, shift %d: harmonics against a real voice %.2f dB RMS, %.2f dB worst\n", h.v.name, centre, shift, held.rmsDb, held.worstDb);
+            }
+    }
+    chk (high.peakFlatterCrossed <= prolimits::highNoteF1Flatter, "tenth held out set, French women 398 to 750 Hz and men 286 and 388 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst", high.peakFlatterCrossed, "dB");
+    note ("  the same with every case, including where the whole glide stays above the formant", high.peakFlatter, "dB");
+    chk (high.peakSharper <= prolimits::highNoteF1Sharper, "  first formant sharper than a real voice, worst", high.peakSharper, "dB");
+    chk (high.move <= high.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", high.move * 100.0, "%");
+    note ("  and the tool's floor there", high.floor * 100.0, "%");
+    note ("  colour, worst", high.colour, "dB");
+    note ("  level change, worst", high.level, "dB");
+    note ("  held notes, harmonics against a real voice, worst RMS", heldRms, "dB");
+    chk (heldMean / heldCount <= prolimits::heldNoteHarmonicMeanDb, "  held notes, harmonics against a real voice, mean of the RMS", heldMean / heldCount, "dB");
+
+    // Low Latency on the same speaking voices.
+    gEngine = 0;
+    FormantScore lowMen, tenorMen, wideWomen;
+    for (const auto& h : speaking)
+    {
+        gStyle = h.style;
+        for (double centre : h.centres)
+            for (int shift : { 3, -3, 1, -1 })
+            {
+                scoreFormants (h.type == lowMale ? lowMen : wideWomen, h.v, centre, shift, h.type);
+                if (h.type == lowMale && centre >= 100.0)
+                    scoreFormants (tenorMen, h.v, centre, shift, altoTenor);
+            }
+    }
+    gStyle = {};
+    const auto lowLatency = [&againstInput] (const FormantScore& score, const std::string& who)
+    {
+        chk (score.moveReal <= prolimits::llFormantMove, "tenth held out set, " + who + ", worst formant move against a real voice at the new pitch", score.moveReal * 100.0, "%");
+        againstInput (score, prolimits::llFormantMove, "  worst formant move against the input");
+        chk (score.level <= limits::levelChangeDb, "  level change, worst", score.level, "dB");
+        note ("  first formant against its surroundings, flatter than a real voice, worst", score.peakFlatter, "dB");
+        note ("  colour, worst", score.colour, "dB");
+    };
+    lowLatency (tenorMen, "French men 103 to 143 Hz in Alto/Tenor");
+    lowLatency (lowMen, "French men 96 to 143 Hz in Low Male");
+    lowLatency (wideWomen, "French women 178 to 228 Hz in Wide Range");
+    gEngine = 1;
+}
+
 // A vowel change in the middle of a glide, added for 1.5.0 with its limit set before it was first run. High Quality remembers each
 // harmonic's level over a voiced stretch; it must not carry the old vowel into the new one. After the change, the output's formants
 // are read against a real voice singing the new vowel at the new pitch, with the same tool and limit as the formant test.
@@ -3698,6 +3839,7 @@ int main (int argc, char** argv)
     if (want ("heldout7")) testHeldOutSeventh();
     if (want ("heldout8")) testHeldOutEighth();
     if (want ("heldout9")) testHeldOutNinth();
+    if (only == "heldout10") testHeldOutTenth();   // not part of a full run until it has had its one run, after the changes it was written for
     if (want ("vowel")) testVowelChange();
     gEngine = 0;
     if (want ("llnull")) testLowLatencyNull();

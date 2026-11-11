@@ -1,7 +1,7 @@
 // Renders the real window to PNG, with real speech from macOS `say` and test music through the real processor and its real
 // background thread, with no host. Also measures the real window's CPU.
 // From the repo root: build/RenderWindow_artefacts/Release/RenderWindow [output folder]
-//                     build/RenderWindow_artefacts/Release/RenderWindow --live [runs] [seconds] [speech, music or silent]
+//                     build/RenderWindow_artefacts/Release/RenderWindow --live [runs] [seconds] [speech, music or silent] [locked]
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -320,7 +320,7 @@ static double analysisCpuSeconds()
     return total;
 }
 
-static int runLive (int repeats, int seconds, const juce::String& what)
+static int runLive (int repeats, int seconds, const juce::String& what, bool locked)
 {
     const bool silent = what == "silent";
     std::vector<float> audio;
@@ -407,6 +407,13 @@ static int runLive (int repeats, int seconds, const juce::String& what)
         // Long enough that a key is showing and the window is updating as it does in a song.
         juce::MessageManager::getInstance()->runDispatchLoopUntil (9000);
 
+        // With Lock on the key is held while it goes on listening, so the line under it says what it hears.
+        if (locked)
+        {
+            s.processor.getLockParameter().setValueNotifyingHost (1.0f);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (1000);
+        }
+
         const int paintsBefore = keyui::paintCount;
         const auto before = CpuReading::now();
         const double audioBefore = audioCpu.load(), mainBefore = threadCpuSeconds(), analysisBefore = analysisCpuSeconds();
@@ -424,10 +431,10 @@ static int runLive (int repeats, int seconds, const juce::String& what)
         getloadavg (load, 1);
         const auto builds = std::system ("exit $(pgrep -f 'clang|cmake --build' | wc -l)") >> 8;
 
-        std::printf ("%3d  %6.2f  %14.2f  %6.0f  %8.1f  %5.2f  %5.2f  %8.2f  %8.0f  %4.1f  %5d   key %s\n", run + 1, window * 100.0, rate / instructionsPerFastCoreSecond * 100.0,
+        std::printf ("%3d  %6.2f  %14.2f  %6.0f  %8.1f  %5.2f  %5.2f  %8.2f  %8.0f  %4.1f  %5d   key %s%s\n", run + 1, window * 100.0, rate / instructionsPerFastCoreSecond * 100.0,
                      (after.pCores - before.pCores) / juce::jmax (1.0e-6, after.total - before.total) * 100.0,
                      (double) (keyui::paintCount - paintsBefore) / wall, mainUsed / wall * 100.0, audioUsed / wall * 100.0, analysisUsed / wall * 100.0,
-                     rate * 1.0e-6, load[0], builds, editor.getKeyText().toRawUTF8());
+                     rate * 1.0e-6, load[0], builds, editor.getKeyText().toRawUTF8(), s.processor.getDisplay().locked ? ", locked" : "");
         std::fflush (stdout);
         results.push_back (window * 100.0);
         work.push_back (rate / instructionsPerFastCoreSecond * 100.0);
@@ -449,7 +456,7 @@ int main (int argc, char** argv)
     juce::ScopedJuceInitialiser_GUI gui;
 
     if (argc > 1 && juce::String (argv[1]) == "--live")
-        return runLive (argc > 2 ? atoi (argv[2]) : 5, argc > 3 ? atoi (argv[3]) : 6, argc > 4 ? argv[4] : "speech");
+        return runLive (argc > 2 ? atoi (argv[2]) : 5, argc > 3 ? atoi (argv[3]) : 6, argc > 4 ? argv[4] : "speech", argc > 5 && juce::String (argv[5]) == "locked");
 
     const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "docs/window");
     folder.createDirectory();

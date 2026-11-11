@@ -3339,10 +3339,17 @@ void testCpu()
     int relativeBefore = 0;
     pthread_get_qos_class_np (pthread_self(), &qosBefore, &relativeBefore);
     pthread_set_qos_class_self_np (QOS_CLASS_USER_INTERACTIVE, 0);
-    for (int repeat = 0; repeat < repeats; ++repeat)
+    // Third change, 2026-11-11 afternoon: 25 renders were not enough with the Mac at a load of 20 (other agents' builds): one full run
+    // read 5.95 and 9.71% where the same binary alone read 3.5 to 3.7 and 5.7 to 5.9% ten minutes later. The renders now go on, up
+    // to 200, until 15 in a row have not brought the sum of the least times down by more than a thousandth. Still the least time
+    // each stretch has ever taken; a quiet machine stops at 40 or so.
+    double sumBefore = 1.0e9;
+    int quietFor = 0;
+    for (int repeat = 0; repeat < 200 && (repeat < repeats || quietFor < 15); ++repeat)
     {
         auto p = make();
         setParam (*p, "retune", 15.0f);
+        setParam (*p, "humanize", 30.0f);   // the default up to 1.6.1, so the reading stays the one it always was
         setParam (*p, "inputType", (float) wideRange);
         prepare (*p, 2, SR, 256);
         std::vector<double> took ((size_t) stretches, 0.0);
@@ -3362,14 +3369,18 @@ void testCpu()
             leastOf[(size_t) k] = std::min (leastOf[(size_t) k], took[(size_t) k]);
         least = std::min (least, (end - start) / 10.0 * 100.0);
         most = std::max (most, (end - start) / 10.0 * 100.0);
+        double sumNow = 0.0;
+        for (double t : leastOf) sumNow += t;
+        quietFor = sumNow < sumBefore * 0.999 ? 0 : quietFor + 1;
+        sumBefore = sumNow;
     }
     pthread_set_qos_class_self_np (qosBefore == QOS_CLASS_UNSPECIFIED ? QOS_CLASS_DEFAULT : qosBefore, relativeBefore);
     double percent = 0.0;
     for (double t : leastOf) percent += t;
     percent = percent / 10.0 * 100.0;
     chk (percent <= (gEngine == 1 ? prolimits::hqCpuPercent : prolimits::llCpuPercent), "CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds)", percent, "%");
-    note ("  the quickest whole render of the 25", least, "%");
-    note ("  the slowest of the 25 renders", most, "%");
+    note ("  the quickest whole render", least, "%");
+    note ("  the slowest whole render", most, "%");
 
     // While correcting by 3 semitones, the heavier case, and at 96 kHz.
     for (double sr : { 48000.0, 96000.0 })

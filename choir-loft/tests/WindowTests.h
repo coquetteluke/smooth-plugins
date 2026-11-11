@@ -184,6 +184,13 @@ void testWindow()
                     if (c->isVisible() && c != toggle && c != light && (c->getBounds().intersects (toggle->getBounds()) || c->getBounds().intersects (light->getBounds())))
                         ++misplaced;
                 if (toggle->getBounds().intersects (light->getBounds())) ++misplaced;
+                // The word "Voices" is painted by the panel in the 54 px left of the voice count: neither may sit on it
+                if (auto* count = findById<juce::Component> (panel, "voices"))
+                {
+                    const auto word = count->getBounds().translated (-54, 0).withWidth (48);
+                    if (word.intersects (toggle->getBounds()) || word.intersects (light->getBounds())) ++misplaced;
+                }
+                else ++misplaced;
                 if (juce::GlyphArrangement::getStringWidth (ui::font (ui::Weight::medium, 13.0f), toggle->getButtonText()) > (float) toggle->getWidth() - 16.0f) ++cut;
                 if (ui::OutputLight::widestText() > (float) light->getWidth()) ++cut;
             }

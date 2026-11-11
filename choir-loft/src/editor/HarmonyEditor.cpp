@@ -479,7 +479,8 @@ void HarmonyEditor::Panel::resized()
     bypass.setBounds (right - 84, rowOneY, 84, rowOneHeight);
     voicesCount.setBounds (right - 84 - 16 - 232, rowOneY, 232, rowOneHeight);
     // The ceiling and the output's level sit between the presets and the voice count, in the same row as Bypass
-    ceiling.setBounds (voicesCount.getX() - 16 - 84, rowOneY, 84, rowOneHeight);
+    // (left of the word "Voices", which paint() draws in the 54 px before the voice count)
+    ceiling.setBounds (voicesCount.getX() - 54 - 16 - 84, rowOneY, 84, rowOneHeight);
     outputLight.setBounds (presets->getRight() + 16, rowOneY, ceiling.getX() - 12 - presets->getRight() - 16, rowOneHeight);
 
     modePicker.setBounds (margin, rowTwoY, 468, rowTwoHeight);

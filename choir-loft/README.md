@@ -299,6 +299,59 @@ Starts and breaths with Humanize and Drift at 0, 1.5.1 / 1.5.0 / 1.4.4: wrong fi
 
 V2 is reached: the voices follow half as much of the lead as in 1.5.0 (what they take from the lead they take together), and each voice's vibrato runs at its own speed, up to a tenth off. V4 is not: 6 ms against 8. By the tool's measure a voice ends when the lead's note is called over, plus that voice's lag. Letting a voice fall behind over a long note, by up to 20 ms from 200 ms in, moved it from 4 to 6; 28 ms moved it no further and falling behind from 80 ms in cost time on the note. Level made no difference: 12 dB between the voices moved the ends by 2 ms. Every limit U1 to U9 holds at 35, 65 and 100 (1.5.0 failed U9 at 35): note average off its note 5.0, 5.9 and 7.8 cents against 10; interval spread 7.2, 10.0 and 13.1 against 15; starts 46 and 52, 46 and 52, 47 and 51 ms against 60; level spread 0.75, 0.84 and 0.95 dB against 1.21.
 
+## The leak, the note ends and the ceiling (1.5.2)
+
+Third pass, on Luke's bar ("I need 100% and I need zero failures"). What 1.5.1 made worse on his takes is back at 1.5.0 or better, Human at 100 reaches all four of its goals, and there is an output ceiling. The suite is at 663 pass, 0 fail. Latency unchanged.
+
+### What 1.5.1 made worse, and where it is now
+
+Working set (11 takes), 1.4.4 / 1.5.0 / 1.5.1 / 1.5.2:
+
+| | 1.4.4 | 1.5.0 | 1.5.1 | 1.5.2 |
+|---|---|---|---|---|
+| Voices singing through unpitched frames inside phrases, Humanize and Drift 0 | 3.56% | 3.76% | 4.27% | 3.76% |
+| Tracker alone, ms voiced in the gaps between words | 151 | 156 | 161 | 156 |
+| Time on the note under 98 Hz | 42.0% | 87.5% | 86.6% | 87.8% |
+| Held notes under 98 Hz sung, of 28 | 6 | 28 | 28 | 28 |
+| Behind Duo, octave errors (takes 02, 10, 12) | 8 | 14 | 5 | 4 |
+| Breathy high start tests, ms (limit 40) | 67.9, 72.0, 67.1 | the same | 38.7, 36.0, 33.3 | 38.7, 36.0, 33.3 |
+
+The leak was one kind of event: 1.5.1 let a start's period be twice the first deep dip and took it at once, so 5 ms of a murmur at -46 dBFS before a word was called a note (take 02 at 189.41 s) and the voices sang 30 ms of it. The longer period must now come out the same twice in a row while nothing is voiced. The lost time under 98 Hz was the refusal of low starts, which also refused a fresh start out of a creak; it now applies only within 100 ms of a followed low note's end.
+
+### Chance in the measures, and a rule that can be decided
+
+The start and breath measures move by themselves. One version against itself, with the take slid by 10, 21 or 42 ms or the plug-in's random choices reseeded, moves the leak inside phrases by up to 1.3 points at the default (0.7 with Humanize and Drift at 0), wrong first notes at phrase starts by 14 of 592 (4), the 90th percentile of fry phrase starts by 23 ms (16) and of breathy starts by 11 ms (10). The 1.4.2 rule allows 0.2 points and 2 ms, so a version fails it against itself (2 to 9 of its rules). It stays as written. Beside it, `realvox/decidable.py` asks each of the same 21 measures to be no worse than the reference by more than that measure's own noise (`realvox/NOISE-default.txt`, `NOISE-plain.txt`). By that rule 1.5.2 is no worse than 1.5.0 or 1.4.4 on any measure, at the default and with Humanize and Drift at 0, and a version passes against itself.
+
+### Real breathy starts
+
+Luke's 89 breathy starts on the working set are not what the breathy start test of 1.4.0 makes. His notes there sit at 155 Hz (half of them between 137 and 193), the way in is 30 ms of loud breath with no pitch, and the note is clean 20 ms after it begins, coming in 40 to 70 cents under. The old test is a note of up to 587 Hz with breath all through its first 80 ms. `PluginTest realstarts` is a start of his shape at 131, 165 and 196 Hz: 95th percentile time to sound past the lag -4.4 ms at the default, 12.8 ms at Tight, 4.1 ms with Humanize 0 (limit 40), no wrong first notes. On the takes themselves the tracker is on the right note 24 ms after the onset at the median and 45 ms at the 90th percentile for breathy starts (1.5.0 the same, 1.4.4 57), and the tool's own 90th percentile reads 46 ms with Humanize and Drift at 0 (1.5.0: 44, 1.4.4: 52), inside its noise of 10 ms. They did not get faster in 1.5.2.
+
+### Human: each voice's own note end
+
+| Human 100, working set | 1.5.0 | 1.5.1 | 1.5.2 | goal |
+|---|---|---|---|---|
+| Ends of the two voices apart, ms | 4 | 6 | 12 | 8 or more |
+| Pitch spread inside a note, cents | 10.4 | 10.27 | 10.35 | 10 or more |
+| The two voices' movement in common | 0.32 | 0.27 | 0.30 | 0.30 or less |
+| Level curve like the lead's | 0.64 | 0.58 | 0.59 | 0.65 or less |
+
+When the lead's note is over for a voice, the voice holds on for its own time on the lead's last periods and dies away over its own time, drawn per voice and per note and scaled by Human (voice 1 up to 5 and 10 ms, voice 2 up to 24 and 18 ms at 100). The hold is over at once when the lead is pitched again or about to be, so it does not run into the next note. U1 to U8 hold at 35, 65 and 100. U9, the held notes no worse than at Human 0, holds at 65 and 100 (at 100: 98 to 130 Hz 699 of 700, octave verdicts 5, both as at 0) and misses at 35 by one octave verdict in the final run (8 against 5, 7 allowed; the run before read 4): three short notes where the tool's reading of the voice's pitch flips for single frames at Human 0 as well and ran for 30 ms at 35. The margins are thin where the goals pull against each other: movement in common sits at its limit, and the suite's own limit on the interval between the voices (15 cents, 14.89 measured) caps how far the voices can move on their own.
+
+### Ceiling
+
+Off by default. On, no sample passes -0.3 dBFS, with no look ahead and no added delay. Lead peaking at -1 dBFS:
+
+| | Ceiling off | Ceiling on | true peak, on |
+|---|---|---|---|
+| Default | +3.93 dBFS | -0.304 dBFS | -0.29 dBTP |
+| Full Stack | +5.52 dBFS | -0.300 dBFS | -0.26 dBTP |
+
+Inside a held note it is a steady gain (what it adds beside a plain turn down: -52 dB at the default, -44 dB on Full Stack). A lead at -19 dBFS comes out bit for bit the same with it on. Bypass with it on passes the vocal untouched. The window says when the output is within 1 dB of full scale, on or off.
+
+### Not at zero
+
+With Humanize and Drift at 0 on the working set, five measures read above the better of 1.4.4 and 1.5.0, each inside its noise, none traced to the plug-in: wrong first notes at phrase starts 8 (6, 7), fry phrase starts 90th percentile 50 ms (44), breathy starts 46 ms (44), starts after a consonant 26 ms (24), breath leak 12.19% (12.12). The validation on the Rode blind set and the first session's takes is in `~/smooth-plugins/_vox/rode/work/harmony/REPORT.md`.
+
 ## Latency
 
 Exact and reported, the same bypassed. At 48 kHz: Soprano 9.0 ms, Alto/Tenor 13.7 ms (default), Low Male and Wide Range 20.6 ms. Since 1.5.0 Alto/Tenor follows notes down to 65 Hz at its 13.7 ms. The lead and dry path are delayed to match. Changing Input Type fades out, jumps and fades in over 4 ms, then tells the host.

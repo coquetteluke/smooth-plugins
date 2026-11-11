@@ -35,12 +35,17 @@ The second session's takes are in `~/smooth-plugins/_vox/rode/` (17 takes, `TAKE
     RealVox notescompare <new> <old>             both tables and the pass rule H1 to H10
     RealVox robot <records> <take.wav> ...       how each voice moves against how Luke himself moves, and against Luke singing a part twice
     RealVox robotreport <records>                pooled numbers
+    RealVox humanlimits <records> <at human 0> [full]   the limits U1 to U8 for the Human option, and with full the targets V1 to V4
+    RealVox tracker <take.wav> <from s> <to s>   what the plug-in's tracker says each ms, beside the reference
+    RealVox lowcensus <take.wav> ...             where the tracker calls a pitch under 98 Hz, and how well the sound repeated there
     RealVox hash <take.wav> ...                  a hash of every output sample at the untouched defaults, for a bit for bit check
     RealVox diff <a.f32> <b.f32>                 where two raw renders differ (written by hash with REALVOX_RAW=<folder>)
 
 What each measures and the pass rules are in the comment blocks in `RealVox.cpp`. Settings from the environment, in every mode:
 `REALVOX_PRESET=<factory preset number>`, `REALVOX_SET="inputType=3,..."` (parameter ids, each in its own units), `REALVOX_SHIFT=<samples>`
-of silence in front of the take (two runs of one version then give the noise floor of every number).
+of silence in front of the take (two runs of one version then give the noise floor of every number), `REALVOX_FEED=<folder>` with
+`REALVOX_FEED_DELAY=<samples>` to feed Choir Loft the file of the same name from that folder (the take through whatever sits in front of it in
+a chain) while judging it against the dry take's notes.
 
 A tree older than 1.5.0 has no tracker reason codes: build it with `-DCHOIR_SRC=<tree> -DCHOIR_OLD=ON`. The tracker then only says voiced or
 not, so causes read `rough` for every reason; verdicts and shares are the same code either way.

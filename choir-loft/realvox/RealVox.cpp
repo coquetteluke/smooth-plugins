@@ -140,7 +140,7 @@ struct Render
     }
 };
 
-Render render (const std::vector<float>& x, bool singingOnly, int key, int scale, double referenceHz)
+Render render (const std::vector<float>& x, bool singingOnly, int key, int scale, double referenceHz, const std::vector<float>* right = nullptr)
 {
     auto p = makeProcessor();
     applyEnvironment (*p);
@@ -162,7 +162,7 @@ Render render (const std::vector<float>& x, bool singingOnly, int key, int scale
     {
         const int len = std::min (block, n - pos);
         buf.setSize (2, len, false, false, true);
-        for (int c = 0; c < 2; ++c) std::copy_n (x.data() + pos, len, buf.getWritePointer (c));
+        for (int c = 0; c < 2; ++c) std::copy_n ((c == 1 && right != nullptr ? right->data() : x.data()) + pos, len, buf.getWritePointer (c));
         midi.clear();
         p->processBlock (buf, midi);
         for (int c = 0; c < 2; ++c) std::copy_n (buf.getReadPointer (c), len, r.ch[(size_t) c].data() + pos);
@@ -218,9 +218,11 @@ struct Stretch { int a = 0, b = 0; long onset = 0, end = 0; };
 
 void measureTake (const juce::File& file, std::ofstream& out)
 {
-    const auto x = loadMono (file);
+    auto x = loadMono (file);
     const std::string take = file.getFileNameWithoutExtension().toStdString();
     if (x.empty()) { std::fprintf (stderr, "could not load %s\n", take.c_str()); out << "E " << take << " load\n"; return; }
+    // REALVOX_SHIFT=<samples> of silence in front: the plug-in's random choices then fall elsewhere, for the noise floor of every number
+    if (const char* sh = std::getenv ("REALVOX_SHIFT")) x.insert (x.begin(), (size_t) std::max (0, std::atoi (sh)), 0.0f);
 
     // Reference pitch, with gaps of up to 10 ms filled
     auto track = measure::referenceTrack (x, SR, hopSec);
@@ -936,7 +938,7 @@ struct Dry
 const char* bandOf (double hz) { return hz < 98.0 ? "under98" : (hz < 130.0 ? "98to130" : "over130"); }
 
 // The plug-in's own tracker, run on the take the way the processor runs it, read once a ms.
-struct TrackerTrace { std::vector<unsigned char> why; std::vector<float> hz; double lowHz = 0.0, highHz = 0.0; };
+struct TrackerTrace { std::vector<unsigned char> why; std::vector<float> hz, dip, coarseHz; double lowHz = 0.0, highHz = 0.0; };
 
 TrackerTrace traceTracker (const std::vector<float>& x, int inputType, float tracking)
 {
@@ -969,6 +971,8 @@ TrackerTrace traceTracker (const std::vector<float>& x, int inputType, float tra
             t.why.push_back ((unsigned char) (p > 0.0 ? 0 : std::max (1, tr.why())));
 #endif
             t.hz.push_back (p > 0.0 ? (float) (SR / p) : 0.0f);
+            t.dip.push_back (tr.difference());
+            t.coarseHz.push_back (tr.coarsePeriod() > 0.0 ? (float) (SR / tr.coarsePeriod()) : 0.0f);
         }
     }
     return t;
@@ -1028,9 +1032,32 @@ void notesTake (const juce::File& file, std::ofstream& out)
     std::printf ("  %s: %.1f s, %d held notes, key %d scale %d, %.1f s of pitch under 98 Hz, rendering\n", d.take.c_str(), d.x.size() / SR, (int) d.notes.size(), d.key, d.scale, under98);
     std::fflush (stdout);
 
-    const Render z = render (d.x, true, d.key, d.scale, 440.0);
+    // What the plug-in is fed: the dry take, or with REALVOX_FEED=<folder> the file of the same name there (the take through whatever sits
+    // in front of Choir Loft in a chain, left and right), less REALVOX_FEED_DELAY samples of that plug-in's latency. The notes it is judged
+    // against are always the dry take's.
+    std::vector<float> feedL = d.x, feedR = d.x, feedMono = d.x;
+    if (const char* dir = std::getenv ("REALVOX_FEED"))
+    {
+        juce::AudioFormatManager m;
+        m.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (m.createReaderFor (juce::File (dir).getChildFile (file.getFileName())));
+        if (reader == nullptr || std::abs (reader->sampleRate - SR) > 1.0) { std::fprintf (stderr, "no 48 kHz %s in %s\n", file.getFileName().toRawUTF8(), dir); return; }
+        juce::AudioBuffer<float> b ((int) reader->numChannels, (int) reader->lengthInSamples);
+        reader->read (&b, 0, b.getNumSamples(), 0, true, true);
+        const int delay = std::getenv ("REALVOX_FEED_DELAY") != nullptr ? std::atoi (std::getenv ("REALVOX_FEED_DELAY")) : 0;
+        for (size_t i = 0; i < d.x.size(); ++i)
+        {
+            const int at = (int) i + delay;
+            feedL[i] = at < b.getNumSamples() ? b.getSample (0, at) : 0.0f;
+            feedR[i] = at < b.getNumSamples() ? b.getSample (b.getNumChannels() > 1 ? 1 : 0, at) : 0.0f;
+            feedMono[i] = 0.5f * (feedL[i] + feedR[i]);
+        }
+        std::printf ("    fed from %s, %d channels, %d samples of delay taken off, level %.1f dB against the dry take\n", dir, b.getNumChannels(), delay,
+                     toDb (rmsOf (feedMono, 0, (long) feedMono.size())) - toDb (rmsOf (d.x, 0, (long) d.x.size())));
+    }
+    const Render z = render (feedL, true, d.key, d.scale, 440.0, &feedR);
     const RenderInfo info = renderInfo();
-    const TrackerTrace tr = traceTracker (d.x, info.inputType, info.tracking);
+    const TrackerTrace tr = traceTracker (feedMono, info.inputType, info.tracking);
     const long L = z.latency;
     out << "L " << d.take << " " << L << "\n";
     out << "R " << d.take << " " << info.inputType << " " << tr.lowHz << " " << tr.highHz << "\n";
@@ -1993,6 +2020,61 @@ void printRobot (const Pool& p, const char* label)
     std::printf ("    starts (%d) apart %.1f ms (median distance from their median); ends (%d) apart %.1f ms; spectrum shape %.3f\n", p.n ("double start"), spreadAboutMedian (p, "double start"),
                  p.n ("double end"), spreadAboutMedian (p, "double end"), p.med ("double shape"));
 }
+
+// =====================================================================================================================================
+// Limits for the Human option (1.5.0), committed before any of it existed. Luke likes the robot sound and wants a human one as well, and
+// it must not sound out of tune or sloppy. So: Human at 0 is the old sound bit for bit (RealVox hash), and at any setting above 0, on the
+// working set, measured by RealVox robot and RealVox notes with REALVOX_SET="human=<setting>" against the same build at human=0:
+//   U1 in tune: a voice's average over a held note against its harmony note, median 10 cents at most (the robot reads 4.5; humanOffMaxCents)
+//   U2 and its 95th percentile no more than the robot's plus 10 cents (the robot's 69.7 is where Luke himself sings outside the key)
+//   U3 steady: pitch spread inside a note, median, no more than the lead's own (20.1 cents on this set): a voice never moves more than Luke does
+//   U4 the chord: the interval between the two voices inside a note, median SD 15 cents at most and 90th percentile 35 at most
+//      (the robot: 6.1 and 19.6; Luke against Luke singing the same part again: 25.7)
+//   U5 starts: each voice's median start no later than 60 ms after the lead (humanLateMaxMs; the robot: 46 and 52), and the 90th
+//      percentile of both no later than 80 ms (onsetSoundWorstMs; the robot: 73)
+//   U6 note changes: 10 to 90% time, median, 120 ms at most (the robot 70, Luke 76), passing half way no later than 40 ms after the lead (20)
+//   U7 ends: the two voices no further apart than 40 ms, median (Luke's two passes: 40; the robot: 4)
+//   U8 level: a voice's level against the lead inside a note, spread no more than 1.21 dB median (Luke's two passes; the robot 0.71)
+//   U9 held notes: rules H3 to H9 of the held note check against the same build at human=0 (RealVox notescompare)
+// What more human has to mean at Human 100, also set before tuning (each is the robot's number moved a clear part of the way to Luke's):
+//   V1 pitch spread inside a note, median, 10 cents or more (robot 5.3, Luke 20.1)
+//   V2 the two voices' movement in common, median correlation 0.30 or less (robot 0.42, Luke's two passes 0.12)
+//   V3 level curves alike, median correlation 0.65 or less (robot 0.81, Luke's two passes 0.13)
+//   V4 ends, the two voices apart, median 8 ms or more (robot 4, Luke's two passes 40)
+// =====================================================================================================================================
+int humanLimits (const std::string& newPath, const std::string& robotPath, bool full)
+{
+    const Pool n = readRobot (newPath), r = readRobot (robotPath);
+    printRobot (n, ("this setting: " + newPath).c_str());
+    printRobot (r, ("human 0: " + robotPath).c_str());
+    int fails = 0;
+    const auto rule = [&] (bool ok, const char* what, double value, double limit)
+    {
+        if (! ok) ++fails;
+        std::printf ("%s  %s: %.2f, limit %.2f\n", ok ? "PASS" : "FAIL", what, value, limit);
+    };
+    rule (n.med ("voice off") <= 10.0, "U1 note average against its note, median (cents)", n.med ("voice off"), 10.0);
+    rule (n.pct ("voice off", 95.0) <= r.pct ("voice off", 95.0) + 10.0, "U2 note average against its note, 95th percentile (cents)", n.pct ("voice off", 95.0), r.pct ("voice off", 95.0) + 10.0);
+    rule (n.med ("voice sd") <= n.med ("lead sd"), "U3 pitch spread inside a note, median, no more than the lead's (cents)", n.med ("voice sd"), n.med ("lead sd"));
+    rule (n.med ("interval sd") <= 15.0, "U4 interval between the voices, spread inside a note, median (cents)", n.med ("interval sd"), 15.0);
+    rule (n.pct ("interval sd", 90.0) <= 35.0, "U4 and its 90th percentile (cents)", n.pct ("interval sd", 90.0), 35.0);
+    rule (n.med ("start voice 1 after lead") <= 60.0, "U5 voice 1 starts after the lead, median (ms)", n.med ("start voice 1 after lead"), 60.0);
+    rule (n.med ("start voice 2 after lead") <= 60.0, "U5 voice 2 starts after the lead, median (ms)", n.med ("start voice 2 after lead"), 60.0);
+    rule (n.pct ("start voice after lead", 90.0) <= 80.0, "U5 both voices, 90th percentile (ms)", n.pct ("start voice after lead", 90.0), 80.0);
+    rule (n.med ("voice glide") <= 120.0, "U6 note change 10 to 90% time, median (ms)", n.med ("voice glide"), 120.0);
+    rule (n.med ("voice glide delay") <= 40.0, "U6 voice passes half way after the lead, median (ms)", n.med ("voice glide delay"), 40.0);
+    rule (n.med ("end voices apart") <= 40.0, "U7 ends, the two voices apart, median (ms)", n.med ("end voices apart"), 40.0);
+    rule (n.med ("voice level sd") <= 1.21, "U8 level against the lead inside a note, spread, median (dB)", n.med ("voice level sd"), 1.21);
+    if (full)
+    {
+        rule (n.med ("voice sd") >= 10.0, "V1 pitch spread inside a note at Human 100, median, at least (cents)", n.med ("voice sd"), 10.0);
+        rule (n.med ("voices move together") <= 0.30, "V2 the two voices' movement in common at Human 100, at most", n.med ("voices move together"), 0.30);
+        rule (n.med ("voice level corr") <= 0.65, "V3 level curves alike at Human 100, at most", n.med ("voice level corr"), 0.65);
+        rule (n.med ("end voices apart") >= 8.0, "V4 ends apart at Human 100, median, at least (ms)", n.med ("end voices apart"), 8.0);
+    }
+    std::printf ("%s  %d of the Human limits failed (U9 is RealVox notescompare)\n", fails ? "RESULT FAIL" : "RESULT PASS", fails);
+    return fails ? 1 : 0;
+}
 } // namespace
 
 int main (int argc, char** argv)
@@ -2018,12 +2100,56 @@ int main (int argc, char** argv)
     }
     if (mode == "notesreport" && argc >= 3) { printNotes (readNotes (argv[2]), argv[2]); return 0; }
     if (mode == "notescompare" && argc >= 4) return compareNotes (argv[2], argv[3]);
+    if (mode == "humanlimits" && argc >= 4) return humanLimits (argv[2], argv[3], argc >= 5 && std::string (argv[4]) == "full");
     if (mode == "robotreport" && argc >= 3) { printRobot (readRobot (argv[2]), argv[2]); return 0; }
+    if (mode == "tracker" && argc >= 5)
+    {
+        // What the plug-in's tracker says each ms of a stretch of a take, beside the reference: RealVox tracker <take.wav> <from s> <to s>
+        Dry d;
+        if (! d.load (cwd.getChildFile (argv[2]))) return 1;
+        const RenderInfo info = renderInfo();
+        const TrackerTrace tr = traceTracker (d.x, info.inputType, info.tracking);
+        for (long ms = (long) (1000.0 * std::atof (argv[3])); ms <= (long) (1000.0 * std::atof (argv[4])) && ms < (long) tr.hz.size(); ++ms)
+            std::printf ("%8.3f s  tracker %7.1f Hz  %-9s  dip %.3f at %6.1f Hz  reference (12 ms earlier) %7.1f Hz  level %6.1f dBFS\n", 0.001 * ms, tr.hz[(size_t) ms],
+                         tr.hz[(size_t) ms] > 0.0f ? "voiced" : stateNames[std::clamp ((int) tr.why[(size_t) ms], 1, 7)], tr.dip[(size_t) ms], tr.coarseHz[(size_t) ms],
+                         d.leadHzAt ((ms - 12) * 48), toDb (rmsAround (d.x, (ms - 12) * 48, 240)));
+        return 0;
+    }
+    if (mode == "lowcensus" && argc >= 3)
+    {
+        // Where the tracker calls a pitch under 98 Hz: how much of it is on reference pitch under 98 Hz, on higher reference pitch, and on
+        // no reference pitch at all, with the dips it saw there. RealVox lowcensus <take.wav> ...
+        for (int i = 2; i < argc; ++i)
+        {
+            Dry d;
+            if (! d.load (cwd.getChildFile (argv[i]))) continue;
+            const RenderInfo info = renderInfo();
+            const TrackerTrace tr = traceTracker (d.x, info.inputType, info.tracking);
+            std::vector<double> dipsLow, dipsNone, dipsHigh;
+            for (long ms = 12; ms < (long) tr.hz.size(); ++ms)
+            {
+                if (tr.hz[(size_t) ms] <= 0.0f || tr.hz[(size_t) ms] >= 98.0f) continue;
+                const double ref = d.leadHzAt ((ms - 12) * 48);
+                (ref <= 0.0 ? dipsNone : (ref < 98.0 ? dipsLow : dipsHigh)).push_back (tr.dip[(size_t) ms]);
+            }
+            const auto show = [] (const char* name, const std::vector<double>& v)
+            {
+                std::printf ("    %-28s %6.2f s  dip median %.3f  75th %.3f  90th %.3f\n", name, 0.001 * v.size(), v.empty() ? 0.0 : measure::median (v),
+                             v.empty() ? 0.0 : measure::percentile (v, 75.0), v.empty() ? 0.0 : measure::percentile (v, 90.0));
+            };
+            std::printf ("  %s: tracker under 98 Hz while the reference says\n", d.take.c_str());
+            show ("under 98 Hz", dipsLow);
+            show ("98 Hz or more", dipsHigh);
+            show ("no pitch", dipsNone);
+        }
+        return 0;
+    }
     if (mode == "hash" && argc >= 3) return hashTakes (argc, argv);
     if (mode == "diff" && argc >= 4) return diffRaw (cwd.getChildFile (argv[2]), cwd.getChildFile (argv[3]));
     if (mode == "demo" && argc >= 6) return demo (cwd.getChildFile (argv[2]), cwd.getChildFile (argv[3]), std::atof (argv[4]), std::atof (argv[5]));
     std::fprintf (stderr, "usage: RealVox measure <records> <wav>... | report <records> | compare <new> <old> | demo <wav> <out.wav> <from s> <secs>\n"
                           "       RealVox notes <records> <wav>... | notesreport <records> | notescompare <new> <old>\n"
-                          "       RealVox robot <records> <wav>... | robotreport <records> | hash <wav>... | diff <a.f32> <b.f32>\n");
+                          "       RealVox robot <records> <wav>... | robotreport <records> | humanlimits <records> <records at human 0> [full]\n"
+                          "       RealVox hash <wav>... | diff <a.f32> <b.f32> | tracker <wav> <from s> <to s> | lowcensus <wav>...\n");
     return 2;
 }

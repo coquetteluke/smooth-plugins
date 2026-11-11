@@ -1,5 +1,5 @@
 PASS  parameter names are clear, unique, no em dash
-INFO  parameter count = 13.000 
+INFO  parameter count = 14.000 
 PASS  factory presets = 14.000 
 PASS  preset names are not empty, no em dash
 PASS  presets change the state
@@ -33,6 +33,7 @@ PASS  no click when Gain jumps, biggest step = 0.057
 PASS  no click when Impact jumps, biggest step = 0.020 
 PASS  no click when Ceiling jumps, biggest step = 0.004 
 PASS  no click when Ceiling On jumps, biggest step = 0.004 
+PASS  no click when Steady Notes jumps, biggest step = 0.004 
 PASS  Attack 9 dB, 1 kHz decaying burst: first 3 ms change = 8.973 dB
 PASS  Attack 9 dB, 1 kHz decaying burst: tail change = 0.000 dB
 PASS  Attack -9 dB, 1 kHz decaying burst: first 3 ms change = -8.973 dB
@@ -116,6 +117,31 @@ PASS  steady 60 Hz, Attack and Sustain at maximum: difference from input = -224.
 PASS  steady 100 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
 PASS  steady 1000 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
 PASS  steady 9000 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
+PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, soft start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, soft start: change of its tail = 9.000 dB
+PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, soft start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, soft start: change of its tail = -9.000 dB
+PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, soft start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, soft start: change of its tail = 6.000 dB
+PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, soft start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, soft start: change of its tail = -7.000 dB
+PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, hard start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, hard start: change of its tail = 9.000 dB
+PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, hard start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, hard start: change of its tail = -9.000 dB
+PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, hard start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, hard start: change of its tail = 6.000 dB
+PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, hard start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, hard start: change of its tail = -7.000 dB
+PASS  Steady Notes, Sustain 9: first 15 ms of a quieter note after a louder one = 0.010 dB
+INFO  Steady Notes off, Sustain 9: first 15 ms of a quieter note after a louder one = 1.097 dB
+PASS  Steady Notes, Sustain 6: a hiss after a note = 0.000 dB
+PASS  Steady Notes, Sustain 6: a dull sound of the same kind after the same note still gets its tail = 6.000 dB
+PASS  Steady Notes is off by default
+PASS  Steady Notes is off in all 14 presets = 14.000 
+PASS  turning it on shows the preset as edited
+PASS  Steady Notes comes back with the session
+PASS  a session from before 0.4.0 loads with Steady Notes off
 INFO  300 Hz burst train: input crest factor = 12.099 dB
 PASS  Punch 25, 300 Hz burst train: crest factor reduction = 1.488 dB
 PASS  Punch 25, 300 Hz burst train: RMS level change = -0.007 dB
@@ -307,9 +333,9 @@ PASS  the time axis runs from 0 to 400 ms
 PASS  and it can be read both ways
 PASS  the first 30 ms take close to half the width = 0.443 
 PASS  the window is the custom one
-PASS  all 9 controls keep their ID, name, range and default
-PASS  all 9 controls have a place in the window
-PASS  and there are no others that can be set = 9.000 
+PASS  all 10 controls keep their ID, name, range and default
+PASS  all 10 controls have a place in the window
+PASS  and there are no others that can be set = 10.000 
 PASS  every hint fits on the hint line at the smallest window, widest in points = 450.354 
 PASS  the bars are found
 PASS  dragging Attack a quarter of its width moves it from where it was = 8.900 

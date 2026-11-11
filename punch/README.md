@@ -11,6 +11,7 @@ In your host: Audio Units > Luke Garito > Punch. AU code `aufx SPun Luke`. Mono 
 - **Punch** (0 to 100 %, default 0): amount of fast compression, level matched. The threshold follows the loudest recent level, so it does the same job on a quiet track as on a loud one. Up to 36 dB below that peak at 10 to 1 at the top of the control.
 - **Attack** (-15 to +15 dB, default 0): boosts or cuts the start of a sound. Full effect for about the first 5 ms, gone by about 30 ms.
 - **Sustain** (-15 to +15 dB, default 0): boosts or cuts the tail, as a sound dies away. Starts after about 15 ms. A steady sound has no tail, so it is left alone.
+- **Steady Notes** (default off): Sustain for a voice. A sung note is never quite steady, and without this Sustain treats every small sag of a held vowel as a tail and moves the note in and out. On, a sound that has kept its level for 60 ms may sag by 4 dB before Sustain acts, a sharp start counts as a new sound and not as the tail of the one before, and bright sounds such as an S are left alone. Off, Sustain is exactly what it was. It only changes anything when Sustain is not 0.
 - **Mix** (0 to 100 %, default 100): blend with the dry signal, which is delayed by the same 2 ms.
 - **Bypass**: fades to the input, delayed by the same 2 ms. Takes Gain and Ceiling out too.
 - **Gain** (-12 to +24 dB, default 0): level in front of everything, for quiet takes. It moves dry and wet alike, so Mix 0 still carries it. Attack, Sustain and Punch ignore level, so it does not change them. It does drive Impact harder.
@@ -64,6 +65,8 @@ These add Gain, Impact and Ceiling, with Ceiling On:
 - **Full Level Hook**: 15, +2, 0, 100. Gain 0, Impact 70, Ceiling -0.5.
 - **Parallel Impact**: 0, 0, 0, 50. Gain 0, Impact 90, Ceiling -1.
 - **Ceiling Only**: 0, 0, 0, 100. Gain 0, Impact 0, Ceiling -1.
+
+Steady Notes is off in every preset. Turn it on by hand with any preset that uses Sustain.
 
 ## Signal flow
 
@@ -143,6 +146,8 @@ Added in 0.3.0, with limits written before the first run:
 Limits to know about:
 
 - Sustain follows how fast a sound dies away. +9 dB gives 9.0 dB on a 30 ms decay, 7.5 on 300 ms and 2.6 on 1 second. Slower decays read as steady sounds.
+- Without Steady Notes, Sustain moves a held sung note: one swinging 3 dB at 5 Hz moves by 7.3 dB at Sustain +9. With it, 0.0 dB, and the note's tail still gets the full 9.0 dB. On Luke's real takes the numbers are in `~/smooth-plugins/_vox/rode/work/punch/REPORT.md`.
+- The picture of the last hit draws Steady Notes' held notes and new starts, but not its sparing of bright sounds, because the display only has levels.
 - Level match needs a moment. At Punch 50, the first hit after a long silence is 2.7 dB quieter than the input, the second 0.6 dB, the fifth 0.0 dB.
 - At high Punch, the level match lifts quiet tails a lot, including any noise in them.
 - Boosting Attack raises peaks. With Ceiling On off there is no limit on the output, so watch the level after it.

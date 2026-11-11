@@ -98,6 +98,7 @@ private:
     std::atomic<float>* impact = nullptr;
     std::atomic<float>* ceiling = nullptr;
     std::atomic<float>* ceilingOn = nullptr;
+    std::atomic<float>* steadyNotes = nullptr;
     juce::AudioParameterBool* bypass = nullptr;
     juce::SmoothedValue<float> punchSmoothed, attackSmoothed, sustainSmoothed, mixSmoothed, onSmoothed;
     juce::SmoothedValue<float> gainSmoothed, impactSmoothed, ceilingSmoothed, ceilingOnSmoothed;

@@ -55,7 +55,7 @@ private:
     ui::PresetBox presets;
     ui::Pill bypass;
     ui::BarSlider attack, sustain, punch, impact, ceiling;
-    ui::Pill ceilingOn;
+    ui::Pill ceilingOn, steadyNotes;
     ui::BarSlider gain, mix;
     std::unique_ptr<AdvancedHeader> advancedHeader;
 

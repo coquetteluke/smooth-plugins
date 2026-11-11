@@ -103,6 +103,7 @@ PunchEditor::PunchEditor (PluginProcessor& p)
       impact (p.apvts, "impact", "Impact", "Evens out the performance and raises it. Use with the Ceiling on.", BarSlider::Size::regular, percent),
       ceiling (p.apvts, "ceiling", "Ceiling", "The most the output can reach while On is lit.", BarSlider::Size::regular, [] (float v) { return minusText (v, 1) + " dB"; }),
       ceilingOn (p.apvts, "ceilingOn", "On", "Turns the Ceiling on or off."),
+      steadyNotes (p.apvts, "steadyNotes", "Steady", "For a voice: Sustain leaves held notes, new starts and S alone."),
       gain (p.apvts, "gain", "Gain", "Level in front of everything, for quiet takes. It drives Impact harder.", BarSlider::Size::regular, [] (float v) { return signedDb (v); }),
       mix (p.apvts, "mix", "Mix", "Blends the effect with the untouched sound.", BarSlider::Size::regular, percent)
 {
@@ -119,7 +120,7 @@ PunchEditor::PunchEditor (PluginProcessor& p)
         return p.isCurrentProgramEdited() ? name + ", edited" : name;
     };
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &timeline, &hitView, &meters, &readouts, &presets, &bypass, &attack, &sustain, &punch, &impact, &ceiling, &ceilingOn })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &timeline, &hitView, &meters, &readouts, &presets, &bypass, &attack, &sustain, &punch, &impact, &ceiling, &ceilingOn, &steadyNotes })
         addAndMakeVisible (c);
     for (juce::Component* c : std::initializer_list<juce::Component*> { &gain, &mix })
         addChildComponent (c);
@@ -235,7 +236,13 @@ void PunchEditor::resized()
     const int split = heroRow.getX() + hitView.getSplitX();
     const int gapBetween = 28;
     attack.setBounds (largeRow.withRight (split - gapBetween / 2));
-    sustain.setBounds (largeRow.withLeft (split + gapBetween / 2).withRight (plot.getRight()));
+    {
+        // Steady Notes belongs to Sustain, so it sits at the end of Sustain's bar.
+        auto cell = largeRow.withLeft (split + gapBetween / 2).withRight (plot.getRight());
+        steadyNotes.setBounds (cell.removeFromRight (64).withTrimmedTop (1).withHeight (26));
+        cell.removeFromRight (12);
+        sustain.setBounds (cell);
+    }
     readouts.setBounds (right.getX() - readoutOverhang, largeRow.getY() + 2, rightColumn + readoutOverhang, 54);
 
     punch.setBounds (regularRow.withRight (split - gapBetween / 2));
@@ -300,6 +307,7 @@ Settings PunchEditor::readSettings() const
     s.impact = value ("impact");
     s.ceiling = value ("ceiling");
     s.ceilingOn = value ("ceilingOn") > 0.5f;
+    s.steadyNotes = value ("steadyNotes") > 0.5f;
     s.bypass = value ("bypass") > 0.5f;
     return s;
 }

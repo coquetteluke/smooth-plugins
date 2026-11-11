@@ -4,7 +4,7 @@
 
 namespace
 {
-    struct Preset { const char* name; float punch; float attack; float sustain; float mix; float gain = 0.0f; float impact = 0.0f; float ceiling = -1.0f; bool ceilingOn = false; };
+    struct Preset { const char* name; float punch; float attack; float sustain; float mix; float gain = 0.0f; float impact = 0.0f; float ceiling = -1.0f; bool ceilingOn = false; bool steadyNotes = false; };
     // Order matters: a host may have saved a preset by its number. Add new ones at the end.
     constexpr Preset presets[] = {
         { "Neutral",          0.0f,   0.0f,  0.0f, 100.0f },
@@ -54,6 +54,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "ceiling", 1 }, "Ceiling", NormalisableRange<float> (-24.0f, 0.0f, 0.1f), -1.0f,
                                                        AudioParameterFloatAttributes().withLabel ("dBFS")));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "ceilingOn", 1 }, "Ceiling On", false));
+    // Added in 0.4.0. Off leaves Sustain exactly as it was, so every older session and preset sounds the same.
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "steadyNotes", 1 }, "Steady Notes", false));
     return layout;
 }
 
@@ -70,6 +72,7 @@ PluginProcessor::PluginProcessor()
     impact = apvts.getRawParameterValue ("impact");
     ceiling = apvts.getRawParameterValue ("ceiling");
     ceilingOn = apvts.getRawParameterValue ("ceilingOn");
+    steadyNotes = apvts.getRawParameterValue ("steadyNotes");
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
 
     using Category = juce::AudioProcessorParameter::Category;
@@ -160,13 +163,15 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
     float* ch1 = numCh > 1 ? buffer.getWritePointer (1) : nullptr;
     float* d0 = delay[0].data();
     float* d1 = delay[1].data();
+    const bool steady = steadyNotes->load() > 0.5f;
 
     for (int i = 0; i < buffer.getNumSamples(); ++i)
     {
         const float rect = ch1 != nullptr ? juce::jmax (std::abs (ch0[i]), std::abs (ch1[i])) : std::abs (ch0[i]);
         const float inGain = PunchEngine::dbToGain (gainSmoothed.getNextValue());
         // The detector keeps running in bypass, so coming back is seamless.
-        const float gainDb = engine.process (rect * inGain, attackSmoothed.getNextValue(), sustainSmoothed.getNextValue(), punchSmoothed.getNextValue(), impactSmoothed.getNextValue());
+        const float gainDb = engine.process (rect * inGain, attackSmoothed.getNextValue(), sustainSmoothed.getNextValue(), punchSmoothed.getNextValue(), impactSmoothed.getNextValue(),
+                                             steady, ch1 != nullptr ? 0.5f * (ch0[i] + ch1[i]) : ch0[i]);
         const float on = onSmoothed.getNextValue();
         const float m = mixSmoothed.getNextValue() * on;
         // Wet and dry are the same delayed sample, so they can't comb: Mix only scales how much of the gain change is used.
@@ -237,7 +242,8 @@ bool PluginProcessor::isCurrentProgramEdited() const
     const auto moved = [] (const std::atomic<float>* now, float wanted) { return std::abs (now->load (std::memory_order_relaxed) - wanted) > 0.01f; };
     return moved (punch, preset.punch) || moved (attack, preset.attack) || moved (sustain, preset.sustain) || moved (mix, preset.mix)
         || moved (gain, preset.gain) || moved (impact, preset.impact) || moved (ceiling, preset.ceiling)
-        || (ceilingOn->load (std::memory_order_relaxed) > 0.5f) != preset.ceilingOn;
+        || (ceilingOn->load (std::memory_order_relaxed) > 0.5f) != preset.ceilingOn
+        || (steadyNotes->load (std::memory_order_relaxed) > 0.5f) != preset.steadyNotes;
 }
 
 const juce::String PluginProcessor::getProgramName (int i)
@@ -263,6 +269,7 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("impact", presets[i].impact);
     set ("ceiling", presets[i].ceiling);
     set ("ceilingOn", presets[i].ceilingOn ? 1.0f : 0.0f);
+    set ("steadyNotes", presets[i].steadyNotes ? 1.0f : 0.0f);
 }
 
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)

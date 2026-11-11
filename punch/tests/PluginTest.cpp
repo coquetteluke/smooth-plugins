@@ -13,7 +13,7 @@ using namespace testkit;
 
 namespace
 {
-    struct Settings { float punch = 0, attack = 0, sustain = 0, mix = 100, gain = 0, impact = 0, ceiling = -1, ceilingOn = 0; };
+    struct Settings { float punch = 0, attack = 0, sustain = 0, mix = 100, gain = 0, impact = 0, ceiling = -1, ceilingOn = 0, steadyNotes = 0; };
 
     void setParam (PluginProcessor& p, const char* id, float v)
     {
@@ -31,6 +31,7 @@ namespace
         setParam (p, "impact", s.impact);
         setParam (p, "ceiling", s.ceiling);
         setParam (p, "ceilingOn", s.ceilingOn);
+        setParam (p, "steadyNotes", s.steadyNotes);
     }
 
     // A fresh plug-in with these settings. Returns output channel 0, and the latency through `latency`.
@@ -214,6 +215,121 @@ static void testSteadyTones()
         const auto out = process (in, s, 48000.0, 512, &lat);
         const double residual = nullDb (out, in, lat, 48000, 24000, rms (in.data() + 48000, 24000));
         check (residual <= -60.0, "steady " + std::to_string ((int) f) + " Hz, Attack and Sustain at maximum: difference from input", residual, "dB");
+    }
+}
+
+// A held note is not a tail. A sung vowel sags and swells by a few dB while it is held (vibrato, breath), which no steady test tone does.
+// On Luke's real takes (2026-11-11) Sustain moved held vowels by its full amount, in and out. Limits written before the first run:
+// while a note is held with its level swinging 3 dB peak to peak, Sustain moves it by under 1 dB; when it dies away, the tail still
+// moves by at least 4 dB of a 9 dB setting (100 to 300 ms after it starts to fall). That is what Steady Notes is for (0.4.0). Off, Sustain
+// is what it was, which the first version's numbers further down hold it to.
+static void testHeldNotes()
+{
+    const double sr = 48000.0, twoPi = juce::MathConstants<double>::twoPi;
+    const int n = (int) (sr * 3.6);
+    for (const bool hardStart : { false, true })
+    {
+        std::vector<float> in ((size_t) n, 0.0f);
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = i / sr;
+            if (t < 0.3) continue;
+            double env = 1.0;
+            if (! hardStart && t < 0.35) env = 0.5 - 0.5 * std::cos (juce::MathConstants<double>::pi * (t - 0.3) / 0.05);
+            if (t > 2.8) env = std::exp (-(t - 2.8) / 0.1);
+            const double swing = std::pow (10.0, 1.5 * std::sin (twoPi * 5.0 * (t - 0.3)) / 20.0);
+            double v = 0.0;
+            for (int h = 1; h <= 3; ++h) v += std::sin (twoPi * 220.0 * h * t) / h;
+            in[(size_t) i] = (float) (0.2 * env * swing * v);
+        }
+        for (float v : { 9.0f, -9.0f, 6.0f, -7.0f })
+        {
+            Settings s; s.sustain = v; s.steadyNotes = 1.0f;
+            int lat = 0;
+            const auto out = process (in, s, sr, 512, &lat);
+            double worst = 0.0;
+            for (int w = 60; w < 270; ++w) // 0.6 to 2.7 s, 10 ms at a time
+                worst = std::max (worst, std::abs (windowRmsDb (out, w * 480 + lat, 480) - windowRmsDb (in, w * 480, 480)));
+            const int tailFrom = (int) (sr * 2.9), tailLen = (int) (sr * 0.2);
+            const double tail = windowRmsDb (out, tailFrom + lat, tailLen) - windowRmsDb (in, tailFrom, tailLen);
+            const std::string tag = std::string ("Steady Notes, Sustain ") + std::to_string ((int) v) + " dB on a held note with a 3 dB swing" + (hardStart ? ", hard start" : ", soft start");
+            check (worst <= 1.0, tag + ": largest change while it is held", worst, "dB");
+            check (tail * juce::jlimit (-1.0f, 1.0f, v) >= std::abs (v) * 4.0 / 9.0, tag + ": change of its tail", tail, "dB");
+        }
+    }
+}
+
+// Steady Notes, the other two things it does. Limits written before the first run.
+// A quieter note that starts sharply after a louder one is a new sound: its first 15 ms move by under 1 dB (off, it gets the tail's gain).
+// A hiss after a note (an S) is spared: it moves by under 1 dB, while a dull sound of the same level after the same note still moves.
+// And the parameter itself: off by default, off in every preset, saved and recalled, off for an older session.
+static void testSteadyNotes()
+{
+    const double sr = 48000.0, twoPi = juce::MathConstants<double>::twoPi;
+    {
+        std::vector<float> in ((size_t) (sr * 1.5), 0.0f);
+        for (int i = 0; i < (int) in.size(); ++i)
+        {
+            const double t = i / sr;
+            if (t >= 0.1 && t < 0.5) in[(size_t) i] = (float) (0.5 * std::sin (twoPi * 220.0 * t) * (t > 0.45 ? std::exp (-(t - 0.45) / 0.01) : 1.0));
+            if (t >= 0.8 && t < 1.3) in[(size_t) i] = (float) (0.158 * std::sin (twoPi * 220.0 * (t - 0.8)));
+        }
+        for (float on : { 1.0f, 0.0f })
+        {
+            Settings s; s.sustain = 9.0f; s.steadyNotes = on;
+            int lat = 0;
+            const auto out = process (in, s, sr, 512, &lat);
+            const int at = (int) (sr * 0.8), len = (int) (sr * 0.015);
+            const double change = windowRmsDb (out, at + lat, len) - windowRmsDb (in, at, len);
+            if (on > 0.5f) check (std::abs (change) <= 1.0, "Steady Notes, Sustain 9: first 15 ms of a quieter note after a louder one", change, "dB");
+            else info ("Steady Notes off, Sustain 9: first 15 ms of a quieter note after a louder one", change, "dB");
+        }
+    }
+    for (const bool hiss : { true, false })
+    {
+        std::vector<float> in ((size_t) (sr * 1.0), 0.0f);
+        std::mt19937 g (3); std::uniform_real_distribution<float> d (-1.0f, 1.0f);
+        float last = 0.0f;
+        for (int i = 0; i < (int) in.size(); ++i)
+        {
+            const double t = i / sr;
+            if (t >= 0.1 && t < 0.4) in[(size_t) i] = (float) (0.5 * std::sin (twoPi * 220.0 * t));
+            if (t >= 0.4 && t < 0.7)
+            {
+                const float n = d (g);
+                in[(size_t) i] = hiss ? 0.06f * (n - last) : (float) (0.12 * std::sin (twoPi * 300.0 * t)); // a differenced noise is nearly all above 4 kHz
+                last = n;
+            }
+        }
+        Settings s; s.sustain = 6.0f; s.steadyNotes = 1.0f;
+        int lat = 0;
+        const auto out = process (in, s, sr, 512, &lat);
+        const int at = (int) (sr * 0.45), len = (int) (sr * 0.2);
+        const double change = windowRmsDb (out, at + lat, len) - windowRmsDb (in, at, len);
+        if (hiss) check (std::abs (change) <= 1.0, "Steady Notes, Sustain 6: a hiss after a note", change, "dB");
+        else check (change >= 3.0, "Steady Notes, Sustain 6: a dull sound of the same kind after the same note still gets its tail", change, "dB");
+    }
+    {
+        PluginProcessor p;
+        check (p.apvts.getRawParameterValue ("steadyNotes")->load() < 0.5f, "Steady Notes is off by default");
+        bool olderOff = true;
+        for (int i = 0; i < p.getNumPrograms(); ++i) { p.setCurrentProgram (i); olderOff = olderOff && p.apvts.getRawParameterValue ("steadyNotes")->load() < 0.5f; }
+        check (olderOff && p.getNumPrograms() == 14, "Steady Notes is off in all 14 presets", (double) p.getNumPrograms());
+        setParam (p, "steadyNotes", 1.0f);
+        check (p.isCurrentProgramEdited(), "turning it on shows the preset as edited");
+        juce::MemoryBlock saved;
+        p.getStateInformation (saved);
+        PluginProcessor q;
+        q.setStateInformation (saved.getData(), (int) saved.getSize());
+        check (q.apvts.getRawParameterValue ("steadyNotes")->load() > 0.5f, "Steady Notes comes back with the session");
+        juce::XmlElement xml ("STATE");
+        auto* e = xml.createNewChildElement ("PARAM");
+        e->setAttribute ("id", "sustain");
+        e->setAttribute ("value", 6.0);
+        juce::MemoryBlock older;
+        juce::AudioProcessor::copyXmlToBinary (xml, older);
+        q.setStateInformation (older.getData(), (int) older.getSize());
+        check (q.apvts.getRawParameterValue ("steadyNotes")->load() < 0.5f, "a session from before 0.4.0 loads with Steady Notes off");
     }
 }
 
@@ -1454,6 +1570,7 @@ void testWindow()
             { "punch", "Punch", 0, 100, 0 }, { "attack", "Attack", -15, 15, 0 }, { "sustain", "Sustain", -15, 15, 0 }, { "mix", "Mix", 0, 100, 100 },
             { "bypass", "Bypass", 0, 1, 0 }, { "gain", "Gain", -12, 24, 0 }, { "impact", "Impact", 0, 100, 0 }, { "ceiling", "Ceiling", -24, 0, -1 },
             { "ceilingOn", "Ceiling On", 0, 1, 0 },
+            { "steadyNotes", "Steady Notes", 0, 1, 0 },
         };
         int missing = 0, wrong = 0;
         for (const auto& e : expected)
@@ -1471,14 +1588,14 @@ void testWindow()
                 std::printf ("  no control for %s\n", e.id);
             }
         }
-        check (wrong == 0, "all 9 controls keep their ID, name, range and default");
-        check (missing == 0, "all 9 controls have a place in the window");
+        check (wrong == 0, "all 10 controls keep their ID, name, range and default");
+        check (missing == 0, "all 10 controls have a place in the window");
 
         int settable = 0;
         for (auto* prm : p.getParameters())
             if (dynamic_cast<ReadingParameter*> (prm) == nullptr)
                 ++settable;
-        check (settable == 9, "and there are no others that can be set", (double) settable);
+        check (settable == 10, "and there are no others that can be set", (double) settable);
     }
 
     // The hint line is one line, at the smallest window.
@@ -1862,6 +1979,8 @@ int main()
     testOtherSounds();
     testRates();
     testSteadyTones();
+    testHeldNotes();
+    testSteadyNotes();
     testPunch();
     testMix();
     testNeutral();

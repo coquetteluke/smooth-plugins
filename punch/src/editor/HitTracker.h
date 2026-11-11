@@ -129,12 +129,12 @@ namespace punchview
     struct Settings
     {
         float punch = 0.0f, attack = 0.0f, sustain = 0.0f, mix = 100.0f, gain = 0.0f, impact = 0.0f, ceiling = -1.0f;
-        bool ceilingOn = false, bypass = false;
+        bool ceilingOn = false, bypass = false, steadyNotes = false;
 
         bool operator== (const Settings& o) const noexcept
         {
             return punch == o.punch && attack == o.attack && sustain == o.sustain && mix == o.mix && gain == o.gain
-                && impact == o.impact && ceiling == o.ceiling && ceilingOn == o.ceilingOn && bypass == o.bypass;
+                && impact == o.impact && ceiling == o.ceiling && ceilingOn == o.ceilingOn && bypass == o.bypass && steadyNotes == o.steadyNotes;
         }
         bool operator!= (const Settings& o) const noexcept { return ! (*this == o); }
     };
@@ -160,11 +160,12 @@ namespace punchview
             for (int pass = 0; pass < 2; ++pass)
             {
                 for (int i = 0; i < leadInBins; ++i)
-                    engine.process (leadIn * inGain, s.attack, s.sustain, punch, impact);
+                    engine.process (leadIn * inGain, s.attack, s.sustain, punch, impact, s.steadyNotes, leadIn * inGain);
 
                 for (int i = 0; i < length; ++i)
                 {
-                    const float gainDb = engine.process (before[i] * inGain, s.attack, s.sustain, punch, impact);
+                    // The display only has levels, not the sound itself, so Steady Notes' sparing of bright sounds is not drawn.
+                    const float gainDb = engine.process (before[i] * inGain, s.attack, s.sustain, punch, impact, s.steadyNotes, before[i] * inGain);
                     if (pass == 1)
                     {
                         const float level = before[i] * inGain * (1.0f + wet * (PunchEngine::dbToGain (gainDb) - 1.0f));

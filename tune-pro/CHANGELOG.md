@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.7.0, 2026-11-11
+
+**New defaults: Retune Speed 3 ms and Humanize 0% (they were 20 ms and 30%). Luke said yes to this on 2026-11-11** ("yes to both": a faster default Retune Speed and a lower default Humanize). Nothing else changes: the engine is 1.6.1's, and parameter IDs, ranges, presets, latency and AU codes are as they were.
+
+Only a new instance sounds different. A session saved by 1.6.1 carries its own Retune Speed and Humanize and loads with them; every factory preset sets both itself. Test `saved` (`testSavedBy161`), written and its files made by the 1.6.1 build before the defaults were touched: all 12 factory presets come out bit for bit as 1.6.1 gave them, in both engines; a session saved by a fresh 1.6.1 instance comes out within 2.1e-7 of 1.6.1's own output (-134 dBFS, limit 1e-6). That last one cannot be bit for bit: 1.6.1 held its default Retune Speed as 19.9999981 ms and left it alone when loading its own session, and a build with another default sets it from the session, which gives 20 exactly.
+
+Why these two numbers. The real vocal check holds held notes to 10 cents at the 90th percentile. On Luke's 11 working takes with each song's key, the old default read 35.2 cents, with 45% of held notes more than 10 cents off. The pair was picked as the mildest that passes, on the working takes only.
+
+Engine traces, 713 held notes on the 9 sung takes (the pitch the engine asks for; movement left = the output's pitch movement inside notes held 400 ms or more as a share of his own):
+
+| Retune ms / Humanize % | held notes over 10 cents off | 90th percentile | movement left |
+|---|---|---|---|
+| 20 / 30 (old default) | 44.6% | 32.9 c | 94% |
+| 20 / 20, 20 / 10, 20 / 0 | 39.0, 32.1, 21.3% | 29.8, 26.5, 24.0 | 90, 84, 69% |
+| 10 / 0 | 12.1% | 12.8 | 61% |
+| 5 / 30, 5 / 15, 5 / 5, 5 / 0 | 29.9, 20.1, 10.8, 6.3% | 22.7, 17.4, 10.7, 5.9 | 94, 85, 73, 60% |
+| 2 / 30, 2 / 15, 2 / 5, 2 / 0 | 24.5, 15.3, 5.9, 2.2% | 19.1, 13.4, 6.5, 1.7 | 93, 87, 73, 62% |
+| 0 / 30, 0 / 15, 0 / 5 | 21.5, 12.6, 3.4% | 18.1, 12.0, 4.5 | 95, 88, 75% |
+
+The real vocal check itself on the installed 1.6.1 with the two settings changed (716 held notes; limits: 90th percentile 10 cents, slides 5%):
+
+| Retune / Humanize | held notes 90th pct | wrong / left as sung | over a semitone off | slides reversed, sung / rap | start lag median / 90th pct |
+|---|---|---|---|---|---|
+| 20 / 30 | 35.2 c | 5 / 16 | 7 | 2.29 / 3.28% | 100 / 270 ms |
+| 7 / 0 | 13.3 | 2 / 5 | 2 | 3.48 / 4.77 | 70 / 175 |
+| 5 / 0 | 10.8 | 2 / 4 | 2 | 3.58 / 4.99 | 65 / 140 |
+| 4 / 0 | 9.3 | 2 / 1 | 6 | 3.61 / 5.04 | 55 / 130 |
+| **3 / 0** | **8.0** | 2 / 2 | 5 | 3.57 / 4.97 | 50 / 120 |
+| 2 / 0 | 6.3 | 1 / 2 | 9 | 3.43 / 4.81 | 40 / 110 |
+| 2 / 3 | 10.0 | 1 / 1 | 8 | 3.28 / 4.72 | 40 / 110 |
+
+So Humanize has to go all the way to 0 (3% already costs 3.7 cents at Retune 2) and Retune Speed to 4 ms or under. 4 / 0 passes held notes but turns 5.04% of sliding frames round on the rap takes; 3 / 0 is the first pair under every one of those lines. What it costs: the held part of a note is corrected at the same speed as its start, so about 60% of his own pitch movement is left on long notes where the old default left 94%. It is close to Hard Tune (0 / 0). Natural Pop, Transparent Ballad, Light Touch and Keep The Vibrato are still there, unchanged, for the old feel.
+
+Not at zero with the new default either, as measured: 2 held notes of 716 on the wrong note and 2 left as sung, 5 moments over a semitone off for 20 ms, and the start lag by the check's rule (50 / 120 ms against 33 / 86: the limit follows Retune Speed, and his entries slide into the note).
+
 ## 1.6.1, 2026-11-11
 
 Second pass on Luke's own takes (17 whole songs, Rode NT1, 2026-11-10). Five engine fixes, one test whose reference was wrong, and tests for each. Latency (659 samples in Alto/Tenor), parameters, presets and AU codes are unchanged; no default and no preset setting changed. Low Latency changes on purpose, so the Low Latency null test now holds 1.6.1's output (18 of its 24 cases changed: every case in which something is corrected; `tests/ll_null-1.6.0.txt` keeps 1.6.0's numbers, and the same code built with `TUNE_AS_160` passes against them). Real take numbers are the 11 working takes with Key and Scale set to each song's key, by `_shared/realvox`; the full account is `_vox/rode/work/tune-pro/REPORT.md`, "Second pass".

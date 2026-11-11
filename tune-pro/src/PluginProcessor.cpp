@@ -110,12 +110,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "key", 1 }, "Key", keys, 0));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "scale", 1 }, "Scale", scales, (int) scaleChromatic));
 
+    // Defaults since 1.7.0: Retune Speed 3 ms and Humanize 0% (they were 20 ms and 30%). Luke said yes to this on 2026-11-11. Measured on
+    // his 11 working takes with each song's key: at 20 / 30 the 90th percentile of held notes sat 35 cents from the note (limit 10) and
+    // 45% of held notes were more than 10 cents off; 3 / 0 is the mildest pair that passes (8.0 cents; 4 / 0 reads 9.3 but turns 5.04% of
+    // sliding frames round on the rap takes, 5 / 0 reads 10.8, 2 / 3 reads 10.0). Only a new instance changes: a saved session and every
+    // preset carry their own values (testSavedBy161).
     auto retuneRange = NormalisableRange<float> (0.0f, 400.0f, 0.1f);
     retuneRange.setSkewForCentre (50.0f);
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "retune", 1 }, "Retune Speed", retuneRange, 20.0f,
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "retune", 1 }, "Retune Speed", retuneRange, 3.0f,
         AudioParameterFloatAttributes().withLabel ("ms").withStringFromValueFunction ([] (float v, int) { return v < 0.05f ? String ("Instant") : String (roundToInt (v)); })
                                        .withValueFromStringFunction ([] (const String& s) { return s.trim().equalsIgnoreCase ("Instant") ? 0.0f : s.getFloatValue(); })));
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "humanize", 1 }, "Humanize", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 30.0f, fixedText (0, "%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "humanize", 1 }, "Humanize", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, fixedText (0, "%")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "flex", 1 }, "Flex Tune", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, fixedText (0, "cents")));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "inputType", 1 }, "Input Type", types, 1));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "followKey", 1 }, "Follow Key", false));

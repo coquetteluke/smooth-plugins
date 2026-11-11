@@ -169,7 +169,10 @@ private:
     static constexpr float resynthesisFull = 0.05f; // A move of this much, as a log ratio, takes the harmonics' levels fully from the model
     // Above highBandFromHz the gain may be at most this much over what moving the envelope itself would give. See shapeFrame.
     static constexpr float highBandFromHz = 6000.0f;
-    static constexpr float highBandHeadroom = 11.0f * nepersPerDb;
+    // 11 dB in 0.4.1, the least that leaves the 0.2.0 renders bit for bit. On the branch 8 dB: at 11 dB Length 1.50 still had 1.8% of
+    // voiced frames on takes 01 and 16 more than 12 dB over the tube model from 6 to 12 kHz, mostly where the level match lifts the
+    // whole frame. At 8 dB: 0.16%.
+    static constexpr float highBandHeadroom = 8.0f * nepersPerDb;
 
     static float tiltCurve (float hz, float cornerHz) noexcept
     {

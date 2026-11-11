@@ -2025,6 +2025,36 @@ static void testTrueDelay()
             info ("the right channel, noise" + tag, noiseDelay (shippedDefault(), sr, -20.0, 1).whole * us, "microseconds");
         }
     }
+    // The tape stays on the reported latency when Tape Speed, Bias and Hardness move, for as long as the plug-in has delay left to take
+    // off: 30 and 7.5 ips, and any Bias at 15 and 30 ips (added for 0.4.1, limit written before it was built: 0.4.0 lined the tape up for
+    // the default tone only and read 0.19 sample early at 30 ips, 0.36 late at 7.5 ips, and the real voice read 0.215 early on Clean Reel).
+    // Limit: within 2.08 microseconds from 300 Hz to 1 kHz and from 1 to 3 kHz, which is under the bend of those filters, at 48 and
+    // 96 kHz, on noise at -30 dBFS.
+    for (double sr : { 48000.0, 96000.0 })
+    {
+        const double us = 1.0e6 / sr;
+        struct Case { const char* name; Settings s; };
+        std::vector<Case> cases;
+        { Settings s = shippedDefault(); s.speed = 3; cases.push_back ({ "30 ips", s }); }
+        { Settings s = shippedDefault(); s.speed = 1; cases.push_back ({ "7.5 ips", s }); }
+        { Settings s = shippedDefault(); s.bias = 100.0f; cases.push_back ({ "Bias +100", s }); }
+        { Settings s = shippedDefault(); s.bias = -100.0f; cases.push_back ({ "Bias -100", s }); }
+        { Settings s = shippedDefault(); s.hard = 100.0f; cases.push_back ({ "Hardness 100", s }); }
+        { Settings s = shippedDefault(); s.speed = 3; s.bias = 100.0f; cases.push_back ({ "30 ips, Bias +100", s }); }
+        { Settings s = shippedDefault(); s.drive = 6.0f; s.speed = 3; s.hard = 35.0f; cases.push_back ({ "Clean Reel's settings", s }); }
+        for (const auto& c : cases)
+        {
+            const auto d = noiseDelay (c.s, sr, -30.0);
+            const double worst = std::max (std::abs (d.low), std::abs (d.mid)) * us;
+            check (worst <= 2.08, std::string ("the tape stays on the reported latency, ") + c.name + ", worst of 300 Hz to 1 kHz and 1 to 3 kHz at " + num (sr / 1000.0, 1) + " kHz", worst, "microseconds");
+        }
+    }
+    // The room there is to take delay off, against the table the window's picture uses
+    for (double sr : { 44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0 })
+    {
+        auto p = makeProc (shippedDefault(), sr);
+        check (std::abs (p->getTrimRoom() - trimRoomFor (p->getOversamplingFactor())) < 1.0e-6, "room to line the tape up at " + num (sr / 1000.0, 1) + " kHz, samples at the high rate", p->getTrimRoom());
+    }
     // What each tone control adds at 48 kHz, 1 to 3 kHz, noise at -30 dBFS. Not limited.
     {
         const double sr = 48000.0;

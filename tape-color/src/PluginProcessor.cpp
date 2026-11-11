@@ -226,13 +226,15 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     // the curve's averaging (half a sample at the high rate) and the two top end filters, which at the default tone (15 ips, Age 0) are flat
     // in the band but still 11.7 microseconds late. So the wet signal came out 0.56 sample after the reported latency at 48 kHz and 1.11
     // after it at 96 kHz. Now the filters keep their own delay, those 11.7 microseconds are counted, and a short delay at the high rate
-    // fills the rest up to the next whole sample. Tape Speed, Bias, Age and Head Spacing still move their filters, as any tone filter does.
+    // fills the rest up to the next whole sample. When Tape Speed, Bias, Age or Head Spacing move their filters that short delay follows
+    // (updateCoefs), so the wet path stays on the reported latency for as long as there is delay left to take off (trimRoom).
     {
         const double factor = (double) (1 << osStages);
         const double between = flatToneDelay (osRate);
         const double filtersAlone = (double) oversampler->getLatencyInSamples();
         osLatency = (int) std::ceil (filtersAlone + (between + 1.0) / factor - 1.0e-9);
-        trimLinedUp = ((double) osLatency - filtersAlone) * factor - between; // 1 or more
+        trimRoom = ((double) osLatency - filtersAlone) * factor;
+        trimLinedUp = trimRoom - between; // 1 or more at the default tone
 
         // The old response puts the wet path back where 0.3.1 had it against the dry: the all pass, and whole samples for the rest.
         double part = 1.0 - (filtersAlone - std::floor (filtersAlone));
@@ -243,7 +245,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
         oldAllPassUsed = part > 0.0;
         oldAllPass = (float) ((1.0 - part) / (1.0 + part));
         trimOld = ((double) osLatency - std::round (filtersAlone + part)) * factor;
-        jassert (trimLinedUp >= 1.0 && trimOld >= 0.0 && std::max (trimLinedUp, trimOld) + 3.0 < (double) trimSize);
+        jassert (trimLinedUp >= 1.0 && trimOld >= 0.0 && std::max (trimRoom, trimOld) + 3.0 < (double) trimSize);
     }
     modCentre = (int) std::ceil (kModCentreMs * 0.001 * sr);
     setLatencySamples (osLatency + modCentre);
@@ -456,6 +458,8 @@ void PluginProcessor::updateCoefs() noexcept
     emphasis.set (lookupLog (kEmphHz, pos), kEmphRatio, osRate);
     gapCoefs.setLowOrHigh (gapHz, osRate);
     ageLpCoefs.setLowOrHigh (ageHz, osRate);
+    // The short delay that lines the wet path up takes off what these filters have now, down to nothing.
+    trimLinedUp = std::max (0.0, trimRoom - toneDelay (gapHz, ageHz, spacingC, osRate));
 
     const double bumpHz = lookupLog (kBumpHz, pos);
     bumpCoefs.setBell (bumpHz, sr, lookupLinear (kBumpDb, pos), kBumpQ);
@@ -523,11 +527,11 @@ void PluginProcessor::snapControls() noexcept
     oldBlendSm.setCurrentAndTargetValue (wantsOldBlend() ? 1.0f : 0.0f);
     oldToneSm.setCurrentAndTargetValue (oldResponse.load (std::memory_order_relaxed) ? 1.0f : 0.0f);
     companderOld = oldResponse.load (std::memory_order_relaxed);
-    trimNow = trimFor ((double) oldBlendSm.getCurrentValue());
     activeDevice = (int) device->load();
     deviceFadeSm.setCurrentAndTargetValue (activeDevice > 0 ? 1.0f : 0.0f);
 
     updateCoefs();
+    trimNow = trimFor ((double) oldBlendSm.getCurrentValue());
     wanderDb = wanderTarget;
     lastOffset = curveOffset();
     lastTanh = std::tanh (lastOffset);

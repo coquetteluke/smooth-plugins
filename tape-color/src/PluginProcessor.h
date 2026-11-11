@@ -46,6 +46,8 @@ public:
     int getOversamplingFactor() const noexcept { return 1 << osStages; }
     int getOversamplingLatency() const noexcept { return osLatency; }
     int getTapePathLatency() const noexcept { return modCentre; }
+    /** How much delay of the top end filters the wet path can take off, in samples at the high rate (see tapecolor::trimRoomFor). */
+    double getTrimRoom() const noexcept { return trimRoom; }
 
     // For the window. Written by the audio thread, safe to read from anywhere. Not parameters, so they never write automation.
     std::atomic<float> readingInputPeak { 0.0f }, readingOutputPeak { 0.0f }, readingAutoLevelDb { 0.0f }, readingHeadMs { 0.0f }, readingCompanderDb { 0.0f };
@@ -129,7 +131,7 @@ private:
     static constexpr int trimSize = 32;
     std::array<tapecolor::Lanes, trimSize> trimLine {};
     int trimPos = 0;
-    double trimLinedUp = 1.0, trimOld = 0.0, trimNow = 1.0;
+    double trimRoom = 14.0, trimLinedUp = 1.0, trimOld = 0.0, trimNow = 1.0;
 
     // What 0.3.1 did instead, kept for the old response: an all pass that rounded the oversampling filters up to a whole sample.
     float oldAllPass = 0.0f;

@@ -67,11 +67,21 @@ namespace tapecolor
     // Between the oversampling filters sit the curve's averaging (half a sample at the high rate) and the two top end filters. At the
     // default tone (15 ips, Bias 0, Age 0) those filters are flat in the band but still late: 11.7 microseconds together. In samples at
     // the high rate. The plug-in takes this off the wet path so it comes out on a whole sample, and the window's picture allows for it.
-    inline double flatToneDelay (double highRate) noexcept
+    // The same for any setting of the top end losses: gapHz and ageHz are the two filters' corners, spacePole is the coefficient of
+    // each of Head Spacing's two poles at the high rate (1 when Head Spacing is at 0).
+    inline double toneDelay (double gapHz, double ageHz, double spacePole, double highRate) noexcept
     {
         const auto lowPassDelay = [highRate] (double hz) { return 0.70710678118654752 / std::tan (kPi * std::min (hz, 0.47 * highRate) / highRate); };
-        return 0.5 + lowPassDelay (kGapHz[2]) + lowPassDelay (ageLowpassHz (0.0));
+        return 0.5 + lowPassDelay (gapHz) + lowPassDelay (ageHz) + (spacePole < 1.0 ? 2.0 * (1.0 - spacePole) / spacePole : 0.0);
     }
+    inline double flatToneDelay (double highRate) noexcept { return toneDelay (kGapHz[2], ageLowpassHz (0.0), 1.0, highRate); }
+
+    // How much of that delay the plug-in can take off: what lies between the oversampling filters' own delay and the whole sample the
+    // wet path lands on, in samples at the high rate, by oversampling factor (16 at 44.1 and 48 kHz, 8 at 88.2 and 96, 4 above).
+    // It covers the default tone and anything brighter or a little darker: 30 and 7.5 ips, any Bias, Age to about 25. Past it (3.75 ips,
+    // high Age, Head Spacing) the wet path comes out late by the rest, as any low pass filter is late. PluginTest holds this table to
+    // the processor's own figure.
+    inline double trimRoomFor (int oversamplingFactor) noexcept { return oversamplingFactor >= 8 ? 14.0 : 10.0; }
 
     // A top end loss with its corner under this is copied into Auto Level's detector. Above it the loss is past what the detector weighs,
     // and the default tone (24 kHz) stays out, so the default is untouched.

@@ -1,10 +1,16 @@
 # Changelog
 
+## 0.4.1, 2026-11-11
+
+The tape stays on the reported latency when Tape Speed, Bias, Hardness or light Age change the top end. 0.4.0 lined it up for the default tone only: at 30 ips it came out 0.19 sample early (the real vocal test read 0.215 on Clean Reel) and at 7.5 ips 0.36 late. The short delay that lines the tape up now follows those filters, within 1.6 microseconds, for as long as there is delay left to take off: 30 and 7.5 ips, any Bias at 15 and 30 ips, Age to about 25. Past that (3.75 ips, high Age, Head Spacing) the tape comes out late by what is left: 0.6 sample at 3.75 ips, 2.2 at Head Spacing 100, as any low pass filter is late. Taking all of that off would cost about 15 more samples of latency, so it is left.
+
+At Mix 100 this is timing only. In a Mix blend with the new response the dip on slow aged tape falls from 4.5 to 2.8 dB. The old response is untouched, so nothing made with 0.3.1 changes.
+
 ## 0.4.0, 2026-11-11
 
 The tape now comes out exactly when the plug-in says it does. It reported 355 samples at 48 kHz and the tape path took 355.56: the real vocal test read 356 on every take. Between the oversampling filters sit the curve's averaging and two top end filters, flat in the band at the default tone but 11.7 microseconds late, and nothing had counted them. Logic lines tracks up by the reported number, so a parallel chain lost top end, and so did every Mix under 100 inside the plug-in. Now the tape is on the reported sample within 0.22 microsecond at 44.1, 48, 88.2 and 96 kHz. The reported latency is unchanged at 44.1 and 48 kHz (332 and 355 samples). At 88.2 kHz and up it is one sample more (596, 642), because there the old path was more than a whole sample late.
 
-At Mix 100 the sound is the same, 11.7 microseconds earlier. With the tape lined up, Mix 50 no longer dips against the quieter path (0.06 dB, was 0.8) and the dip on slow aged tape is 4.5 dB (was 7.9).
+At Mix 100 the sound is the same, 11.7 microseconds earlier. With the tape lined up, Mix 50 no longer dips against the quieter path (0.06 dB, was 0.8) and the dip on slow aged tape is 4.5 dB (was 7.9; 2.8 dB from 0.4.1).
 
 Also fixed:
 

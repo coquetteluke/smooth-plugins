@@ -114,10 +114,15 @@ namespace tapecolor::display
         if (s.device > 0)
             wet *= 1.0 + s.deviceMix * (std::pow (10.0, deviceShapeDb (s.device - 1, hz) / 20.0) - 1.0);
 
-        // The wet path is lined up with the dry: the delay its filters have at the default tone is taken off (the curve's own half
-        // sample is not in this picture). The old response leaves it on while there is dry to blend with, as 0.3.1 did.
+        // The wet path is lined up with the dry: the delay its top end filters have is taken off, as far as there is room (the curve's
+        // own half sample is not in this picture). The old response leaves it on while there is dry to blend with, as 0.3.1 did.
         if (! s.oldResponse)
-            wet *= std::polar (1.0, kTwoPi * hz * (flatToneDelay (os) - 0.5) / os);
+        {
+            const double space = spacingHz (s.spacing, s.speedPos);
+            const double filters = toneDelay (lookupLog (kGapHz, s.speedPos) * overBiasGapScale (s.bias), ageLowpassHz (s.age),
+                                              space > 0.0 ? onePoleCoef (space, os) : 1.0, os);
+            wet *= std::polar (1.0, kTwoPi * hz * (std::min (filters, trimRoomFor (oversamplingFor (sr))) - 0.5) / os);
+        }
 
         const Cx total = 1.0 + s.mix * (wet - 1.0);
         return 20.0 * std::log10 (std::max (std::abs (total), 1.0e-6));

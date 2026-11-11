@@ -116,6 +116,14 @@ target_compile_definitions(FeatureTest PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMI
 target_link_libraries(FeatureTest PRIVATE SmoothResonanceWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME features COMMAND FeatureTest)
 
+# Held Notes, added in 0.6.0: off is the old sound, on takes down a held note's ring. All through the real processor.
+juce_add_console_app(HeldNotesTest PRODUCT_NAME "HeldNotesTest")
+target_sources(HeldNotesTest PRIVATE src/ResonanceEngine.cpp src/PluginProcessor.cpp ${SR_WINDOW_SOURCES} tests/legacy/LegacyEngine.cpp tests/HeldNotesTest.cpp)
+target_include_directories(HeldNotesTest PRIVATE src tests)
+target_compile_definitions(HeldNotesTest PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0 BASELINE_DIR="${CMAKE_SOURCE_DIR}/tests/baseline")
+target_link_libraries(HeldNotesTest PRIVATE SmoothResonanceWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
+add_test(NAME heldnotes COMMAND HeldNotesTest)
+
 # Renders the window to PNG with real speech running through the real processor. Not a ctest: it writes docs/window.
 juce_add_console_app(RenderWindow PRODUCT_NAME "RenderWindow")
 target_sources(RenderWindow PRIVATE src/ResonanceEngine.cpp src/PluginProcessor.cpp ${SR_WINDOW_SOURCES} tests/RenderWindow.cpp)

@@ -8,6 +8,8 @@
   build/NullTest_artefacts/Release/NullTest
   echo "\n===== FeatureTest: 8 dots, Quality, Max Cut, Band Listen, multichannel"
   build/FeatureTest_artefacts/Release/FeatureTest
+  echo "\n===== HeldNotesTest: the Held Notes control, off and on"
+  build/HeldNotesTest_artefacts/Release/HeldNotesTest
   echo "\n===== DspTest: synthetic signals through the DSP"
   build/DspTest_artefacts/Release/DspTest
   echo "\n===== SpeechTest: real speech from macOS say, with resonant boosts at known frequencies"

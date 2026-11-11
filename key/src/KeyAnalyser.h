@@ -103,6 +103,8 @@ struct Reading
     int altKey = -1;              // the runner up
     bool altMinor = false;
     float altConfidence = 0.0f;   // how likely the runner up looks, on the same scale as confidence
+    float margin = 1.0f;          // how clearly the shown key leads the runner up: 0 a tie, 1 no contest
+    bool unsure = false;          // two sets of notes fit about equally: the confidence stays under 0.5, so followers do not act
     bool loneVoice = false;       // read as a lone voice with no tuning of its own (grid at A440, held notes only)
     bool signal = false;          // audio above the silence gate in this frame
     float tuningCents = 0.0f;     // how far the music sits from A440

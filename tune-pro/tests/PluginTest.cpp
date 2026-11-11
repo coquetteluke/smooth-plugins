@@ -1283,6 +1283,51 @@ void testVowelChange()
     note ("  and the tool's floor: the new vowel as sung against that real voice, worst", floor * 100.0, "%");
 }
 
+// ------------------------------------------------------------------------------------------- a note sung on the line
+
+// Real takes, 2026-11-10: an untrained singer often holds a note near the line between two notes of the scale and wavers across it.
+// The target then went back and forth and the correction pulled him up, then down. Default settings throughout (Retune 20 ms, Humanize 30).
+void testTargetHold()
+{
+    // 1. A3 sung 47 cents sharp with a 5.5 Hz vibrato of +/-20 cents: it crosses the line to A#3 (and 12 cents more) for about 50 ms
+    // of every cycle. The tuner must settle on one note and must not make the waver bigger than it was sung.
+    {
+        auto p = make();
+        prepare (*p, 1, SR, 256);
+        const double hz = 220.0 * std::pow (2.0, 47.0 / 1200.0), hop = 0.002;
+        const auto x = voice::synth (voice::vibrato (hz, 3.0, SR, 20.0, 5.5), voice::vowelA, SR);
+        const auto out = mono (render (*p, x, 256));
+        const auto trace = pitchTrace (out.data(), (long) out.size(), SR, hz, 1.0, 2.9, hop, 0.1);
+        std::vector<double> c, toA, toB;
+        for (double h : trace) if (h > 0.0) { c.push_back (cents (h, hz)); toA.push_back (std::abs (cents (h, 220.0))); toB.push_back (std::abs (cents (h, 220.0 * std::pow (2.0, 1.0 / 12.0)))); }
+        const double depth = sineDepth (c, hop, 5.5);
+        const double nearest = std::min (percentile (toA, 50), percentile (toB, 50));
+        chk (depth <= prolimits::lineWaverCents, "a note on the line with vibrato +/-20 cents: size of the 5.5 Hz waver in the output", depth, "cents");
+        chk (nearest <= prolimits::lineSettleCents, "  and how far the output sits from the nearer of the two notes, median", nearest, "cents");
+    }
+    // 2. What it may cost: a real step up a semitone that lands 25 cents flat, so only 25 cents past the line. Time from the step until
+    // the output is within 15 cents of the new note.
+    {
+        auto p = make();
+        prepare (*p, 1, SR, 256);
+        auto f0 = voice::steady (220.0, 1.0, SR);
+        const auto second = voice::steady (220.0 * std::pow (2.0, 75.0 / 1200.0), 1.0, SR);
+        f0.insert (f0.end(), second.begin(), second.end());
+        const auto x = voice::synth (f0, voice::vowelA, SR);
+        const auto out = mono (render (*p, x, 256));
+        const double delay = p->getLatencySamples() / SR, target = 220.0 * std::pow (2.0, 1.0 / 12.0), hop = 0.002;
+        const auto trace = pitchTrace (out.data(), (long) out.size(), SR, target, 1.0 + delay, 1.6 + delay, hop, 0.12);
+        double ms = 600.0;
+        for (size_t i = 0; i + 10 < trace.size(); ++i)
+        {
+            bool ok = true;
+            for (size_t k = i; k < i + 10 && ok; ++k) ok = trace[k] > 0.0 && std::abs (cents (trace[k], target)) <= 15.0;
+            if (ok) { ms = (double) i * hop * 1000.0; break; }
+        }
+        chk (ms <= prolimits::flatStepMs, "a step up a semitone landing 25 cents flat: time until the output is within 15 cents of the new note", ms, "ms");
+    }
+}
+
 // ----------------------------------------------------------------------------------------------- Low Latency null test
 
 std::vector<float> loadWav (const char* name);
@@ -3372,6 +3417,7 @@ int main (int argc, char** argv)
         if (want ("throat")) testThroat();
         if (want ("gen")) testVibratoGenerator();
         if (want ("mix")) testMix();
+        if (want ("hold")) testTargetHold();
     }
     gEngine = 0;
     if (want ("engines")) testEngines();

@@ -122,4 +122,9 @@ namespace prolimits
     // Mix
     constexpr double mixDryNullDb = -120.0;           // Mix 0 against the delayed input
     constexpr double mixHalfLevelDb = 1.5;            // Mix 50 on a voice with nothing to correct: no level change, so dry and wet line up
+
+    // A note sung on the line between two notes, added 2026-11-11 from real takes. Set before the rule was run.
+    constexpr double lineWaverCents = 20.0;           // the output's waver may not be bigger than the +/-20 cents that were sung
+    constexpr double lineSettleCents = 15.0;          // the output's median from the nearer note: it has settled on one
+    constexpr double flatStepMs = 200.0;              // a semitone step landing 25 cents flat still reaches the new note this fast
 }

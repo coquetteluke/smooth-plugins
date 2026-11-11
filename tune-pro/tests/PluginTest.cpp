@@ -2040,6 +2040,90 @@ void testTargetHold()
     }
 }
 
+// ----------------------------------------------------------------------------------- saved sessions and presets from 1.6.1
+
+// Added 2026-11-11 for the change of the default Retune Speed and Humanize (1.7.0). Only a NEW instance may sound different. A session
+// saved by 1.6.1 at its defaults, and every factory preset, must come out bit for bit as 1.6.1 gave them. tests/state-1.6.1.bin is the
+// state a fresh 1.6.1 instance saved, and tests/state-1.6.1.txt holds a hash of 1.6.1's output for that state and for each preset, in
+// both engines; both files were written by the 1.6.1 build (TUNE_STATE_WRITE=1) before any default was changed.
+void testSavedBy161()
+{
+    const auto folder = juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory();
+    const auto blobFile = folder.getChildFile ("state-1.6.1.bin"), hashFile = folder.getChildFile ("state-1.6.1.txt");
+    const bool writing = std::getenv ("TUNE_STATE_WRITE") != nullptr;
+    const auto hashed = [] (const juce::AudioBuffer<float>& b)
+    {
+        unsigned long long h = 1469598103934665603ULL;
+        for (int ch = 0; ch < b.getNumChannels(); ++ch)
+            for (int i = 0; i < b.getNumSamples(); ++i)
+            {
+                unsigned int bits = 0;
+                std::memcpy (&bits, b.getReadPointer (ch) + i, 4);
+                h = (h ^ bits) * 1099511628211ULL;
+            }
+        char text[32];
+        std::snprintf (text, sizeof (text), "%016llx", h);
+        return std::string (text);
+    };
+    // A voice 35 cents sharp with vibrato, then a step up a tone landing flat: something for Retune Speed and Humanize to act on.
+    std::vector<double> f0 = voice::vibrato (196.0 * std::pow (2.0, 35.0 / 1200.0), 1.5, SR, 30.0, 5.5);
+    const auto second = voice::steady (220.0 * std::pow (2.0, -28.0 / 1200.0), 1.0, SR);
+    f0.insert (f0.end(), second.begin(), second.end());
+    const auto x = voice::synth (f0, voice::vowelA, SR, -40.0);
+    std::map<std::string, std::string> stored, found;
+    {
+        std::ifstream in (hashFile.getFullPathName().toStdString());
+        std::string name, value;
+        while (in >> name >> value) stored[name] = value;
+    }
+    const std::string tag = gEngine == 1 ? "hq_" : "ll_";
+    if (writing && gEngine == 0)
+    {
+        auto p = make();
+        juce::MemoryBlock block;
+        p->getStateInformation (block);
+        blobFile.replaceWithData (block.getData(), block.getSize());
+    }
+    {
+        juce::MemoryBlock block;
+        blobFile.loadFileAsData (block);
+        auto p = make();
+        p->setStateInformation (block.getData(), (int) block.getSize());
+        auto* e = p->apvts.getParameter ("engine");
+        e->setValueNotifyingHost (e->convertTo0to1 ((float) gEngine));
+        prepare (*p, 1, SR, 256);
+        found[tag + "saved_default"] = hashed (render (*p, x, 256));
+    }
+    {
+        auto count = make();
+        for (int i = 0; i < count->getNumPrograms(); ++i)
+        {
+            auto p = make();
+            p->setCurrentProgram (i);
+            auto* e = p->apvts.getParameter ("engine");
+            const float engineOfPreset = e->convertFrom0to1 (e->getValue());
+            (void) engineOfPreset;
+            prepare (*p, 1, SR, 256);
+            // A preset that names its own engine keeps it; the others run on the engine under test
+            found[tag + "preset_" + std::to_string (i)] = hashed (render (*p, x, 256));
+        }
+    }
+    if (writing)
+    {
+        for (const auto& kv : found) stored[kv.first] = kv.second;
+        std::ofstream out (hashFile.getFullPathName().toStdString());
+        for (const auto& kv : stored) out << kv.first << " " << kv.second << "\n";
+        return;
+    }
+    int same = 0;
+    for (const auto& kv : found)
+    {
+        if (stored.count (kv.first) && stored[kv.first] == kv.second) ++same;
+        else chk (false, "saved by 1.6.1, case " + kv.first + ": output differs from 1.6.1's");
+    }
+    chk (same == (int) found.size() && ! found.empty(), "a session saved by 1.6.1 at its defaults and every factory preset come out bit for bit as in 1.6.1, cases", (double) same);
+}
+
 // ----------------------------------------------------------------------------------------------- Low Latency null test
 
 std::vector<float> loadWav (const char* name);
@@ -4195,6 +4279,7 @@ int main (int argc, char** argv)
         if (want ("mix")) testMix();
         if (want ("low")) testLowNotes();
         if (want ("tick")) testTickInNote();
+        if (want ("saved")) testSavedBy161();
         if (want ("entry")) testEntries();
         if (want ("timing")) testTiming();
         if (want ("hold")) testTargetHold();

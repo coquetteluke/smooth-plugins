@@ -314,6 +314,8 @@ static void testRateDepth()
 
 static void testDelay()
 {
+    // 2026-11-11: the three limits below were 1.0 ms while the README claimed 0.02 ms. They are now the claim (0.05 ms for the centre of a
+    // moving delay, which reads 0.024 ms off), and the fraction of a sample, which a pulse cannot show, is measured on a tone further down.
     for (double sr : { 44100.0, 48000.0, 96000.0 })
         for (float ms : { 5.0f, 15.0f, 30.0f })
         {
@@ -326,7 +328,7 @@ static void testDelay()
             auto out = render (p, in, 512);
             const auto pk = peaksIn (out.getReadPointer (0), out.getNumSamples(), sr);
             const double got = pk.empty() ? -1.0 : pk[0] * 1000.0 / sr;
-            check (std::abs (got - ms) < 1.0, "Delay Time " + juce::String (ms, 0).toStdString() + " ms at " + std::to_string ((int) sr) + " Hz, pulse arrives at", got, "ms");
+            check (std::abs (got - ms) < 0.02, "Delay Time " + juce::String (ms, 0).toStdString() + " ms at " + std::to_string ((int) sr) + " Hz, pulse arrives at", got, "ms");
         }
     // Centre of a moving delay, and of several voices.
     for (int voices : { 1, 3, 4, 5, 6, 7, 8 })
@@ -345,7 +347,7 @@ static void testDelay()
         {
             auto out = render (p, in, 512);
             const auto s = analyse (trackDelayMs (out.getReadPointer (0), n, 200.0, 48000.0, 4, 20.0), 48000.0, 0.5);
-            check (std::abs (s.mid - 20.0) < 1.0, "Delay Time 20 ms with 2 ms Depth, centre of the swing", s.mid, "ms");
+            check (std::abs (s.mid - 20.0) < 0.05, "Delay Time 20 ms with 2 ms Depth, centre of the swing", s.mid, "ms");
         }
         else
         {
@@ -359,7 +361,7 @@ static void testDelay()
             double sum = 0;
             for (auto x : pk) sum += x;
             const double got = pk.empty() ? -1.0 : sum / (double) pk.size() * 1000.0 / 48000.0;
-            check (std::abs (got - 20.0) < 1.0, "Delay Time 20 ms, " + std::to_string (voices) + " voices, average of the copies", got, "ms");
+            check (std::abs (got - 20.0) < 0.02, "Delay Time 20 ms, " + std::to_string (voices) + " voices, average of the copies", got, "ms");
         }
     }
     // Shortest delay with the largest modulation: everything shrinks to fit rather than the read head hitting the write head.
@@ -597,7 +599,7 @@ static void testMix()
         auto out = render (p, in, 512);
         double err = 0;
         for (int i = 0; i < n; ++i) err = std::max (err, (double) std::abs (out.getSample (0, i) - in[(size_t) i]));
-        check (err < 1.0e-6, "Mix 0: largest difference from the input", toDb (err), "dB");
+        check (err == 0.0, "Mix 0: largest difference from the input (exact: every sample the same)", toDb (err), "dB");
     }
     {
         PluginProcessor p;
@@ -606,7 +608,7 @@ static void testMix()
         auto out = render (p, in, 512);
         double err = 0;
         for (int i = 0; i < n; ++i) err = std::max (err, (double) std::abs (out.getSample (0, i) - in[(size_t) i]));
-        check (err < 1.0e-6, "Bypass: largest difference from the input", toDb (err), "dB");
+        check (err == 0.0, "Bypass: largest difference from the input (exact: every sample the same)", toDb (err), "dB");
         check (p.getLatencySamples() == 0, "Bypass: latency stays", p.getLatencySamples(), "samples");
     }
     {
@@ -624,7 +626,7 @@ static void testMix()
             if (pos > 9600)
                 for (int i = 0; i < 512; ++i) err = std::max (err, (double) std::abs (b.getSample (0, i) - in[(size_t) (pos + i)]));
         }
-        check (err < 1.0e-6, "Host bypass call: largest difference from the input after the fade", toDb (err), "dB");
+        check (err == 0.0, "Host bypass call: largest difference from the input after the fade (exact)", toDb (err), "dB");
     }
     // Pulse in, with the dry arriving at sample 0 and the wet at the set delay.
     const auto pulseCase = [&] (float mixPct, double& dryDb, double& wetDb)
@@ -1654,12 +1656,96 @@ static void testOldSession()
     check (p.apvts.getRawParameterValue ("highCut")->load() == 20000.0f, "0.1.0 session: High Cut opens Off", p.apvts.getRawParameterValue ("highCut")->load(), "Hz");
 }
 
+// 2026-11-11, real vocal pass. A pulse shows the delay to a whole sample only, so the fraction is read from the phase of a 3 kHz tone
+// (high enough that the 6 Hz DC filter turns it by under 0.01 sample). One still voice, at the four rates a session can run at.
+static void testDelayToTheSample()
+{
+    for (double sr : { 44100.0, 48000.0, 88200.0, 96000.0 })
+        for (float ms : { 3.0f, 15.0f, 40.0f })
+        {
+            PluginProcessor p;
+            plain (p, 1);
+            set (p, "delay", ms);
+            prepare (p, 2, sr, 512);
+            const int n = (int) (2.0 * sr);
+            std::vector<float> in ((size_t) n);
+            sine (in.data(), n, 3000.0, sr, 0.25);
+            auto out = render (p, in, 512);
+            const auto d = trackDelayMs (out.getReadPointer (0), n, 3000.0, sr, 10, ms);
+            double mean = 0; int cnt = 0;
+            for (size_t i = d.size() / 2; i < d.size(); ++i) { mean += d[i]; ++cnt; }
+            const double errSamples = (mean / cnt - ms) * 0.001 * sr;
+            check (std::abs (errSamples) < 0.05, "Delay Time " + juce::String (ms, 0).toStdString() + " ms at " + std::to_string ((int) sr) + " Hz, one still voice against the control", errSamples, "samples");
+            check (p.getLatencySamples() == 0, "reported latency at " + std::to_string ((int) sr) + " Hz", p.getLatencySamples(), "samples");
+        }
+    // The dry path has no delay at all: at Mix 50 a pulse comes out in the sample it went in, at every rate.
+    for (double sr : { 44100.0, 48000.0, 88200.0, 96000.0 })
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "mix", 50.0f);
+        prepare (p, 2, sr, 512);
+        std::vector<float> pulse (4800, 0.0f);
+        pulse[100] = 1.0f;
+        auto out = render (p, pulse, 512);
+        const float* y = out.getReadPointer (0);
+        int at = 0;
+        for (int i = 0; i < 200; ++i) if (std::abs (y[i]) > std::abs (y[at])) at = i;
+        check (at == 100 && std::abs (y[99]) < 1.0e-9 && std::abs (y[101]) < 1.0e-9, "Mix 50 at " + std::to_string ((int) sr) + " Hz: the dry pulse comes out in its own sample, alone", (double) at - 100.0, "samples");
+    }
+}
+
+// 2026-11-11, real vocal pass. A control that has been moved has to arrive: seconds after a step the output must be the output of that
+// setting held from the start. In 0.3.1 the smoothers stopped as soon as a step was too small to move a float: a 40 ms Delay Time stopped
+// up to 0.0003 ms short for good (-56 dB against the same setting on Luke's voice), Voices, Depth, the cuts and Saturation likewise.
+// Controls that set a speed are left out: stepping one moves a phase for good.
+static void testArrival()
+{
+    struct Step { const char* id; float to; };
+    const Step steps[] = { { "delay", 33.37f }, { "voices", 5.0f }, { "depth", 3.3f }, { "lowCut", 233.0f }, { "highCut", 4321.0f }, { "saturation", 77.0f },
+                           { "mix", 80.0f }, { "tone", 4.5f }, { "feedback", 63.0f }, { "spread", 13.0f }, { "wow", 60.0f }, { "flutter", 70.0f },
+                           { "random", 55.0f }, { "degrade", 45.0f }, { "noise", 40.0f }, { "inputGain", -7.3f }, { "outputGain", 5.1f } };
+    for (double sr : { 44100.0, 48000.0, 96000.0 })
+    {
+        const int n = (int) (9.0 * sr), from = (int) (6.5 * sr), block = 512, stepBlock = (int) (sr / block);
+        std::vector<float> in ((size_t) n), tone ((size_t) n);
+        noise (in.data(), n, 0.2, 7);
+        sine (tone.data(), n, 311.0, sr, 0.2);
+        for (int i = 0; i < n; ++i) in[(size_t) i] += tone[(size_t) i];
+        for (const auto& s : steps)
+        {
+            const auto start = [] (PluginProcessor& p) { plain (p, 1); set (p, "mix", 50.0f); set (p, "saturation", 20.0f); };
+            PluginProcessor a, b;
+            start (a); start (b);
+            set (b, s.id, s.to);
+            prepare (a, 2, sr, block); prepare (b, 2, sr, block);
+            auto moved = render (a, in, block, nullptr, [&] (int idx) { if (idx == stepBlock) set (a, s.id, s.to); });
+            auto held = render (b, in, block);
+            double e = 0, ref = 0;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = from; i < n; ++i)
+                {
+                    const double d = (double) moved.getSample (ch, i) - held.getSample (ch, i);
+                    e += d * d; ref += (double) held.getSample (ch, i) * held.getSample (ch, i);
+                }
+            const double db = 10.0 * std::log10 (std::max (e, 1.0e-40) / std::max (ref, 1.0e-30));
+            check (db < -140.0, std::string ("arrives: ") + s.id + " stepped, 5.5 s later against the setting held from the start, " + std::to_string ((int) sr) + " Hz", db, "dB");
+        }
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
     GenericOptions opt;
     opt.minPresets = 4;
     opt.readOnly = { "inputLevel", "outputLevel", "pitchSwing" };
+    // 2026-11-11: the shared kit lets a step of 0.30 pass, on a sine whose own largest step is 0.0036. Nothing was hidden (0.3.1 reads
+    // 0.004 to 0.006), but a limit that wide cannot fail, so it is now 0.012 here, about twice the steady reading. Three controls change
+    // the level on purpose: both gains reach +24 dB (the sine's own step is then 0.057, and 0.078 with the wet in step), and Noise 100
+    // is hiss at -40 dBFS with steps of its own.
+    opt.clickLimit = 0.012;
+    opt.clickLimitFor = { { "inputGain", 0.1 }, { "outputGain", 0.1 }, { "noise", 0.03 } };
     runGenericChecks ([] { return std::make_unique<PluginProcessor>(); }, opt);
     testVoices();
     testRateDepth();
@@ -1685,5 +1771,7 @@ int main()
     testReadings();
     testAllOn();
     testOldSession();
+    testDelayToTheSample();
+    testArrival();
     return finish();
 }

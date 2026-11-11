@@ -1381,6 +1381,79 @@ void testHeldOutTenth()
     gEngine = 1;
 }
 
+// An eleventh held out set, written on 2026-11-11 and committed before any of it was run. The tenth set's one run found a line that fails on
+// 1.6.0 and 1.6.1 alike: Low Latency, women's speaking voices in Wide Range, formant move against the input 5.192% against 5 (and against the
+// floor plus 2%). That is to be fixed in the plug-in, and the tenth set has now been seen, so the fix needs voices that have not been.
+// Formants from a published source none of the earlier sets used, and speakers none of them used: the ten oral vowels of French said in
+// isolation in a frame sentence by 40 women, measured by hand corrected LPC in Praat.
+//   Georgeton, L., Paillereau, N., Landron, S., Gao, J. and Kamiyama, T. (2012), Analyse formantique des voyelles orales du francais en
+//   contexte isole: a la recherche d'une reference pour les apprenants de FLE, Actes de la conference conjointe JEP-TALN-RECITAL 2012,
+//   volume 1: JEP, 145 to 152, Grenoble, ACL Anthology F12-1019, Tableau 1, column GD: mean F1, F2, F3 and F4 in hertz for each vowel.
+// The numbers below are copied as that column prints them, from the ACL Anthology PDF. This is the same language as the tenth set, which
+// is not what the earlier sets did: I found no other source within reach that prints F1 to F3 for a language not yet used. But it is not
+// the same voices: the tenth set's women are vowels in running broadcast speech, pulled towards the middle (u with a second formant of
+// 1153 Hz); these are held on their own and reach the corners (u at 291 and 779 Hz, i with F3 and F4 at 3815 and 4521 Hz, a at 830 Hz).
+// The paper has no men. All ten vowels are used, at 174, 197 and 221 Hz, pitches none of the earlier sets or the tuning voices used.
+// F4 is the paper's own this time; F5 is 5000 Hz as in the seventh, ninth and tenth sets; bandwidths by the same conventions as the tenth
+// set (first formant an eighth of its frequency, rounded to 5 Hz, 45 Hz at least; F2 90 below 1000 Hz, 100 to 1600, 115 above; then 145,
+// 185, 225). Breath and source tone vary from voice to voice. Nothing was tuned on these and none of it was chosen by looking at output.
+// Metrics and limits are the tenth set's for women's speaking voices, fixed before the first run: High Quality at +/-1, 3 and 4 semitones
+// (4% against a real voice at the new pitch; against the input 4% where a perfect shifter can meet it, and the floor plus 2%; level 1.5 dB)
+// and Low Latency in Wide Range at +/-1 and 3 (the same at Low Latency's 5%). To be run once on the fixed build and once on the same tests
+// built as 1.6.0.
+void testHeldOutEleventh()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; };
+    // F1 to F4 from Georgeton and others (2012), Tableau 1, column GD; F5 and all bandwidths set here.
+    const std::vector<Held> speaking {
+        { { { 275, 2585, 3815, 4521, 5000 }, { 45, 115, 145, 185, 225 }, "French held i women" }, { -43.0, 0.0 } },
+        { { { 405, 2553, 3346, 4325, 5000 }, { 50, 115, 145, 185, 225 }, "French held e women" }, { -47.0, 3300.0 } },
+        { { { 614, 2306, 3137, 4383, 5000 }, { 75, 115, 145, 185, 225 }, "French held open e women" }, { -40.0, 0.0 } },
+        { { { 830, 1438, 2900, 4065, 5000 }, { 105, 100, 145, 185, 225 }, "French held a women" }, { -45.0, 4000.0 } },
+        { { { 276, 2091, 2579, 3826, 5000 }, { 45, 115, 145, 185, 225 }, "French held y women" }, { -50.0, 2400.0 } },
+        { { { 409, 1599, 2703, 3985, 5000 }, { 50, 100, 145, 185, 225 }, "French held eu women" }, { -42.0, 0.0 } },
+        { { { 599, 1678, 2843, 4107, 5000 }, { 75, 115, 145, 185, 225 }, "French held open eu women" }, { -46.0, 3600.0 } },
+        { { { 291, 779, 2648, 3980, 5000 }, { 45, 90, 145, 185, 225 }, "French held u women" }, { -39.0, 2800.0 } },
+        { { { 415, 842, 2862, 4048, 5000 }, { 50, 90, 145, 185, 225 }, "French held o women" }, { -48.0, 0.0 } },
+        { { { 595, 1144, 2907, 4035, 5000 }, { 75, 100, 145, 185, 225 }, "French held open o women" }, { -44.0, 4400.0 } } };
+    const auto judge = [] (const FormantScore& score, double limit, double levelLimit, const std::string& who)
+    {
+        chk (score.moveReal <= limit, "eleventh held out set, " + who + ", worst formant move against a real voice at the new pitch", score.moveReal * 100.0, "%");
+        if (score.ideal <= limit)
+            chk (score.move <= limit, "  worst formant move against the input", score.move * 100.0, "%");
+        else
+            note ("  worst formant move against the input (no verdict: a perfect shifter reads over the limit here, next line)", score.move * 100.0, "%");
+        note ("  what a perfect shifter reads on that line: the real voice at the new pitch itself against the input, worst", score.ideal * 100.0, "%");
+        note ("  and the tool's floor there", score.floor * 100.0, "%");
+        chk (score.move <= score.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", score.move * 100.0, "%");
+        chk (score.level <= levelLimit, "  level change, worst", score.level, "dB");
+        note ("  first formant against its surroundings, flatter than a real voice, worst", score.peakFlatter, "dB");
+        note ("  colour, worst", score.colour, "dB");
+    };
+    FormantScore high, low;
+    for (const auto& h : speaking)
+    {
+        gStyle = h.style;
+        for (double centre : { 174.0, 197.0, 221.0 })
+        {
+            gEngine = 1;
+            for (int shift : { 4, -4, 3, -3, 1, -1 })
+                scoreFormants (high, h.v, centre, shift, wideRange);
+            gEngine = 0;
+            for (int shift : { 3, -3, 1, -1 })
+                scoreFormants (low, h.v, centre, shift, wideRange);
+        }
+    }
+    gStyle = {};
+    gEngine = 1;
+    judge (high, prolimits::hqFormantMove, prolimits::hqLevelChangeDb, "French women's held vowels 174 to 221 Hz");
+    gEngine = 0;
+    judge (low, prolimits::llFormantMove, limits::levelChangeDb, "French women's held vowels 174 to 221 Hz in Wide Range");
+    gEngine = 1;
+}
+
 // A vowel change in the middle of a glide, added for 1.5.0 with its limit set before it was first run. High Quality remembers each
 // harmonic's level over a voiced stretch; it must not carry the old vowel into the new one. After the change, the output's formants
 // are read against a real voice singing the new vowel at the new pitch, with the same tool and limit as the formant test.
@@ -4138,6 +4211,7 @@ int main (int argc, char** argv)
     if (want ("heldout7")) testHeldOutSeventh();
     if (want ("heldout8")) testHeldOutEighth();
     if (want ("heldout9")) testHeldOutNinth();
+    if (only == "heldout11") testHeldOutEleventh();   // one run, after the fix it was written for
     if (only == "heldout10") testHeldOutTenth();   // not part of a full run until it has had its one run, after the changes it was written for
     if (want ("vowel")) testVowelChange();
     gEngine = 0;

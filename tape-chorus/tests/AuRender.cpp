@@ -2,6 +2,10 @@
 // plug-in against another: run before and after a change, then compare. Not shipped.
 // Build: clang++ -std=c++17 -O2 tests/AuRender.cpp -framework AudioToolbox -framework CoreFoundation -o build/AuRender
 // Usage: AuRender <left.wav> <right.wav> <out.raw> [rate=48000] [block=128] [channels=2] [preset=N] [Parameter Name=normalised value]...
+//        [component=<path to a .component>]  loads that bundle in this process only, in place of the installed plug-in (an older build kept aside)
+//        [settle=1]  starts the plug-in again once the preset and the settings are in, so the render begins AT the settings.
+// Without settle=1 the plug-in starts at its defaults and every control then glides to its setting during the first second of the render.
+// Up to 0.3.1 a control that glided never quite arrived (0.4.0 fixed that), so a render made without settle=1 is not the same in 0.4.0.
 #include <AudioToolbox/AudioToolbox.h>
 #include <cstdint>
 #include <cstdio>
@@ -62,6 +66,8 @@ int main (int argc, char** argv)
     double rate = 48000.0;
     UInt32 block = 128, channels = 2;
     int preset = -1;
+    bool settle = false;
+    std::string componentPath;
     std::vector<std::string> settings;
     for (int a = 4; a < argc; ++a)
     {
@@ -70,12 +76,29 @@ int main (int argc, char** argv)
         else if (arg.rfind ("block=", 0) == 0) block = (UInt32) std::stoi (arg.substr (6));
         else if (arg.rfind ("channels=", 0) == 0) channels = (UInt32) std::stoi (arg.substr (9));
         else if (arg.rfind ("preset=", 0) == 0) preset = std::stoi (arg.substr (7));
+        else if (arg.rfind ("settle=", 0) == 0) settle = arg.substr (7) == "1";
+        else if (arg.rfind ("component=", 0) == 0) componentPath = arg.substr (10);
         else settings.push_back (arg);
     }
 
     AudioComponentDescription d {};
     d.componentType = kAudioUnitType_Effect; d.componentSubType = 'STch'; d.componentManufacturer = 'Luke';
-    AudioComponent c = AudioComponentFindNext (nullptr, &d);
+    AudioComponent c = nullptr;
+    if (componentPath.empty()) c = AudioComponentFindNext (nullptr, &d);
+    else
+    {
+        // The bundle's factory, registered for this process only. Nothing is installed.
+        CFURLRef url = CFURLCreateFromFileSystemRepresentation (nullptr, (const UInt8*) componentPath.c_str(), (CFIndex) componentPath.size(), true);
+        CFBundleRef bundle = CFBundleCreate (nullptr, url);
+        CFRelease (url);
+        if (bundle == nullptr || ! CFBundleLoadExecutableAndReturnError (bundle, nullptr)) { puts ("cannot load the bundle"); return 1; }
+        auto comps = (CFArrayRef) CFBundleGetValueForInfoDictionaryKey (bundle, CFSTR ("AudioComponents"));
+        if (comps == nullptr || CFArrayGetCount (comps) < 1) { puts ("no AudioComponents in the bundle"); return 1; }
+        auto entry = (CFDictionaryRef) CFArrayGetValueAtIndex (comps, 0);
+        auto fp = (AudioComponentFactoryFunction) CFBundleGetFunctionPointerForName (bundle, (CFStringRef) CFDictionaryGetValue (entry, CFSTR ("factoryFunction")));
+        if (fp == nullptr) { puts ("no factory function in the bundle"); return 1; }
+        c = AudioComponentRegister (&d, CFSTR ("Luke Garito: Tape Chorus (kept aside)"), 0, fp);
+    }
     AudioUnit u = nullptr;
     if (c == nullptr || AudioComponentInstanceNew (c, &u) != noErr) { puts ("cannot open aufx STch Luke"); return 1; }
 
@@ -121,6 +144,8 @@ int main (int argc, char** argv)
         }
         if (! found) { printf ("no parameter for %s\n", arg.c_str()); return 1; }
     }
+
+    if (settle) { AudioUnitUninitialize (u); if (AudioUnitInitialize (u) != noErr) { puts ("init failed"); return 1; } }
 
     std::ofstream out (argv[3], std::ios::binary);
     std::vector<float> a (block), b (block);

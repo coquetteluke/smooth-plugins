@@ -3,6 +3,7 @@
 #define SMOOTH_COUNT_ALLOCS
 #include "TestKit.h"
 #include "PassLimits.h"
+#include "AfterCreak.h"
 #include "VoiceSynth.h"
 #include "Analysis.h"
 #include "PluginProcessor.h"
@@ -2229,6 +2230,22 @@ HumanReading humanReading (float amount)
     return r;
 }
 
+// 1.5.1: see tests/AfterCreak.h. Alto/Tenor follows a creak down under its range, and must come back up when the next word does.
+void testAfterCreak()
+{
+    double lowHz = 0.0, highHz = 0.0;
+    PluginProcessor::trackingRange (1, lowHz, highHz);
+    check (lowHz == 65.0 && highHz == 1000.0, "after a creak: the test tracks down to 65 Hz and up to 1 kHz, as Alto/Tenor does");
+    double worst = 0.0, worstHz = 0.0;
+    for (double hz : { 135.0, 140.0, 150.0, 165.0, 180.0 })
+    {
+        const double ms = aftercreak::lowMs (hz);
+        info ("after a creak, the next word at " + std::to_string ((int) hz) + " Hz: read an octave low once it is plain", ms, "ms");
+        if (ms > worst) { worst = ms; worstHz = hz; }
+    }
+    check (worst <= limits::afterCreakLowMs, "after a creak an octave down, the next word above 130 Hz is not sung an octave low, worst (" + std::to_string ((int) worstHz) + " Hz)", worst, "ms");
+}
+
 void testHumanOption()
 {
     // The parameter, and sessions
@@ -2406,5 +2423,6 @@ int main (int argc, char** argv)
     if (want ("eight")) testEightVoices();
     if (want ("onsets")) { onsets::testPhraseStarts(); onsets::testCorpusStarts(); }
     if (want ("notrigger")) onsets::testNoTrigger();
+    if (want ("aftercreak")) testAfterCreak();
     return finish();
 }

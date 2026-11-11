@@ -831,13 +831,13 @@ inline void trace (int kind, int type, int midi, int variant, double spanSec = 0
     {
         const auto& rd = reads[(size_t) (at / block)];
         const long in = at - lat;
-        std::printf ("  %6.1f  %7.1f  %7.1f |", 1000.0 * (at - r.onset - lat) / SR, in >= 0 ? L.f0[(size_t) in] : 0.0, rd.detectedHz);
+        std::printf ("  %6.1f  %7.1f  %7.1f |", 1000.0 * (at - r.onset - lat) / SR, in >= 0 ? (std::getenv ("SH_LEADPITCH") != nullptr ? pitchNear (L.x.data(), (long) n, in, L.f0[(size_t) in], SR, 0.06, 2.5) : L.f0[(size_t) in]) : 0.0, rd.detectedHz);
         for (int v = 0; v < 2; ++v)
         {
             const double target = noteHz (diatonic (r.midi, steps[v]));
             const double hz = pitchNear (o.ch[(size_t) v].data(), (long) n, at, target, SR, 0.06, 2.5);
             const double fh = freePitch (o.ch[(size_t) v], at, target);
-            std::printf ("  %5.1f %6.1f %7.1f %7.1f %3d %4.2f |", lagSamplesAt (o, v, at) * 1000.0 / SR, relativeDb (o, v, L.voiced, at) - steady[v], hz, fh, rd.voiceNote[(size_t) v], rd.voiceGain[(size_t) v]);
+            std::printf ("  %5.1f %6.1f %7.1f %7.1f %3d %6.2f |", lagSamplesAt (o, v, at) * 1000.0 / SR, relativeDb (o, v, L.voiced, at) - steady[v], hz, fh, rd.voiceNote[(size_t) v], std::getenv ("SH_WANTED") != nullptr ? (double) rd.voicePitch[(size_t) v] : (double) rd.voiceGain[(size_t) v]);
         }
         std::printf ("\n");
     }
@@ -886,8 +886,20 @@ inline void trackerTrace (int kind, int type, int midi, double fromMs, double to
         t.push (L.x[i]);
         const double ms = 1000.0 * (double) i / SR;
         if (ms >= fromMs && ms < toMs && i % 48 == 0)
-            std::printf ("%7.1f true %6.1f amp %4.2f | voiced %d period %6.1f Hz coarse %6.1f Hz dip %5.3f fric %d\n", ms, L.f0[i], L.amp[i], t.isVoiced() ? 1 : 0,
-                         t.period() > 0 ? SR / t.period() : 0.0, t.coarsePeriod() > 0 ? SR / t.coarsePeriod() : 0.0, t.difference(), t.isFricative() ? 1 : 0);
+        {
+            static const char* whys[] = { "voiced", "quiet", "nodip", "rough", "hiss", "even", "residual", "votes" };
+            std::printf ("%7.1f true %6.1f amp %4.2f | voiced %d period %6.1f Hz coarse %6.1f Hz dip %5.3f fric %d %s\n", ms, L.f0[i], L.amp[i], t.isVoiced() ? 1 : 0,
+                         t.period() > 0 ? SR / t.period() : 0.0, t.coarsePeriod() > 0 ? SR / t.coarsePeriod() : 0.0, t.difference(), t.isFricative() ? 1 : 0, whys[t.why()]);
+            if (t.startRule() != 0) std::printf ("          start rule took a %s period\n", t.startRule() == 1 ? "shorter" : "longer");
+            if (std::getenv ("SH_PROBE") != nullptr && L.f0[i] > 0.0)
+            {
+                // SH_PROBE=<r>: a candidate period of r true periods. Its dip at full rate, at twice and three times it, its even dip, and the true period's dip
+                const double r = std::atof (std::getenv ("SH_PROBE")), hz = L.f0[i] / r;
+                float f[4], e[4];
+                t.probe (hz, f[0], e[0]); t.probe (hz / 2.0, f[1], e[1]); t.probe (hz / 3.0, f[2], e[2]); t.probe (L.f0[i], f[3], e[3]);
+                std::printf ("          candidate %.0f Hz: dip %5.3f, at 2x %5.3f, at 3x %5.3f, even %5.3f | true period dip %5.3f even %5.3f\n", hz, f[0], f[1], f[2], e[0], f[3], e[3]);
+            }
+        }
     }
 }
 } // namespace onsets

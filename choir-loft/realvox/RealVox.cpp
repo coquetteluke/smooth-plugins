@@ -938,7 +938,7 @@ struct Dry
 const char* bandOf (double hz) { return hz < 98.0 ? "under98" : (hz < 130.0 ? "98to130" : "over130"); }
 
 // The plug-in's own tracker, run on the take the way the processor runs it, read once a ms.
-struct TrackerTrace { std::vector<unsigned char> why; std::vector<float> hz, dip, coarseHz; double lowHz = 0.0, highHz = 0.0; };
+struct TrackerTrace { std::vector<unsigned char> why; std::vector<float> hz, dip, coarseHz, halfFine, halfEven; double lowHz = 0.0, highHz = 0.0; };
 
 TrackerTrace traceTracker (const std::vector<float>& x, int inputType, float tracking)
 {
@@ -973,6 +973,13 @@ TrackerTrace traceTracker (const std::vector<float>& x, int inputType, float tra
             t.hz.push_back (p > 0.0 ? (float) (SR / p) : 0.0f);
             t.dip.push_back (tr.difference());
             t.coarseHz.push_back (tr.coarsePeriod() > 0.0 ? (float) (SR / tr.coarsePeriod()) : 0.0f);
+#ifndef REALVOX_OLD_TREE
+            // How well the sound repeats at half the coarse period, and how its even harmonics do: what the tracker asks before a low start
+            float hf = 1.0f, he = 1.0f;
+            if (tr.coarsePeriod() > 0.0) tr.probe (2.0 * SR / tr.coarsePeriod(), hf, he);
+            t.halfFine.push_back (hf);
+            t.halfEven.push_back (he);
+#endif
         }
     }
     return t;
@@ -2112,9 +2119,13 @@ int main (int argc, char** argv)
         const RenderInfo info = renderInfo();
         const TrackerTrace tr = traceTracker (d.x, info.inputType, info.tracking);
         for (long ms = (long) (1000.0 * std::atof (argv[3])); ms <= (long) (1000.0 * std::atof (argv[4])) && ms < (long) tr.hz.size(); ++ms)
-            std::printf ("%8.3f s  tracker %7.1f Hz  %-9s  dip %.3f at %6.1f Hz  reference (12 ms earlier) %7.1f Hz  level %6.1f dBFS\n", 0.001 * ms, tr.hz[(size_t) ms],
+        {
+            std::printf ("%8.3f s  tracker %7.1f Hz  %-9s  dip %.3f at %6.1f Hz  reference (12 ms earlier) %7.1f Hz  level %6.1f dBFS", 0.001 * ms, tr.hz[(size_t) ms],
                          tr.hz[(size_t) ms] > 0.0f ? "voiced" : stateNames[std::clamp ((int) tr.why[(size_t) ms], 1, 7)], tr.dip[(size_t) ms], tr.coarseHz[(size_t) ms],
                          d.leadHzAt ((ms - 12) * 48), toDb (rmsAround (d.x, (ms - 12) * 48, 240)));
+            if ((size_t) ms < tr.halfFine.size()) std::printf ("  half period: dip %.3f even %.3f", tr.halfFine[(size_t) ms], tr.halfEven[(size_t) ms]);
+            std::printf ("\n");
+        }
         return 0;
     }
     if (mode == "lowcensus" && argc >= 3)

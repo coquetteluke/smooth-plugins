@@ -243,7 +243,7 @@ private:
     int tickSamples = 48, tickPhase = 0, historyPhase = 0, typeNow = 1, latencyNow = 0;
     double tickSeconds = 0.001;
     bool fading = false, leadVoiced = false;
-    double currentPeriod = 0.0;
+    double currentPeriod = 0.0, lastTickPeriod = 0.0;
     float fadeGain = 1.0f, fadeStep = 1.0f / 64.0f, bypassMix = 1.0f, bypassStep = 0.001f;
     float lastVoicingLimit = -1.0f;
     int activeKeyNow = 0, activeScaleNow = 0;

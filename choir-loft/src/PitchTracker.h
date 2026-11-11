@@ -183,11 +183,16 @@ public:
     long long startedLateBy() const noexcept { return lateSamples; }
 
     // Best period right now in input samples, 0 when not voiced.
-    double period() const noexcept { return ! voiced ? 0.0 : (markValid ? finePeriod : coarsePeriod()); }
+    double period() const noexcept { return ! voiced ? 0.0 : (markValid ? (steadied > 0.0 ? steadied : finePeriod) : coarsePeriod()); }
 
     // Why the newest analysis called the sound voiced or not. For measuring tools only: nothing in the audio path reads it.
     enum Why { whyVoiced = 0, whyQuiet, whyNoDip, whyRough, whyHiss, whyEven, whyResidual, whyVotes };
     int why() const noexcept { return whyNow; }
+    // A breathy start is being steadied: see steadied in analyse().
+    bool breathy() const noexcept { return voiced && steadied > 0.0; }
+    // For measuring tools only: how well the newest window repeats at a period of 1 / hz, at full rate, and how well its even harmonics do.
+    int startRule() const noexcept { return startRuleNow; }   // what startPeriod did in the newest analysis: 0 nothing, 1 a shorter period, 2 a longer one
+    void probe (double hz, float& fine, float& even, int windows = 1) const noexcept { fine = fineDip (sr / hz, windows); even = evenDip (sr / hz); }
 
     // Marks count up by sequence number. Valid sequence numbers are firstMark() to lastMark().
     long long lastMark() const noexcept { return markSeq - 1; }
@@ -275,7 +280,7 @@ private:
 
         // Under the range (1.5.0). Looked at only where the range itself has nothing to offer (no dip, or none good enough to be called
         // voiced), or while a note under the range is being followed, so a note inside the range is read exactly as before.
-        bool usingLow = false;
+        bool usingLow = false, leftLow = false;
         if (lowTauMax > tauMax)
         {
             const bool onLow = voiced && tauCurrent > (double) tauMax;
@@ -285,6 +290,20 @@ private:
             if ((onLow || ! rangeGood) && numDips < (int) dipTau.size() && lowDip (lowTau, lowValue))
             {
                 bool take = onLow;
+                // A note under the range that is being followed gives way to a note at half its period, 130 Hz or more, as soon as that
+                // one is a clean note of its own: it repeats every period, and so do its even harmonics (1.5.1). The end of
+                // a word often drops an octave into a creak, and behind a doubler it does so cleanly; the next word, starting from there,
+                // was sung an octave low for its first 30 ms.
+                if (onLow)
+                    for (int i = 0; i < numDips; ++i)
+                        if (std::abs (lowTau / (dipTau[(size_t) i] * 2.0) - 1.0) < 0.06 && dipValue[(size_t) i] < voicedOff
+                            && fineDip (dipTau[(size_t) i] * decimation) < lowHalfClean && evenDip (dipTau[(size_t) i] * decimation) < startEvenLimit)
+                        {
+                            take = false;
+                            chosen = i;
+                            leftLow = true;
+                            break;
+                        }
                 if (! take && ! voiced)
                 {
                     // A new note. Twice a period always fits wherever the period does, and on a rough start fits better, the longer window
@@ -293,6 +312,13 @@ private:
                     take = clearlyDeeper (lowTau, 0.5 * lowTau);
                     for (int i = 0; i < numDips && take; ++i)
                         if (std::abs (lowTau / (dipTau[(size_t) i] * 3.0) - 1.0) < 0.04 && ! clearlyDeeper (lowTau, dipTau[(size_t) i]))
+                            take = false;
+                    // And when the range has a dip at half the long period (1.5.1), the sound may well be that note, 130 Hz or more, made rough
+                    // by something: a doubler in front, which Luke runs, lays a second voice a few ms and cents away over the first, and two
+                    // periods of that fit better than one. A true low note leaves half its period with flipped even harmonics; a note at
+                    // the half period does not. Behind Duo, 1.5.0 read 13 voice notes of 896 above 130 Hz an octave low where 1.4.4 read 7.
+                    for (int i = 0; i < numDips && take; ++i)
+                        if (std::abs (lowTau / (dipTau[(size_t) i] * 2.0) - 1.0) < 0.06 && dipValue[(size_t) i] < 0.6f && ! evenFlipsAt (dipTau[(size_t) i]))
                             take = false;
                 }
                 // A note that slides down out of the range keeps going. One that is in the range and turns rough for a moment is not moved
@@ -324,7 +350,7 @@ private:
 
         // A strong second harmonic, say on a low vowel whose first formant sits right on it, can make half the period look deep.
         // If a multiple of the chosen period is much deeper still, that multiple is the true period.
-        if (usingLow)
+        if (usingLow || leftLow)
         {
         }
         else if (dipValue[(size_t) chosen] < 0.08f)
@@ -351,8 +377,62 @@ private:
 
         double tau = dipTau[(size_t) chosen];
         float dip = dipValue[(size_t) chosen];
+        // A start (1.5.1): see startPeriod. Until a note is established its period is chosen there, when that rule has something to say.
+        startRuleNow = 0;
+        if (! usingLow && rangeHasDip && (! voiced || voicedAnalyses * hop < 3 * window))
+        {
+            const double before = tau;
+            if (startPeriod (chosen, numDips, limit, tau, dip))
+                startRuleNow = tau < before ? 1 : 2;
+        }
         if (voiced) ++voicedAnalyses;
-        trackContinuity (tau, dip, numDips);
+        // A note just called does not drop to two, three or four of its periods while its own period still holds: a multiple of a period
+        // always fits, and on breathy sound fits better (see startPeriod). A real drop leaves the old period with flipped even harmonics.
+        bool heldPeriod = false;
+        if (startRuleNow == 0 && voiced && ! usingLow && voicedAnalyses * hop < 3 * window && tauCurrent > 0.0)
+        {
+            const double ratio = tau / tauCurrent, whole = std::round (ratio);
+            heldPeriod = whole >= 2.0 && whole <= 4.0 && std::abs (ratio / whole - 1.0) < 0.06
+                         && evenDip (tauCurrent * decimation) <= startEvenLimit && fineDip (tauCurrent * decimation) <= startFineLimit;
+        }
+        if (heldPeriod)
+        {
+            dipCurrent = dip;
+            pendingVotes = 0;
+        }
+        else if (leftLow)
+        {
+            // Up from under the range to the note at half the period, once it has held for two analyses
+            pendingVotes = pendingVotes > 0 && std::abs (tau / pendingTau - 1.0) < 0.08 ? pendingVotes + 1 : 1;
+            pendingTau = tau;
+            if (pendingVotes >= 2)
+            {
+                tauCurrent = tau;
+                dipCurrent = dip;
+                pendingVotes = 0;
+            }
+        }
+        else if (startRuleNow == 0)
+            trackContinuity (tau, dip, numDips);
+        else if (! voiced || std::abs (tau / tauCurrent - 1.0) < 0.08)
+        {
+            // The start rule has weighed the related periods itself. The votes below still ask a start to hold for three analyses.
+            tauCurrent = tau;
+            dipCurrent = dip;
+            pendingVotes = 0;
+        }
+        else
+        {
+            // In a note already called, a move must hold for two analyses, as any move does
+            pendingVotes = pendingVotes > 0 && std::abs (tau / pendingTau - 1.0) < 0.08 ? pendingVotes + 1 : 1;
+            pendingTau = tau;
+            if (pendingVotes >= 2)
+            {
+                tauCurrent = tau;
+                dipCurrent = dip;
+                pendingVotes = 0;
+            }
+        }
 
         // Under the range the tracker is choosier: fry and the creak at the end of a word repeat at these periods too, roughly, and before
         // 1.5.0 they were left alone. A sung low note repeats far better than they do (on Luke's takes a median difference of 0.01 to 0.14
@@ -428,8 +508,40 @@ private:
                 setUnvoiced();
         }
 
+        // A breathy start (1.5.1). Each period's mark is matched against a noisy period before it, and breath ringing in the formants pulls the
+        // match about: on a high note the period read 4% either way from one period to the next and a little short on average, enough to
+        // move the voices to the next note and back, and to bend them while they follow the lead out of the start. The coarse period,
+        // read over a whole window, holds steadier. So when a note is still breathy 10 ms in (a difference of 0.15 or more; a clean one is under
+        // 0.03 by then), the period given out for its first 80 ms is the coarse one, averaged over the last 10 ms.
+        steadied = 0.0;
+        if (voiced)
+        {
+            const long long age = (long long) voicedAnalyses * hop * decimation;
+            if (recentCount > 0 && std::abs (tauCurrent / recentTau[(size_t) ((recentCount - 1) % steadyOver)] - 1.0) > 0.08)
+                recentCount = 0;                                // a real move: start the average again
+            recentTau[(size_t) (recentCount % steadyOver)] = tauCurrent;
+            ++recentCount;
+            // Only where the period is short, under 5 ms: a low note's period is longer than the breath rings, and reads steadily as it is.
+            if (age >= (long long) (0.01 * sr) && age < (long long) (0.08 * sr) && dipCurrent >= breathyDip && tauCurrent * decimation < 0.005 * sr)
+                breathyStart = true;
+            if (age >= (long long) (0.08 * sr))
+                breathyStart = false;
+            if (breathyStart)
+            {
+                const int have = std::min (recentCount, steadyOver);
+                double sum = 0.0;
+                for (int i = 0; i < have; ++i) sum += recentTau[(size_t) i];
+                steadied = longLagPeriod (sum / have * decimation);
+            }
+        }
+        else
+        {
+            recentCount = 0;
+            breathyStart = false;
+        }
+
         // A real change of note that the marks did not follow: start them again from the coarse period.
-        if (voiced && markValid && std::abs (coarsePeriod() / finePeriod - 1.0) > 0.12)
+        if (voiced && markValid && steadied <= 0.0 && std::abs (coarsePeriod() / finePeriod - 1.0) > 0.12)
         {
             if (++mismatchVotes >= 2) { markValid = false; mismatchVotes = 0; }
         }
@@ -516,6 +628,112 @@ private:
             dipCurrent = dip;
         }
     }
+
+    // A period read from several periods at once: the lag near a whole number of them, 8 ms or more, at which the newest window best
+    // repeats, divided by that number. An error of a sample in the lag is then a fraction of a sample in the period, and breath that
+    // rings for a few ms has died away at that distance. Returns the period it was given when the long lag has no clear best.
+    double longLagPeriod (double period) const noexcept
+    {
+        const int k = std::max (2, (int) std::ceil (0.008 * sr / period));
+        const int span = std::min (window * decimation, fastSize / 4);
+        const int centre = (int) std::lround (k * period), reach = std::max (2, (int) std::ceil (0.02 * k * period));
+        const int stride = std::max (1, span / 400), points = span / stride;
+        const long long start = now() - span + 1;
+        if (start - centre - reach - 1 < 0 || centre + reach + span >= fastSize)
+            return period;
+        const float* a = fastAt (start);
+        const float ea = dotProduct (a, a, points, stride);
+        float best = 2.0f, before = 2.0f, after = 2.0f, previous = 2.0f;
+        int bestLag = centre;
+        bool wantAfter = false;
+        for (int lag = centre - reach; lag <= centre + reach; ++lag)
+        {
+            const float* b = fastAt (start - lag);
+            const float eb = dotProduct (b, b, points, stride), c = dotProduct (a, b, points, stride);
+            const float den = ea + eb;
+            const float v = den > 1.0e-12f ? 1.0f - 2.0f * c / den : 1.0f;
+            if (wantAfter) { after = v; wantAfter = false; }
+            if (v < best) { best = v; bestLag = lag; before = previous; after = 2.0f; wantAfter = true; }
+            previous = v;
+        }
+        if (bestLag == centre - reach || bestLag == centre + reach || before > 1.5f || after > 1.5f)
+            return period;
+        const float curve2 = before - 2.0f * best + after;
+        const double exact = bestLag + (curve2 > 1.0e-9f ? std::clamp (0.5f * (before - after) / curve2, -0.5f, 0.5f) : 0.0f);
+        return exact / k;
+    }
+
+    // The period of a start (1.5.1). On a breathy start the breath is at about the voice's own level and has gone through the same formants,
+    // so it rings at them for a few ms: at lags that short the difference function measures the ring as much as the voice. On a high note
+    // the period is that short. Half the period then looks about as deep as the period (and is refused as a start, its even harmonics not
+    // repeating, so the note waits), and two or three periods, where the ring has died away, look deepest and get picked: a note that
+    // starts a twelfth low. Both were the breathy high starts that stayed late from 1.4.0 to 1.5.0.
+    // So among the deep dips and their halves, thirds and quarters, the period is the shortest one that a voice could have: its even
+    // harmonics repeat (which half a true period fails outright, its odd harmonics flipping sign), and it is a dip of its own at full
+    // rate. How periodic the sound is, is then read at the deep dip it came from, the longer lag being the cleaner reading.
+    // A longer period than the first deep dip is only taken when that dip's even harmonics plainly flip, so a voice that is nearly a pure
+    // tone, whose even harmonics say nothing either way, keeps the period it had. Returns false, changing nothing, when the first deep dip
+    // already is that period: every clean start.
+    bool startPeriod (int chosen, int numDips, float limit, double& tau, float& dip) const noexcept
+    {
+        const double was = dipTau[(size_t) chosen];
+        double best = 0.0;
+        float bestValue = 2.0f;
+        int tried = 0;
+        for (int i = 0; i < numDips && tried < 6; ++i)
+        {
+            if (dipValue[(size_t) i] > limit)
+                continue;
+            ++tried;
+            for (int k = 4; k >= 1; --k)
+            {
+                const double t = dipTau[(size_t) i] / k;
+                if (t < (double) tauMin || (best > 0.0 && t > best * 0.96))
+                    continue;
+                if (std::abs (t / was - 1.0) < 0.04 && k == 1)
+                    continue;                                   // the first deep dip itself: looked at last, below
+                // Every deep dip from it up must be a whole number of it: a loud harmonic makes two thirds of a period look like one,
+                // and the period itself, a deep dip too, is then one and a half of it. Every deep dip under it must be one that flips.
+                bool fits = true;
+                for (int j = 0; j < numDips && fits; ++j)
+                {
+                    if (dipValue[(size_t) j] > limit)
+                        continue;
+                    const double ratio = dipTau[(size_t) j] / t;
+                    if (ratio > 0.96)
+                        fits = std::abs (ratio / std::round (ratio) - 1.0) < 0.06;
+                    else
+                        fits = evenFlipsAt (dipTau[(size_t) j]);
+                }
+                // And it must be about as periodic as the deep dip it came from. Breath ringing in the formants can make a true period read
+                // up to twice as rough as its multiples; a third or a half of a true period, carried by one loud harmonic, reads rougher still.
+                const float from = dipValue[(size_t) i];
+                if (! fits || fineDip (t * decimation) > std::min (startFineLimit, 2.5f * from + 0.05f)
+                    || evenDip (t * decimation) > std::min (startEvenLimit, 1.6f * from + 0.05f))
+                    continue;
+                // Longer than the first deep dip: only when that one is plainly half, a third or so of a true period
+                if (t > was * 1.04 && ! evenFlipsAt (was))
+                    continue;
+                best = t;
+                bestValue = dipValue[(size_t) i];
+            }
+        }
+        if (best <= 0.0)
+            return false;
+        // The first deep dip stands if it is the shorter of the two and a period a voice could have
+        if (was < best * 0.96 && ! evenFlipsAt (was))
+            return false;
+        if (std::abs (best / was - 1.0) < 0.04)
+            return false;
+        tau = best;
+        dip = std::min (bestValue, dip);
+        return true;
+    }
+
+    bool evenFlipsAt (double tauSlow) const noexcept { return evenDip (tauSlow * decimation) > startFlipLimit; }
+
+    static constexpr float lowHalfClean = 0.15f;   // a low note of Luke's reads 0.4 or more at half its period, the whole note through
+    static constexpr float startFineLimit = 0.5f, startEvenLimit = 0.6f, startFlipLimit = 1.15f;
 
     // The first deep dip among the periods under the range, from the range's longest period to lowTauMax, over a window as long as the
     // longest of them: a window shorter than a period can fall between two pulses of a low, creaky note and see nothing. False if there
@@ -797,9 +1015,13 @@ private:
             seedMarks();
             return;
         }
-        const double period = finePeriod;
+        // On a breathy start (see steadied) the marks keep to the steadier period too, each one moved by under 1% to stay on the waveform.
+        // Left to themselves they lost the match every few periods there and were set down afresh at another point of the waveform, which
+        // a voice built on them sings as a lurch in pitch.
+        const bool steady = steadied > 0.0;
+        const double period = steady ? steadied : finePeriod;
         const double predicted = lastMarkPosition + period;
-        const int reach = std::max (2, (int) std::ceil (0.08 * period));
+        const int reach = steady ? std::max (1, (int) std::ceil (0.008 * period)) : std::max (2, (int) std::ceil (0.08 * period));
         if ((double) now() < predicted + markKnownAfterPeriods * period + 1.0)
             return;
 
@@ -853,7 +1075,7 @@ private:
         {
             // Lost it for now. Keep going on the prediction, and start again if this goes on.
             addMark (predicted, period, std::max (0.0f, bestMatch));
-            if (++weakMarks >= 3)
+            if (! steady && ++weakMarks >= 3)
                 markValid = false;
             return;
         }
@@ -905,7 +1127,7 @@ private:
     float dipCurrent = 1.0f;
     int pendingVotes = 0, voicedVotes = 0, unvoicedVotes = 0, mismatchVotes = 0, voicedAnalyses = 0;
     bool voiced = false;
-    int whyNow = whyQuiet;
+    int whyNow = whyQuiet, startRuleNow = 0;
     int plainVotes = 0;
     double plainTau = 1.0;
     float plainDipSum = 0.0f;
@@ -916,7 +1138,12 @@ private:
     std::array<Mark, maxMarks> marks {};
     long long markSeq = 0;
     bool markValid = false;
-    double finePeriod = 0.0, lastMarkPosition = -1.0e12;
+    double finePeriod = 0.0, lastMarkPosition = -1.0e12, steadied = 0.0;
+    static constexpr float breathyDip = 0.15f;
+    static constexpr int steadyOver = 8;
+    std::array<double, steadyOver> recentTau {};
+    int recentCount = 0;
+    bool breathyStart = false;
     int weakMarks = 0;
 };
 } // namespace smoothharmony

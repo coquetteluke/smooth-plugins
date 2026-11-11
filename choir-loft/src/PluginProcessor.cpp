@@ -604,7 +604,15 @@ void PluginProcessor::tick() noexcept
     double recent = 0.0, earlier = 0.0;
     for (int k = 0; k < 3; ++k) recent += levelRing[(size_t) ((levelAt - k) & (levelRingSize - 1))];
     for (int k = 20; k < 30; ++k) earlier += levelRing[(size_t) ((levelAt - k) & (levelRingSize - 1))];
-    const bool reattack = voiced && recent / 3.0 > 8.0 * (earlier / 10.0) && recent / 3.0 > 1.0e-7;
+    bool reattack = voiced && recent / 3.0 > 8.0 * (earlier / 10.0) && recent / 3.0 > 1.0e-7;
+
+    // 1.5.1. A word often ends in a creak an octave down, under Alto/Tenor's range, which since 1.5.0 is followed and sung. The next word
+    // then came as a leap of an octave inside one stretch of pitch, and the voices glided up to it: on Luke's takes two held notes were
+    // reached 110 and 120 ms late that way. Out of a note under the range, a jump up of a sixth or more is a new start, taken at once.
+    const double underRange = sr / inputRanges[(size_t) typeNow].lowHz;
+    if (voiced && lastTickPeriod > underRange && period < 0.6 * lastTickPeriod)
+        reattack = true;
+    lastTickPeriod = period;
 
     brain.update (aligned, voiceLead, voiced, settings, reattack);
 
@@ -668,6 +676,7 @@ void PluginProcessor::tick() noexcept
         c.jitter = juce::jmax (settings.drift[(size_t) v] * 0.0035, settings.humanize * 0.006);
         c.shimmer = settings.drift[(size_t) v] * 0.1;
         c.blendPeriods = settings.humanize > 0.0;
+        c.steady = tracker.breathy();
         c.readJitter = settings.humanize * 3.0 * sr / 48000.0;
         voice.wander = brain.levelWander (v);
         if (brain.humanOn())
@@ -677,7 +686,7 @@ void PluginProcessor::tick() noexcept
             // end in every voice at the same moment.
             const double keep = settings.human * HumanVoice::holdsLevel (v);
             if (voice.leadFast > 1.0e-10 && voice.leadSlow > 1.0e-10)
-                voice.wander *= juce::jlimit (0.631, 1.585, std::pow (voice.leadSlow / voice.leadFast, 0.5 * keep));
+                voice.wander *= juce::jlimit (0.631, 1.585, std::pow (voice.leadSlow / voice.leadFast, 0.6 * keep));
         }
         if (sungNow)
         {

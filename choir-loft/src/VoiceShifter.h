@@ -79,6 +79,7 @@ public:
         double shimmer = 0.0;        // fraction of the level, random per grain
         bool blendPeriods = false;   // a grain reads between two neighbouring periods instead of repeating or dropping whole ones
         double readJitter = 0.0;     // samples, random per grain: where it reads, so the high end stops repeating exactly, and pitch does not move at all
+        bool steady = false;         // a breathy start (1.5.1): each grain is the mean of two periods, so the voice holds its note where the lead is half breath
     };
 
     void prepare (double sampleRate, unsigned seed)
@@ -188,6 +189,11 @@ private:
         long long wholeB = 0;
         double fractionB = 0.0;
         std::array<float, 12> coefficientsB {};
+        bool three = false;         // a breathy start: the mean of three periods, the third read at offsetC
+        double offsetC = 0.0;
+        long long wholeC = 0;
+        double fractionC = 0.0;
+        std::array<float, 12> coefficientsC {};
     };
 
     static constexpr int tapCount = 12, phases = 256, windowSize = 2048, maxGrains = 16;
@@ -247,6 +253,8 @@ private:
         splitOne (g.offset, g.whole, g.fraction, g.coefficients.data());
         if (g.blend > 0.0)
             splitOne (g.offsetB, g.wholeB, g.fractionB, g.coefficientsB.data());
+        if (g.three)
+            splitOne (g.offsetC, g.wholeC, g.fractionC, g.coefficientsC.data());
     }
 
     void tableRow (double fraction, float* out) const noexcept
@@ -295,13 +303,19 @@ private:
             const float a = readFixed (d, mask, n + g.whole, g.fraction, g.coefficients.data());
             if (g.blend <= 0.0)
                 return a;
-            return a + blend * (readFixed (d, mask, n + g.wholeB, g.fractionB, g.coefficientsB.data()) - a);
+            const float b = readFixed (d, mask, n + g.wholeB, g.fractionB, g.coefficientsB.data());
+            if (g.three)
+                return (a + b + readFixed (d, mask, n + g.wholeC, g.fractionC, g.coefficientsC.data())) * (1.0f / 3.0f);
+            return a + blend * (b - a);
         }
         const double drift = (g.rate - 1.0) * t;
         const float a = readMoving (d, mask, (double) n + g.offset + drift, newest);
         if (g.blend <= 0.0)
             return a;
-        return a + blend * (readMoving (d, mask, (double) n + g.offsetB + drift, newest) - a);
+        const float b = readMoving (d, mask, (double) n + g.offsetB + drift, newest);
+        if (g.three)
+            return (a + b + readMoving (d, mask, (double) n + g.offsetC + drift, newest)) * (1.0f / 3.0f);
+        return a + blend * (b - a);
     }
 
     void addGrain (const Grain& g) noexcept
@@ -408,11 +422,38 @@ private:
                         {
                             g.offset = p0 - g.mark;
                             g.offsetB = p1 - g.mark;
-                            g.blend = std::clamp ((aim - p0) / (p1 - p0), 0.0, 1.0);
+                            g.blend = c.steady ? 0.5 : std::clamp ((aim - p0) / (p1 - p0), 0.0, 1.0);   // steady: see below
                             lastMarkUsed = lower;
                         }
                     }
                 }
+            }
+        }
+
+        // A breathy start: the lead is about half breath for its first tens of ms, and a grain cut from it is as much noise as note, so the
+        // voice, though placed exactly on its pitch, does not sound on a note until the breath has thinned. The mean of three periods
+        // keeps the part that repeats and leaves a third of the breath's power. The tracker holds its marks a steady period apart
+        // while it says so, which is what lets the periods line up.
+        if (! plain && c.steady && lastMarkUsed > tracker.firstMark() + 1)
+        {
+            const double period = c.inputPeriod;
+            const auto apart = [&] (long long a, long long b) { const double d = tracker.mark (a).position - tracker.mark (b).position; return d > 0.7 * period && d < 1.4 * period; };
+            if (g.blend <= 0.0)
+            {
+                // Humanize 0: this period, the one before it and the one before that
+                if (apart (lastMarkUsed, lastMarkUsed - 1) && apart (lastMarkUsed - 1, lastMarkUsed - 2))
+                {
+                    g.offsetB = tracker.mark (lastMarkUsed - 1).position - g.mark;
+                    g.offsetC = tracker.mark (lastMarkUsed - 2).position - g.mark;
+                    g.blend = 0.5;
+                    g.three = true;
+                }
+            }
+            else if (apart (lastMarkUsed, lastMarkUsed - 1))
+            {
+                // The two periods either side of the grain are in already: add the one before them
+                g.offsetC = tracker.mark (lastMarkUsed - 1).position - g.mark;
+                g.three = true;
             }
         }
 
@@ -421,6 +462,7 @@ private:
             const double nudge = c.readJitter * nextRandom();
             g.offset += nudge;
             g.offsetB += nudge;
+            g.offsetC += nudge;
         }
 
         if (plain)
@@ -434,6 +476,7 @@ private:
             g.rate = 1.0;
             g.gain = 1.0;
             g.blend = 0.0;
+            g.three = false;
             lastMarkUsed = -1;
         }
         else

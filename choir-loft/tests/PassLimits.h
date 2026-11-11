@@ -136,4 +136,7 @@ namespace limits
     // Things that are not singing: breaths, s and sh, noise, room tone. With Consonants 0 a voice is silent unless it thinks it hears a note.
     constexpr double noTriggerShare = 0.01;           // share of 10 ms frames where a voice sings (over -20 dB against the input), at most
     constexpr double noTriggerRunMs = 20.0;           // and never longer than this at once
+    // 1.5.1. A word on a note of 130 Hz or more that comes straight out of a creak an octave down (tests/AfterCreak.h): once the note is
+    // plain, the tracker may read it an octave low for no longer than a wrong note is allowed to last at any start (onsetWrongMs).
+    constexpr double afterCreakLowMs = 20.0;
 }

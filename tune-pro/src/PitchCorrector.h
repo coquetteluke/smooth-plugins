@@ -272,7 +272,7 @@ private:
     double correction = 0.0, age = 0.0, slowPitch = 0.0, output = 0.0, input = 0.0, offCents = 0.0, silentFor = 0.0, vibratoPhase = 0.0;
     int target = -1, pendingTarget = -1;
     double pastFor = 0.0;
-    static constexpr bool holdTargets = false;
+    static constexpr bool holdTargets = true;
     static constexpr double holdSeconds = 0.08;
     bool identity = true, hasPitch = false;
 };

@@ -4,7 +4,7 @@ Up to eight harmony voices from one lead vocal. Formants stay where they are, so
 
 **Load it:** Audio Units > Luke Garito > Choir Loft. AU code `aumf SHrm Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. With mono in, the voices still spread across the stereo field.
 
-Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2 and 1.5.0 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
+Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2, 1.5.0 and 1.5.1 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
 
 ## First settings to try
 
@@ -137,7 +137,7 @@ The `say` corpus, every voiced stretch of 150 ms or longer: every voice sounds i
 
 1.4.2: a start must also repeat once its formants are taken out (linear prediction, then whether what is left repeats a period later), unless the sound is plainly periodic or has stayed clean for 10 ms. A start is written back to where nearly periodic sound began, so voices standing behind the lead still come in on time. Breaths, s, sh, noise and room tone: 0 singing (limit 1%). Wrong first notes 0 at every preset tested. On Luke's held out takes breath leak fell from 12.0% to 3.1% and starts came in sooner, with 1 and 4 more wrong first notes at phrase and word starts. Breathy high starts still come in 67 to 72 ms late against 40: the aspiration matches the voice for its first 50 ms.
 
-Still failing: breathy starts on high notes, where the aspiration noise goes through the vowel's own formants and the tracker reads an octave high for about 50 ms (74 to 76 ms against 40). Breaths through a closed vowel at -30 dBFS make a voice sing 54.5% of the time against a limit of 1%, longest 190 ms (1.3.1: 55.1%, 190 ms): a narrow formant rings like a note. Two fixes were tried and dropped: a check that a start repeats at twice its period (it delayed `say` starts, median 22 to 34 ms) and whitening the tracker's input (`say` starts slower, 2 of 58 missed).
+Still failing in 1.4.0 (fixed in 1.5.1, see "Breathy high starts, the creak and the doubler"): breathy starts on high notes, where the aspiration noise goes through the vowel's own formants and the tracker reads an octave high for about 50 ms (74 to 76 ms against 40). Breaths through a closed vowel at -30 dBFS make a voice sing 54.5% of the time against a limit of 1%, longest 190 ms (1.3.1: 55.1%, 190 ms): a narrow formant rings like a note. Two fixes were tried and dropped: a check that a start repeats at twice its period (it delayed `say` starts, median 22 to 34 ms) and whitening the tracker's input (`say` starts slower, 2 of 58 missed).
 
 `PluginTest onsets`, `PluginTest notrigger`; `PluginTest onsettrace`, `trackertrace` and `corpustrace` print one start frame by frame.
 
@@ -238,6 +238,64 @@ A doubled lead costs the voices about 3 points of time on the note in every band
 
 Two voices at -6 dB on top of the lead add 1.76 dB of power, and the takes read +1.75 to +1.84 dB while Luke sings. Peaks rise more where a voice's pulse lands on the lead's: +1.8 to +4.5 dB at the default on these takes (1.4.4: +1.4 to +4.5; take 05, the hottest: dry -7.7 dBFS, out -3.2 in both), +3.4 to +6.2 dB on Full Stack (1.4.4: +2.9 to +6.5; take 05: -1.5 dBFS, 1.4.4 -1.2). There is no limiter, so a lead that peaks above about -4.5 dBFS can pass 0 dBFS at the default, and one above about -6.5 can on Full Stack. This is as designed, and 1.5.0 does not change it.
 
+## Breathy high starts, the creak and the doubler (1.5.1)
+
+Luke, on 1.5.0's report: "This is not good enough. I need 100% and I need zero failures." 1.5.1 is the second pass: the three tests that had failed since 1.4.0 pass, the octave low behind a doubler is fixed, and Human at 100 reaches three of its four goals. The suite is at 616 pass, 0 fail. Latency is unchanged at every Input Type.
+
+### Breathy high starts
+
+Time for a voice to sound on its note past its own lag, 95th percentile, breathy starts (the worst kind), limit 40 ms:
+
+| | default | Tight | default, Humanize 0 |
+|---|---|---|---|
+| 1.4.0 to 1.5.0 | 67.9 ms | 72.0 ms | 67.1 ms |
+| 1.5.1 | 38.7 ms | 36.0 ms | 33.3 ms |
+
+Voices singing another note first stays 0 of 432 at all three, and breaths, s, sh, noise and room tone still make no voice sing (0.000 of the time). What was wrong, found frame by frame (`PluginTest trackertrace 4 3 69 500 620` and `onsettrace`), was four things:
+
+1. The period. The breath in a breathy start has gone through the same formants as the voice, so it rings at them for a few ms. On a high note the period is that short, and the difference function at one period then measures the ring as much as the voice: on the A4 start at Wide Range, half a period, one period and three periods read 0.27, 0.27 and 0.12. The tracker took half (an octave high), refused it as a start because its even harmonics do not repeat, waited, then took three periods (147 Hz for a 440 Hz note) and came right 76 ms after the lead was on its note. Now, until a note is established, its period is the shortest of the deep dips and their halves, thirds and quarters that a voice could have (`startPeriod` in `src/PitchTracker.h`): its even harmonics repeat, which half a true period fails outright; every deep dip is a whole number of it; and it reads about as well as the deep dip it came from. That start is now called 48 ms sooner, on 440 Hz.
+2. The reading. Each period's mark is matched against the noisy period before it, and the period read 4% either way from one period to the next (565 to 632 Hz on a 587 Hz note), which moved the voices to the next note and back. When a note with a period under 5 ms is still breathy 10 ms in, for its first 80 ms the period given out is the coarse one averaged over 10 ms and refined at a lag of 8 ms or more, and the marks keep to it. It reads 578 to 592 Hz.
+3. The voice. With pitch and marks right, a voice still read 660 to 737 Hz against 698, because a grain cut from a lead that is half breath is half breath: by the test's own measure the lead itself is not within 50 cents of its note until 46 ms in. During such a start each grain is now the mean of three periods (`steady` in `src/VoiceShifter.h`), which keeps what repeats and leaves a third of the breath's power. This is a change you can hear: for the first 80 ms of a breathy start above 200 Hz the voices carry less breath than the lead.
+4. A note just called does not drop to two, three or four of its periods while its own period still holds.
+
+A clean start is called on its period a few ms sooner than before, where the old rule sat on a passing harmonic first, so the 22 null tests now pin 1.5.1 at Human 0 (every preset moved, Tight too).
+
+### The creak, and the doubler in front
+
+The end of a word often drops into a creak an octave down, 70 to 77 Hz on Luke's takes and clean. Since 1.5.0 Alto/Tenor follows it, which is right. Two things went wrong after it:
+
+- Behind Duo the creak runs straight into the next word, whose pulses stay uneven for 30 to 40 ms, and 1.5.0 left the low period only when the half period read within 0.015 of it. The next word's start was sung an octave low. Now a followed low note gives way as soon as the range has a clean note at half its period (a difference under 0.15 at full rate, even harmonics repeating). A real low note of Luke's reads 0.4 or more at half its period the whole note through. Test: `PluginTest aftercreak` (`tests/AfterCreak.h`), 20 ms at most; 1.5.0's tracker on the same signal reads an octave low for 42 ms at 140 Hz and 47 ms at 165 Hz, 1.5.1 for 0 and 8 ms.
+- On the dry takes the voices glided up an octave out of the creak, and two held notes were reached 110 and 120 ms late. A jump up of a sixth or more out of a note under the range is now a new start, taken at once.
+
+Takes 02, 10 and 12, Choir Loft at its defaults, judged against the dry take's notes:
+
+| Into Choir Loft | Above 130 Hz, sung right of 896 | Octave errors above 130 Hz | Under 98 Hz, of 28 |
+|---|---|---|---|
+| 1.4.4, Duo first | 889 | 7 | 4 |
+| 1.5.0, Duo first | 879 | 13 | 28 |
+| 1.5.1, Duo first | 890 | 4 | 28 |
+| 1.5.1, dry | 895 | 1 | 28 |
+| 1.5.1, Tune Pro first | 895 | 1 | 28 |
+
+Duo in front still costs about 3 points of time on the note (86.0%, 93.7% and 91.6% in the three bands against 90.0%, 96.7% and 94.2% dry), so Choir Loft still does better before it.
+
+### The 11 working takes, 1.5.1 against 1.5.0 and 1.4.4
+
+Held notes at the default: under 98 Hz 28 of 28 (time on the note 86.6%, 1.5.0 87.5%, 1.4.4 42.0%); 98 to 130 Hz 699 of 700 (700, 697); above 130 Hz 2623 of 2630 (2621, 2623), late notes 0 (2, 0). The pass rule H1 to H10 against 1.4.4 holds in full. The point lost under 98 Hz is the price of the two rules for leaving and refusing a low note.
+
+Starts and breaths with Humanize and Drift at 0, 1.5.1 / 1.5.0 / 1.4.4: wrong first notes at phrase starts 6 / 7 / 6; phrase starts median 22 / 22 / 22 ms; breath leak 12.19% / 12.24% / 12.12%; voices singing through unpitched frames inside phrases 4.27% / 3.76% / 3.56%; fry starts, 90th percentile 50 / 44 / 44 ms; breathy starts median 20 / 20 / 18 ms. The leak inside phrases is up half a point; 1.4.4 measured against itself with the take slid by 21 and 42 ms reads 4.09% and 4.23%, so it is at the edge of what this measure does by itself, and it is not better.
+
+### Human at 100
+
+| | 1.5.0 | 1.5.1 | Goal |
+|---|---|---|---|
+| Pitch spread inside a note, cents (V1) | 10.4 | 10.3 | 10 or more |
+| Two voices' movement in common (V2) | 0.32 | 0.27 | 0.30 or less |
+| Level curve like the lead's (V3) | 0.64 | 0.58 | 0.65 or less |
+| Ends of the two voices apart, ms (V4) | 4 | 6 | 8 or more |
+
+V2 is reached: the voices follow half as much of the lead as in 1.5.0 (what they take from the lead they take together), and each voice's vibrato runs at its own speed, up to a tenth off. V4 is not: 6 ms against 8. By the tool's measure a voice ends when the lead's note is called over, plus that voice's lag. Letting a voice fall behind over a long note, by up to 20 ms from 200 ms in, moved it from 4 to 6; 28 ms moved it no further and falling behind from 80 ms in cost time on the note. Level made no difference: 12 dB between the voices moved the ends by 2 ms. Every limit U1 to U9 holds at 35, 65 and 100 (1.5.0 failed U9 at 35): note average off its note 5.0, 5.9 and 7.8 cents against 10; interval spread 7.2, 10.0 and 13.1 against 15; starts 46 and 52, 46 and 52, 47 and 51 ms against 60; level spread 0.75, 0.84 and 0.95 dB against 1.21.
+
 ## Latency
 
 Exact and reported, the same bypassed. At 48 kHz: Soprano 9.0 ms, Alto/Tenor 13.7 ms (default), Low Male and Wide Range 20.6 ms. Since 1.5.0 Alto/Tenor follows notes down to 65 Hz at its 13.7 ms. The lead and dry path are delayed to match. Changing Input Type fades out, jumps and fades in over 4 ms, then tells the host.
@@ -275,7 +333,7 @@ Exact and reported, the same bypassed. At 48 kHz: Soprano 9.0 ms, Alto/Tenor 13.
 
 ## Measured
 
-All in `tests/results.txt`: 611 pass, 3 fail as of 1.5.0, the 3 the breathy high starts in the phrase start test (see Phrase starts). Pitch, formant, level, pan, click and timing figures below are on plain settings, which is what Tight gives. Limits are in `tests/PassLimits.h`, committed before any DSP existed. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`.
+All in `tests/results.txt`: 616 pass, 0 fail as of 1.5.1 (the 3 breathy high starts that failed from 1.4.0 to 1.5.0 pass: see "Breathy high starts, the creak and the doubler"). Pitch, formant, level, pan, click and timing figures below are on plain settings, which is what Tight gives. Limits are in `tests/PassLimits.h`, committed before any DSP existed. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`.
 
 - Voice pitch against target, 95th percentile, 24 keys, every degree, 1056 notes: Scale Interval 2.3 cents, Fixed Interval 1.8, MIDI Chord 0.03. Limit 5.
 - Scale intervals: every seven note scale, root, degree and interval, all right. Chord assignment, Chord Hold, pedal and channels: all right, no voice crossings in 2000 random chords.

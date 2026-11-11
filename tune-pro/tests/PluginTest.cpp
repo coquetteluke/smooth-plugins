@@ -1971,14 +1971,23 @@ void testTargetHold()
 
 std::vector<float> loadWav (const char* name);
 
-// Low Latency must come out bit for bit the same as the last version that changed it on purpose: 1.6.0, which reads the pitch control in line with
-// the audio, makes an uncorrected stretch an exact pass, keeps a held target through a waver, and follows notes under Alto/Tenor's range (19 of the
-// 24 cases changed; the 5 that did not are the parameters and the four latencies). Before that it was 1.4.0, which stopped the burst at note starts
-// and made the level trim slower, and before that 1.2.1. tests/ll_null.txt holds a hash of the 32 bit samples for each case, written by 1.6.0.
+// Low Latency must come out bit for bit the same as the last version that changed it on purpose: 1.6.1, which puts the vocal tract model
+// back for the moment the grains were read from and reads the pitch of low notes in time (18 of the 24 cases changed: every case in which
+// something is corrected; the 6 that did not are Classic, which has no model, the parameters and the four latencies). Built with
+// TUNE_AS_160 defined, the same code passes against 1.6.0's own numbers (tests/ll_null-1.6.0.txt), all 24 cases. Before that it was 1.6.0,
+// which read the pitch control in line with the audio, made an uncorrected stretch an exact pass, kept a held target through a waver and
+// followed notes under Alto/Tenor's range; before that 1.4.0, which stopped the burst at note starts and made the level trim slower, and
+// before that 1.2.1. tests/ll_null.txt holds a hash of the 32 bit samples for each case, written by 1.6.1.
 // TUNE_LL_RAW=folder also writes the samples, to read a largest sample difference against a saved copy of an older build.
 void testLowLatencyNull()
 {
+#ifdef TUNE_AS_160
+    const std::string pinned = "1.6.0";
+    const auto file = juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory().getChildFile ("ll_null-1.6.0.txt");
+#else
+    const std::string pinned = "1.6.1";
     const auto file = juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory().getChildFile ("ll_null.txt");
+#endif
     const bool writing = std::getenv ("TUNE_LL_WRITE") != nullptr;
     std::map<std::string, std::string> stored;
     {
@@ -2071,9 +2080,9 @@ void testLowLatencyNull()
         const bool ok = stored.count (name) > 0 && stored[name] == value;
         same += ok ? 1 : 0;
         if (! ok)
-            check (false, "[LL] null test against 1.6.0, case " + name);
+            check (false, "[LL] null test against " + pinned + ", case " + name);
     }
-    check (same == (int) found.size() && ! found.empty(), "[LL] null test against 1.6.0: output, parameters and latency bit for bit the same, cases", (double) same);
+    check (same == (int) found.size() && ! found.empty(), "[LL] null test against " + pinned + ": output, parameters and latency bit for bit the same, cases", (double) same);
 }
 
 // --------------------------------------------------------------------------------------------------------- vibrato

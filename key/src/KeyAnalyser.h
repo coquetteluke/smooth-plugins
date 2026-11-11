@@ -20,6 +20,16 @@
 //      the section opened on and stays on longest. This follows a move to a close key without waiting for its notes. Stable
 //      gives it less weight, and counts the opening chord only while the section's chords all fit the key.
 //   8. Only move the reading when a new key has led for a set time by a set margin, so it cannot flicker.
+//
+// A lone voice (Source Single Voice, or Full Mix when only one line sounds at a time) is read differently, since 1.6.0:
+//   - The grid stays at A440 unless the sound clearly sits on one offset. An instrument recorded flat does; a singer who is
+//     off key does not, and following his average moved the note names about from one phrase to the next.
+//   - Only held notes count: a frame whose strongest note stands clear and is the note of the frame before. Glides,
+//     consonants and speech like rap fill the spectrum too, but they are not notes of the key.
+//   - Held notes are remembered for about a minute, not a chord loop's length, as a tune takes that long to show its notes.
+//   - They are scored against a profile in which every note of the scale counts about the same (Temperley's revision of
+//     the listener ratings), and notes outside the scale count against the key. The listener ratings favour tonic, fifth
+//     and third so much that a tune that sits on its fifth was read as the key a fifth up.
 
 #include <algorithm>
 #include <array>
@@ -160,6 +170,33 @@ public:
         // outside it, so one chord of four outside takes it away. Without this, ii V I I loops were read as the key of their ii
         // chord, and the reading went there and back.
         double harmonyFirstFitStable = 4.0;
+        // A lone voice. See the note at the top of this file.
+        double voiceModel = 1.0;        // 1 reads a lone voice by its held notes. 0 is the reading before 1.6.0, for comparison
+        double tuneClarityLow = 0.12;   // how tightly the spectral peaks sit on one offset (0 spread evenly, 1 all on one): at or under
+        double tuneClarityHigh = 0.22;  // the first the grid stays at A440, from the second up it follows the sound fully
+        double tuneClarityAfter = 1.0;  // seconds heard before that is judged, as the first frames hold too few peaks
+        double heldShare = 0.45;        // a held note: the frame's strongest note has this share of all notes heard in it
+        double heldFull = 3.0;          // and counts in full once it has been the strongest for this many more frames (about half a second)
+        double tauVoice = 120.0;        // memory of held notes, seconds: a tune takes a verse and a chorus to show its notes
+        double recentVoice = 3.0;       // the recent held notes, for noticing a key change: about this many seconds of them
+        double voiceOutsideWeight = 2.0; // takes off this much times the share of held notes outside a key's seven notes
+        double voiceOutsideShare = 0.5; // share of recent held notes outside the shown key that means the key has changed
+        double voiceOutsideSeconds = 1.0; // and for how many more seconds of held notes that must last
+        double voiceOutsideHeld = 2.0;  // with at least this many seconds of recent held notes,
+        double voiceOutsideFit = 0.8;   // of which this share must sit inside some other key's seven notes
+        double voiceKeep = 0.0;         // how much of the older held notes is kept when the key is let go
+        double voiceMargin = 2.0;       // a new key must lead the shown one by this many times the usual margin
+        double voiceHome = 1.0;         // how much the listener ratings count in choosing between a key and its relative. 0: the even profile alone
+        double voiceMinHeld = 2.5;      // seconds of held notes in memory before a first reading
+        double voiceFitLow = 0.70;      // share of the held notes inside the best key's seven notes: at or under this there is no key
+        double voiceFitHigh = 0.80;     // to trust, as in rap or speech, and from this up the reading is trusted fully
+        double loneFrames = 5;          // Full Mix: two pitch classes sounding through this many frames in a row is a chord
+        double loneShare = 0.10;        // each with at least this share of the frame
+        double loneTau = 6.0;           // how long the share of such frames is averaged over, seconds
+        double loneEnter = 0.20;        // under this share the sound is one line at a time and is read as a lone voice
+        double loneLeave = 0.45;        // over this it is music with chords again
+        double loneWait = 0.45;         // under this share Full Mix holds back its first reading until it knows which it is hearing
+        double loneInMix = 1.0;         // 0 turns that off: Full Mix then always reads chords and a bass line
         double chromaPower = 0.75;      // compression of the long term chroma
         double softness = 14.0;         // turns score gaps into a probability
         int iterations = 30;
@@ -233,6 +270,10 @@ public:
         std::fill (ring.begin(), ring.end(), 0.0);
         ringPos = 0; hopCounter = 0; windowFilled = 0;
         trebleMemory.fill (0.0); bassMemory.fill (0.0); opening.fill (0.0); chordMemory.fill (0.0); recentMemory.fill (0.0);
+        heldMemory.fill (0.0); heldRecent.fill (0.0); heldSeconds = 0.0; voiceFit = 0.0; lastTopPc = -1; heldRun = 0;
+        for (auto& f : loneHistory) f.fill (0.0);
+        lonePos = loneCount = 0; chordShare = 1.0; lone = false;
+        tunWeight = 0.0;
         for (auto& f : frameHistory) f.fill (0.0);
         for (auto& f : frameTreble) f.fill (0.0);
         for (auto& f : frameBass) f.fill (0.0);
@@ -326,6 +367,10 @@ private:
         // Where bass notes tend to sit: mostly tonic and fifth, then fourth, then the other chord roots of the key.
         static constexpr double bassMajor[12] = { 6.0, 0.3, 1.5, 0.3, 1.2, 3.0, 0.3, 4.0, 0.3, 1.8, 0.3, 0.6 };
         static constexpr double bassMinor[12] = { 6.0, 0.3, 0.8, 1.8, 0.3, 2.6, 0.3, 3.4, 1.8, 0.3, 1.6, 0.3 };
+        // For a lone voice: Temperley's revision of those ratings (1999). Every scale note counts about the same, the seventh as
+        // much as the fourth, so a tune that sits on its fifth or third is not read as the key a fifth up.
+        static constexpr double voiceMajor[12] = { 5.0, 2.0, 3.5, 2.0, 4.5, 4.0, 2.0, 4.5, 2.0, 3.5, 1.5, 4.0 };
+        static constexpr double voiceMinor[12] = { 5.0, 2.0, 3.5, 4.5, 2.0, 4.0, 2.0, 4.5, 3.5, 2.0, 1.5, 4.0 };
         static constexpr double triadMajor[12] = { 2.0, 0, 0, 0, 1.0, 0, 0, 1.0, 0, 0, 0, 0 };
         static constexpr double triadMinor[12] = { 2.0, 0, 0, 1.0, 0, 0, 0, 1.0, 0, 0, 0, 0 };
         for (int k = 0; k < 24; ++k)
@@ -338,7 +383,9 @@ private:
                 keyProfile[(size_t) k][(size_t) i] = isMinor ? minor[step] : major[step];
                 bassProfile[(size_t) k][(size_t) i] = isMinor ? bassMinor[step] : bassMajor[step];
                 triadProfile[(size_t) k][(size_t) i] = isMinor ? triadMinor[step] : triadMajor[step];
+                voiceProfile[(size_t) k][(size_t) i] = isMinor ? voiceMinor[step] : voiceMajor[step];
             }
+            standardise (voiceProfile[(size_t) k]);
             standardise (keyProfile[(size_t) k]);
             standardise (bassProfile[(size_t) k]);
             standardise (triadProfile[(size_t) k]);
@@ -416,7 +463,7 @@ private:
         for (int k = lo; k < hi; ++k) top = std::max (top, mag[(size_t) k]);
         if (top <= 0.0) return;
         const double decay = std::exp (-hopSeconds / 15.0);
-        tunRe *= decay; tunIm *= decay;
+        tunRe *= decay; tunIm *= decay; tunWeight *= decay;
         const double gate = top * 0.05;
         for (int k = lo; k < hi; ++k)
         {
@@ -429,10 +476,22 @@ private:
             const double semis = 12.0 * std::log2 (freq / 440.0);
             const double angle = twoPi * (semis - std::floor (semis));
             const double weight = m / top;
+            tunWeight += weight;
             tunRe += weight * std::cos (angle);
             tunIm += weight * std::sin (angle);
         }
         tuning = std::atan2 (tunIm, tunRe) / twoPi; // semitones, -0.5 to 0.5
+        // Peaks spread all round the semitone have no offset to follow: an off key singer, or noise. The grid then stays at A440.
+        // Times exactly 1 from tuneClarityHigh up, so music with a clear tuning reads bit for bit as before.
+        if (knobs.voiceModel > 0.0 && heardSeconds >= knobs.tuneClarityAfter && tunWeight > 0.0)
+        {
+            const double clarity = std::hypot (tunRe, tunIm) / tunWeight;
+            if (clarity < knobs.tuneClarityHigh)
+            {
+                const double x = std::clamp ((clarity - knobs.tuneClarityLow) / (knobs.tuneClarityHigh - knobs.tuneClarityLow), 0.0, 1.0);
+                tuning *= x * x * (3.0 - 2.0 * x);
+            }
+        }
     }
 
     void buildLogSpectrum() noexcept
@@ -634,6 +693,7 @@ private:
         }
         heardSeconds += hopSeconds;
         sinceLetGo += hopSeconds;
+        hearVoice (frameWeight);
         rememberFrame (treble, bass, total, frameWeight);
         checkForKeyChange();
 
@@ -668,6 +728,80 @@ private:
         scoreKeys();
         updateReading();
         publishChroma();
+    }
+
+    // What a lone voice needs. Runs on every frame whatever the source, so the answer is ready the moment it is wanted.
+    void hearVoice (double frameWeight) noexcept
+    {
+        // The strongest note of the frame, from A2 up as in Single Voice, and each pitch class's share.
+        std::array<double, 12> share {};
+        double total = 0.0, top = 0.0;
+        int topNote = -1;
+        for (int n = 45 - lowestNote; n < numNotes; ++n)
+        {
+            const double a = notes[(size_t) n];
+            total += a;
+            share[(size_t) ((lowestNote + n) % 12)] += a;
+            if (a > top) { top = a; topNote = n; }
+        }
+        const int topPc = topNote >= 0 && total > 1.0e-12 ? (lowestNote + topNote) % 12 : -1;
+
+        // A held note: it stands clear in this frame and was the strongest note of the frame before too.
+        // The longer it has been the strongest, the more it counts: a singer means the notes he stays on.
+        const bool clear = topPc >= 0 && top >= knobs.heldShare * total;
+        heldRun = clear ? (topPc == lastTopPc ? heldRun + 1 : 1) : 0;
+        lastTopPc = clear ? topPc : -1;
+        const bool held = heldRun >= 2;
+        const double heldWeight = frameWeight * std::min (1.0, (heldRun - 1) / std::max (1.0, knobs.heldFull));
+        const double decay = std::exp (-hopSeconds / knobs.tauVoice);
+        for (auto& x : heldMemory) x *= decay;
+        heldNow = 0.0;
+        if (held)
+        {
+            heldMemory[(size_t) topPc] += heldWeight;
+            // The recent notes are counted in seconds of held notes, not of time, so that sparse singing and a rap verse between
+            // sung lines do not empty them.
+            heldNow = heldWeight * hopSeconds;
+            const double recentDecay = std::exp (-heldNow / knobs.recentVoice);
+            for (auto& x : heldRecent) x *= recentDecay;
+            heldRecent[(size_t) topPc] += heldWeight;
+        }
+
+        // One line or chords? Chord notes sound together for a second or more. In a tune the second strongest pitch class is the
+        // note before or after, and is gone again within a few frames.
+        auto& now = loneHistory[(size_t) lonePos];
+        for (int i = 0; i < 12; ++i) now[(size_t) i] = total > 1.0e-12 ? share[(size_t) i] / total : 0.0;
+        lonePos = (lonePos + 1) % maxLoneFrames;
+        loneCount = std::min (loneCount + 1, maxLoneFrames);
+        const int frames = std::clamp ((int) knobs.loneFrames, 1, maxLoneFrames);
+        if (loneCount >= frames)
+        {
+            int sustained = 0;
+            for (int i = 0; i < 12; ++i)
+            {
+                bool through = true;
+                for (int f = 0; f < frames && through; ++f)
+                    through = loneHistory[(size_t) ((lonePos - 1 - f + 2 * maxLoneFrames) % maxLoneFrames)][(size_t) i] >= knobs.loneShare;
+                if (through) ++sustained;
+            }
+            chordShare += ((sustained >= 2 ? 1.0 : 0.0) - chordShare) * (1.0 - std::exp (-hopSeconds / knobs.loneTau));
+        }
+        if (knobs.loneInMix > 0.0 && knobs.voiceModel > 0.0)
+        {
+            if (! lone && chordShare < knobs.loneEnter) lone = true;
+            else if (lone && chordShare > knobs.loneLeave) lone = false;
+        }
+        else lone = false;
+    }
+
+    // Read as a lone voice: Source Single Voice, or one line at a time heard in Full Mix.
+    bool voicePath() const noexcept { return knobs.voiceModel > 0.0 && (source == Source::voice || lone); }
+
+    static bool inSignature (int pitchClass, int key) noexcept
+    {
+        const int home = key < 12 ? key : (key - 12 + 3) % 12; // a minor key has the notes of its relative major
+        const int step = (pitchClass - home + 12) % 12;
+        return step == 0 || step == 2 || step == 4 || step == 5 || step == 7 || step == 9 || step == 11;
     }
 
     void rememberFrame (const std::array<double, 12>& treble, const std::array<double, 12>& bass, double total, double weight) noexcept
@@ -781,6 +915,30 @@ private:
     void checkForKeyChange() noexcept
     {
         if (current.key < 0) { outsideSeconds = 0.0; return; }
+        if (voicePath())
+        {
+            // A singer strays outside the key for a note or a phrase without the song having moved. Only when most of the held
+            // notes of the last while are outside it is the old memory let go.
+            double inside = 0.0, total = 0.0;
+            const int shown = current.key + (current.minor ? 12 : 0);
+            for (int i = 0; i < 12; ++i) { total += heldRecent[(size_t) i]; if (inSignature (i, shown)) inside += heldRecent[(size_t) i]; }
+            // And only when those notes make a key of their own: a rap verse or a spoken line leaves the key where it was.
+            double recentFit = 0.0;
+            for (int k = 0; k < 12 && total > 1.0e-12; ++k)
+            {
+                double in = 0.0;
+                for (int i = 0; i < 12; ++i) if (inSignature (i, k)) in += heldRecent[(size_t) i];
+                recentFit = std::max (recentFit, in / total);
+            }
+            const bool outside = total * hopSeconds >= knobs.voiceOutsideHeld && recentFit >= knobs.voiceOutsideFit && 1.0 - inside / total > knobs.voiceOutsideShare;
+            outsideSeconds = outside ? outsideSeconds + heldNow : 0.0; // also counted in seconds of held notes
+            if (outsideSeconds < knobs.voiceOutsideSeconds) return;
+            outsideSeconds = 0.0;
+            for (int i = 0; i < 12; ++i) heldMemory[(size_t) i] = heldRecent[(size_t) i] + knobs.voiceKeep * std::max (0.0, heldMemory[(size_t) i] - heldRecent[(size_t) i]);
+            sinceLetGo = 0.0;
+            lastMove = -1000.0;
+            return;
+        }
         const bool outside = shareOutsideShownKey (recentMemory) > knobs.outsideShare;
         outsideSeconds = outside ? outsideSeconds + hopSeconds : 0.0;
         if (outsideSeconds < (response == Response::fast ? knobs.outsideFast : knobs.outsideStable))
@@ -953,6 +1111,40 @@ private:
             return out;
         };
 
+        if (voicePath())
+        {
+            const auto h = standardised (heldMemory, knobs.chromaPower, nullptr);
+            double heldTotal = 0.0;
+            for (auto x : heldMemory) heldTotal += x;
+            heldSeconds = heldTotal * hopSeconds;
+            double bestFit = 0.0;
+            for (int k = 0; k < 24; ++k)
+            {
+                // The 7 notes come from the even profile, the same for a key and its relative. Which of the two is home comes
+                // from the listener ratings, which are about exactly that: where a tune rests.
+                const int r = relativeOf (k);
+                double s = correlate (h, voiceProfile[(size_t) k]);
+                if (knobs.voiceHome > 0.0)
+                    s = std::max (s, correlate (h, voiceProfile[(size_t) r]))
+                        + knobs.voiceHome * 0.5 * (correlate (h, keyProfile[(size_t) k]) - correlate (h, keyProfile[(size_t) r]));
+                if (heldTotal > 1.0e-12)
+                {
+                    double outside = 0.0;
+                    for (int i = 0; i < 12; ++i) if (! inSignature (i, k)) outside += heldMemory[(size_t) i];
+                    s -= knobs.voiceOutsideWeight * outside / heldTotal;
+                    bestFit = std::max (bestFit, 1.0 - outside / heldTotal);
+                }
+                scores[(size_t) k] = s;
+            }
+            // Held notes that fit no key's seven notes are speech, rap or a song between keys: no reading to trust.
+            voiceFit = std::clamp ((bestFit - knobs.voiceFitLow) / (knobs.voiceFitHigh - knobs.voiceFitLow), 0.0, 1.0);
+            double best = -1.0e9, sum = 0.0;
+            for (auto s : scores) best = std::max (best, s);
+            for (int k = 0; k < 24; ++k) { probs[(size_t) k] = std::exp (knobs.softness * (scores[(size_t) k] - best)); sum += probs[(size_t) k]; }
+            for (auto& p : probs) p /= sum;
+            return;
+        }
+
         double trebleSum = 0.0, bassSum = 0.0, rawTreble = 0.0, rawBass = 0.0;
         for (int i = 0; i < 12; ++i) { rawTreble += trebleMemory[(size_t) i]; rawBass += bassMemory[(size_t) i]; }
         const auto t = standardised (trebleMemory, knobs.chromaPower, &trebleSum);
@@ -1013,6 +1205,8 @@ private:
 
     double confidenceGate() const noexcept
     {
+        if (voicePath())
+            return voiceFit * voiceFit * (3.0 - 2.0 * voiceFit) * std::clamp (heldSeconds / std::max (knobs.voiceMinHeld, 1.0e-9), 0.0, 1.0);
         // Flat chroma, such as from noise, gives no trust whatever the scores say.
         const double x = std::clamp ((contrast - 0.35) / 0.25, 0.0, 1.0);
         return x * x * (3.0 - 2.0 * x);
@@ -1048,7 +1242,9 @@ private:
             const double needRelative = stable ? knobs.firstRelativeLeadStable : 0.0;
             const bool clear = (scores[(size_t) top] - rival >= needLead && scores[(size_t) top] - scores[(size_t) relativeOf (top)] >= needRelative)
                                || heardSeconds >= first * 2.0;
-            if (heardSeconds >= first && gate > 0.5 && clear)
+            // In Full Mix, a sound that looks like one line but is not yet known to be one gets no reading as chords meanwhile.
+            const bool undecided = knobs.voiceModel > 0.0 && knobs.loneInMix > 0.0 && source == Source::mix && ! lone && chordShare < knobs.loneWait;
+            if (heardSeconds >= first && gate > 0.5 && clear && ! undecided && (! voicePath() || heldSeconds >= knobs.voiceMinHeld))
             {
                 shown = top;
                 candidate = -1;
@@ -1071,7 +1267,8 @@ private:
             const double need = (stable ? knobs.dwellStable : knobs.dwellFast) * settled * guard;
             // Going back to the key just left needs a much clearer lead, which is what stops a reading bouncing.
             const double back = top == previousShown ? knobs.returnGuard : 1.0;
-            const double margin = (stable ? knobs.marginStable : knobs.marginFast) * settled * guard * back;
+            // A lone voice gives thinner evidence than chords and a bass line, so a new key must lead it by more.
+            const double margin = (stable ? knobs.marginStable : knobs.marginFast) * settled * guard * back * (voicePath() ? knobs.voiceMargin : 1.0);
             const double holdFor = (stable ? knobs.holdStable : knobs.holdFast) * (knobs.holdAfterLetGo > 0.0 ? std::clamp (sinceLetGo / knobs.settleSeconds, 0.25, 1.0) : 1.0);
             const bool holding = heardSeconds - lastMove < holdFor;
             if (! holding && dwell >= need && scores[(size_t) top] - scores[(size_t) shown] >= margin && gate > 0.5)
@@ -1098,7 +1295,10 @@ private:
             const int alt = (top == shown) ? runnerUp : top;
             current.altKey = alt % 12;
             current.altMinor = alt >= 12;
-            const double target = probs[(size_t) shown] * gate * presence;
+            // For a lone voice the confidence is in the 7 notes, which the key and its relative share: nothing a tune holds tells
+            // those two apart for sure, and what follows this reading needs the notes.
+            const double sure = voicePath() ? probs[(size_t) shown] + probs[(size_t) relativeOf (shown)] : probs[(size_t) shown];
+            const double target = sure * gate * presence;
             smoothedConfidence += (target - smoothedConfidence) * (1.0 - std::exp (-hopSeconds / 0.8));
             current.confidence = (float) std::clamp (smoothedConfidence, 0.0, 1.0);
         }
@@ -1134,6 +1334,7 @@ private:
         for (auto& x : trebleMemory) x *= 0.25;
         for (auto& x : bassMemory) x *= 0.25;
         for (auto& x : chordMemory) x *= 0.25;
+        for (auto& x : heldMemory) x *= 0.25;
         opening.fill (0.0);
         openingHeard = 0.0;
        
@@ -1175,6 +1376,13 @@ private:
     Source source = Source::mix;
 
     std::array<double, 12> trebleMemory {}, bassMemory {}, opening {}, recentMemory {};
+    static constexpr int maxLoneFrames = 12;
+    std::array<double, 12> heldMemory {}, heldRecent {};                       // a lone voice's held notes: about the last minute, and the recent ones
+    std::array<std::array<double, 12>, maxLoneFrames> loneHistory {};         // each pitch class's share of the last frames
+    std::array<std::array<double, 12>, 24> voiceProfile {};
+    int lastTopPc = -1, heldRun = 0, lonePos = 0, loneCount = 0;
+    double heldSeconds = 0.0, heldNow = 0.0, voiceFit = 0.0, chordShare = 1.0, tunWeight = 0.0;
+    bool lone = false;
     std::array<std::array<double, 12>, numHistory> frameHistory {}, frameTreble {}, frameBass {};
     std::array<int, numHistory> frameChord {};
     std::array<double, numHistory> frameWeights {};

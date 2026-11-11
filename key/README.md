@@ -14,7 +14,7 @@ All are AU parameters, so they can be automated and set by name.
 |---|---|---|
 | Mode | Listen, Manual | Listen detects. Manual uses Manual Key and Manual Scale, at confidence 100%, and does not analyse |
 | Response | Fast, Stable | Stable first reads after about 8 s, later when two keys are close, and never bounces between candidates. Fast first reads after about 3 s and may move more |
-| Source | Full Mix, Single Voice | Full Mix uses the bass line and chord movement. Single Voice ignores those and anything below A2, such as rumble or spill |
+| Source | Full Mix, Single Voice | Full Mix uses the bass line and chord movement, and reads a lone tune (one note at a time, no chords) as a single voice by itself. Single Voice ignores chords and anything below A2, such as rumble or spill |
 | Listening | on, off | Off holds the reading and stops analysing |
 | Reset | press | Forgets everything and starts listening again |
 | Manual Key | C to B | The key in Manual mode. Automate this to follow planned key changes |
@@ -72,6 +72,15 @@ Render every state to PNG with real speech from macOS `say`: `build/RenderWindow
 
 Audio in goes straight to audio out, never written to. A cleaned mono copy goes through a lock-free queue to one background thread, which: decimates to about 12 kHz, runs its own FFT over 0.7 s windows, estimates tuning from spectral peaks, works out which notes explain the spectrum (each note as a stack of harmonics), folds them into treble and bass note memories, and scores all 24 keys. The score uses a listener-rated key profile, a bass profile, time on each key's home chord, dominant chords resolving, and the opening chord as a tie break between relative keys. It also reads the chords since the current section began: which key they belong to, and which chord is home, the one the section opened on and stays on longest. Stable gives that less weight than Fast, and trusts the opening chord only while the section's chords all fit the key. The reading moves only after a new key has led for a set time by a set margin. When recent notes clearly leave the key, old memory is mostly dropped. Tempo comes from a separate curve of spectral rises, matched against steady pulses.
 
+A lone voice is read differently, since 1.6.0. It applies in Single Voice, and in Full Mix once the sound is one line at a time (two pitch classes sounding together through about a second is a chord; a tune never does that for long):
+
+- The grid stays at A440 unless the sound clearly sits on one offset. An instrument recorded flat does. A singer who is off key does not, and following his average moved the note names from phrase to phrase. Reference Pitch then shows 440.
+- Only held notes count: the strongest note of a frame, when it stands clear and was the strongest in the frame before too, and it counts in full once it has lasted about half a second. Glides, consonants and rap leave no held notes.
+- Held notes are remembered for about two minutes, as a tune takes a verse and a chorus to show its seven notes.
+- They are scored against a profile in which every note of the scale counts about the same (Temperley's revision of the listener ratings), and notes outside the scale count against a key. The listener ratings favour tonic, fifth and third so much that a tune sitting on its fifth was read as the key a fifth up.
+- When the held notes fit no key's seven notes (rap, speech) there is no reading, or the confidence stays low. Confidence, for a lone voice, is how sure the seven notes are: the key and its relative together.
+- A new key must lead by twice the usual margin, and the old key is only let go when about three seconds of held notes in a row sit mostly outside it and make a key of their own.
+
 Why not plain profile correlation: a note's own harmonics add false fifths and thirds, and relative keys have the same notes, so correlation alone can't separate them.
 
 ## Measured
@@ -80,7 +89,7 @@ Full numbers in `tests/results.txt`, and on the previous held out seeds in `test
 
 Latency 0 at all rates. Output bit identical over 720 blocks, including NaN and huge samples, listening, paused, manual and bypassed. No malloc on the audio thread, checked with the system hook.
 
-Every test passes on all three seeds.
+Every test below passes on all three seeds. Since 1.6.0 one newer test fails, see the lone voice table further down.
 
 | Test, all 24 keys, 5 timbres | Limit | 20261112 | 20261111 | 20261110 |
 |---|---|---|---|---|
@@ -98,9 +107,24 @@ Every test passes on all three seeds.
 | Reference pitch error, -40 to +45 cents | up to 1 Hz | 0.525 Hz | | |
 | Tempo within 1 BPM, half or double counting | at least 90% | 100% (58.3% at exactly the played tempo) | | |
 
+A lone voice, since 1.6.0. First on Luke's real takes (Rode session, 2026-11-10, each in its song's real key at A440, 9 sung and 2 rap takes of the working set, through the built plug-in). Limits were set before any take was run:
+
+| Real takes, Stable | 1.5.1 Full Mix | 1.6.0 Full Mix | 1.5.1 Single Voice | 1.6.0 Single Voice | Limit |
+|---|---|---|---|---|---|
+| Sung takes ending on the right 7 notes | 2 of 9 | 6 of 9 | 3 of 9 | 6 of 9 | 80% |
+| Share of the singing with the right 7 notes shown | 16.5% | 59.4% | 16.7% | 59.6% | 70% |
+| Share two or more notes off | 39.6% | 19.5% | 34.6% | 19.2% | 5% |
+| Changes of the reading per minute | 2.85 | 0.65 | 2.16 | 0.58 | 0.5 |
+| Median time until the right notes are shown and kept | never | 127.7 s | never | 128.1 s | 20 s |
+| Rap takes with at most one change a minute | 1 of 2 | 2 of 2 | 1 of 2 | 2 of 2 | all |
+
+So on a real untrained voice it is right most of the time and steady, but slow: expect the right notes after one to two minutes of singing, not after the first line. The two takes it still ends one note off on are a key and its neighbour a fifth away that his notes do not tell apart. Full report: `~/smooth-plugins/_vox/rode/work/key/REPORT.md`.
+
+Then on a made up off key singer and rap (`tests/KeyCorpus.h`, seed 20261112): ends on the right 7 notes 100% in both sources (limit 90), median 15.5 s (limit 20), clips whose notes change more than once 4.2% (limit 10), Reference Pitch within 2 Hz of 440 in 100% (limit 90), rap clips with at most one change a minute 100% (limit 90), 10 of 12 rap clips never show a key. Fails: when that singer goes up a semitone, the new notes are shown within 30 s in 8.3% of clips, against 80%. That is the price of not letting go of the key when a singer strays for a phrase; `CHANGELOG.md` has the trade in numbers.
+
 Other results:
 
-- Melody only, on 20261112: Single Voice 100% exact, Full Mix 100%. On 20261111: 97.9% and 93.8%, 100% within related keys. These tunes land on the tonic often, which real melodies may not.
+- Melody only, on 20261112, since 1.6.0: Single Voice 99.3% exact, Full Mix 97.9%, both 100% within related keys, median 9.2 s and 11.6 s. Before 1.6.0: Single Voice 100% exact, Full Mix 100%. On 20261111: 97.9% and 93.8%, 100% within related keys. These tunes land on the tonic often, which real melodies may not.
 - Fixed in 1.5.0: on 20261111 Stable followed only 83.3% of key changes within 30 s, against 90%, in 1.3.0 and 1.4.0. Stable now reads the chords too and follows 95.8% there. On unseen dev seeds 1024 to 1029 the lowest single seed still followed 21 of 24 (87.5%), so another seed could still dip under 90%.
 - Stable's remaining misses on dev seeds are mostly the minor loop i, iv, VII, III read as its relative major, and one move to the key a fifth up whose loop starts on a chord the old key also had.
 - Fast passed both its key change limits for the first time in 1.4.0, on both held out seeds. Its remaining misses are mostly a loop that starts on a chord the old key also led into, so the new section's first chord is not seen as new, and the reading lands on the relative key.
@@ -116,7 +140,7 @@ Other results:
 - Silence from the start: no key and no file. White noise: no key.
 - key.json: 13573 writes raced against 110816 reads with no partial file seen. A blocked path shows the note and audio stays bit identical.
 - Window created, painted and destroyed 20 times offline, and 30 more times while audio ran, with audio bit identical throughout.
-- Every detection reading is bit identical to the saved 1.5.0 fingerprint over 12 clips, in `tests/ReadingFingerprint.h`, so a window change cannot alter detection unnoticed.
+- Every detection reading is bit identical to the saved 1.6.0 fingerprint over 12 clips, in `tests/ReadingFingerprint.h`, so a window change cannot alter detection unnoticed. Every Full Mix reading over 96 chord clips is bit identical to 1.5.1, so the lone voice reading cannot alter chords unnoticed.
 
 ## Held out check for the harmony change, written before it was run
 

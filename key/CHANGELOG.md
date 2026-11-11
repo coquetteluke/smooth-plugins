@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.6.0, 2026-11-11
+
+A lone voice is read by its held notes, at A440. Made for an untrained singer on his own track, which is what Choir Loft and the tuners follow. Chords in Full Mix are untouched: every reading over 96 chord clips is bit identical to 1.5.1, and that is now a test.
+
+On Luke's real takes (Rode session, 2026-11-10: 9 sung takes and 2 rap takes of the working set, each in its song's real key), through the built plug-in, default settings (Stable, Full Mix):
+
+| | 1.5.1 (1.5.0 detection) | 1.6.0 | Limit set before |
+|---|---|---|---|
+| Sung takes ending on the right 7 notes | 2 of 9 | 6 of 9 | 80% |
+| Sung takes ending two or more notes off | 2 | 1 | 0 |
+| Share of the singing with the right 7 notes shown | 16.5% | 59.4% | 70% |
+| Share two or more notes off | 39.6% | 19.5% | 5% |
+| Changes of the reading per minute | 2.85 | 0.65 | 0.5 |
+| Sung takes whose 7 notes change at most twice | 0 of 9 | 8 of 9 | 80% |
+| Median time until the right notes are shown and kept | never | 127.7 s | 20 s |
+| Rap takes with at most one change a minute | 1 of 2 | 2 of 2 | all |
+
+Only one of those limits passes. The reading is much more often right and far steadier, but it is still slow: on these songs the first verse does not hold enough held notes to tell a key from its neighbour a fifth away, whatever was tried. Vocal Track (Stable, Single Voice) gives the same 6 of 9 and 59.6%, where 1.5.1 gave 3 of 9 and 16.7%. Blind set numbers are in `_vox/rode/work/key/REPORT.md`.
+
+What changed, and why each holds for any singer:
+
+- The grid stays at A440 unless the sound clearly sits on one offset. On Luke's takes the spectral peaks spread evenly round the semitone (clarity 0.00 to 0.13, where test music gives 0.27 to 0.98), so the tuning estimate wandered 35 cents either way and moved the note names with it. Under a clarity of 0.12 the offset is now 0, from 0.22 it is used in full, so every clip with a real tuning reads bit for bit as before. Reference Pitch shows 440 for such a singer.
+- Only held notes count: the frame's strongest note, when it has 45% of the notes heard in the frame and was the strongest in the frame before, counting in full after about half a second. Rap and speech leave few held notes and they fit no key, so the reading stays empty or its confidence low.
+- Held notes are remembered for two minutes instead of 14 s.
+- The 7 notes are scored with a profile in which every scale note counts about the same (Temperley's revision of the listener ratings), minus twice the share of held notes outside the key. Between a key and its relative the listener ratings still decide. With the listener ratings alone a tune sitting on its fifth or third read as the key a fifth up: on whole takes that got 4 of 9 right, the even profile 8 of 9, at any weight from 1.2 to 6 for the outside notes.
+- Full Mix reads one line at a time as a lone voice by itself: under 20% of frames with two pitch classes sounding together through five frames. Chord clips never get under 36%, a real voice sits at 4 to 18%. Before, Luke's low voice was heard as a bass line with a chord on every note.
+- A new key must lead by twice the usual margin, and the old one is let go only after about 3 s of held notes that sit mostly outside it and make a key of their own. Confidence for a lone voice is the key and its relative together, as they have the same notes.
+
+Tests, held out seed 20261112 (limits in `tests/PassLimits.h`, written before these ran): 184 pass, 1 fails.
+
+| A made up off key singer and rap, one minute clips | 1.5.1 Single Voice | 1.6.0 Single Voice | 1.5.1 Full Mix | 1.6.0 Full Mix | Limit |
+|---|---|---|---|---|---|
+| Ends on the right 7 notes | 87.5% | 100% | 87.5% | 100% | at least 90% |
+| Median time until right and kept | 15.5 s | 15.5 s | 28.2 s | 15.5 s | up to 20 s |
+| Clips whose 7 notes change more than once | 8.3% | 4.2% | 37.5% | 4.2% | up to 10% |
+| Reference Pitch within 2 Hz of 440 | 50% | 100% | 50% | 100% | at least 90% |
+| Rap clips with at most one change a minute | 58.3% | 100% | 83.3% | 100% | at least 90% |
+| Singer goes up a semitone: new notes within 30 s | 87.5% | **8.3%, fails** | | | at least 80% |
+
+What got worse, plainly:
+
+- A lone singer's real key change is followed late. After a move up a semitone the new notes are shown within 30 s in 8.3% of clips (1.5.1: 87.5%) and by 45 s in 16.7%. This is a trade against false key changes: Luke's sung takes have no key change, and a rule quick enough to pass this test (83% on a dev seed) let go of its key 14 times on them, the rule shipped once. In between: 6 times, for 25% followed. Luke to choose (`recentVoice`, `voiceOutsideHeld`, `voiceOutsideSeconds` in `KeyAnalyser::Knobs`: 1.0, 0.7, 0.5 is the quick rule, 3.0, 2.0, 1.0 is shipped).
+- Clean synthetic tunes: Single Voice exact 100% to 99.3% (one clip of 144, read as a related key), median time to the right key 7.85 s to 9.22 s. Full Mix exact 100% to 97.9% (one of 48), 7.85 s to 11.6 s, as it now waits to see whether it hears one line or chords. Exact, relative or a fifth away stays 100%. On dev seed 1030 the same tunes went 99.3% to 99.3% (Single Voice) and 96.5% to 99.3% (Full Mix).
+- Full Mix on a tune over a clashing low rumble went from 0% to 100% exact, and Single Voice stays 100%.
+
+Also: `tests/VoxEval.cpp` runs the analyser over any recording and prints the reading over time, `tests/VoiceEval.cpp` runs the lone voice tests on a dev seed, `tests/VoiceTests.h` holds them. The older test that the real key.json is untouched no longer fails when another program writes that file at the same moment. New detection fingerprint (Single Voice changed on purpose).
+
 ## 1.5.1, 2026-11-10
 
 Tests can no longer change the key file a live session follows. Detection is unchanged: every reading is bit identical to 1.5.0 (the saved fingerprint still matches).

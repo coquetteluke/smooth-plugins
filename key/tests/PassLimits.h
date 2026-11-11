@@ -10,7 +10,8 @@ namespace limits
     // reported numbers came from a fifth seed, 20261110. 1.4.0 was tuned on dev seeds 1000 to 1005 only, checked on unseen dev
     // seeds 1012 to 1017, and reported on a sixth seed, 20261111. 1.5.0 was tuned on dev seeds 1018 to 1023 only, checked on unseen
     // dev seeds 1024 to 1029, and reported on this seventh seed, run once at the end. Earlier seeds still run with PluginTest --seed N.
-    // No limit was changed.
+    // No limit was changed. 1.6.0 (lone voice) was worked out on Luke's working set takes and dev seeds 2000 and 1030, and its new
+    // tests report on this same seed plus 21, 22 and 23, which nothing had been run on.
     constexpr unsigned heldOutSeed = 20261112u;
 
     // Chord progressions in all 24 keys, every timbre, Response Stable, Source Mix, read at the end of the clip.
@@ -47,6 +48,16 @@ namespace limits
     constexpr double manualPercent = 100.0;            // Manual mode: all 24 keys reach the readings and the file
     constexpr double manualFileSeconds = 1.5;          // a Manual Key change reaches key.json within this
     constexpr double voiceDroneExact = 80.0;           // Single Voice, melody over a clashing rumble below A2
+
+    // A lone voice. Added on 2026-11-10, before the 1.6.0 reading was run on any of these clips. The singer is made up in
+    // KeyCorpus.h (sungClip): every note off by its own amount, scoops, glides, vibrato, drift, no tuning of his own.
+    constexpr double sungRightNotesPercent = 90.0;   // clips that end on the right 7 notes (the key or its relative), in each Source
+    constexpr double sungMedianSettle = 20.0;        // seconds until the right 7 notes are shown and kept to the end
+    constexpr double sungMovingPercent = 10.0;       // clips whose 7 notes change more than once after the first reading
+    constexpr double sungReferenceHz = 2.0;          // an off key singer has no tuning of his own: Reference Pitch stays this near 440
+    constexpr double sungReferencePercent = 90.0;    // of clips, read at the end
+    constexpr double rapSteadyPercent = 90.0;        // rap clips (rapClip) whose reading changes at most once in a minute, or never shows
+    constexpr double voiceStepUpPercent = 80.0;      // a tune that moves up a semitone: the new 7 notes within 30 s, Single Voice
 
     // key.json
     constexpr double maxWritesPerSecond = 2.2;       // brief says at most about twice a second

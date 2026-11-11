@@ -356,5 +356,82 @@ inline std::vector<float> beatClip (double bpm, int tonic, unsigned seed, double
     return out;
 }
 
+// An untrained singer, low voice, singing a tune with nothing to hold him to pitch but a track in his headphones. Every note
+// misses by its own amount (25 cents standard deviation, 60 at most), a third of the notes are scooped up from below, each
+// note glides in from the one before, longer notes get vibrato, and the whole voice drifts 20 cents either way. There is no
+// offset of his own: on average he is at A440, as the song is.
+inline std::vector<float> sungClip (int tonic, bool minor, unsigned seed, double sr, double seconds)
+{
+    std::mt19937 rng (seed);
+    std::uniform_real_distribution<double> uni (0.0, 1.0);
+    std::normal_distribution<double> gauss (0.0, 1.0);
+    const auto notes = melodyNotes (tonic, minor, seconds, rng);
+    std::vector<float> out ((size_t) (seconds * sr));
+    const auto partials = vowel();
+    const double driftPeriod = 20.0 + 20.0 * uni (rng), driftPhase = twoPi * uni (rng);
+    double phase = 0.0, lastMidi = notes.empty() ? 48.0 : notes[0].midi - 12.0;
+    for (const auto& n : notes)
+    {
+        const double target = n.midi - 12.0 + std::clamp (25.0 * gauss (rng), -60.0, 60.0) * 0.01;
+        const bool scoop = uni (rng) < 0.3;
+        const int start = (int) (n.start * sr), len = (int) (n.length * sr);
+        const double vibRate = 5.0 + uni (rng), vibDepth = n.length > 0.4 ? 0.25 : 0.0;
+        for (int i = 0; i < len && start + i < (int) out.size(); ++i)
+        {
+            const double sec = i / sr;
+            double midi = target + (lastMidi - target) * std::exp (-sec / 0.025);
+            if (scoop) midi -= 0.8 * std::exp (-sec / 0.06);
+            midi += 0.2 * std::sin (twoPi * (n.start + sec) / driftPeriod + driftPhase);
+            midi += vibDepth * std::sin (twoPi * vibRate * sec) * std::clamp ((sec - 0.25) * 4.0, 0.0, 1.0);
+            phase += twoPi * 440.0 * std::pow (2.0, (midi - 69.0) / 12.0) / sr;
+            const double env = std::min ({ 1.0, i / (0.02 * sr), (len - i) / (0.05 * sr) });
+            double y = 0.0;
+            for (size_t h = 0; h < partials.size(); ++h) y += partials[h] * std::sin ((double) (h + 1) * phase);
+            out[(size_t) (start + i)] += (float) (0.15 * env * y);
+        }
+        lastMidi = target;
+    }
+    std::normal_distribution<double> breath (0.0, 0.004);
+    for (auto& x : out) x += (float) breath (rng);
+    return out;
+}
+
+// Rap: syllables a tenth to a fifth of a second long, the pitch sliding through each one as in speech, a fifth of them with
+// no pitch at all, a breath now and then. Nothing is held, so there is no key to find.
+inline std::vector<float> rapClip (unsigned seed, double sr, double seconds)
+{
+    std::mt19937 rng (seed);
+    std::uniform_real_distribution<double> uni (0.0, 1.0);
+    std::normal_distribution<double> noise (0.0, 1.0);
+    std::vector<float> out ((size_t) (seconds * sr));
+    const auto partials = vowel();
+    double centre = 45.0 + 10.0 * uni (rng), phase = 0.0;
+    for (double t = 0.3; t < seconds;)
+    {
+        const double length = 0.09 + 0.13 * uni (rng);
+        const double from = centre - 4.0 + 8.0 * uni (rng), to = from - 3.0 + 6.0 * uni (rng);
+        const bool voiced = uni (rng) > 0.2;
+        const int start = (int) (t * sr), len = (int) (length * sr);
+        for (int i = 0; i < len && start + i < (int) out.size(); ++i)
+        {
+            const double env = std::min ({ 1.0, i / (0.01 * sr), (len - i) / (0.02 * sr) });
+            double y = 0.0;
+            if (voiced)
+            {
+                const double midi = from + (to - from) * i / (double) len;
+                phase += twoPi * 440.0 * std::pow (2.0, (midi - 69.0) / 12.0) / sr;
+                for (size_t h = 0; h < partials.size(); ++h) y += partials[h] * std::sin ((double) (h + 1) * phase);
+                y *= 0.15;
+            }
+            else y = 0.08 * noise (rng);
+            out[(size_t) (start + i)] += (float) (env * y);
+        }
+        t += length + 0.02 + 0.06 * uni (rng);
+        if (uni (rng) < 0.12) t += 0.3;
+        centre = std::clamp (centre - 0.5 + uni (rng), 43.0, 57.0);
+    }
+    return out;
+}
+
 inline unsigned clipSeed (unsigned base, int a, int b, int c) { return base * 31u + (unsigned) a * 1009u + (unsigned) b * 101u + (unsigned) c * 7u; }
 } // namespace corpus

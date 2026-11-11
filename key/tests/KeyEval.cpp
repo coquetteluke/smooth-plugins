@@ -78,6 +78,9 @@ int main (int argc, char** argv)
         else if (k == "hfit") knobs.harmonyFit = v;
         else if (k == "hfirst") knobs.harmonyFirst = v;
         else if (k == "hhome") knobs.harmonyHome = v;
+        else if (k == "voicemodel") knobs.voiceModel = v;
+        else if (k == "voicehome") knobs.voiceHome = v;
+        else if (k == "voiceminheld") knobs.voiceMinHeld = v;
         else if (k == "hramp") knobs.harmonyRamp = v;
         else if (k == "hfirstfit") knobs.harmonyFirstFitStable = v;
     }

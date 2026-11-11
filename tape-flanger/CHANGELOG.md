@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.3, 2026-11-11
+
+Three presets no longer play quieter than the rest. Luke said yes to this on 2026-11-11. On his real takes they dropped the voiced level by more than the others: Square Flip by 5.6 dB, Phase Flip Thin by 5.4 dB, Triangle Jet by 4.0 dB (the default drops it by 2.7 dB).
+
+- Loading Triangle Jet now sets Output Gain to +1.5 dB, Square Flip to +3 dB, Phase Flip Thin to +3 dB. Every other preset still sets Output Gain to 0 dB.
+- Nothing else in those presets changed. Phase Flip Thin keeps its Spread of 20: its dip in mono near a crossing is a separate question for Luke.
+- In the test suite only three numbers moved: the level of those three presets on the test signal, by exactly +1.5, +3 and +3 dB (Triangle Jet -5.00 to -3.50 dB, Square Flip -3.28 to -0.28 dB, Phase Flip Thin -3.15 to -0.15 dB against the input). The other 383 results are identical to 1.2.2, and the default and the first seven presets still null against 1.0.0.
+- Sessions that already use one of the three presets keep the Output Gain they were saved with.
+
 ## 1.2.2, 2026-11-10
 
 Bypass is now a true bypass. Found on Luke's real vocal takes: with Bypass on, the output did not null against the input, it sat 66 to 74 dB under it for the whole take. Bypass used to be Mix 0, and the dry path runs through the oversampling filters, which have a ripple of a few thousandths of a dB and roll off above 21 kHz. Now the bypassed output is the input itself, delayed by the reported latency (324 samples at 48 kHz, unchanged), bit for bit.

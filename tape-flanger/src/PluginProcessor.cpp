@@ -32,6 +32,7 @@ namespace
         float shape = 50.0f, symmetry = 0.0f, lfoPhase = 0.0f, swing = 0.0f;
         float wowDepth = 0.0f, flutterDepth = 0.0f, randomDepth = 0.0f; bool unsync = false;
         float lowCut = 20.0f, highCut = 20000.0f;
+        float outputGain = 0.0f; // dB of make up for presets that thin the voice
     };
     constexpr Preset presets[] = {
         { "Slow Zero Crossing",  0.12f, false, 3, 3.0f,  20.0f, 15.0f, -1.0f,   0.0f, 50.0f },
@@ -43,11 +44,11 @@ namespace
         { "Quarter Note Wobble", 1.00f, true,  8, 1.0f, -30.0f, 25.0f,  0.0f, 180.0f, 40.0f },
         // Second pass. Each uses one of the newer controls.
         { "Manual Ride",         0.25f, false, 3, 2.5f,  25.0f, 15.0f, -1.0f,  45.0f, 50.0f,  true,  0.0f, 150.0f, false,  0.0f, 50.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f, false, 150.0f, 20000.0f },
-        { "Triangle Jet",        0.15f, false, 3, 4.0f,  60.0f, 20.0f,  0.0f,  30.0f, 50.0f, false,  0.0f, 100.0f, false,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f, false, 200.0f, 12000.0f },
+        { "Triangle Jet",        0.15f, false, 3, 4.0f,  60.0f, 20.0f,  0.0f,  30.0f, 50.0f, false,  0.0f, 100.0f, false,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f, false, 200.0f, 12000.0f, 1.5f },
         { "Off Zero Double",     0.30f, false, 3, 1.5f,   0.0f, 10.0f, -2.0f, 180.0f, 30.0f, false,  0.0f, 100.0f, false, 14.0f, 50.0f,  0.0f,  0.0f,  0.0f, 0.3f, 0.02f, 0.0f, false, 150.0f, 20000.0f },
         { "Wandering Tape",      0.25f, false, 3, 0.0f,  10.0f, 15.0f, -1.0f,   0.0f, 40.0f, false,  0.0f, 100.0f, false,  0.0f, 50.0f,  0.0f,  0.0f,  0.0f, 0.8f, 0.03f, 0.8f, true,  120.0f, 20000.0f },
-        { "Square Flip",         1.00f, true,  5, 1.2f,  20.0f, 10.0f,  0.0f,   0.0f, 50.0f, false,  0.0f, 100.0f, false,  0.0f, 100.0f, 0.0f,  0.0f, 0.0f, 0.0f, 0.0f,  0.0f, false, 150.0f, 20000.0f },
-        { "Phase Flip Thin",     0.10f, false, 3, 0.8f,   0.0f, 10.0f,  0.0f,  20.0f, 50.0f, false,  0.0f, 100.0f, true,   0.0f, 50.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f, false,  20.0f, 20000.0f },
+        { "Square Flip",         1.00f, true,  5, 1.2f,  20.0f, 10.0f,  0.0f,   0.0f, 50.0f, false,  0.0f, 100.0f, false,  0.0f, 100.0f, 0.0f,  0.0f, 0.0f, 0.0f, 0.0f,  0.0f, false, 150.0f, 20000.0f, 3.0f },
+        { "Phase Flip Thin",     0.10f, false, 3, 0.8f,   0.0f, 10.0f,  0.0f,  20.0f, 50.0f, false,  0.0f, 100.0f, true,   0.0f, 50.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f, false,  20.0f, 20000.0f, 3.0f },
     };
 
     double wrapTurns (double x) { return x - std::floor (x); }
@@ -722,7 +723,7 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("flutterrate", 12.0f);
     set ("randomrate", 2.0f);
     set ("inputgain", 0.0f);
-    set ("outputgain", 0.0f);
+    set ("outputgain", p.outputGain);
     set ("feedbackcomp", 1.0f);
 }
 

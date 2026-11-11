@@ -228,11 +228,11 @@ PASS  preset 'One Bar Swirl', level against input = -2.839 dB
 PASS  preset 'Dark Tape Haze', level against input = -4.138 dB
 PASS  preset 'Quarter Note Wobble', level against input = -2.961 dB
 PASS  preset 'Manual Ride', level against input = -0.155 dB
-PASS  preset 'Triangle Jet', level against input = -5.002 dB
+PASS  preset 'Triangle Jet', level against input = -3.502 dB
 PASS  preset 'Off Zero Double', level against input = -2.757 dB
 PASS  preset 'Wandering Tape', level against input = -3.264 dB
-PASS  preset 'Square Flip', level against input = -3.278 dB
-PASS  preset 'Phase Flip Thin', level against input = -3.151 dB
+PASS  preset 'Square Flip', level against input = -0.278 dB
+PASS  preset 'Phase Flip Thin', level against input = -0.151 dB
 PASS  reference render of version 1.0.0 found
 PASS  default settings against version 1.0.0 = -145.825 dB
 PASS  preset 'Slow Zero Crossing' against version 1.0.0 = -146.276 dB

@@ -1147,7 +1147,9 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
         float bar = plainBar;
 
         // Held Notes, sparse harmonics, a spot that has stayed and whose neighbouring harmonics rise with it: see togetherBelowDb.
-        if (together && excessDb > 0.0f && slow > togetherFrom * excessDb && standing[idx] > notJudged && standing[idx] < togetherBelowDb)
+        const bool lowered = together && excessDb > 0.0f && slow > togetherFrom * excessDb && standing[idx] > notJudged && standing[idx] < togetherBelowDb;
+
+        if (lowered)
             bar -= std::min (1.0f, (slow / excessDb - togetherFrom) / (togetherTo - togetherFrom)) * togetherDrop;
 
         const float over = judged - bar;
@@ -1160,7 +1162,7 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
         // Never push a peak below the spectrum around it, however large Depth is.
         s.raw[idx] = std::min ({ softOver * softSlope, limit, std::max (excessDb, 0.0f) });
 
-        if (bar != plainBar)   // for the graph: how much of this the old judgement would have asked for
+        if (lowered)   // for the graph: how much of this the old judgement would have asked for
         {
             const float plainOver = judged - plainBar;
             const float plain = plainOver <= -kneeDb ? 0.0f

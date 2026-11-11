@@ -252,6 +252,8 @@ static int runLive (int repeats, int seconds, bool withAudio, bool background)
         setParam (s.processor, "depth", 14.0f);
         if (std::getenv ("RENDER_WINDOW_LISTEN") != nullptr)
             setParam (s.processor, "bandListen", 2.0f);
+        if (std::getenv ("RENDER_WINDOW_HELD") != nullptr)   // Held notes on, so the rose part of the gold is drawn too
+            setParam (s.processor, "heldNotes", 1.0f);
 
         s.editor.reset();
         juce::AudioBuffer<float> buffer (2, kBlock);
@@ -284,6 +286,8 @@ static int runLive (int repeats, int seconds, bool withAudio, bool background)
         setParam (s.processor, "depth", 14.0f);
         if (std::getenv ("RENDER_WINDOW_LISTEN") != nullptr)
             setParam (s.processor, "bandListen", 2.0f);
+        if (std::getenv ("RENDER_WINDOW_HELD") != nullptr)   // Held notes on, so the rose part of the gold is drawn too
+            setParam (s.processor, "heldNotes", 1.0f);
 
 
         std::atomic<bool> running { true };

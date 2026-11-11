@@ -683,6 +683,28 @@ static void testState()
         check (found && has && ! isHeld (p), "the default session saved by 0.4.1 loads with it off");
     }
 
+    // What 0.6.0 really saved: read out of the installed 0.6.0 Audio Unit the way a host reads it, before 0.7.0 replaced it,
+    // and kept in tests/baseline. 0.7.0 adds no parameter, so both have to load as they were.
+    {
+        juce::MemoryBlock off, on;
+        const auto folder = juce::File (BASELINE_DIR);
+        const bool found = folder.getChildFile ("v0.6.0-default.state").loadFileAsData (off) && folder.getChildFile ("v0.6.0-held-on-depth-9.state").loadFileAsData (on);
+
+        Proc a;
+        setHeld (a, true);
+        setParam (a, "depth", 15.0f);
+        a.setStateInformation (off.getData(), (int) off.getSize());
+        check (found && ! isHeld (a) && std::abs (real (a, "depth") - 6.0f) < 0.01f, "the default session saved by 0.6.0 loads with it off and Depth 6, into a plug-in that had it on at Depth 15");
+
+        Proc b;
+        b.setStateInformation (on.getData(), (int) on.getSize());
+        check (found && isHeld (b) && std::abs (real (b, "depth") - 9.0f) < 0.01f, "a session saved by 0.6.0 with it on and Depth 9 loads with it on and Depth 9");
+
+        const auto& all = b.getParameters();
+        check (all.size() == 60 && testkit::idOf (all[57]) == kId && testkit::idOf (all[58]) == "maxReduction" && testkit::idOf (all[59]) == "maxReductionFreq",
+               "the parameter list is what 0.6.0 had: 60 long, Held Notes the last control, then the two readings (count)", (double) all.size());
+    }
+
     // On is saved, and off is saved.
     {
         Proc a;

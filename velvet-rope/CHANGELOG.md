@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0, 2026-11-11
+
+Held Notes does its job on the rings it used to pass over. With Held Notes off nothing changes: every sample is still the 0.5.1 sound. No new control, and sessions saved by 0.4.1, 0.5.1 and 0.6.0 load as they were.
+
+- **Why it missed some rings.** 0.6.0 only watched a harmonic while it was close in level to the loudest thing in the whole voice, which is the fundamental. The line said 50 dB but worked out as 25 dB. On a low or dark voice a ring at 3 to 5 kHz is 28 to 40 dB under the fundamental, so it was never watched and came down by 0 to 2 dB. That was 9 of the 12 rings it missed on Luke's takes.
+- **What changed.** Held Notes now goes by the loudest thing between Low and High, and reaches a real 50 dB under it. It counts how long a harmonic has stood over its neighbours: nothing is taken off before 110 ms, all of it from 170 ms, and the count follows a harmonic that wavers. Its cut is as narrow as the harmonic, so the harmonics beside the ring are left alone. On high notes, where harmonics are more than 200 Hz apart, a resonance wide enough to lift two or three harmonics together is no longer let off lightly once it has stayed.
+- **In the window.** The part of the gold that Held Notes adds is drawn in rose gold, so the switch can be seen working. Pictures are in `docs/window-v5/` (`held-notes-ring-off` and `held-notes-ring-on` show the same ringing note).
+- **The limits an earlier pass loosened.** DspTest's first limit, a +15 dB resonance coming down 5 dB at every pitch up to 330 Hz with the clean vowel within 2 dB, passes again with Held Notes on: -5.8, -5.8, -6.5 and -5.4 dB at 110, 165, 220 and 330 Hz. SpeechTest's first limit, the worst of four voices losing half a boost, cannot be met by anything that only hears the boosted voice: the voice that loses least has a dip of its own there, so the boost only fills it and nothing sticks out. The test now prints that proof and holds the first limit wherever the boost can be seen. The loosened checks of the old sound stay as they are, because that sound is frozen for saved sessions.
+- **Off is 0.5.1.** NullTest is unchanged and passes. All 11 takes rendered by a 0.5.1 build and by this build with Held Notes off are equal sample for sample, at the default and at three presets.
+- **Tests.** Written first and failing on 0.6.0: synthetic held notes with a ring 34 to 43 dB under the loudest harmonic (0.0 dB then, 3.9 to 5.8 dB now, limit 3). New: two sessions saved by the installed 0.6.0 load unchanged, and the graph data marks Held Notes' part. `tests/RingProbe.cpp` is a tool, not a test: it prints what the engine sees at one spot of a recording.
+
 ## 0.6.0, 2026-11-11
 
 One new control, **Held Notes**, off by default. With it off nothing changes: every sample is the 0.5.1 sound, and sessions saved before load and play as they did.

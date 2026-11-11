@@ -1975,6 +1975,39 @@ static void testClean()
     }
 }
 
+// 2026-11-11, real vocal pass. Bypass must not tick. On a voice the 20 ms fade hides it, on a steady tone it does not: 0.3.1 leaves a
+// tick above 8 kHz 78 dB under a 1 kHz tone at every switch, because the fade was a straight line with a corner at each end.
+// Saturation, Wow and Flutter are off so nothing else of the plug-in's sits above 8 kHz, and six high passes take the tone itself out.
+static void testBypassTick()
+{
+    for (double sr : { 44100.0, 48000.0, 96000.0 })
+    {
+        const auto above8k = [&] (bool switching)
+        {
+            PluginProcessor p;
+            set (p, "saturation", 0.0f); set (p, "wow", 0.0f); set (p, "flutter", 0.0f);
+            prepare (p, 2, sr, 128);
+            const int n = (int) (4.0 * sr), every = (int) (sr / 128.0 / 4.0);
+            std::vector<float> in ((size_t) n);
+            sine (in.data(), n, 1000.0, sr, 0.25);
+            auto out = render (p, in, 128, nullptr, [&] (int idx) { if (switching && idx % every == 0) set (p, "bypass", (idx / every) % 2 == 1 ? 1.0f : 0.0f); });
+            juce::IIRFilter hp[6];
+            for (auto& f : hp) f.setCoefficients (juce::IIRCoefficients::makeHighPass (sr, 8000.0));
+            double most = 0;
+            for (int i = 0; i < n; ++i)
+            {
+                float v = out.getSample (0, i);
+                for (auto& f : hp) v = f.processSingleSampleRaw (v);
+                if (i > n / 8) most = std::max (most, (double) std::abs (v));
+            }
+            return toDb (most / 0.25);
+        };
+        const double quiet = above8k (false), switched = above8k (true);
+        check (switched < std::max (-90.0, quiet + 3.0), "Bypass switched 4 times a second under a 1 kHz tone at " + std::to_string ((int) sr) + " Hz: loudest moment above 8 kHz, below the tone (never switched: "
+                                                          + juce::String (quiet, 1).toStdString() + " dB)", switched, "dB");
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -2015,5 +2048,6 @@ int main()
     testDelayToTheSample();
     testArrival();
     testClean();
+    testBypassTick();
     return finish();
 }

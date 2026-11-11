@@ -74,6 +74,7 @@ public:
         wetLatency = (double) os->getLatencyInSamples();
         cleanOs.prepare (1 << (int) stages, wetLatency, 2, tickLen);
         cleanOs.reset();
+        fading = false;
         cleanAmt = cleanAmtNext = p.clean ? 1.0f : 0.0f;
         cleanRunning = p.clean; standardRunning = ! p.clean; cleanWarm = 0;
         wowSmoothA = wowSmoothB = flutSmoothA = flutSmoothB = 0.0;
@@ -523,15 +524,18 @@ private:
         smooth (driveNext, target.satPct * 0.01f * maxSatDrive, cFast);
         toneG = toneGNext;
         smooth (toneGNext, juce::Decibels::decibelsToGain (target.toneDb), cFast);
+        mixPrev = mix; onPrev = on;
         slew (mix, target.mixPct * 0.01f, mixSlew);
         slew (on, target.bypass ? 0.0f : 1.0f, mixSlew);
+        fading = on != onPrev;
         dryGain = dryGainNext; wetGain = wetGainNext;
         setBlendGains (dryGainNext, wetGainNext);
 
+        inRawPrev = inRaw; outRawPrev = outRaw;
         smooth (inRaw, gainFromDb (target.inputDb), cFast);
         smooth (outRaw, gainFromDb (target.outputDb), cFast);
-        inGain = inGainNext; inGainNext = 1.0f + on * (inRaw - 1.0f);
-        outGain = outGainNext; outGainNext = 1.0f + on * (outRaw - 1.0f);
+        inGain = inGainNext; inGainNext = 1.0f + shapeOn (on) * (inRaw - 1.0f);
+        outGain = outGainNext; outGainNext = 1.0f + shapeOn (on) * (outRaw - 1.0f);
 
         fb = fbNext;
         smooth (fbNext, feedbackFrom (target), cMid);
@@ -582,10 +586,19 @@ private:
         traceCount.store (count + 1, std::memory_order_release);
     }
 
+    // The Bypass fade is S shaped: it starts and ends with no corner. Up to 0.3.1 it was a straight line over 20 ms, and the corner at
+    // each end left a tick above 8 kHz, 78 to 86 dB under a steady 1 kHz tone. Exactly 0 and 1 at the ends, so nothing else changes.
+    static float shapeOn (float x)
+    {
+        if (x <= 0.0f) return 0.0f;
+        if (x >= 1.0f) return 1.0f;
+        return (float) (0.5 - 0.5 * std::cos (juce::MathConstants<double>::pi * (double) x));
+    }
+
     // Equal power blend: the level holds as Mix moves, because a moving chorus voice is not in step with the dry signal.
     void setBlendGains (float& dryG, float& wetG) const
     {
-        const double a = (double) (mix * on) * juce::MathConstants<double>::halfPi;
+        const double a = (double) (mix * shapeOn (on)) * juce::MathConstants<double>::halfPi;
         dryG = (float) std::cos (a);
         wetG = (float) std::sin (a);
     }
@@ -619,7 +632,10 @@ private:
             auto& st = chan[(size_t) ch];
             for (int i = 0; i < n; ++i)
             {
-                const float ig = inGain + (float) (tickPos + i) / (float) tickLen * (inGainNext - inGain);
+                const float tpIn = (float) (tickPos + i) / (float) tickLen;
+                float ig = inGain + tpIn * (inGainNext - inGain);
+                // While Bypass fades, the gains follow the S shape sample by sample: a straight line across each tick would put a small corner back at every tick.
+                if (fading) ig = 1.0f + shapeOn (onPrev + tpIn * (on - onPrev)) * (inRawPrev + tpIn * (inRaw - inRawPrev) - 1.0f);
                 dry[ch][i] = juce::jlimit (-16.0f, 16.0f, in[i] * ig);
                 const double x = (double) dry[ch][i];
                 const double y = preB0 * x + st.pre;
@@ -759,9 +775,16 @@ private:
             }
 
             const float tg = toneG + tp * (toneGNext - toneG);
-            const float dg = dryGain + tp * (dryGainNext - dryGain);
-            const float wg = wetGain + tp * (wetGainNext - wetGain);
-            const float og = outGain + tp * (outGainNext - outGain);
+            float dg = dryGain + tp * (dryGainNext - dryGain);
+            float wg = wetGain + tp * (wetGainNext - wetGain);
+            float og = outGain + tp * (outGainNext - outGain);
+            if (fading)
+            {
+                const float onNow = shapeOn (onPrev + tp * (on - onPrev));
+                const double a = (double) ((mixPrev + tp * (mix - mixPrev)) * onNow) * juce::MathConstants<double>::halfPi;
+                dg = (float) std::cos (a); wg = (float) std::sin (a);
+                og = 1.0f + onNow * (outRawPrev + tp * (outRaw - outRawPrev) - 1.0f);
+            }
             const float lowNow = lowAmt + tp * (lowAmtNext - lowAmt), highNow = highAmt + tp * (highAmtNext - highAmt);
             double outMost = 0.0;
             for (int s = 0; s < numOutSides; ++s)
@@ -885,6 +908,8 @@ private:
     double wetLatency = 0.0, minDelayMs = 1.0;
     std::unique_ptr<FastOversampler> os;
     CleanOversampler cleanOs;
+    float onPrev = 1.0f, mixPrev = 0.0f, inRawPrev = 1.0f, outRawPrev = 1.0f;
+    bool fading = false;
     float cleanAmt = 0.0f, cleanAmtNext = 0.0f;
     bool cleanRunning = false, standardRunning = true;
     int cleanWarm = 0;

@@ -48,7 +48,7 @@ namespace
         { "Off Zero Double",     0.30f, false, 3, 1.5f,   0.0f, 10.0f, -2.0f, 180.0f, 30.0f, false,  0.0f, 100.0f, false, 14.0f, 50.0f,  0.0f,  0.0f,  0.0f, 0.3f, 0.02f, 0.0f, false, 150.0f, 20000.0f },
         { "Wandering Tape",      0.25f, false, 3, 0.0f,  10.0f, 15.0f, -1.0f,   0.0f, 40.0f, false,  0.0f, 100.0f, false,  0.0f, 50.0f,  0.0f,  0.0f,  0.0f, 0.8f, 0.03f, 0.8f, true,  120.0f, 20000.0f },
         { "Square Flip",         1.00f, true,  5, 1.2f,  20.0f, 10.0f,  0.0f,   0.0f, 50.0f, false,  0.0f, 100.0f, false,  0.0f, 100.0f, 0.0f,  0.0f, 0.0f, 0.0f, 0.0f,  0.0f, false, 150.0f, 20000.0f, 3.0f },
-        { "Phase Flip Thin",     0.10f, false, 3, 0.8f,   0.0f, 10.0f,  0.0f,  20.0f, 50.0f, false,  0.0f, 100.0f, true,   0.0f, 50.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f, false,  20.0f, 20000.0f, 3.0f },
+        { "Phase Flip Thin",     0.10f, false, 3, 0.8f,   0.0f, 10.0f,  0.0f,   0.0f, 50.0f, false,  0.0f, 100.0f, true,   0.0f, 50.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f, false,  20.0f, 20000.0f, 3.0f },
     };
 
     double wrapTurns (double x) { return x - std::floor (x); }

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.4, 2026-11-11
+
+Phase Flip Thin stays whole in mono. Luke said yes to this on 2026-11-11.
+
+- Loading Phase Flip Thin now sets Spread to 0 (it was 20). With Invert Phase and Spread 20 the two sides cancelled at different moments around a crossing, so on Luke's real takes the mono sum fell up to 11.9 dB under the two sides for a quarter second (take 10 at 34.65 s; 7.2 to 11.9 dB on ten of the eleven working takes, limit 6 dB).
+- The cost: the preset has no stereo width of its own any more. Both sides are the same.
+- Nothing else changed. Every other preset and the default are the same samples as 1.2.3.
+- Sessions that already use Phase Flip Thin keep the Spread they were saved with.
+
 ## 1.2.3, 2026-11-11
 
 Three presets no longer play quieter than the rest. Luke said yes to this on 2026-11-11. On his real takes they dropped the voiced level by more than the others: Square Flip by 5.6 dB, Phase Flip Thin by 5.4 dB, Triangle Jet by 4.0 dB (the default drops it by 2.7 dB).

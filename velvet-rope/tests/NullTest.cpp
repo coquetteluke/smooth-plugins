@@ -6,6 +6,11 @@
 //    with every old control moved. The states are what a real session would hand back to the plug-in.
 //  - A frozen copy of the 0.4.1 engine in tests/legacy, run side by side with the current processor at other rates, block
 //    sizes and channel counts, on real speech.
+//
+// Re-pinned on 2026-11-11 (0.7.1), because Luke approved new values for two presets that thinned the voice: Boxy Low Mids
+// (preset 5) and Eight Dot Vocal Sculpt (preset 9). Loading preset 5 fresh is now compared with a render saved from 0.7.1
+// (preset-5-v0.7.1.f32, written by --save-repinned). Its session saved by 0.4.1 is still compared with the 0.4.1 render: a
+// session keeps the values it was saved with. No limit changed.
 #include "TestKit.h"
 #include "PluginProcessor.h"
 #include "legacy/LegacyEngine.h"
@@ -204,6 +209,26 @@ static void applyConfig (Proc& p, const Config& c)
         p.setCurrentProgram (c.program);
 }
 
+static constexpr int repinnedProgram = 5;                       // Boxy Low Mids
+static const char* const repinnedRender = "preset-5-v0.7.1.f32";
+
+/** Writes the render that pins a preset whose values Luke changed. Run once, on the build that first holds the new values. */
+static int saveRepinned()
+{
+    const auto saved = readFloats ("input.f32", 3);
+
+    if (saved.size() != 3)
+        return 1;
+
+    const Input in { saved[0], saved[1], saved[2] };
+    Proc p;
+    p.setCurrentProgram (repinnedProgram);
+    prepare (p, kRate, 2, false);
+    writeFloats (repinnedRender, render (p, in, 2, false));
+    std::printf ("saved %s\n", repinnedRender);
+    return 0;
+}
+
 static int save()
 {
     juce::File (BASELINE_DIR).createDirectory();
@@ -301,6 +326,7 @@ static int compare()
     for (const auto& c : configs())
     {
         const auto want = readFloats (c.name + ".f32", 2);
+        const bool repinned = c.program == repinnedProgram;
 
         // The way a preset or a control reaches the plug-in today.
         {
@@ -308,8 +334,19 @@ static int compare()
             applyConfig (p, c);
             prepare (p, kRate, 2, c.withKey);
             check (p.getLatencySamples() == 2048, c.name.toStdString() + ": latency still 2048", p.getLatencySamples(), "samples");
-            const double db = nullDb (render (p, in, 2, c.withKey), want);
-            check (db <= -90.0, c.name.toStdString() + ": against the saved 0.4.1 render (limit -90)", db, "dBFS");
+            const auto ours = render (p, in, 2, c.withKey);
+
+            if (repinned)
+            {
+                const double db = nullDb (ours, readFloats (repinnedRender, 2));
+                check (db <= -90.0, c.name.toStdString() + ": Boxy Low Mids with the values of 0.7.1, against the saved 0.7.1 render (limit -90)", db, "dBFS");
+                info (c.name.toStdString() + ": and against the 0.4.1 render of its old values", nullDb (ours, want), "dBFS");
+            }
+            else
+            {
+                const double db = nullDb (ours, want);
+                check (db <= -90.0, c.name.toStdString() + ": against the saved 0.4.1 render (limit -90)", db, "dBFS");
+            }
         }
 
         // The way an old session reaches it: the state 0.4.1 saved, loaded into the new build.
@@ -322,6 +359,41 @@ static int compare()
             const double db = nullDb (render (p, in, 2, c.withKey), want);
             check (db <= -90.0, c.name.toStdString() + ": old saved session, against the saved render (limit -90)", db, "dBFS");
         }
+    }
+
+    // The two presets Luke approved new values for (0.7.1): the values by name, and that a session holding the old ones keeps them.
+    {
+        const auto value = [] (Proc& p, const char* id) { return (double) p.parameters.getRawParameterValue (id)->load(); };
+        const auto near = [] (double a, double b) { return std::abs (a - b) < 0.011 * std::max (1.0, std::abs (b)); };
+
+        Proc boxy;
+        boxy.setCurrentProgram (5);
+        check (boxy.getProgramName (5) == "Boxy Low Mids" && near (value (boxy, "depth"), 3.0) && near (value (boxy, "selectivity"), 80.0)
+                   && near (value (boxy, "lowFreq"), 300.0) && near (value (boxy, "highFreq"), 1100.0) && near (value (boxy, "band1Freq"), 400.0) && near (value (boxy, "band1Sens"), 0.0),
+               "Boxy Low Mids loads Depth 3, Selectivity 80, Low 300 Hz, High 1.1 kHz and dot 1 at 400 Hz with 0 dB");
+
+        Proc eight;
+        eight.setCurrentProgram (9);
+        check (eight.getProgramName (9) == "Eight Dot Vocal Sculpt" && near (value (eight, "band1Freq"), 300.0) && near (value (eight, "band1Sens"), -12.0)
+                   && near (value (eight, "band4Freq"), 500.0) && near (value (eight, "band4Sens"), -8.0)
+                   && near (value (eight, "band5Freq"), 900.0) && near (value (eight, "band5Sens"), -6.0) && near (value (eight, "band5Width"), 1.0)
+                   && near (value (eight, "depth"), 12.0) && near (value (eight, "band2Sens"), 4.0) && near (value (eight, "band6Sens"), 2.0),
+               "Eight Dot Vocal Sculpt loads dot 1 at -12 dB, dot 4 at -8 dB and dot 5 at -6 dB over 1 octave, the rest as before");
+
+        // A session that holds the old Eight Dot values (set by hand here: there is no file saved by an older build with this preset).
+        Proc old;
+        old.setCurrentProgram (9);
+        setParam (old, "band1Sens", -8.0f);
+        setParam (old, "band4Sens", -5.0f);
+        setParam (old, "band5Sens", 1.0f);
+        setParam (old, "band5Width", 0.7f);
+        juce::MemoryBlock state;
+        old.getStateInformation (state);
+        Proc loaded;
+        loaded.setCurrentProgram (9);
+        loaded.setStateInformation (state.getData(), (int) state.getSize());
+        check (near (value (loaded, "band1Sens"), -8.0) && near (value (loaded, "band4Sens"), -5.0) && near (value (loaded, "band5Sens"), 1.0) && near (value (loaded, "band5Width"), 0.7),
+               "a session saved with the old Eight Dot Vocal Sculpt values keeps them when loaded");
     }
 
     // Other rates, block sizes and channel counts, against the frozen engine, on real speech.
@@ -363,5 +435,8 @@ static int compare()
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+    if (argc > 1 && juce::String (argv[1]) == "--save-repinned")
+        return saveRepinned();
+
     return argc > 1 && juce::String (argv[1]) == "--save" ? save() : compare();
 }

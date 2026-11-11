@@ -122,7 +122,9 @@ namespace
         { "Vocal Stack Smoother",   9.0f, 35.0f, 40.0f, 25.0f, 200.0f,  800.0f, 14000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, flat2, flat3 } },
         { "Wide Stack Mid Side",    8.0f, 40.0f, 45.0f, 20.0f, 180.0f,  800.0f, 14000.0f, 100.0f, 0, -36.0f, 1, 0, { flat1, flat2, flat3 } },
         { "Sibilance Soother",     10.0f, 30.0f, 35.0f,  5.0f,  70.0f, 4500.0f, 14000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, flat2, { 7000.0f, 3.0f, 1.0f } } },
-        { "Boxy Low Mids",          8.0f, 40.0f, 45.0f, 30.0f, 220.0f,  180.0f,  1100.0f, 100.0f, 0, -36.0f, 0, 0, { { 400.0f, 3.0f, 1.0f }, flat2, flat3 } },
+        // Gentle on purpose (values of 0.7.1): from 300 Hz to 1.1 kHz the first harmonics of a voice are its body, and each of
+        // them reads as a peak. Up to 0.7.0 this was Depth 8, Selectivity 45, Low 180 Hz and dot 1 at +3 dB, which thinned the voice.
+        { "Boxy Low Mids",          3.0f, 40.0f, 80.0f, 30.0f, 220.0f,  300.0f,  1100.0f, 100.0f, 0, -36.0f, 0, 0, { { 400.0f, 0.0f, 1.0f }, flat2, flat3 } },
         { "Hard Whistle Catcher",  14.0f, 80.0f, 70.0f,  5.0f,  80.0f, 1500.0f, 12000.0f, 100.0f, 1, -42.0f, 0, 0, { flat1, flat2, flat3 } },
         { "Side Chain Carve",       6.0f, 30.0f,  0.0f, 10.0f, 120.0f,  300.0f,  8000.0f, 100.0f, 1, -40.0f, 0, 1, { flat1, flat2, flat3 } },
 
@@ -131,8 +133,9 @@ namespace
         { "Tracking Low Latency",   8.0f, 40.0f, 45.0f,  5.0f,  80.0f, 1000.0f, 12000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, flat2, flat3 }, 24.0f, 0 },
         // Every dot in use: protects the body of the voice and the air, and looks harder where a vocal gets harsh.
         { "Eight Dot Vocal Sculpt", 12.0f, 50.0f, 45.0f, 10.0f, 120.0f,  250.0f, 14000.0f, 100.0f, 0, -36.0f, 0, 0,
-          { { 300.0f, -8.0f, 1.0f }, { 3000.0f, 4.0f, 0.8f }, { 7000.0f, 3.0f, 0.7f } }, 24.0f, 1, 0b11111111,
-          { { 500.0f, -5.0f, 0.8f }, { 900.0f, 1.0f, 0.7f }, { 1800.0f, 2.0f, 0.7f }, { 4500.0f, 3.0f, 0.7f }, { 11000.0f, -6.0f, 1.2f } } },
+          // Dots 1, 4 and 5 hold the body harder since 0.7.1 (they were -8 dB, -5 dB, and +1 dB over 0.7 octaves).
+          { { 300.0f, -12.0f, 1.0f }, { 3000.0f, 4.0f, 0.8f }, { 7000.0f, 3.0f, 0.7f } }, 24.0f, 1, 0b11111111,
+          { { 500.0f, -8.0f, 0.8f }, { 900.0f, -6.0f, 1.0f }, { 1800.0f, 2.0f, 0.7f }, { 4500.0f, 3.0f, 0.7f }, { 11000.0f, -6.0f, 1.2f } } },
         // Depth at its strongest with a ceiling: finest detail, wider areas held down, and never more than 6 dB anywhere.
         { "High Detail With Ceiling", 24.0f, 70.0f, 50.0f, 15.0f, 150.0f, 800.0f, 14000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, flat2, flat3 }, 6.0f, 2 },
 

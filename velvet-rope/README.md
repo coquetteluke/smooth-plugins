@@ -86,11 +86,11 @@ Parameter IDs are saved in sessions and automation. Never rename them.
 - **Vocal Stack Smoother**: wide and slower, Depth 9, for a group of voices.
 - **Wide Stack Mid Side**: the same idea with mid and side apart.
 - **Sibilance Soother**: fast, 4.5 to 14 kHz, Depth 10.
-- **Boxy Low Mids**: slow, 180 Hz to 1.1 kHz.
+- **Boxy Low Mids**: slow and gentle, Depth 3, Selectivity 80, 300 Hz to 1.1 kHz. That range holds the first harmonics of a voice, so more than this thins it (new values in 0.7.1).
 - **Hard Whistle Catcher**: Hard mode, narrow and picky, catches a loud whistling peak.
 - **Side Chain Carve**: Hard mode through the key. Put it on music with a vocal in the key to make room.
 - **Tracking Low Latency**: Low Latency, Depth 8, fast. For singing through it while recording.
-- **Eight Dot Vocal Sculpt**: all 8 dots in use, protecting the body of the voice and the air, and looking harder where a vocal gets harsh.
+- **Eight Dot Vocal Sculpt**: all 8 dots in use, protecting the body of the voice and the air, and looking harder where a vocal gets harsh. In 0.7.1 the three dots under 1 kHz hold the body harder (-12 dB at 300 Hz, -8 dB at 500 Hz, -6 dB at 900 Hz).
 - **High Detail With Ceiling**: High, Depth 24, Max Cut 6. Strong and detailed, and never more than 6 dB anywhere.
 - **Gentle Polish With Held Notes**: the default settings with Held Notes on.
 

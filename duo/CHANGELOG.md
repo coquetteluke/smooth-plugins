@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0, 2026-11-11
+
+Three new switches in Advanced. With all three as an older session loads them, the sound is bit for bit what it was (the null test still passes for every preset).
+
+- **Precise Vibrato**, on in a new Duo. Vibrato Variation was built around one vibrato speed and one distance: it only sang double 1 almost straight when your vibrato was near 5.5 Hz and the double was about 25 ms behind. Measured on Luke's takes with a known vibrato put onto the held notes (he sings almost none of his own: 3 of the 324 stretches the first check called vibrato hold one, the rest are slides and wobble), double 1 kept 0.52 of a 4.5 Hz vibrato, 0.47 of a 6.8 Hz one, and 0.70 at Tightness 85, against a limit of 0.5. Now Duo fits your vibrato's own speed and reads it at the moment each double is playing: double 1 keeps 0.18 to 0.29 at every speed and Tightness tried, double 2 sings 1.41 to 1.44 times as wide, double 3 0.56 times. Slides and note changes are left alone (the bend added on the slide test went from 33 cents to 0).
+  Sessions saved before 0.4.0 load with it off and sound exactly as they did. Wide Stack, Loose Gang and Two Singers, the presets that use Vibrato, keep it off for the same reason. Switch it on to hear the fix.
+- **Mono Safe**, off unless you switch it on. Each double goes to the left and the right with opposite signs, so adding left and right leaves your own voice alone (what is left of the doubles is under -150 dB). A phone speaker then plays the lead only, and a plug-in after Duo that listens to left plus right, as Choir Loft does, tracks a clean voice instead of a doubled one. In stereo the doubles are all there at the same level, wide and not placed. Width and Doubles Pan are dimmed while it is on.
+- **Match Level**, off unless you switch it on. Duo adds voices, so it is louder than what goes in: 1.6 to 1.8 dB at the default. Match Level turns the lead and the doubles down together by what they add up to, so the output is as loud as the dry vocal (within 0.2 dB on Luke's takes, on the default and on the widest presets). The balance between you and the doubles stays. With it on the lead is the input turned down, not the input sample for sample.
+
+Checked on the 11 working takes of the Rode session. The small steps the shared click check counted as Duo's own (13) are all sounds of the take itself, copied by a double: with the take low passed so that it holds nothing sharp, every one is gone and nothing above 8 kHz comes out (-76 dB), and a 9.6 kHz sine comes out clean for the whole length of every take (-105 dB). Timbre Variation at 100 does not move the pitch: the harmonics stay within 0.8 cents; what the pitch reader saw 3 semitones away were breaths and consonants whose resonance Timbre is meant to move.
+
 ## 0.3.1, 2026-11-07
 
 Renamed to Duo, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.

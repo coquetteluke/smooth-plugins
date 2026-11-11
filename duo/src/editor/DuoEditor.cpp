@@ -149,7 +149,7 @@ class DuoEditor::AdvancedHeader final : public juce::Component,
 public:
     explicit AdvancedHeader (DuoEditor& e) : owner (e)
     {
-        hint = "Timing, Pitch, Vibrato, Timbre, Vocal Range, pans and Extra Delay.";
+        hint = "Timing, Pitch, Vibrato, Timbre, Vocal Range, pans, Extra Delay, and the Precise Vibrato, Mono Safe and Match Level switches.";
         setComponentID ("advanced");
         setTitle ("Advanced");
     }
@@ -210,12 +210,15 @@ DuoEditor::Panel::Panel (DuoEditor& e, PluginProcessor& p)
       leadPan (p.apvts, "leadpan", "Lead Pan", "Where you stand, left to right. You can also drag yourself on the stage.", ValueSlider::Format::pan),
       doublesPan (p.apvts, "doublespan", "Doubles Pan", "Moves all the doubles left or right together, on top of Width.", ValueSlider::Format::pan),
       extraDelay (p.apvts, "extradelay", "Extra Delay", "Adds a fixed delay to every double. Turn it up for a slapback.", ValueSlider::Format::milliseconds),
-      range (p.apvts, "range", "Vocal Range", "Where to listen for your pitch. Used only by Vibrato and Timbre.")
+      range (p.apvts, "range", "Vocal Range", "Where to listen for your pitch. Used only by Vibrato and Timbre."),
+      preciseVibrato (p.apvts, "precisevibrato", "Precise Vibrato", "Vibrato follows your real vibrato closely. Off is how it worked before 0.4, kept for older sessions and three presets."),
+      monoSafe (p.apvts, "monosafe", "Mono Safe", "The doubles cancel when left and right are added: in mono, and for a tuner or harmony plug-in after Duo, only your own voice is left. Width and Doubles Pan rest."),
+      matchLevel (p.apvts, "matchlevel", "Match Level", "Turns you and the doubles down together, so Duo comes out as loud as the vocal that went in. The balance between you and the doubles stays.")
 {
     setOpaque (true);
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &stage, presets.get(), advancedHeader.get(), &doublesCount, &bypass, &width, &tightness, &leadLevel, &level1, &level2, &level3,
-                                                                        &timing, &pitch, &vibrato, &timbre, &leadPan, &doublesPan, &extraDelay, &range })
+                                                                        &timing, &pitch, &vibrato, &timbre, &leadPan, &doublesPan, &extraDelay, &range, &preciseVibrato, &monoSafe, &matchLevel })
         addAndMakeVisible (c);
 
     for (auto& r : readouts)
@@ -291,10 +294,12 @@ void DuoEditor::Panel::resized()
         readouts[(size_t) readoutOrder[(size_t) i]].setBounds (x, stageY + faderHeight, faderWidth, readoutHeight);
     }
 
-    // Advanced fills from the bottom up, two rows of four.
+    // Advanced fills from the bottom up, two rows of four, and a column at the right for the three switches added in 0.4.
     const bool showAdvanced = advancedAmount > 0.0f;
     const std::array<juce::Component*, 8> advancedControls { &timing, &pitch, &vibrato, &timbre, &range, &leadPan, &doublesPan, &extraDelay };
-    const int columnWidth = (W - 2 * margin - 3 * 28) / 4;
+    const std::array<juce::Component*, 3> switches { &preciseVibrato, &monoSafe, &matchLevel };
+    constexpr int switchWidth = 150, switchHeight = 26, switchGap = 7, columnGap = 24;
+    const int columnWidth = (W - 2 * margin - 4 * columnGap - switchWidth) / 4;
     const int firstRowY = contentBottom + 8;
 
     for (int i = 0; i < 8; ++i)
@@ -304,7 +309,15 @@ void DuoEditor::Panel::resized()
         c->setAlpha (advancedAmount * ((c == &leadPan || c == &doublesPan) ? width.getAlpha() : 1.0f));
         const int column = i % 4, row = i / 4;
         const int height = c == &range ? 32 : advancedRow;
-        c->setBounds (margin + column * (columnWidth + 28), firstRowY + row * (advancedRow + 6) + (c == &range ? 8 : 0), columnWidth, height);
+        c->setBounds (margin + column * (columnWidth + columnGap), firstRowY + row * (advancedRow + 6) + (c == &range ? 8 : 0), columnWidth, height);
+    }
+
+    for (int i = 0; i < 3; ++i)
+    {
+        auto* c = switches[(size_t) i];
+        c->setVisible (showAdvanced);
+        c->setAlpha (advancedAmount);
+        c->setBounds (W - margin - switchWidth, firstRowY + 2 + i * (switchHeight + switchGap), switchWidth, switchHeight);
     }
 }
 
@@ -499,8 +512,9 @@ void DuoEditor::tick (double dtSeconds)
     panel.level2.setSinging (count >= 2);
     panel.level3.setSinging (count >= 3);
 
-    // A mono track has no left or right, so those controls step back.
-    const float stereoAlpha = processorRef.getMainBusNumOutputChannels() > 1 ? 1.0f : 0.45f;
+    // A mono track has no left or right, so those controls step back. Mono Safe leaves them nothing to move either.
+    const bool monoSafeOn = processorRef.apvts.getRawParameterValue ("monosafe")->load() >= 0.5f;
+    const float stereoAlpha = processorRef.getMainBusNumOutputChannels() > 1 && ! monoSafeOn ? 1.0f : 0.45f;
     if (panel.width.getAlpha() != stereoAlpha)
     {
         panel.width.setAlpha (stereoAlpha);

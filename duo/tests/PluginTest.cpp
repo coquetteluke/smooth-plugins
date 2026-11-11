@@ -1351,6 +1351,277 @@ static void testVibrato()
     }
 }
 
+// ---------------------------------------------------------------- 0.4.0: Precise Vibrato, Mono Safe, older sessions
+
+// Vibrato Variation with the doubles wandering as they do in use (the tests above hold them still), at the speeds singers use.
+// On Luke's real takes the 0.3 law left double 1 with 0.90 to 0.94 of the lead's vibrato and gave double 2 1.06 to 1.08 times it.
+// Limits from the claim: double 1 almost straight, double 2 half again as wide, double 3 half as wide, 50 half way.
+static void testPreciseVibrato()
+{
+    const double sr = 48000.0;
+    const int n = 48000 * 12, skip = 48000 * 2;
+    const auto ratio = [&] (int v, float loose, double vibHz, bool precise, float amount)
+    {
+        const auto x = vibratoNote (n, sr, 220.0, vibHz, 50.0);
+        Setup s = solo (v, loose); s.vibrato = amount; // Timing and Pitch Amount stay at 100: the double wanders
+        PluginProcessor p; apply (p, s); setParam (p, "precisevibrato", precise ? 1.0f : 0.0f);
+        prepare (p, 1, sr, 512);
+        auto out = render (p, x, 512);
+        const std::vector<float> y (out.getReadPointer (0), out.getReadPointer (0) + n);
+        return vibratoDepth (y, sr, 220.0, vibHz, skip) / vibratoDepth (x, sr, 220.0, vibHz, skip);
+    };
+    for (float loose : { 0.0f, 30.0f, 85.0f })
+        for (double vibHz : { 4.5, 5.5, 6.8 })
+        {
+            const auto tag = "Precise Vibrato, Tightness " + std::to_string ((int) loose) + ", vibrato at " + std::to_string (vibHz).substr (0, 3) + " Hz, wandering: ";
+            const double d1 = ratio (0, loose, vibHz, true, 100.0f);
+            check (d1 <= 0.35, tag + "double 1 keeps at most 0.35 of the lead's depth", d1);
+            info (tag + "the 0.3 law, double 1 keeps", ratio (0, loose, vibHz, false, 100.0f));
+            const double d2 = ratio (1, loose, vibHz, true, 100.0f);
+            check (d2 >= 1.35 && d2 <= 1.65, tag + "double 2 sings 1.35 to 1.65 times as wide", d2);
+            info (tag + "the 0.3 law, double 2 sings", ratio (1, loose, vibHz, false, 100.0f));
+        }
+    const double d3 = ratio (2, 30.0f, 5.5, true, 100.0f);
+    check (d3 >= 0.35 && d3 <= 0.65, "Precise Vibrato, double 3 sings 0.35 to 0.65 times as wide", d3);
+    const double half = ratio (0, 30.0f, 5.5, true, 50.0f);
+    check (half >= 0.35 && half <= 0.65, "Precise Vibrato, Vibrato Variation 50: double 1 keeps 0.35 to 0.65 of the depth", half);
+    const double off = ratio (0, 30.0f, 5.5, true, 0.0f);
+    check (std::abs (off - 1.0) <= 0.05, "Precise Vibrato, Vibrato Variation 0: double 1 has the lead's depth within 5 percent", off);
+
+    // Vibrato that comes in half way through each note, as singers do it: straight for a second, vibrato for a second.
+    {
+        std::vector<float> x ((size_t) n);
+        double phase = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = std::fmod (i / sr, 2.0);
+            const double depth = t < 1.0 ? 0.0 : 50.0 * juce::jmin (1.0, (t - 1.0) / 0.15);
+            phase += 220.0 * std::pow (2.0, depth * std::sin (twoPi * 5.5 * t) / 1200.0) / sr; phase -= std::floor (phase);
+            double v = 0; for (int h = 1; h <= 5; ++h) v += std::sin (twoPi * h * phase) / h;
+            x[(size_t) i] = (float) (0.3 * v);
+        }
+        Setup s = solo (0, 30.0f); s.timing = 0.0f; s.pitch = 0.0f; s.vibrato = 100.0f;
+        PluginProcessor q; apply (q, s); prepare (q, 1, sr, 64);
+        double last = 0, worstStraight = 0, sumBend = 0, sumVib = 0; bool have = false;
+        render (q, x, 64, nullptr, [&] (int idx)
+        {
+            const double d = q.getDelayMs (0), t = std::fmod (idx * 64.0 / sr, 2.0);
+            const double cents = have ? -1731.2 * (d - last) * 0.001 / (64.0 / sr) : 0.0; // what the bend adds to the double's pitch
+            last = d; have = true;
+            if (idx * 64.0 / sr < 2.0) return;
+            if (t > 0.45 && t < 0.95) worstStraight = std::max (worstStraight, std::abs (cents));
+            if (t > 1.5 && t < 1.95)
+            {
+                // The double plays what the lead sang one delay ago: its vibrato then, and the bend now, should cancel.
+                const double then = t - d * 0.001;
+                const double vib = 50.0 * std::sin (twoPi * 5.5 * then);
+                sumBend += (vib + cents) * (vib + cents); sumVib += vib * vib;
+            }
+        });
+        check (worstStraight <= 5.0, "vibrato that comes and goes: on the straight part the bend adds at most 5 cents", worstStraight, "cents");
+        const double left = std::sqrt (sumBend / std::max (sumVib, 1.0e-9));
+        check (left <= 0.35, "vibrato that comes and goes: half a second after it starts, double 1 keeps at most 0.35 of it", left);
+    }
+}
+
+// Mono Safe: the doubles sit on left and right with opposite signs, so left plus right is the lead alone.
+static void testMonoSafe()
+{
+    const double sr = 48000.0;
+    const int n = 48000 * 4, skip = 9600;
+    std::vector<float> in ((size_t) n); noise (in.data(), n, 0.2);
+    for (int preset : { 0, 3, 4, 6 })
+    {
+        PluginProcessor p; p.setCurrentProgram (preset); setParam (p, "monosafe", 1.0f);
+        const auto name = p.getProgramName (preset).toStdString();
+        prepareMonoToStereo (p, sr, 256);
+        auto out = render (p, in, 256);
+        const double leadGain = DuoEngine::levelToGain (p.apvts.getRawParameterValue ("lead")->load());
+        const double mono = leadGain * std::cos (p.apvts.getRawParameterValue ("leadpan")->load() * 0.01 * juce::MathConstants<double>::pi * 0.25);
+        double left = 0, whole = 0, side = 0, wanted = 0;
+        for (int v = 0; v < juce::roundToInt (p.apvts.getRawParameterValue ("doubles")->load()); ++v)
+        {
+            const double g = DuoEngine::levelToGain (p.apvts.getRawParameterValue (v == 0 ? "double1" : v == 1 ? "double2" : "double3")->load());
+            wanted += g * g;
+        }
+        for (int i = skip; i < n; ++i)
+        {
+            const double l = out.getSample (0, i), r = out.getSample (1, i), x = mono * in[(size_t) i];
+            left += (0.5 * (l + r) - x) * (0.5 * (l + r) - x); whole += x * x;
+            side += 0.25 * (l - r) * (l - r);
+        }
+        const double db = 10.0 * std::log10 ((left + 1.0e-40) / (whole + 1.0e-40));
+        check (db <= -100.0, "Mono Safe, " + name + ": left plus right is the lead alone, what is left", db, "dB");
+        // The lead's own left minus right (when it is panned) is small next to the doubles here; noise through different delays adds in power.
+        double inPower = 0; for (int i = skip; i < n; ++i) inPower += (double) in[(size_t) i] * in[(size_t) i];
+        const double leadSide = leadGain * std::sin (p.apvts.getRawParameterValue ("leadpan")->load() * 0.01 * juce::MathConstants<double>::pi * 0.25);
+        const double sideDb = 10.0 * std::log10 (side / ((wanted + leadSide * leadSide) * inPower));
+        check (std::abs (sideDb) <= 1.0, "Mono Safe, " + name + ": the doubles are all there in left minus right, against their levels", sideDb, "dB");
+    }
+    // The level does not change when it is switched on.
+    {
+        double level[2] = {};
+        for (int on = 0; on < 2; ++on)
+        {
+            PluginProcessor p; setParam (p, "monosafe", (float) on);
+            prepareMonoToStereo (p, sr, 256);
+            auto out = render (p, in, 256);
+            double e = 0;
+            for (int i = skip; i < n; ++i) e += (double) out.getSample (0, i) * out.getSample (0, i) + (double) out.getSample (1, i) * out.getSample (1, i);
+            level[on] = 10.0 * std::log10 (e);
+        }
+        check (std::abs (level[1] - level[0]) <= 0.3, "Mono Safe on against off at the default: level of left and right together", level[1] - level[0], "dB");
+    }
+    // One output has no left and right to cancel between: nothing changes.
+    {
+        std::vector<float> a, b;
+        for (int on = 0; on < 2; ++on)
+        {
+            PluginProcessor p; setParam (p, "monosafe", (float) on);
+            prepare (p, 1, sr, 256);
+            auto out = render (p, in, 256);
+            (on ? b : a).assign (out.getReadPointer (0), out.getReadPointer (0) + n);
+        }
+        check (a == b, "Mono Safe with one output changes nothing, bit for bit");
+    }
+    // Bypass stays the exact dry signal.
+    {
+        PluginProcessor p; setParam (p, "monosafe", 1.0f); setParam (p, "bypass", 1.0f);
+        prepareMonoToStereo (p, sr, 256);
+        auto out = render (p, in, 256);
+        double worst = 0;
+        for (int i = skip; i < n; ++i)
+            for (int ch = 0; ch < 2; ++ch) worst = std::max (worst, (double) std::abs (out.getSample (ch, i) - in[(size_t) i]));
+        check (worst == 0.0, "Mono Safe with Bypass on: exact dry on both sides, largest difference", worst);
+    }
+    // Off, which is how every session saved so far loads, is the sound as it was: covered bit for bit by the null test.
+}
+
+// Match Level: the lead and the doubles turned down together, so the output is as loud as the input.
+static void testMatchLevel()
+{
+    const double sr = 48000.0;
+    const int n = 48000 * 4, skip = 9600;
+    std::vector<float> in ((size_t) n); noise (in.data(), n, 0.2);
+    double inPower = 0; for (int i = skip; i < n; ++i) inPower += (double) in[(size_t) i] * in[(size_t) i];
+    PluginProcessor names;
+    for (int preset = 0; preset < names.getNumPrograms(); ++preset)
+    {
+        double level[2] = {};
+        juce::AudioBuffer<float> outs[2];
+        for (int on = 0; on < 2; ++on)
+        {
+            PluginProcessor p; p.setCurrentProgram (preset); setParam (p, "matchlevel", (float) on);
+            prepareMonoToStereo (p, sr, 256);
+            outs[on] = render (p, in, 256);
+            double e = 0;
+            for (int i = skip; i < n; ++i) e += 0.5 * ((double) outs[on].getSample (0, i) * outs[on].getSample (0, i) + (double) outs[on].getSample (1, i) * outs[on].getSample (1, i));
+            level[on] = 10.0 * std::log10 (e / inPower);
+        }
+        const auto name = names.getProgramName (preset).toStdString();
+        check (std::abs (level[1]) <= 0.5, "Match Level, " + name + ": left and right together are as loud as the input within 0.5 dB (off: " + std::to_string (level[0]).substr (0, 5) + " dB)", level[1], "dB");
+        // The same sound at another level: every sample is the off render times one factor.
+        const double k = std::pow (10.0, (level[1] - level[0]) / 20.0);
+        double worst = 0;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = skip; i < n; ++i) worst = std::max (worst, std::abs ((double) outs[1].getSample (ch, i) - k * outs[0].getSample (ch, i)));
+        check (worst <= 2.0e-4, "Match Level, " + name + ": the same sound turned down, nothing else changed, largest difference", worst);
+    }
+    // One output.
+    {
+        PluginProcessor p; setParam (p, "matchlevel", 1.0f); prepare (p, 1, sr, 256);
+        auto out = render (p, in, 256);
+        double e = 0; for (int i = skip; i < n; ++i) e += (double) out.getSample (0, i) * out.getSample (0, i);
+        check (std::abs (10.0 * std::log10 (e / inPower)) <= 0.5, "Match Level with one output: as loud as the input within 0.5 dB", 10.0 * std::log10 (e / inPower), "dB");
+    }
+    // Bypass stays the exact dry signal, and with everything off there is nothing to match.
+    {
+        PluginProcessor p; setParam (p, "matchlevel", 1.0f); setParam (p, "bypass", 1.0f);
+        prepareMonoToStereo (p, sr, 256);
+        auto out = render (p, in, 256);
+        double worst = 0;
+        for (int i = skip; i < n; ++i)
+            for (int ch = 0; ch < 2; ++ch) worst = std::max (worst, (double) std::abs (out.getSample (ch, i) - in[(size_t) i]));
+        check (worst == 0.0, "Match Level with Bypass on: exact dry on both sides, largest difference", worst);
+        Setup s; s.doubles = 2; // lead and doubles all off
+        PluginProcessor q; apply (q, s); setParam (q, "matchlevel", 1.0f); prepareMonoToStereo (q, sr, 256);
+        auto silent = render (q, in, 256);
+        check (countNonFinite (silent) == 0 && peak (silent.getReadPointer (0) + skip, n - skip) == 0.0, "Match Level with every voice off: silence, nothing blows up");
+    }
+    // Mono Safe and Match Level together: left plus right is still the lead alone, at the matched level.
+    {
+        PluginProcessor p; setParam (p, "matchlevel", 1.0f); setParam (p, "monosafe", 1.0f);
+        prepareMonoToStereo (p, sr, 256);
+        auto out = render (p, in, 256);
+        const double k = 1.0 / std::sqrt (1.0 + 2.0 * std::pow (10.0, -6.0 / 10.0)); // the default: lead 0 dB, two doubles at -6 dB
+        double left = 0, whole = 0;
+        for (int i = skip; i < n; ++i) { const double m = 0.5 * ((double) out.getSample (0, i) + out.getSample (1, i)), x = k * in[(size_t) i]; left += (m - x) * (m - x); whole += x * x; }
+        check (10.0 * std::log10 ((left + 1.0e-40) / whole) <= -100.0, "Mono Safe with Match Level: left plus right is the lead alone at the matched level, what is left", 10.0 * std::log10 ((left + 1.0e-40) / whole), "dB");
+    }
+}
+
+// Sessions saved before 0.4.0 have no entry for the three new controls. They keep the vibrato they were saved with.
+static void testOlderSessions()
+{
+    const auto stateWithout04 = [] (PluginProcessor& from)
+    {
+        juce::MemoryBlock full; from.getStateInformation (full);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (full.getData(), (int) full.getSize());
+        for (int i = xml->getNumChildElements(); --i >= 0;)
+        {
+            const auto id = xml->getChildElement (i)->getStringAttribute ("id");
+            if (id == "precisevibrato" || id == "monosafe" || id == "matchlevel") xml->removeChildElement (xml->getChildElement (i), true);
+        }
+        juce::MemoryBlock old; juce::AudioProcessor::copyXmlToBinary (*xml, old);
+        return old;
+    };
+    const auto flag = [] (PluginProcessor& p, const char* id) { return p.apvts.getRawParameterValue (id)->load() >= 0.5f; };
+
+    PluginProcessor fresh;
+    check (flag (fresh, "precisevibrato") && ! flag (fresh, "monosafe") && ! flag (fresh, "matchlevel"), "a new Duo opens with Precise Vibrato on, Mono Safe off and Match Level off");
+
+    PluginProcessor saved; setParam (saved, "vibrato", 60.0f); setParam (saved, "tightness", 55.0f); setParam (saved, "monosafe", 1.0f); setParam (saved, "matchlevel", 1.0f);
+    const auto old = stateWithout04 (saved);
+    PluginProcessor loaded; loaded.setStateInformation (old.getData(), (int) old.getSize());
+    check (! flag (loaded, "precisevibrato") && ! flag (loaded, "monosafe") && ! flag (loaded, "matchlevel"), "a session saved before 0.4.0 loads with Precise Vibrato, Mono Safe and Match Level off");
+    check (std::abs (loaded.apvts.getRawParameterValue ("vibrato")->load() - 60.0f) < 0.06f && std::abs (loaded.apvts.getRawParameterValue ("tightness")->load() - 55.0f) < 0.06f,
+           "and keeps its other settings");
+
+    juce::MemoryBlock now; saved.getStateInformation (now);
+    PluginProcessor again; again.setStateInformation (now.getData(), (int) now.getSize());
+    check (flag (again, "precisevibrato") && flag (again, "monosafe") && flag (again, "matchlevel"), "a session saved by 0.4.0 keeps all three switches as saved");
+
+    for (int i = 0; i < fresh.getNumPrograms(); ++i)
+    {
+        PluginProcessor q; setParam (q, "monosafe", 1.0f); setParam (q, "matchlevel", 1.0f); q.setCurrentProgram (i);
+        const bool usesVibrato = q.apvts.getRawParameterValue ("vibrato")->load() > 0.0f;
+        check (flag (q, "precisevibrato") == ! usesVibrato && ! flag (q, "monosafe") && ! flag (q, "matchlevel"),
+               "preset " + q.getProgramName (i).toStdString() + (usesVibrato ? ": keeps the 0.3 vibrato it was made with, Mono Safe and Match Level off" : ": Precise Vibrato on, Mono Safe and Match Level off"));
+    }
+
+    // The sound of an old session: Wide Stack's settings arriving as a pre 0.4.0 state give the same samples as the preset.
+    {
+        const double sr = 48000.0;
+        const int n = 48000 * 3;
+        const auto x = vibratoNote (n, sr, 196.0, 5.2, 40.0);
+        PluginProcessor a; a.setCurrentProgram (3);
+        PluginProcessor source; source.setCurrentProgram (3);
+        const auto wide = stateWithout04 (source);
+        PluginProcessor b; b.setStateInformation (wide.getData(), (int) wide.getSize());
+        prepareMonoToStereo (a, sr, 256); prepareMonoToStereo (b, sr, 256);
+        auto ya = render (a, x, 256), yb = render (b, x, 256);
+        bool same = true;
+        for (int ch = 0; ch < 2 && same; ++ch) same = std::memcmp (ya.getReadPointer (ch), yb.getReadPointer (ch), sizeof (float) * (size_t) n) == 0;
+        check (same, "an old session with Wide Stack's settings sounds as the preset does, bit for bit");
+        setParam (b, "precisevibrato", 1.0f);
+        prepareMonoToStereo (b, sr, 256);
+        auto yc = render (b, x, 256);
+        bool differs = false;
+        for (int i = 0; i < n && ! differs; ++i) differs = ya.getSample (0, i) != yc.getSample (0, i);
+        check (differs, "switching Precise Vibrato on changes what Vibrato Variation does");
+    }
+}
+
 // What a later window will read agrees with the audio.
 static void testReadings()
 {
@@ -1423,6 +1694,10 @@ int main (int argc, char** argv)
     testPans();
     testTimbre();
     testVibrato();
+    testPreciseVibrato();
+    testMonoSafe();
+    testMatchLevel();
+    testOlderSessions();
     testReadings();
     testWidth();
     testDecorrelation();

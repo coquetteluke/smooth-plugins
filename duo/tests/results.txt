@@ -1,5 +1,5 @@
 PASS  parameter names are clear, unique, no em dash
-INFO  parameter count = 16.000 
+INFO  parameter count = 19.000 
 PASS  factory presets = 8.000 
 PASS  preset names are not empty, no em dash
 PASS  presets change the state
@@ -40,6 +40,9 @@ PASS  no click when Doubles Pan jumps, biggest step = 0.005
 PASS  no click when Extra Delay jumps, biggest step = 0.007 
 PASS  no click when Vocal Range jumps, biggest step = 0.007 
 PASS  no click when Bypass jumps, biggest step = 0.006 
+PASS  no click when Precise Vibrato jumps, biggest step = 0.005 
+PASS  no click when Mono Safe jumps, biggest step = 0.006 
+PASS  no click when Match Level jumps, biggest step = 0.005 
 PASS  first preset equals the default state
 PASS  preset Natural Pair sounds, balanced, left = -23.061 dB
 PASS  preset Tight Double sounds, balanced, left = -24.131 dB
@@ -98,15 +101,15 @@ PASS  mono to stereo, Doubles 2 Width 100: balanced within 1 dB, difference = 0.
 PASS  mono to stereo, Doubles 3 Width 100: balanced within 1 dB, difference = -0.022 dB
 PASS  mono to stereo at Width 0: left and right identical, largest difference = 0.000 
 PASS  mono to stereo: junk in the unused channel changes nothing, largest difference = 0.000 
-PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 44100 Hz block 32, peak = 12.056 
+PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 44100 Hz block 32, peak = 13.064 
 PASS  mono to stereo, no allocations in the audio path, 44100 Hz block 32 = 0.000 
 PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 44100 Hz block 4096, peak = 36.309 
 PASS  mono to stereo, no allocations in the audio path, 44100 Hz block 4096 = 0.000 
-PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 48000 Hz block 32, peak = 11.730 
+PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 48000 Hz block 32, peak = 12.485 
 PASS  mono to stereo, no allocations in the audio path, 48000 Hz block 32 = 0.000 
 PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 48000 Hz block 4096, peak = 37.902 
 PASS  mono to stereo, no allocations in the audio path, 48000 Hz block 4096 = 0.000 
-PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 96000 Hz block 32, peak = 11.163 
+PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 96000 Hz block 32, peak = 11.835 
 PASS  mono to stereo, no allocations in the audio path, 96000 Hz block 32 = 0.000 
 PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 96000 Hz block 4096, peak = 4.588 
 PASS  mono to stereo, no allocations in the audio path, 96000 Hz block 4096 = 0.000 
@@ -322,20 +325,106 @@ INFO  Vibrato test note depth = 48.281 cents
 PASS  Vibrato Variation, double 1: at 0 the double has the lead's depth within 5 percent = 48.188 cents
 PASS  Vibrato Variation, double 2: at 0 the double has the lead's depth within 5 percent = 48.102 cents
 PASS  Vibrato Variation, double 3: at 0 the double has the lead's depth within 5 percent = 48.122 cents
-PASS  Vibrato Variation 100, double 1 sings straighter: depth at most half the lead's = 7.550 cents
-PASS  Vibrato Variation 100, double 2 sings wider: depth at least 1.25 times the lead's = 69.326 cents
-PASS  Vibrato Variation 100, double 3 somewhat straighter: depth at most 0.8 times the lead's = 28.596 cents
-PASS  Vibrato Variation 50 falls between 0 and 100 on double 1 = 27.163 cents
-PASS  Vibrato Variation 100 at 44100 Hz, double 1: depth at most half the lead's = 7.488 cents
-PASS  Vibrato Variation 100 at 96000 Hz, double 1: depth at most half the lead's = 7.576 cents
-PASS  Vibrato Variation 100, double 1, vibrato at 4.5 Hz: depth at most 0.7 of the lead's = 19.596 cents
-PASS  Vibrato Variation 100, double 1, vibrato at 6.8 Hz: depth at most 0.7 of the lead's = 31.865 cents
+PASS  Vibrato Variation 100, double 1 sings straighter: depth at most half the lead's = 3.691 cents
+PASS  Vibrato Variation 100, double 2 sings wider: depth at least 1.25 times the lead's = 70.471 cents
+PASS  Vibrato Variation 100, double 3 somewhat straighter: depth at most 0.8 times the lead's = 25.798 cents
+PASS  Vibrato Variation 50 falls between 0 and 100 on double 1 = 25.820 cents
+PASS  Vibrato Variation 100 at 44100 Hz, double 1: depth at most half the lead's = 3.458 cents
+PASS  Vibrato Variation 100 at 96000 Hz, double 1: depth at most half the lead's = 3.676 cents
+PASS  Vibrato Variation 100, double 1, vibrato at 4.5 Hz: depth at most 0.7 of the lead's = 3.005 cents
+PASS  Vibrato Variation 100, double 1, vibrato at 6.8 Hz: depth at most 0.7 of the lead's = 9.572 cents
 PASS  Vocal Range Soprano does not follow a 110 Hz note, depth stays = 42.939 cents
-PASS  Vocal Range Baritone or Bass follows a 110 Hz note, depth at most half = 7.726 cents
-PASS  Vibrato Variation 100 on a steady note adds no movement, pitch peak = 0.012 cents
+PASS  Vocal Range Baritone or Bass follows a 110 Hz note, depth at most half = 3.162 cents
+PASS  Vibrato Variation 100 on a steady note adds no movement, pitch peak = 0.000 cents
 PASS  noise reads as no pitch, share of blocks with a pitch = 0.000 
-PASS  note steps of a fifth with Vibrato Variation 100: bend added stays under 30 cents, worst = 0.651 cents
-PASS  slides of 3 semitones with Vibrato Variation 100: bend added stays under 40 cents, worst = 33.299 cents
+PASS  note steps of a fifth with Vibrato Variation 100: bend added stays under 30 cents, worst = 0.000 cents
+PASS  slides of 3 semitones with Vibrato Variation 100: bend added stays under 40 cents, worst = 0.000 cents
+PASS  Precise Vibrato, Tightness 0, vibrato at 4.5 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.062 
+INFO  Precise Vibrato, Tightness 0, vibrato at 4.5 Hz, wandering: the 0.3 law, double 1 keeps = 0.401 
+PASS  Precise Vibrato, Tightness 0, vibrato at 4.5 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.471 
+INFO  Precise Vibrato, Tightness 0, vibrato at 4.5 Hz, wandering: the 0.3 law, double 2 sings = 1.330 
+PASS  Precise Vibrato, Tightness 0, vibrato at 5.5 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.076 
+INFO  Precise Vibrato, Tightness 0, vibrato at 5.5 Hz, wandering: the 0.3 law, double 1 keeps = 0.157 
+PASS  Precise Vibrato, Tightness 0, vibrato at 5.5 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.459 
+INFO  Precise Vibrato, Tightness 0, vibrato at 5.5 Hz, wandering: the 0.3 law, double 2 sings = 1.436 
+PASS  Precise Vibrato, Tightness 0, vibrato at 6.8 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.203 
+INFO  Precise Vibrato, Tightness 0, vibrato at 6.8 Hz, wandering: the 0.3 law, double 1 keeps = 0.675 
+PASS  Precise Vibrato, Tightness 0, vibrato at 6.8 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.442 
+INFO  Precise Vibrato, Tightness 0, vibrato at 6.8 Hz, wandering: the 0.3 law, double 2 sings = 1.403 
+PASS  Precise Vibrato, Tightness 30, vibrato at 4.5 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.062 
+INFO  Precise Vibrato, Tightness 30, vibrato at 4.5 Hz, wandering: the 0.3 law, double 1 keeps = 0.484 
+PASS  Precise Vibrato, Tightness 30, vibrato at 4.5 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.468 
+INFO  Precise Vibrato, Tightness 30, vibrato at 4.5 Hz, wandering: the 0.3 law, double 2 sings = 1.304 
+PASS  Precise Vibrato, Tightness 30, vibrato at 5.5 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.077 
+INFO  Precise Vibrato, Tightness 30, vibrato at 5.5 Hz, wandering: the 0.3 law, double 1 keeps = 0.124 
+PASS  Precise Vibrato, Tightness 30, vibrato at 5.5 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.456 
+INFO  Precise Vibrato, Tightness 30, vibrato at 5.5 Hz, wandering: the 0.3 law, double 2 sings = 1.423 
+PASS  Precise Vibrato, Tightness 30, vibrato at 6.8 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.196 
+INFO  Precise Vibrato, Tightness 30, vibrato at 6.8 Hz, wandering: the 0.3 law, double 1 keeps = 0.509 
+PASS  Precise Vibrato, Tightness 30, vibrato at 6.8 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.436 
+INFO  Precise Vibrato, Tightness 30, vibrato at 6.8 Hz, wandering: the 0.3 law, double 2 sings = 1.428 
+PASS  Precise Vibrato, Tightness 85, vibrato at 4.5 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.062 
+INFO  Precise Vibrato, Tightness 85, vibrato at 4.5 Hz, wandering: the 0.3 law, double 1 keeps = 0.647 
+PASS  Precise Vibrato, Tightness 85, vibrato at 4.5 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.458 
+INFO  Precise Vibrato, Tightness 85, vibrato at 4.5 Hz, wandering: the 0.3 law, double 2 sings = 1.235 
+PASS  Precise Vibrato, Tightness 85, vibrato at 5.5 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.076 
+INFO  Precise Vibrato, Tightness 85, vibrato at 5.5 Hz, wandering: the 0.3 law, double 1 keeps = 0.324 
+PASS  Precise Vibrato, Tightness 85, vibrato at 5.5 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.443 
+INFO  Precise Vibrato, Tightness 85, vibrato at 5.5 Hz, wandering: the 0.3 law, double 2 sings = 1.365 
+PASS  Precise Vibrato, Tightness 85, vibrato at 6.8 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.183 
+INFO  Precise Vibrato, Tightness 85, vibrato at 6.8 Hz, wandering: the 0.3 law, double 1 keeps = 0.205 
+PASS  Precise Vibrato, Tightness 85, vibrato at 6.8 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.415 
+INFO  Precise Vibrato, Tightness 85, vibrato at 6.8 Hz, wandering: the 0.3 law, double 2 sings = 1.415 
+PASS  Precise Vibrato, double 3 sings 0.35 to 0.65 times as wide = 0.534 
+PASS  Precise Vibrato, Vibrato Variation 50: double 1 keeps 0.35 to 0.65 of the depth = 0.534 
+PASS  Precise Vibrato, Vibrato Variation 0: double 1 has the lead's depth within 5 percent = 0.997 
+PASS  vibrato that comes and goes: on the straight part the bend adds at most 5 cents = 0.230 cents
+PASS  vibrato that comes and goes: half a second after it starts, double 1 keeps at most 0.35 of it = 0.089 
+PASS  Mono Safe, Natural Pair: left plus right is the lead alone, what is left = -151.307 dB
+PASS  Mono Safe, Natural Pair: the doubles are all there in left minus right, against their levels = -0.132 dB
+PASS  Mono Safe, Wide Stack: left plus right is the lead alone, what is left = -146.873 dB
+PASS  Mono Safe, Wide Stack: the doubles are all there in left minus right, against their levels = -0.260 dB
+PASS  Mono Safe, Loose Gang: left plus right is the lead alone, what is left = -145.991 dB
+PASS  Mono Safe, Loose Gang: the doubles are all there in left minus right, against their levels = -0.265 dB
+PASS  Mono Safe, Two Singers: left plus right is the lead alone, what is left = -147.544 dB
+PASS  Mono Safe, Two Singers: the doubles are all there in left minus right, against their levels = -0.229 dB
+PASS  Mono Safe on against off at the default: level of left and right together = 0.003 dB
+PASS  Mono Safe with one output changes nothing, bit for bit
+PASS  Mono Safe with Bypass on: exact dry on both sides, largest difference = 0.000 
+PASS  Match Level, Natural Pair: left and right together are as loud as the input within 0.5 dB (off: 1.720 dB) = -0.047 dB
+PASS  Match Level, Natural Pair: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Tight Double: left and right together are as loud as the input within 0.5 dB (off: 0.628 dB) = -0.011 dB
+PASS  Match Level, Tight Double: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Quiet Thickener: left and right together are as loud as the input within 0.5 dB (off: 0.486 dB) = -0.029 dB
+PASS  Match Level, Quiet Thickener: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Wide Stack: left and right together are as loud as the input within 0.5 dB (off: 1.508 dB) = -0.121 dB
+PASS  Match Level, Wide Stack: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Loose Gang: left and right together are as loud as the input within 0.5 dB (off: 1.844 dB) = -0.141 dB
+PASS  Match Level, Loose Gang: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Doubles Only Wide: left and right together are as loud as the input within 0.5 dB (off: 2.862 dB) = -0.148 dB
+PASS  Match Level, Doubles Only Wide: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Two Singers: left and right together are as loud as the input within 0.5 dB (off: 2.893 dB) = -0.116 dB
+PASS  Match Level, Two Singers: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Slapback Double: left and right together are as loud as the input within 0.5 dB (off: 0.494 dB) = -0.020 dB
+PASS  Match Level, Slapback Double: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level with one output: as loud as the input within 0.5 dB = -0.049 dB
+PASS  Match Level with Bypass on: exact dry on both sides, largest difference = 0.000 
+PASS  Match Level with every voice off: silence, nothing blows up
+PASS  Mono Safe with Match Level: left plus right is the lead alone at the matched level, what is left = -147.234 dB
+PASS  a new Duo opens with Precise Vibrato on, Mono Safe off and Match Level off
+PASS  a session saved before 0.4.0 loads with Precise Vibrato, Mono Safe and Match Level off
+PASS  and keeps its other settings
+PASS  a session saved by 0.4.0 keeps all three switches as saved
+PASS  preset Natural Pair: Precise Vibrato on, Mono Safe and Match Level off
+PASS  preset Tight Double: Precise Vibrato on, Mono Safe and Match Level off
+PASS  preset Quiet Thickener: Precise Vibrato on, Mono Safe and Match Level off
+PASS  preset Wide Stack: keeps the 0.3 vibrato it was made with, Mono Safe and Match Level off
+PASS  preset Loose Gang: keeps the 0.3 vibrato it was made with, Mono Safe and Match Level off
+PASS  preset Doubles Only Wide: Precise Vibrato on, Mono Safe and Match Level off
+PASS  preset Two Singers: keeps the 0.3 vibrato it was made with, Mono Safe and Match Level off
+PASS  preset Slapback Double: Precise Vibrato on, Mono Safe and Match Level off
+PASS  an old session with Wide Stack's settings sounds as the preset does, bit for bit
+PASS  switching Precise Vibrato on changes what Vibrato Variation does
 PASS  delay reading matches the delay measured from the audio, reading = 36.000 ms
 PASS  pitch reading matches a 220 Hz note, reading = 220.314 Hz
 INFO  Doubles 1 Width 0 left and right correlation, doubles only, noise = 1.000 
@@ -436,7 +525,7 @@ PASS  block size 64 gives the same output as 512
 PASS  block size 4096 gives the same output as 512
 PASS  a playhead changes nothing
 PASS  prepare called again restarts cleanly, same bounce
-PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.023 
+PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.021 
 PASS  the sung recording loads
 PASS  null test: bit for bit the same as 0.2.0, no window, as first opened
 PASS  null test: bit for bit the same with the window open and drawing, as first opened
@@ -483,6 +572,9 @@ PASS  on screen: Doubles Pan
 PASS  on screen: Extra Delay
 PASS  on screen: Vocal Range
 PASS  on screen: Bypass
+PASS  on screen: Precise Vibrato
+PASS  on screen: Mono Safe
+PASS  on screen: Match Level
 PASS  control is a real parameter: bypass
 PASS  control is a real parameter: double1
 PASS  control is a real parameter: double2
@@ -492,7 +584,10 @@ PASS  control is a real parameter: doublespan
 PASS  control is a real parameter: extradelay
 PASS  control is a real parameter: lead
 PASS  control is a real parameter: leadpan
+PASS  control is a real parameter: matchlevel
+PASS  control is a real parameter: monosafe
 PASS  control is a real parameter: pitchamount
+PASS  control is a real parameter: precisevibrato
 PASS  control is a real parameter: range
 PASS  control is a real parameter: tightness
 PASS  control is a real parameter: timbre

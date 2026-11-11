@@ -20,8 +20,11 @@
 // its timing and its pitch. Nothing here repeats: both drifts are random curves (cubic B-splines through random points),
 // each double with its own seeds and its own speeds, so there is no sweep rate to hear.
 //
-// Vibrato Variation follows the pitch of the input, takes out the part that moves at vibrato speed, and bends each double
-// by a share of it, so one double sings straighter and another sings wider than the lead.
+// Vibrato Variation follows the pitch of the input, finds its vibrato, and bends each double by a share of it, so one double
+// sings straighter and another sings wider than the lead. Precise Vibrato (0.4.0) fits a line plus one sinusoid to the last
+// cycle and a half of the pitch and reads that sinusoid at the moment each double is playing, which is its own delay back
+// from now. So the bend lands on the vibrato it is meant to change, at any vibrato speed and while the double wanders. With
+// Precise Vibrato off the 0.3 law runs instead, unchanged: one band pass around 6.3 Hz, the same bend for every double.
 //
 // Width moves paired doubles apart by level. A double with no partner across the centre fades from its one centre read
 // head to two side heads a few ms either side of it, one for each output. Width only changes gains, never a delay, so
@@ -45,6 +48,12 @@ public:
         float timingPct = 100.0f, pitchPct = 100.0f, vibratoPct = 0.0f, timbrePct = 0.0f, leadPanPct = 0.0f, doublesPanPct = 0.0f, extraMs = 0.0f;
         int range = altoTenor;
         bool bypass = false;
+        // Since 0.4.0. Precise Vibrato off is the 0.3 vibrato law, bit for bit: sessions saved before 0.4.0 load with it off.
+        bool vibratoPrecise = true;
+        // Mono Safe puts every double on left and right with opposite signs, so (L + R) / 2 is the lead alone.
+        bool monoSafe = false;
+        // Match Level turns the lead and the doubles down together, so what comes out is as loud as what went in.
+        bool matchLevel = false;
     };
 
     // How far each double's formants move at Timbre Variation 100, in semitones.
@@ -161,6 +170,7 @@ public:
                 const double base = (double) baseTightMs[v] + (double) (baseLooseMs[v] - baseTightMs[v]) * loose;
                 const double centreMs = base + room + extra + timingMs * s + pitchMs * q + bendSmooth[v];
                 lastCentre[v] = centreMs;
+                delayNowMs[v] = centreMs;
                 if (gl == 0.0f && gr == 0.0f)
                     continue;
 
@@ -539,6 +549,29 @@ private:
         bendSmooth.fill (0.0);
         bendStep = 1.0 - std::exp (-1.0 / (trackerSeconds * sr));
         bendSmoothCoef = 1.0 - std::exp (-1.0 / (0.003 * sr));
+
+        // Precise Vibrato: the pitch history and, for each vibrato speed tried, how many frames make its window and the
+        // cosine and sine at each of them (time runs back from the newest frame).
+        fitCents.fill (0.0);
+        fitOk.fill (0);
+        fitRecent.fill (0.0);
+        fitHead = fitSince = fitRecentPos = 0;
+        fitHave = fitGood = false;
+        fitLast = fitGate = fitA = fitB = fitOmega = 0.0;
+        fitAge = trackerAge = 0.025;
+        fitCos.assign ((size_t) (fitRates * fitFrames), 0.0);
+        fitSin.assign ((size_t) (fitRates * fitFrames), 0.0);
+        for (int j = 0; j < fitRates; ++j)
+        {
+            const double hz = fitRateHz (j), w = juce::MathConstants<double>::twoPi * hz;
+            fitLength[(size_t) j] = juce::jlimit (8, fitFrames - 1, (int) std::round (fitCycles / (hz * trackerSeconds)));
+            for (int k = 0; k < fitFrames; ++k)
+            {
+                fitCos[(size_t) (j * fitFrames + k)] = std::cos (-w * trackerSeconds * k);
+                fitSin[(size_t) (j * fitFrames + k)] = std::sin (-w * trackerSeconds * k);
+            }
+        }
+        delayNowMs.fill (0.0);
     }
 
     void pushTracker (float x) noexcept
@@ -594,6 +627,8 @@ private:
                 const double a = trackerDiff[(size_t) lag - 1], b = trackerDiff[(size_t) lag], c = trackerDiff[(size_t) lag + 1];
                 const double denom = a - 2.0 * b + c;
                 const double refined = lag + (std::abs (denom) > 1.0e-12 ? 0.5 * (a - c) / denom : 0.0);
+                // The stretch this was read from starts span samples back and is one window plus one period long: its middle is this old.
+                trackerAge = ((double) span - 0.5 * ((double) trackerWindow + refined)) / trackerRate;
                 return trackerRate / refined;
             }
         return 0.0;
@@ -603,6 +638,7 @@ private:
     {
         trackedHz = findPitch();
         const bool voiced = trackedHz > 0.0;
+        pushFit (voiced); // the history Precise Vibrato reads; nothing below reads it
         if (voiced)
         {
             const double cents = 1200.0 * std::log2 (trackedHz / 55.0);
@@ -633,13 +669,137 @@ private:
         if (vibratoTarget == 0.0 && vibrato < 1.0e-4) vibrato = 0.0;
         const double vib = juce::jlimit (-120.0, 120.0, y * gate);
         const double leak = 1.0 - trackerSeconds / 1.0;
+        const bool precise = vibratoPreciseTarget;
+        if (precise)
+        {
+            if (vibrato != 0.0) solveFit(); else fitGood = false;
+            fitGate += juce::jlimit (-fitGateStep, fitGateStep, (fitGood ? 1.0 : 0.0) - fitGate);
+        }
         for (size_t v = 0; v < maxDoubles; ++v)
         {
             // Pitch follows the slope of the delay: 1 cent is 1/1731 of real time. The slow leak keeps the delay from walking away.
-            const double cents = vibratoShare[v] * vibrato * vib;
+            const double cents = vibratoShare[v] * vibrato * (precise ? preciseVibrato (v) : vib);
             bend[v] = juce::jlimit (-maxBendMs, maxBendMs, (bend[v] - cents / 1731.2 * trackerSeconds * 1000.0) * leak);
             bendTarget[v] = bend[v];
         }
+    }
+
+    // ------------------------------------------------------------ Precise Vibrato
+
+    static constexpr int fitFrames = 128, fitRates = 12;
+    static constexpr double fitCycles = 1.5;      // the window is this many cycles of the vibrato speed being tried
+    static constexpr double fitMinShare = 0.5;    // of what a straight line leaves, the sinusoid must explain this much
+    static constexpr double fitMinCents = 3.0;    // smaller than this is not vibrato
+    static constexpr double fitMaxTrend = 3.0;    // the line may move this many times the sinusoid's size across the window; more is a slide
+    static constexpr double fitGateStep = 0.1;    // opens and shuts in 10 frames, about 50 ms
+    static constexpr double bendLandsSeconds = 0.008; // the two smoothers after the bend put it this much later
+    static double fitRateHz (int j) { return 3.5 + 0.5 * j; } // 3.5 to 9 Hz; the two ends are only there to be refused
+
+    void pushFit (bool voiced) noexcept
+    {
+        double c = fitLast;
+        if (voiced)
+        {
+            c = 1200.0 * std::log2 (trackedHz / 55.0);
+            if (! fitHave) fitRecent.fill (c);
+            const double before = fitRecent[(size_t) fitRecentPos]; // 8 frames ago, about 40 ms
+            fitRecent[(size_t) fitRecentPos] = c;
+            fitRecentPos = (fitRecentPos + 1) % (int) fitRecent.size();
+            if (! fitHave || std::abs (c - before) > 150.0) fitSince = 0; // a new note: the window starts over on it
+            fitHave = true;
+            fitLast = c;
+            fitAge = trackerAge;
+        }
+        fitHead = (fitHead + 1) % fitFrames;
+        fitCents[(size_t) fitHead] = c;
+        fitOk[(size_t) fitHead] = voiced ? 1 : 0;
+        if (fitSince < fitFrames) ++fitSince;
+    }
+
+    // Weighted least squares of 1, t, cos wt, sin wt on the pitch of the last cycle and a half, for each speed. The best speed is
+    // the one whose sinusoid explains the largest share of what a straight line leaves. Refused: the slowest and the fastest speed
+    // tried (a slide or a new note fits best there), a fit that explains too little or is too small to be vibrato, and a line
+    // that moves much further than the sinusoid swings (a slide with a wobble on it).
+    void solveFit() noexcept
+    {
+        fitGood = false;
+        double best = -1.0, bestAmp = 0.0, bestTrend = 0.0;
+        int bestJ = -1;
+        for (int j = 0; j < fitRates; ++j)
+        {
+            const int n = fitLength[(size_t) j];
+            if (n > fitSince) continue;
+            const double* cs = fitCos.data() + j * fitFrames;
+            const double* sn = fitSin.data() + j * fitFrames;
+            double m[4][5] = {};
+            double yy = 0.0;
+            int valid = 0;
+            for (int k = 0; k < n; ++k)
+            {
+                const int idx = (fitHead - k + fitFrames) % fitFrames;
+                if (! fitOk[(size_t) idx]) continue;
+                ++valid;
+                const double t = -trackerSeconds * k, y = fitCents[(size_t) idx] - fitLast;
+                const double b[4] = { 1.0, t, cs[k], sn[k] };
+                for (int r = 0; r < 4; ++r)
+                {
+                    for (int c = r; c < 4; ++c) m[r][c] += b[r] * b[c];
+                    m[r][4] += b[r] * y;
+                }
+                yy += y * y;
+            }
+            if (valid < juce::jmax (24, (int) (0.8 * n))) continue;
+            for (int r = 1; r < 4; ++r) for (int c = 0; c < r; ++c) m[r][c] = m[c][r];
+            const double rhs[4] = { m[0][4], m[1][4], m[2][4], m[3][4] };
+            // what a straight line alone leaves
+            const double det = m[0][0] * m[1][1] - m[0][1] * m[0][1];
+            if (std::abs (det) < 1.0e-12) continue;
+            const double la = (rhs[0] * m[1][1] - rhs[1] * m[0][1]) / det, lb = (m[0][0] * rhs[1] - m[0][1] * rhs[0]) / det;
+            const double leftByLine = juce::jmax (1.0e-9, yy - la * rhs[0] - lb * rhs[1]);
+            // the four together, by elimination
+            bool singular = false;
+            for (int col = 0; col < 4 && ! singular; ++col)
+            {
+                int piv = col;
+                for (int r = col + 1; r < 4; ++r) if (std::abs (m[r][col]) > std::abs (m[piv][col])) piv = r;
+                if (std::abs (m[piv][col]) < 1.0e-12) { singular = true; break; }
+                if (piv != col) for (int c = 0; c < 5; ++c) std::swap (m[col][c], m[piv][c]);
+                for (int r = col + 1; r < 4; ++r)
+                {
+                    const double g = m[r][col] / m[col][col];
+                    for (int c = col; c < 5; ++c) m[r][c] -= g * m[col][c];
+                }
+            }
+            if (singular) continue;
+            double p[4] = {};
+            for (int r = 3; r >= 0; --r)
+            {
+                double sum = m[r][4];
+                for (int c = r + 1; c < 4; ++c) sum -= m[r][c] * p[c];
+                p[r] = sum / m[r][r];
+            }
+            const double leftByFit = juce::jmax (0.0, yy - (p[0] * rhs[0] + p[1] * rhs[1] + p[2] * rhs[2] + p[3] * rhs[3]));
+            const double share = 1.0 - leftByFit / leftByLine;
+            if (share > best)
+            {
+                best = share; bestJ = j;
+                fitA = p[2]; fitB = p[3];
+                fitOmega = juce::MathConstants<double>::twoPi * fitRateHz (j);
+                bestAmp = std::sqrt (p[2] * p[2] + p[3] * p[3]);
+                bestTrend = std::abs (p[1]) * trackerSeconds * n;
+            }
+        }
+        fitGood = best >= fitMinShare && bestAmp >= fitMinCents && bestAmp <= 150.0 && bestJ >= 1 && bestJ <= fitRates - 2 && bestTrend <= fitMaxTrend * bestAmp;
+    }
+
+    // The vibrato, in cents, of the sound double v is playing now. That sound left the input one delay ago; the newest pitch
+    // reading is fitAge old; and the bend made now lands bendLandsSeconds later. So the sinusoid is read this far past its
+    // newest frame (often a few ms into the future of the readings, which a sinusoid can give and a filter cannot).
+    double preciseVibrato (size_t v) const noexcept
+    {
+        if (fitGate <= 0.0) return 0.0;
+        const double t = fitAge - delayNowMs[v] * 0.001 + bendLandsSeconds;
+        return juce::jlimit (-120.0, 120.0, fitGate * (fitA * std::cos (fitOmega * t) + fitB * std::sin (fitOmega * t)));
     }
 
     // ------------------------------------------------------------ controls
@@ -670,15 +830,55 @@ private:
         timbreTarget = juce::jlimit (0.0, 1.0, (double) p.timbrePct * 0.01);
         extraTarget = juce::jlimit (0.0, maxExtraMs, (double) p.extraMs);
         rangeTarget = p.range;
+        vibratoPreciseTarget = p.vibratoPrecise;
+        const bool monoSafe = p.monoSafe && stereo;
         for (size_t v = 0; v < maxDoubles; ++v)
         {
             const float g = (off || (int) v >= n) ? 0.0f : levelToGain (p.levelDb[v]);
+            if (monoSafe)
+            {
+                // The same double on both sides with opposite signs, at the level it has anywhere else (every pan gives a
+                // double the same power, taken over both sides). Left plus right then holds no double at all. One read head
+                // only: two different side heads would not cancel. Width and Doubles Pan have nothing to move here.
+                const float sign = v % 2 == 0 ? 1.0f : -1.0f;
+                gainLTarget[v] = sign * g;
+                gainRTarget[v] = -sign * g;
+                centreTarget[v] = 1.0f;
+                sideTarget[v] = 0.0f;
+                continue;
+            }
             sides ((double) panAtFullWidth[n - 1][v] * width + doublesPan, gainLTarget[v], gainRTarget[v], g);
             // Left and right differ only through the side heads, so correlation falls smoothly as the blend moves to them.
             const double phi = width * (double) splitAtFullWidth[n - 1][v] * juce::MathConstants<double>::halfPi;
             const double cw = std::cos (phi), sw = std::sin (phi);
             centreTarget[v] = cw < 1.0e-9 ? 0.0f : (float) cw;
             sideTarget[v] = sw < 1.0e-9 ? 0.0f : (float) sw;
+        }
+
+        if (p.matchLevel && ! off)
+        {
+            // The voices are separate enough to add in power (measured on real singing: within 0.2 dB of this sum). Take that sum
+            // for each side, average the sides, and turn everything down by it. Every voice gets the same factor, so the balance
+            // between the lead and the doubles, the pans and the width stay exactly as set.
+            double left = (double) leadLTarget * leadLTarget, right = (double) leadRTarget * leadRTarget;
+            for (size_t v = 0; v < maxDoubles; ++v)
+            {
+                const double heads = (double) centreTarget[v] * centreTarget[v] + (double) sideTarget[v] * sideTarget[v];
+                left += (double) gainLTarget[v] * gainLTarget[v] * heads;
+                right += (double) gainRTarget[v] * gainRTarget[v] * heads;
+            }
+            const double power = stereo ? 0.5 * (left + right) : left;
+            if (power > 1.0e-6)
+            {
+                const auto k = (float) (1.0 / std::sqrt (power));
+                leadLTarget *= k;
+                leadRTarget *= k;
+                for (size_t v = 0; v < maxDoubles; ++v)
+                {
+                    gainLTarget[v] *= k;
+                    gainRTarget[v] *= k;
+                }
+            }
         }
     }
 
@@ -718,6 +918,17 @@ private:
     double bp0 = 0.0, bp1 = 0.0, bp2 = 0.0, bpX1 = 0.0, bpX2 = 0.0, bpY1 = 0.0, bpY2 = 0.0;
     std::array<double, maxDoubles> bend {}, bendTarget {}, bendNow {}, bendSmooth {};
     double bendStep = 0.0, bendSmoothCoef = 0.0;
+
+    // Precise Vibrato
+    std::array<double, fitFrames> fitCents {};
+    std::array<unsigned char, fitFrames> fitOk {};
+    std::array<double, 8> fitRecent {};
+    std::array<int, fitRates> fitLength {};
+    std::vector<double> fitCos, fitSin;
+    int fitHead = 0, fitSince = 0, fitRecentPos = 0;
+    bool fitHave = false, fitGood = false, vibratoPreciseTarget = true;
+    double fitLast = 0.0, fitGate = 0.0, fitA = 0.0, fitB = 0.0, fitOmega = 0.0, fitAge = 0.025, trackerAge = 0.025;
+    std::array<double, maxDoubles> delayNowMs {};
 
     // Readings for a later window
     std::array<std::atomic<float>, maxDoubles> readDelayMs {};

@@ -56,6 +56,7 @@ private:
     std::atomic<float>* doubles = nullptr, *tightness = nullptr, *width = nullptr, *lead = nullptr;
     std::array<std::atomic<float>*, DuoEngine::maxDoubles> levels {};
     std::atomic<float>* timingAmount = nullptr, *pitchAmount = nullptr, *vibrato = nullptr, *timbre = nullptr, *leadPan = nullptr, *doublesPan = nullptr, *extraDelay = nullptr, *range = nullptr;
+    std::atomic<float>* preciseVibrato = nullptr, *monoSafe = nullptr, *matchLevel = nullptr;
     juce::AudioParameterBool* bypass = nullptr;
     DuoEngine engine;
     std::atomic<float> inputPeak { 0.0f };

@@ -12,17 +12,28 @@ namespace
         int doubles;
         float tightness, width, lead, level1, level2, level3;
         float timing = 100.0f, pitch = 100.0f, vibrato = 0.0f, timbre = 0.0f, leadPan = 0.0f, doublesPan = 0.0f, extra = 0.0f;
+        // The three presets that use Vibrato Variation were made on the 0.3 vibrato law and keep it, so they sound as they did.
+        bool preciseVibrato = true;
     };
+
+    // The state of a session saved before 0.4.0 has no entry for a parameter added in 0.4.0.
+    bool stateHolds (const juce::XmlElement& xml, const char* paramId)
+    {
+        for (auto* child : xml.getChildIterator())
+            if (child->getStringAttribute ("id") == paramId)
+                return true;
+        return false;
+    }
 
     // The first preset is the default state of the plug-in.
     constexpr Preset presets[] = {
         { "Natural Pair",      2, 30.0f,  70.0f,   0.0f,  -6.0f,  -6.0f,  -8.0f },
         { "Tight Double",      1, 10.0f,  50.0f,   0.0f,  -8.0f,  -8.0f,  -8.0f },
         { "Quiet Thickener",   2, 15.0f,  15.0f,   0.0f, -12.0f, -12.0f, -12.0f },
-        { "Wide Stack",        3, 45.0f, 100.0f,  -1.0f,  -6.0f,  -6.0f,  -8.0f, 100.0f, 100.0f, 20.0f, 15.0f },
-        { "Loose Gang",        3, 85.0f, 100.0f,  -2.0f,  -5.0f,  -5.0f,  -5.0f, 100.0f, 120.0f, 40.0f, 25.0f },
+        { "Wide Stack",        3, 45.0f, 100.0f,  -1.0f,  -6.0f,  -6.0f,  -8.0f, 100.0f, 100.0f, 20.0f, 15.0f,   0.0f,  0.0f,  0.0f, false },
+        { "Loose Gang",        3, 85.0f, 100.0f,  -2.0f,  -5.0f,  -5.0f,  -5.0f, 100.0f, 120.0f, 40.0f, 25.0f,   0.0f,  0.0f,  0.0f, false },
         { "Doubles Only Wide", 2, 35.0f, 100.0f, -60.0f,   0.0f,   0.0f,  -3.0f },
-        { "Two Singers",       1, 40.0f,   0.0f,   0.0f,   0.0f,   0.0f,   0.0f, 100.0f, 100.0f, 30.0f, 40.0f, -40.0f, 40.0f },
+        { "Two Singers",       1, 40.0f,   0.0f,   0.0f,   0.0f,   0.0f,   0.0f, 100.0f, 100.0f, 30.0f, 40.0f, -40.0f, 40.0f,  0.0f, false },
         { "Slapback Double",   1, 20.0f,  30.0f,   0.0f,  -9.0f,  -9.0f,  -9.0f, 100.0f, 100.0f,  0.0f,  0.0f,   0.0f,  0.0f, 70.0f },
     };
 
@@ -72,6 +83,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "range", 1 }, "Vocal Range",
                                                         StringArray { "Soprano", "Alto or Tenor", "Baritone or Bass", "Instrument" }, (int) DuoEngine::altoTenor));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "bypass", 1 }, "Bypass", false));
+    // Added in 0.4.0, with a later version hint so the AU keeps the older parameters where they were.
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "precisevibrato", 2 }, "Precise Vibrato", true));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "monosafe", 2 }, "Mono Safe", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "matchlevel", 2 }, "Match Level", false));
     return layout;
 }
 
@@ -95,6 +110,9 @@ PluginProcessor::PluginProcessor()
     doublesPan = apvts.getRawParameterValue ("doublespan");
     extraDelay = apvts.getRawParameterValue ("extradelay");
     range = apvts.getRawParameterValue ("range");
+    preciseVibrato = apvts.getRawParameterValue ("precisevibrato");
+    monoSafe = apvts.getRawParameterValue ("monosafe");
+    matchLevel = apvts.getRawParameterValue ("matchlevel");
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
 }
 
@@ -122,6 +140,9 @@ DuoEngine::Params PluginProcessor::readParams() const
     p.doublesPanPct = doublesPan->load();
     p.extraMs = extraDelay->load();
     p.range = juce::roundToInt (range->load());
+    p.vibratoPrecise = preciseVibrato->load() >= 0.5f;
+    p.monoSafe = monoSafe->load() >= 0.5f;
+    p.matchLevel = matchLevel->load() >= 0.5f;
     p.bypass = bypass->get();
     return p;
 }
@@ -194,6 +215,9 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("leadpan", pr.leadPan);
     set ("doublespan", pr.doublesPan);
     set ("extradelay", pr.extra);
+    set ("precisevibrato", pr.preciseVibrato ? 1.0f : 0.0f);
+    set ("monosafe", 0.0f);
+    set ("matchlevel", 0.0f);
 }
 
 juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new DuoEditor (*this); }
@@ -219,7 +243,14 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (advancedOpenAttribute);
+            // A session saved before 0.4.0 keeps the vibrato it was saved with, and has no Mono Safe and no Match Level.
+            const bool savedBefore04 = ! stateHolds (*xml, "precisevibrato");
             applySafeState (apvts, *xml);
+            if (savedBefore04)
+            {
+                for (const char* id : { "precisevibrato", "monosafe", "matchlevel" })
+                    apvts.getParameter (id)->setValueNotifyingHost (0.0f);
+            }
         }
 }
 

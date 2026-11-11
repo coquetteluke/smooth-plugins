@@ -68,6 +68,7 @@ private:
         // Advanced
         ui::ValueSlider timing, pitch, vibrato, timbre, leadPan, doublesPan, extraDelay;
         ui::ChoiceField range;
+        ui::PillToggle preciseVibrato, monoSafe, matchLevel;
 
         juce::Label hintLine;
         float advancedAmount = 0.0f;   // 0 closed, 1 open

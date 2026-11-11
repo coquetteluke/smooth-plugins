@@ -4,6 +4,8 @@
 //       one line per hop: the harmonic spacing it reads, the loudest bin of the whole spectrum, and at the tallest bin within a
 //       24th of an octave of hz its level, the harmonics either side, how far it stands over them, for how long something
 //       there has stood out (ms), and the reduction asked for by the old judgement and the reduction applied.
+//   RingProbe spacing <wav> <from sec> <to sec> [name=value ...]
+//       one line per look at the harmonic spacing: what the engine holds, and the correlations the look found.
 //   RingProbe rings <events.txt> <folder of wavs> [name=value ...]
 //       events.txt: lines of "<take number> <start sec> <length sec> <hz>". For each, the mean of dry dB minus output dB at the
 //       ring's tallest bin from 107 ms after it starts (Hann 2048, hop 512, the way the real vocal check reads a lasting resonance).
@@ -131,6 +133,55 @@ static int frames (int argc, char** argv)
     return 0;
 }
 
+/** One line per look at the harmonic spacing (every fourth hop in Normal): the spacing the engine holds, for how many more looks
+    it will hold it, and what the flattened spectrum it looked at says by itself: the strongest correlation at any spacing, and the
+    correlation at the spacing being held. Shows why a spacing is dropped on a note that is still sounding. */
+static int spacing (int argc, char** argv)
+{
+    if (argc < 5) return 2;
+    const auto x = readWav (argv[2]);
+    const double from = std::atof (argv[3]), to = std::atof (argv[4]);
+    const Params p = paramsFrom (argc, argv, 5);
+    ResonanceEngine engine;
+    engine.prepare (48000.0, 1);
+    engine.setParams (p);
+    const int hop = engine.getHopSize(), fftSize = engine.getFftSize();
+    const double binHz = engine.getBinHz();
+    std::vector<float> block ((size_t) hop);
+    const size_t startAt = (size_t) std::max (0.0, (from - 2.0) * 48000.0) / (size_t) hop * (size_t) hop;
+    std::printf ("# centre_s  spacing_hz  looks_left  best_corr  best_hz  corr_at_held  mean_log\n");
+    float lastSpacing = 0.0f;
+    for (size_t pos = startAt; pos + (size_t) hop <= x.size(); pos += (size_t) hop)
+    {
+        std::copy (x.begin() + (long) pos, x.begin() + (long) (pos + (size_t) hop), block.begin());
+        float* ptr = block.data();
+        engine.process (&ptr, 1, hop);
+        const double centre = ((double) (pos + (size_t) hop) - 0.5 * fftSize) / 48000.0;
+        const auto& c = engine.cores[(size_t) engine.active];
+        if (c.spacingCounter != 0) continue;   // this hop did not look
+        const float held = c.spacingBins > 0.0f ? c.spacingBins : lastSpacing;
+        if (c.spacingBins > 0.0f) lastSpacing = c.spacingBins;
+        if (centre < from) continue;
+        if (centre > to) break;
+        const int count = c.spacingLastBin - c.spacingFirstBin + 1;
+        const float* flat = c.spacingFlat.data();
+        const auto corr = [flat, count] (int lag)
+        {
+            float cross = 0.0f, a = 0.0f, b = 0.0f;
+            for (int i = 0; i + lag < count; ++i) { cross += flat[i] * flat[i + lag]; a += flat[i] * flat[i]; b += flat[i + lag] * flat[i + lag]; }
+            return cross / std::sqrt (std::max (a * b, 1.0e-12f));
+        };
+        float best = 0.0f; int bestLag = 0;
+        for (int lag = c.spacingMinLag; lag <= c.spacingMaxLag; ++lag) { const float v = corr (lag); if (v > best) { best = v; bestLag = lag; } }
+        float atHeld = 0.0f;
+        if (held > 0.0f) for (int lag = juce::roundToInt (held) - 1; lag <= juce::roundToInt (held) + 1; ++lag) atHeld = std::max (atHeld, corr (lag));
+        double sum = 0.0;
+        for (int i = 0; i < count; ++i) sum += c.spacingLog[(size_t) i];
+        std::printf ("%8.3f %7.1f %4d %6.2f %7.1f %6.2f %7.1f\n", centre, c.spacingBins * binHz, c.spacingHeld, (double) best, bestLag * binHz, (double) atHeld, sum / count);
+    }
+    return 0;
+}
+
 namespace
 {
 constexpr int N = 2048, H = 512;
@@ -225,6 +276,7 @@ int main (int argc, char** argv)
 {
     if (argc >= 2 && std::strcmp (argv[1], "frames") == 0) return frames (argc, argv);
     if (argc >= 2 && std::strcmp (argv[1], "rings") == 0) return rings (argc, argv);
+    if (argc >= 2 && std::strcmp (argv[1], "spacing") == 0) return spacing (argc, argv);
     std::fprintf (stderr, "RingProbe frames <wav> <from> <to> <hz> [name=value ...]\nRingProbe rings <events.txt> <wav folder> [name=value ...]\n");
     return 2;
 }

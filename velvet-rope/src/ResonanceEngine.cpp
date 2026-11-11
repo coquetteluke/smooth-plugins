@@ -67,6 +67,7 @@ namespace
     constexpr float togetherTo          = 0.9f;         // and where it is all the way down
     constexpr float togetherExtra       = 1.5f;         // the further drop, as a multiple of the sparse allowance
     constexpr float togetherExtraMaxDb  = 2.0f;         // and the most it can be
+    constexpr float surelyUnder        = 1.01f;        // a bin whose power is under its surroundings with this much in hand is under them in dB too, with no logarithm taken
     constexpr float notJudged          = -1000.0f;
     constexpr float standsUnder        = -1.0f;        // judged, and no taller than its neighbours: there is nothing to turn down
     constexpr float loudestFallMs      = 1000.0f;
@@ -85,29 +86,100 @@ namespace
         return 1.0f - (float) std::exp (-hopSeconds / (double) std::max (timeMs * 0.001f, 1.0e-4f));
     }
 
-    /** Sliding maximum over +/- halfWidth[k], in linear time. Needs k - halfWidth[k] and k + halfWidth[k] never to step back. */
-    void slidingMax (const float* in, float* out, int* deque, int n, const int* halfWidth) noexcept
+    /** Sliding maximum over +/- halfWidth[k], for bins first to last of the n in in: exactly the largest value in each window,
+        whatever the widths. A table holds the largest of every run of 2, 4, 8... bins, one pass a level and only over the bins
+        the windows reach, and a window is then the larger of the two runs that cover it. No branch depends on the sound, so
+        noise costs no more than silence. table needs n floats for every level above the first. */
+    void slidingMax (const float* in, float* out, float* table, int n, const int* halfWidth, int first, int last) noexcept
     {
-        int head = 0, tail = 0, next = 0;
+        if (last < first)
+            return;
 
-        for (int k = 0; k < n; ++k)
+        int widest = 0;
+
+        for (int k = first; k <= last; ++k)
+            widest = std::max (widest, halfWidth[k]);
+
+        const int lo = std::max (0, first - widest), hi = std::min (n - 1, last + widest);
+        const int span = hi - lo + 1, longest = std::min (2 * widest + 1, span);
+        int levels = 0;
+
+        while ((2 << levels) <= longest)
+            ++levels;
+
+        const float* below = in;
+
+        for (int j = 1; j <= levels; ++j)
         {
-            const int last  = std::min (n - 1, k + halfWidth[k]);
-            const int first = std::max (0, k - halfWidth[k]);
+            float* const level = table + (size_t) (j - 1) * (size_t) n;
+            const int half = 1 << (j - 1), count = span - 2 * half + 1;
+            const float* const a = below + lo;
+            const float* const b = a + half;
+            float* const d = level + lo;
 
-            for (; next <= last; ++next)
+            for (int i = 0; i < count; ++i)
+                d[i] = std::max (a[i], b[i]);
+
+            below = level;
+        }
+
+        const auto one = [in, out, table, n] (int k, int h) noexcept
+        {
+            const int a = std::max (0, k - h), b = std::min (n - 1, k + h);
+            const int j = 31 - __builtin_clz ((unsigned) (b - a + 1));
+            const float* const level = j == 0 ? in : table + (size_t) (j - 1) * (size_t) n;
+            out[k] = std::max (level[a], level[b - (1 << j) + 1]);
+        };
+
+        // The widths change slowly from bin to bin, so the bins come in stretches of one width. Inside a stretch, away from
+        // the two ends of the spectrum, every window reads the same level at the same two distances: a plain run.
+        for (int k = first; k <= last;)
+        {
+            const int h = halfWidth[k];
+            int end = k;
+
+            while (end < last && halfWidth[end + 1] == h)
+                ++end;
+
+            for (; k <= end && k < h; ++k)
+                one (k, h);
+
+            const int plainEnd = std::min (end, n - 1 - h);
+
+            if (k <= plainEnd)
             {
-                while (tail > head && in[deque[tail - 1]] <= in[next])
-                    --tail;
+                const int j = 31 - __builtin_clz ((unsigned) (2 * h + 1));
+                const float* const level = j == 0 ? in : table + (size_t) (j - 1) * (size_t) n;
+                const float* const a = level + (k - h);
+                const float* const b = level + (k + h - (1 << j) + 1);
+                float* const d = out + k;
+                const int count = plainEnd - k + 1;
 
-                deque[tail++] = next;
+                for (int i = 0; i < count; ++i)
+                    d[i] = std::max (a[i], b[i]);
+
+                k = plainEnd + 1;
             }
 
-            while (head < tail - 1 && deque[head] < first)
-                ++head;
-
-            out[k] = in[deque[head]];
+            for (; k <= end; ++k)
+                one (k, h);
         }
+    }
+
+    /** The largest of n values, none of them NaN. Eight running maxima side by side, so it is not one long chain. */
+    float largestOf (const float* in, int n) noexcept
+    {
+        float m[8] = { in[0], in[0], in[0], in[0], in[0], in[0], in[0], in[0] };
+        int i = 0;
+
+        for (; i + 8 <= n; i += 8)
+            for (int j = 0; j < 8; ++j)
+                m[j] = std::max (m[j], in[i + j]);
+
+        for (; i < n; ++i)
+            m[0] = std::max (m[0], in[i]);
+
+        return std::max (std::max (std::max (m[0], m[1]), std::max (m[2], m[3])), std::max (std::max (m[4], m[5]), std::max (m[6], m[7])));
     }
 
     /** Sliding maximum over +/- half, the same half for every bin, for bins first to last of in. Three comparisons a bin
@@ -134,6 +206,44 @@ namespace
             const float upper = up[std::min (i + half, n - 1)];
             out[i] = i >= half ? std::max (down[i - half], upper) : upper;
         }
+    }
+
+    /** Sharpness's two widths for every bin, from the width per bin where that is one number for the whole spectrum. */
+    void widthsFromOne (double halfPerBin, int n, int* __restrict shape, int* __restrict det) noexcept
+    {
+        for (int k = 0; k < n; ++k)
+        {
+            const auto halfBins = halfPerBin * k;
+            shape[k] = std::max (1, juce::roundToInt (halfBins));
+            det[k]   = std::max (1, juce::roundToInt (halfBins * 0.5));
+        }
+    }
+
+    /** Where each bin's envelope and reference start and end, from tables of whole numbers. Returns the widest notch. */
+    int referenceBins (int n, int floorBins, int refMinBins,
+                       const int* __restrict shape, const int* __restrict det, const int* __restrict envelopeBase,
+                       const int* __restrict nearGuard, const int* __restrict downBin, const int* __restrict upBin,
+                       int* __restrict envelope, int* __restrict leftStart, int* __restrict leftEnd,
+                       int* __restrict rightStart, int* __restrict rightEnd) noexcept
+    {
+        const int topBin = n - 1;
+        int widest = 1;
+
+        for (int k = 0; k < n; ++k)
+        {
+            const int env = std::max (envelopeBase[k], floorBins);
+            const int guard = std::max (det[k] + env + 2, nearGuard[k]);   // the bin's own peak, smeared by the envelope, stays out
+            const int le = k - guard - 1, rs = k + guard + 1;
+
+            envelope[k]   = env;
+            leftStart[k]  = std::max (1, std::min (downBin[k], le - refMinBins + 1));
+            leftEnd[k]    = le;
+            rightStart[k] = rs;
+            rightEnd[k]   = std::min (topBin, std::max (upBin[k], rs + refMinBins - 1));
+            widest = std::max (widest, shape[k]);
+        }
+
+        return widest;
     }
 
     float toDb (float power) noexcept
@@ -274,6 +384,10 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
         s.heldRaw.assign (bins, 0.0f);
         s.heldRawLive = false;
         s.firmAdded.assign (bins, 0.0f);
+        s.liveFirst = 0;
+        s.liveLast = -1;
+        s.rawFirst = s.spreadFirst = 0;
+        s.rawLast = s.spreadLast = -1;
     }
 
     for (int ch = 0; ch < maxKeyChannels; ++ch)
@@ -282,7 +396,7 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
         keySpectrum[(size_t) ch].assign ((size_t) fftSize * 2, 0.0f);
     }
 
-    for (auto* table : { &detectorHalf, &shapeHalf, &refLeftStart, &refLeftEnd, &refRightStart, &refRightEnd, &followHalf })
+    for (auto* table : { &detectorHalf, &shapeHalf, &refLeftStart, &refLeftEnd, &refRightStart, &refRightEnd, &followHalf, &nearGuardBins, &referenceDownBin, &referenceUpBin })
         table->assign ((size_t) numBins, 0);
 
     for (auto* table : { &rangeMask, &sensitivity, &tiltPosition, &levelLift, &scratchBins, &scratchDetector, &displayPower, &listenMask, &harmonicPeak, &standing, &followed,
@@ -292,6 +406,18 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
     depthScale.assign ((size_t) numBins, 1.0f);
     activeFirst = 0;
     activeLast = -1;
+    maskFirst = 0;
+    maskLast = -1;
+    envelopeLast = -1;
+    widestShape = 1;
+    reachStale = true;
+
+    int tableLevels = 0;
+
+    while ((2 << tableLevels) <= numBins)
+        ++tableLevels;
+
+    maxTable.assign ((size_t) std::max (1, tableLevels) * (size_t) numBins, 0.0f);
 
     for (int k = 0; k < numBins; ++k)
         followHalf[(size_t) k] = juce::roundToInt ((double) k * (std::pow (2.0, (double) harmonicFollowOctaves) - 1.0));
@@ -299,7 +425,6 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
     attackCoeffs.assign ((size_t) numBins, 1.0f);
     releaseCoeffs.assign ((size_t) numBins, 1.0f);
     logBinFreq.resize ((size_t) numBins);
-    scratchDeque.assign ((size_t) numBins + 1, 0);
     envelopeHalf.assign ((size_t) numBins, 1);
 
     logBinFreq[0] = -100.0f;
@@ -315,6 +440,21 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
     }
 
     tiltPosition[0] = -1.0f;
+
+    // The reference starts a quarter octave out in the highs, past the skirts of a resonance, and closer in the lows, where
+    // the first formants would otherwise tower over everything above them. How far out only depends on the bin, so it is
+    // worked out here, once, and not each time Sharpness moves.
+    for (int k = 0; k < numBins; ++k)
+    {
+        const auto idx = (size_t) k;
+        const float highness = juce::jlimit (0.0f, 1.0f, tiltPosition[idx]);
+        const double nearOctaves = juce::jmap (highness, referenceNearLow, referenceNearHigh);
+        const double farOctaves  = juce::jmap (highness, referenceFarLow, referenceFarHigh);
+        const auto refDown = std::pow (2.0, -farOctaves), refUp = std::pow (2.0, farOctaves);
+        nearGuardBins[idx]    = juce::roundToInt (k * (std::pow (2.0, nearOctaves) - 1.0));
+        referenceDownBin[idx] = juce::roundToInt (k * refDown);
+        referenceUpBin[idx]   = juce::roundToInt (k * refUp);
+    }
 
     for (int k = 0; k < numBins; ++k)
     {
@@ -359,6 +499,10 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
         graphFirstBin[(size_t) i] = juce::jlimit (0, numBins - 1, (int) std::lround (lo / binHz));
         graphLastBin[(size_t) i]  = juce::jlimit (graphFirstBin[(size_t) i], numBins - 1, (int) std::lround (hi / binHz));
     }
+
+    // The graph stops at 20 kHz. A change of Quality reads the display spectrum by frequency, from a FFT with bins up to
+    // eight times finer or coarser, so a few bins past the graph's last are kept up as well.
+    displayLast = std::min (numBins - 1, graphLastBin[GraphFrame::numPoints - 1] + 16);
 }
 
 void ResonanceEngine::reset() noexcept
@@ -399,10 +543,13 @@ void ResonanceEngine::Core::reset() noexcept
         std::fill (s.heldPart.begin(), s.heldPart.end(), 0.0f);
         std::fill (s.heldRaw.begin(), s.heldRaw.end(), 0.0f);
         std::fill (s.firmAdded.begin(), s.firmAdded.end(), 0.0f);
+        std::fill (s.gain.begin(), s.gain.end(), 1.0f);
         s.heldPartLive = false;
         s.heldRawLive = false;
         s.standingLive = false;
         s.loudest = 0.0f;
+        s.liveFirst = 0;
+        s.liveLast = -1;
     }
 
     listenDirty = false;
@@ -468,6 +615,8 @@ void ResonanceEngine::Core::seedFrom (const Core& from) noexcept
         copyBins (a.slowStanding, b.slowStanding);
         b.standingLive = a.standingLive;
         b.loudest = a.loudest;
+        b.liveFirst = 0;              // what was copied may hold a reduction anywhere
+        b.liveLast = numBins - 1;
     }
 
     copyBins (from.displayPower, displayPower);
@@ -554,12 +703,12 @@ void ResonanceEngine::updateQualityChange() noexcept
     }
 }
 
-inline float ResonanceEngine::stepChannel (Core& c, int ch, float x, float gain, float trim, int keyChannels) noexcept
+inline float ResonanceEngine::stepChannel (Core& c, int ch, int position, float x, float gain, float trim, int keyChannels) noexcept
 {
     const auto idx = (size_t) ch;
     const auto role = c.channelRole[idx];
-    auto& in  = c.inputRing[idx][(size_t) c.position];
-    auto& out = c.outputRing[idx][(size_t) c.position];
+    auto& in  = c.inputRing[idx][(size_t) position];
+    auto& out = c.outputRing[idx][(size_t) position];
     const float dry = in;
     const float wet = role == ChannelRole::lfe ? dry : out * trim;   // the LFE only goes through the delay
     in  = x;
@@ -572,7 +721,7 @@ inline float ResonanceEngine::stepChannel (Core& c, int ch, float x, float gain,
     if (bandListenNow > 0.0f)
     {
         // The frames already applied Mix and chose treated or removed. The gain goes on what you would hear as the sound.
-        auto& band = c.listenRing[idx][(size_t) c.position];
+        auto& band = c.listenRing[idx][(size_t) position];
         y += bandListenNow * (band * (gain + deltaNow * (1.0f - gain)) - y);
         band = 0.0f;
     }
@@ -580,7 +729,7 @@ inline float ResonanceEngine::stepChannel (Core& c, int ch, float x, float gain,
     if (listenNow > 0.0f)
     {
         const float keyed = role == ChannelRole::lfe ? 0.0f
-                          : c.keyRing[role == ChannelRole::right && keyChannels > 1 ? 1 : 0][(size_t) c.position];
+                          : c.keyRing[role == ChannelRole::right && keyChannels > 1 ? 1 : 0][(size_t) position];
         y += listenNow * (keyed - y);
     }
 
@@ -593,26 +742,29 @@ inline void ResonanceEngine::advance (Core& c, int keyChannels) noexcept
     c.position = (c.position + 1) & (c.fftSize - 1);
 
     if (++c.hopCounter == c.hopSize)
+        finishHop (c, keyChannels);
+}
+
+void ResonanceEngine::finishHop (Core& c, int keyChannels) noexcept
+{
+    c.hopCounter = 0;
+    const bool listening = params.bandListen > 0 || bandListenNow > 0.0f;
+    const bool publish = c.processFrame (keyChannels, listening, mixNow, wetTrim.getCurrentValue());
+
+    if (&c == &cores[(size_t) active])
     {
-        c.hopCounter = 0;
-        const bool listening = params.bandListen > 0 || bandListenNow > 0.0f;
-        const bool publish = c.processFrame (keyChannels, listening, mixNow, wetTrim.getCurrentValue());
+        maxReductionDb.store (c.mostDb, std::memory_order_relaxed);
+        maxReductionHz.store (c.mostHz, std::memory_order_relaxed);
 
-        if (&c == &cores[(size_t) active])
+        if (publish)
         {
-            maxReductionDb.store (c.mostDb, std::memory_order_relaxed);
-            maxReductionHz.store (c.mostHz, std::memory_order_relaxed);
-
-            if (publish)
-            {
-                auto& frame = graphFrames[graphWriteIndex];
-                c.fillGraph (frame, numCh);
-                frame.keyInUse = params.sideChain && keyChannelsNow > 0;
-                frame.maxReductionDb = c.mostDb;
-                frame.maxReductionHz = c.mostHz;
-                frame.sequence = ++graphSequence;
-                graphWriteIndex = graphExchange.exchange (graphWriteIndex | graphNewFlag, std::memory_order_acq_rel) & (graphNewFlag - 1);
-            }
+            auto& frame = graphFrames[graphWriteIndex];
+            c.fillGraph (frame, numCh);
+            frame.keyInUse = params.sideChain && keyChannelsNow > 0;
+            frame.maxReductionDb = c.mostDb;
+            frame.maxReductionHz = c.mostHz;
+            frame.sequence = ++graphSequence;
+            graphWriteIndex = graphExchange.exchange (graphWriteIndex | graphNewFlag, std::memory_order_acq_rel) & (graphNewFlag - 1);
         }
     }
 }
@@ -648,6 +800,52 @@ void ResonanceEngine::process (float* const* channels, int numChannels, int numS
 
     for (int i = 0; i < numSamples; ++i)
     {
+        // Most of the time nothing is ramping and one Quality is playing. Then every sample up to the next frame, or to
+        // where the ring wraps, gets the same treatment, and each channel is one plain run with nothing to step in between.
+        while (incoming < 0 && i < numSamples
+               && mixNow == mixTarget && deltaNow == deltaTarget && bypassNow == bypassTarget && listenNow == listenTarget && bandListenNow == bandListenTarget
+               && ! outputGain.isSmoothing() && ! wetTrim.isSmoothing())
+        {
+            auto& core = cores[(size_t) active];
+            const int start = core.position;
+            const int run = std::min ({ numSamples - i, core.hopSize - core.hopCounter, core.fftSize - start });
+            const float gain = outputGain.getTargetValue(), trim = wetTrim.getTargetValue();   // what getNextValue() gives while nothing ramps
+
+            for (int ch = 0; ch < chans; ++ch)
+            {
+                float* const io = channels[ch] + i;
+
+                for (int j = 0; j < run; ++j)
+                {
+                    float x = io[j];
+
+                    if (! (std::abs (x) <= maxSampleMagnitude))
+                        x = 0.0f;
+
+                    io[j] = stepChannel (core, ch, start + j, x, gain, trim, keyChans);
+                }
+            }
+
+            for (int ch = 0; ch < keyChans; ++ch)
+            {
+                const float* const from = key[ch] + i;
+                float* const to = core.keyRing[(size_t) ch].data() + start;
+
+                for (int j = 0; j < run; ++j)
+                    to[j] = std::abs (from[j]) <= maxSampleMagnitude ? from[j] : 0.0f;
+            }
+
+            core.position = (start + run) & (core.fftSize - 1);
+            core.hopCounter += run;
+            i += run;
+
+            if (core.hopCounter == core.hopSize)
+                finishHop (core, keyChans);
+        }
+
+        if (i >= numSamples)
+            break;
+
         mixNow    = approach (mixNow, mixTarget);
         deltaNow  = approach (deltaNow, deltaTarget);
         bypassNow = approach (bypassNow, bypassTarget);
@@ -667,7 +865,7 @@ void ResonanceEngine::process (float* const* channels, int numChannels, int numS
                 if (! (std::abs (x) <= maxSampleMagnitude))   // also catches NaN, so one bad sample can't poison the state
                     x = 0.0f;
 
-                channels[ch][i] = stepChannel (first, ch, x, gain, trim, keyChans);
+                channels[ch][i] = stepChannel (first, ch, first.position, x, gain, trim, keyChans);
             }
 
             writeKey (first, i);
@@ -689,8 +887,8 @@ void ResonanceEngine::process (float* const* channels, int numChannels, int numS
                 if (! (std::abs (x) <= maxSampleMagnitude))
                     x = 0.0f;
 
-                const float a = stepChannel (first, ch, x, gain, trim, keyChans);
-                const float b = stepChannel (second, ch, x, gain, trim, keyChans);
+                const float a = stepChannel (first, ch, first.position, x, gain, trim, keyChans);
+                const float b = stepChannel (second, ch, second.position, x, gain, trim, keyChans);
                 channels[ch][i] = fromOld * a + fromNew * b;
             }
 
@@ -737,40 +935,62 @@ void ResonanceEngine::Core::updateWidths() noexcept
     builtEnvelopeFloor = envelopeFloorBins;
     widthsSharpness = params.sharpness;
     widthsTilt = params.sharpnessTilt;
+    reachStale = true;
 
     const auto refMinBins = std::max (2, juce::roundToInt (referenceMinHz / binHz));
 
-    for (int k = 0; k < numBins; ++k)
+    // Sharpness sets the width of a notch: a third of an octave at 0, a 24th of an octave at 1. Its two powers are only
+    // worked out again where the sharpness at a bin is not that of the bin before: without a tilt, once for the whole
+    // spectrum, and with one, only between 500 Hz and 2 kHz. The rest is whole numbers, in loops plain enough to run wide.
+    const auto halfFor = [] (float local) noexcept
     {
-        const auto idx = (size_t) k;
-        envelopeHalf[idx] = std::max (envelopeHalfBase[idx], envelopeFloorBins);
-
-        // Sharpness sets the width of a notch: a third of an octave at 0, a 24th of an octave at 1.
-        const float local = juce::jlimit (0.0f, 1.0f, widthsSharpness + 0.5f * widthsTilt * tiltPosition[idx]);
         const auto octaves = (1.0 / 3.0) * std::pow (1.0 / 8.0, (double) local);
-        const auto halfBins = 0.5 * (std::pow (2.0, octaves) - 1.0) * k;
-        const int shape = std::max (1, juce::roundToInt (halfBins));
-        const int det   = std::max (1, juce::roundToInt (halfBins * 0.5));
-        // The reference starts a quarter octave out in the highs, past the skirts of a resonance, and closer in the
-        // lows, where the first formants would otherwise tower over everything above them.
-        const float highness = juce::jlimit (0.0f, 1.0f, tiltPosition[idx]);
-        const double nearOctaves = juce::jmap (highness, referenceNearLow, referenceNearHigh);
-        const double farOctaves  = juce::jmap (highness, referenceFarLow, referenceFarHigh);
-        const int guard = std::max (det + envelopeHalf[idx] + 2, juce::roundToInt (k * (std::pow (2.0, nearOctaves) - 1.0)));   // the bin's own peak, smeared by the envelope, stays out
-        const auto refDown = std::pow (2.0, -farOctaves), refUp = std::pow (2.0, farOctaves);
+        return 0.5 * (std::pow (2.0, octaves) - 1.0);
+    };
 
-        const int leftEnd    = k - guard - 1;
-        const int leftStart  = std::max (1, std::min (juce::roundToInt (k * refDown), leftEnd - refMinBins + 1));
-        const int rightStart = k + guard + 1;
-        const int rightEnd   = std::min (numBins - 1, std::max (juce::roundToInt (k * refUp), rightStart + refMinBins - 1));
+    int* const shape = shapeHalf.data();
+    int* const det = detectorHalf.data();
 
-        shapeHalf[idx]     = shape;
-        detectorHalf[idx]  = det;
-        refLeftStart[idx]  = leftStart;
-        refLeftEnd[idx]    = leftEnd;
-        refRightStart[idx] = rightStart;
-        refRightEnd[idx]   = rightEnd;
+    if (widthsTilt == 0.0f)
+    {
+        widthsFromOne (halfFor (juce::jlimit (0.0f, 1.0f, widthsSharpness + 0.5f * widthsTilt * tiltPosition[0])), numBins, shape, det);
     }
+    else
+    {
+        float builtLocal = -1.0f;
+        double halfPerBin = 0.0;
+
+        for (int k = 0; k < numBins; ++k)
+        {
+            const float local = juce::jlimit (0.0f, 1.0f, widthsSharpness + 0.5f * widthsTilt * tiltPosition[(size_t) k]);
+
+            if (local != builtLocal)
+            {
+                builtLocal = local;
+                halfPerBin = halfFor (local);
+            }
+
+            const auto halfBins = halfPerBin * k;
+            shape[k] = std::max (1, juce::roundToInt (halfBins));
+            det[k]   = std::max (1, juce::roundToInt (halfBins * 0.5));
+        }
+    }
+
+    widestShape = referenceBins (numBins, envelopeFloorBins, refMinBins, shape, det, envelopeHalfBase.data(), nearGuardBins.data(),
+                                 referenceDownBin.data(), referenceUpBin.data(), envelopeHalf.data(),
+                                 refLeftStart.data(), refLeftEnd.data(), refRightStart.data(), refRightEnd.data());
+}
+
+/** How far up the spectrum the references of the bins between Low and High reach. Nothing above that is ever read. */
+void ResonanceEngine::Core::updateReach() noexcept
+{
+    reachStale = false;
+    envelopeLast = -1;
+
+    for (int k = activeFirst; k <= activeLast; ++k)
+        envelopeLast = std::max (envelopeLast, std::max (refLeftEnd[(size_t) k], refRightEnd[(size_t) k]));
+
+    envelopeLast = std::min (envelopeLast, numBins - 1);
 }
 
 void ResonanceEngine::Core::updateHarmonicSpacing() noexcept
@@ -903,12 +1123,40 @@ void ResonanceEngine::Core::updateRangeMask() noexcept
         return 0.5f + 0.5f * std::cos (juce::MathConstants<float>::pi * distanceOutsideOctaves / rangeTaperOctaves);
     };
 
+    reachStale = true;
+
+    // logBinFreq only rises, so the bins that either taper lets through at all are one stretch, found by halving. The
+    // mask is worked out for that stretch alone, and what the last build left outside it is wiped.
+    const auto* const freq = logBinFreq.data();
+    const int first = (int) (std::partition_point (freq, freq + numBins, [logLow] (float f) noexcept { return ! (logLow - f < rangeTaperOctaves); }) - freq);
+    const int last  = (int) (std::partition_point (freq, freq + numBins, [logHigh] (float f) noexcept { return f - logHigh < rangeTaperOctaves; }) - freq) - 1;
+
+    for (int k = maskFirst; k <= maskLast; ++k)
+        if (k < first || k > last)
+            rangeMask[(size_t) k] = 0.0f;
+
+    maskFirst = first;
+    maskLast = last;
+
     // With Low above High the two tapers multiply out to nothing, so the plug-in does nothing.
     activeFirst = numBins;
     activeLast = -1;
 
-    for (int k = 0; k < numBins; ++k)
+    // Between the two tapers both are all the way open, and the mask is 1 with nothing to work out.
+    const int openFirst = (int) (std::partition_point (freq, freq + numBins, [logLow] (float f) noexcept { return ! (logLow - f <= 0.0f); }) - freq);
+    const int openLast  = (int) (std::partition_point (freq, freq + numBins, [logHigh] (float f) noexcept { return f - logHigh <= 0.0f; }) - freq) - 1;
+
+    for (int k = first; k <= last; ++k)
     {
+        if (k == openFirst && openLast >= openFirst)
+        {
+            std::fill (rangeMask.begin() + openFirst, rangeMask.begin() + openLast + 1, 1.0f);
+            activeFirst = std::min (activeFirst, openFirst);
+            activeLast = openLast;
+            k = openLast;
+            continue;
+        }
+
         const float f = logBinFreq[(size_t) k];
         rangeMask[(size_t) k] = taper (logLow - f) * taper (f - logHigh);
 
@@ -1012,23 +1260,36 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
     // In Hard mode Selectivity asks how far a bin must stand out from its surroundings as well. At 0 anything goes.
     const float hardGate = juce::jmap (params.selectivity, -9.0f, 9.0f);
 
-    slidingMax (s.smoothedPower.data(), s.envelope.data(), scratchDeque.data(), numBins, envelopeHalf.data());
+    // Only the bins between Low and High are ever judged. The envelope is needed as far up as their references reach and
+    // no further; the running sum still starts at the bottom, so that every mean comes out as it always has.
+    const bool judging = depth > 0.0f && activeLast >= activeFirst;
 
-    s.prefix[0] = 0.0;
-    for (int k = 0; k < numBins; ++k)
-        s.prefix[(size_t) k + 1] = s.prefix[(size_t) k] + (double) s.envelope[(size_t) k];
+    if (judging)
+    {
+        slidingMax (s.smoothedPower.data(), s.envelope.data(), maxTable.data(), numBins, envelopeHalf.data(), 0, envelopeLast);
+
+        s.prefix[0] = 0.0;
+        for (int k = 0; k <= envelopeLast; ++k)
+            s.prefix[(size_t) k + 1] = s.prefix[(size_t) k] + (double) s.envelope[(size_t) k];
+    }
 
     const auto rangeMean = [&s] (int first, int last) noexcept
     {
         return std::max (0.0f, (float) ((s.prefix[(size_t) last + 1] - s.prefix[(size_t) first]) / (double) (last - first + 1)));
     };
 
+    const auto rangeSum = [&s] (int first, int last) noexcept
+    {
+        return s.prefix[(size_t) last + 1] - s.prefix[(size_t) first];
+    };
+
     // The detector follows the local peak, just as the reference does. Comparing a mean with a peak would leave a
     // harmonic several dB short of its true height, and a resonance sitting on harmonics would go unseen.
     auto* detector = scratchDetector.data();
-    slidingMax (s.smoothedPower.data(), detector, scratchDeque.data(), numBins, detectorHalf.data());
+    slidingMax (s.smoothedPower.data(), detector, maxTable.data(), numBins, detectorHalf.data(), activeFirst, activeLast);
 
-    s.loudest = std::max (*std::max_element (detector, detector + numBins), s.loudest * loudestFallCoeff);
+    // The loudest bin of the whole spectrum. Every bin is inside its own detector window, so this is the largest detector too.
+    s.loudest = std::max (largestOf (s.smoothedPower.data(), numBins), s.loudest * loudestFallCoeff);
     const float gate = std::max (floorPower, s.loudest * juce::Decibels::decibelsToGain (-gateBelowLoudestDb));
     const float minimum = floorPower * 1.0e-3f;
 
@@ -1065,12 +1326,17 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
         heldGate = std::max (floorPower, bandLoudest * heldGateRatio);
     }
 
-    for (int k = 0; k < numBins; ++k)
+    if (s.rawLast >= s.rawFirst)   // what the last frame asked for, which lay between that frame's Low and High
+        std::fill (s.raw.begin() + s.rawFirst, s.raw.begin() + s.rawLast + 1, 0.0f);
+
+    s.rawFirst = judging ? activeFirst : 0;
+    s.rawLast  = judging ? activeLast : -1;
+
+    for (int k = judging ? activeFirst : numBins; k <= activeLast; ++k)
     {
         const auto idx = (size_t) k;
-        s.raw[idx] = 0.0f;
 
-        if (rangeMask[idx] <= 0.0f || depth <= 0.0f || depthScale[idx] <= 0.0f || detector[k] < floorPower)
+        if (rangeMask[idx] <= 0.0f || depthScale[idx] <= 0.0f || detector[k] < floorPower)
             continue;
 
         if (harmonics && k - twoAway >= 1 && k + twoAway <= numBins - 1)
@@ -1094,47 +1360,85 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
         const bool hasLeft  = refLeftEnd[idx]    >= refLeftStart[idx];
         const bool hasRight = refRightStart[idx] <= refRightEnd[idx];
 
-        const float detectorDb = 10.0f * std::log10 (std::max (detector[k], minimum));
-        float excessDb;
-
-        if (hasLeft && hasRight)
-        {
-            const float overLeft  = detectorDb - 10.0f * std::log10 (std::max (rangeMean (refLeftStart[idx], refLeftEnd[idx]), minimum));
-            const float overRight = detectorDb - 10.0f * std::log10 (std::max (rangeMean (refRightStart[idx], refRightEnd[idx]), minimum));
-
-            // The mean of the two sides is the geometric mean of their powers, so a steady spectral tilt cancels out.
-            // A band only counts as sticking out if it clears both sides, within what a tilt can explain: otherwise
-            // the top of a band-limited source, with nothing above it, would read as one huge resonance.
-            excessDb = std::min (0.5f * (overLeft + overRight),
-                                 std::min (overLeft, overRight) + juce::jmap (std::max (tiltPosition[idx], 0.0f), tiltAllowanceLowDb, tiltAllowanceHighDb));
-        }
-        else if (hasRight)
-        {
-            excessDb = detectorDb - 10.0f * std::log10 (std::max (rangeMean (refRightStart[idx], refRightEnd[idx]), minimum));
-        }
-        else if (hasLeft)
-        {
-            excessDb = detectorDb - 10.0f * std::log10 (std::max (rangeMean (refLeftStart[idx], refLeftEnd[idx]), minimum));
-        }
-        else
-        {
+        if (! hasLeft && ! hasRight)
             continue;
+
+        const float power = std::max (detector[k], minimum);
+        const float limit = depth * depthScale[idx];
+
+        // Most bins are plainly no taller than what is around them, and for those all that is ever used of the answer is
+        // that it is under zero. That much shows from the powers alone, and from the sums of each side with no division:
+        // the two means and the three logarithms are only taken for a bin that stands out or comes within a hair of it.
+        // (Hard mode goes by level first, so it does not ask.)
+        if (! hard)
+        {
+            const double p = (double) power * (double) surelyUnder;
+            const double leftSum  = hasLeft  ? rangeSum (refLeftStart[idx], refLeftEnd[idx]) : 0.0;
+            const double rightSum = hasRight ? rangeSum (refRightStart[idx], refRightEnd[idx]) : 0.0;
+            const double leftBins  = (double) (refLeftEnd[idx] - refLeftStart[idx] + 1);
+            const double rightBins = (double) (refRightEnd[idx] - refRightStart[idx] + 1);
+            bool under;
+
+            if (hasLeft && hasRight)
+            {
+                const double tilted = p * (double) tiltAllowGain[idx];
+                under = leftSum > 0.0 && rightSum > 0.0
+                         && ((double) power * p * leftBins * rightBins < leftSum * rightSum || tilted * leftBins < leftSum || tilted * rightBins < rightSum);
+            }
+            else
+            {
+                under = hasRight ? p * rightBins < rightSum : p * leftBins < leftSum;
+            }
+
+            if (under)
+            {
+                // The long view takes a bin that does not stand out as zero.
+                float& slow = s.slowExcess[idx];
+
+                if (detector[k] > gate)
+                    slow += persistenceCoeff * (0.0f - slow);
+
+                continue;
+            }
         }
 
-        const float limit = depth * depthScale[idx];
+        const float left  = hasLeft  ? std::max (rangeMean (refLeftStart[idx], refLeftEnd[idx]), minimum) : 0.0f;
+        const float right = hasRight ? std::max (rangeMean (refRightStart[idx], refRightEnd[idx]), minimum) : 0.0f;
+
+        // How far the bin stands over its reference, in dB.
+        const auto excessOver = [&] (float detectorDb) noexcept
+        {
+            if (hasLeft && hasRight)
+            {
+                const float overLeft  = detectorDb - 10.0f * std::log10 (left);
+                const float overRight = detectorDb - 10.0f * std::log10 (right);
+
+                // The mean of the two sides is the geometric mean of their powers, so a steady spectral tilt cancels out.
+                // A band only counts as sticking out if it clears both sides, within what a tilt can explain: otherwise
+                // the top of a band-limited source, with nothing above it, would read as one huge resonance.
+                return std::min (0.5f * (overLeft + overRight),
+                                 std::min (overLeft, overRight) + juce::jmap (std::max (tiltPosition[idx], 0.0f), tiltAllowanceLowDb, tiltAllowanceHighDb));
+            }
+
+            return detectorDb - 10.0f * std::log10 (hasRight ? right : left);
+        };
 
         if (hard)
         {
+            const float detectorDb = 10.0f * std::log10 (power);
             const float over = detectorDb + levelLift[idx] + sensitivity[idx] - hardThreshold;
 
-            if (over <= -kneeDb)
+            if (over <= -kneeDb)   // under the level threshold: how far it stands out no longer matters
                 continue;
 
+            const float excessDb = excessOver (detectorDb);
             const float softOver = over >= kneeDb ? over : (over + kneeDb) * (over + kneeDb) / (4.0f * kneeDb);
             const float standsOut = juce::jlimit (0.0f, 1.0f, (excessDb - hardGate) / 3.0f + 0.5f);
             s.raw[idx] = std::min (softOver * hardSlope * standsOut, limit);
             continue;
         }
+
+        const float excessDb = excessOver (10.0f * std::log10 (power));
 
         // A resonance in a room, a mic or a throat stays put, while a formant passing through moves on. So a peak is
         // judged partly on how much it has been sticking out lately. It never counts for more than it measures now.
@@ -1142,6 +1446,9 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
 
         if (detector[k] > gate)
             slow += persistenceCoeff * (std::max (excessDb, 0.0f) - slow);
+
+        if (! (excessDb > 0.0f))   // nothing is ever taken off a bin that does not stand out
+            continue;
 
         const float judged = std::min (excessDb, persistenceWeight * slow + (1.0f - persistenceWeight) * excessDb);
         const float plainBar = threshold + sparseLift + juce::jmap (std::max (tiltPosition[idx], 0.0f), thresholdOffsetLowDb, thresholdOffsetHighDb) - sensitivity[idx];
@@ -1204,7 +1511,7 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
     }
 
     // Outside Low and High nothing is judged, so the windows need not look there.
-    slidingMax (standing.data() + activeFirst, followed.data() + activeFirst, scratchDeque.data(), activeLast - activeFirst + 1, followHalf.data() + activeFirst);
+    slidingMax (standing.data() + activeFirst, followed.data() + activeFirst, maxTable.data(), activeLast - activeFirst + 1, followHalf.data() + activeFirst, 0, activeLast - activeFirst);
     s.standingLive = true;
     const float countSpan = heldCountToMs - heldCountFromMs;
 
@@ -1283,43 +1590,81 @@ void ResonanceEngine::Core::shapeAndApplyBallistics (Slot& s, float focusScale) 
     // Widen each reduction first and then average over the same width. A plain average would shave the top
     // off a narrow reduction; this way a notch keeps its full depth at the peak and has smooth sides.
     auto* widened = scratchBins.data();
-    std::fill_n (widened, numBins, 0.0f);
+    int lo = numBins, hi = -1;   // the bins a widened reduction lands on
 
-    for (int k = 0; k < numBins; ++k)
+    if (activeLast >= activeFirst)   // no reduction reaches further than the widest notch past Low and High
+    {
+        const int from = std::max (0, activeFirst - widestShape), to = std::min (numBins - 1, activeLast + widestShape);
+        std::fill (widened + from, widened + to + 1, 0.0f);
+    }
+
+    for (int k = activeFirst; k <= activeLast; ++k)   // nothing is asked for outside Low and High
     {
         const float r = s.raw[(size_t) k];
 
         if (r > 0.0f)
         {
             const int w = shapeHalf[(size_t) k];
-            const int last = std::min (numBins - 1, k + w);
+            const int from = std::max (0, k - w), to = std::min (numBins - 1, k + w);
 
-            for (int j = std::max (0, k - w); j <= last; ++j)
+            for (int j = from; j <= to; ++j)
                 widened[j] = std::max (widened[j], r);
+
+            lo = std::min (lo, from);
+            hi = std::max (hi, to);
         }
     }
 
-    double sum = 0.0;
-    auto& prefix = s.prefix;   // free to reuse: detect() has finished with it
-    prefix[0] = 0.0;
+    // The average over each bin's width, from a running sum. Below lo the sum is still nothing and above hi it no longer
+    // grows, so it is only kept between them, and only the bins whose width reaches that stretch get anything.
+    if (s.spreadLast >= s.spreadFirst)   // what the last frame left
+        std::fill (s.spread.begin() + s.spreadFirst, s.spread.begin() + s.spreadLast + 1, 0.0f);
 
-    for (int k = 0; k < numBins; ++k)
+    int first = numBins, last = -1;
+
+    if (hi >= lo)
     {
-        sum += (double) widened[k];
-        prefix[(size_t) k + 1] = sum;
+        double sum = 0.0;
+        auto& prefix = s.prefix;   // free to reuse: detect() has finished with it
+        prefix[(size_t) lo] = 0.0;
+
+        for (int k = lo; k <= hi; ++k)
+        {
+            sum += (double) widened[k];
+            prefix[(size_t) k + 1] = sum;
+        }
+
+        first = std::max (0, lo - widestShape);
+        last  = std::min (numBins - 1, hi + widestShape);
+
+        for (int k = first; k <= last; ++k)
+        {
+            const int w = shapeHalf[(size_t) k];
+            const int from = std::max (0, k - w), to = std::min (numBins - 1, k + w);
+            s.spread[(size_t) k] = (float) ((prefix[(size_t) juce::jlimit (lo, hi + 1, to + 1)] - prefix[(size_t) juce::jlimit (lo, hi + 1, from)]) / (double) (to - from + 1));
+        }
     }
 
-    for (int k = 0; k < numBins; ++k)
-    {
-        const int w = shapeHalf[(size_t) k];
-        const int first = std::max (0, k - w);
-        const int last  = std::min (numBins - 1, k + w);
-        s.spread[(size_t) k] = (float) ((prefix[(size_t) last + 1] - prefix[(size_t) first]) / (double) (last - first + 1));
-    }
+    s.spreadFirst = first;
+    s.spreadLast = last;
 
-    // Attack and release act on each bin's reduction in dB.
+    // Attack and release act on each bin's reduction in dB. A bin with nothing asked of it and nothing held stays at
+    // nothing, so only the stretch that holds a reduction, or is asked for one now, is gone over.
     const bool heldLive = s.heldRawLive;
-    for (int k = 0; k < numBins; ++k)
+
+    if (s.liveLast >= s.liveFirst)
+    {
+        first = std::min (first, s.liveFirst);
+        last  = std::max (last, s.liveLast);
+    }
+
+    if (heldLive)
+    {
+        first = 0;
+        last = numBins - 1;
+    }
+
+    for (int k = first; k <= last; ++k)
     {
         const auto idx = (size_t) k;
         // Held Notes' own reduction joins here, after the spreading, so that it stays as narrow as the harmonic it is for.
@@ -1332,8 +1677,9 @@ void ResonanceEngine::Core::shapeAndApplyBallistics (Slot& s, float focusScale) 
             held = 0.0f;
     }
 
-    // Light 3-tap smoothing evens out bins that ended up at different stages of attack or release.
-    for (int k = 0; k < numBins; ++k)
+    // Light 3-tap smoothing evens out bins that ended up at different stages of attack or release. One bin either side
+    // of the stretch, because the smoothing reaches that far; beyond it the reduction is nothing and the gain is 1.
+    for (int k = std::max (0, first - 1); k <= std::min (numBins - 1, last + 1); ++k)
     {
         const float below = s.held[(size_t) std::max (0, k - 1)];
         const float above = s.held[(size_t) std::min (numBins - 1, k + 1)];
@@ -1341,6 +1687,15 @@ void ResonanceEngine::Core::shapeAndApplyBallistics (Slot& s, float focusScale) 
         s.applied[(size_t) k] = r;
         s.gain[(size_t) k] = r > 0.0f ? std::exp (-r * 0.11512925f) : 1.0f;
     }
+
+    while (first <= last && s.held[(size_t) first] == 0.0f)
+        ++first;
+
+    while (last >= first && s.held[(size_t) last] == 0.0f)
+        --last;
+
+    s.liveFirst = first;
+    s.liveLast = last;
 
     followHeldPart (s, params.heldNotes && ! params.hard);
 }
@@ -1378,6 +1733,9 @@ bool ResonanceEngine::Core::processFrame (int keyChannelsNow, bool listening, fl
     updateSensitivity();
     updateTimeConstants();
 
+    if (reachStale)
+        updateReach();
+
     maxCutNow += rangeCoeff * (params.maxCutDb - maxCutNow);
     cutLimit = maxCutNow >= maxCutOff ? noCutLimit : std::max (0.0f, maxCutNow);
 
@@ -1386,14 +1744,35 @@ bool ResonanceEngine::Core::processFrame (int keyChannelsNow, bool listening, fl
     const bool useKey  = params.sideChain && keyChannelsNow > 0;
     const auto powerScale = 1.0f / ((float) fftSize * (float) fftSize / 16.0f);   // a full-scale sine reads about 1
 
+    // The ring's oldest sample is at position, so a frame is its upper part followed by its lower part: two plain runs.
+    const int upper = fftSize - position;
+
+    const auto windowed = [this, upper] (float* frame, const float* ring) noexcept
+    {
+        const float* const w = window.data();
+
+        for (int i = 0; i < upper; ++i)
+            frame[i] = ring[position + i] * w[i];
+
+        for (int i = upper; i < fftSize; ++i)
+            frame[i] = ring[i - upper] * w[i];
+    };
+
+    const auto overlapAdd = [this, upper] (float* ring, const float* frame) noexcept
+    {
+        const float* const w = synthesisWindow.data();
+
+        for (int i = 0; i < upper; ++i)
+            ring[position + i] += frame[i] * w[i];
+
+        for (int i = upper; i < fftSize; ++i)
+            ring[i - upper] += frame[i] * w[i];
+    };
+
     for (int slot = 0; slot < numSlots; ++slot)
     {
         auto* frame = spectrum[(size_t) slot].data();
-        const auto* ring = inputRing[(size_t) slotChannel[(size_t) slot]].data();
-
-        for (int i = 0; i < fftSize; ++i)
-            frame[i] = ring[(position + i) & (fftSize - 1)] * window[(size_t) i];
-
+        windowed (frame, inputRing[(size_t) slotChannel[(size_t) slot]].data());
         fft->performRealOnlyForwardTransform (frame, true);
     }
 
@@ -1402,11 +1781,7 @@ bool ResonanceEngine::Core::processFrame (int keyChannelsNow, bool listening, fl
         for (int ch = 0; ch < keyChannelsNow; ++ch)
         {
             auto* frame = keySpectrum[(size_t) ch].data();
-            const auto* ring = keyRing[(size_t) ch].data();
-
-            for (int i = 0; i < fftSize; ++i)
-                frame[i] = ring[(position + i) & (fftSize - 1)] * window[(size_t) i];
-
+            windowed (frame, keyRing[(size_t) ch].data());
             fft->performRealOnlyForwardTransform (frame, true);
         }
     }
@@ -1417,7 +1792,7 @@ bool ResonanceEngine::Core::processFrame (int keyChannelsNow, bool listening, fl
     {
         graphCounter = 0;
 
-        for (int k = 0; k < numBins; ++k)
+        for (int k = 0; k <= displayLast; ++k)   // nothing reads it above that
         {
             float power = 0.0f;
 
@@ -1472,7 +1847,7 @@ bool ResonanceEngine::Core::processFrame (int keyChannelsNow, bool listening, fl
     // Mid and side always stay apart, because treating them alike would just be stereo mode.
     if (numSlots >= 2 && ! midSide && params.link > 0.0f)
     {
-        for (int k = 0; k < numBins; ++k)
+        for (int k = activeFirst; k <= activeLast; ++k)   // outside Low and High every channel asks for nothing
         {
             float most = slots[0].raw[(size_t) k];
 
@@ -1558,9 +1933,10 @@ bool ResonanceEngine::Core::processFrame (int keyChannelsNow, bool listening, fl
         for (int slot = 0; slot < numSlots; ++slot)
         {
             auto* frame = spectrum[(size_t) slot].data();
-            const auto* gain = slots[(size_t) slot].gain.data();
+            const auto& s = slots[(size_t) slot];
+            const auto* gain = s.gain.data();
 
-            for (int k = 0; k < numBins; ++k)
+            for (int k = std::max (0, s.liveFirst - 1); k <= std::min (numBins - 1, s.liveLast + 1); ++k)   // the gain is 1 everywhere else
             {
                 frame[k * 2]     *= gain[k];
                 frame[k * 2 + 1] *= gain[k];
@@ -1592,10 +1968,7 @@ bool ResonanceEngine::Core::processFrame (int keyChannelsNow, bool listening, fl
             }
 
             fft->performRealOnlyInverseTransform (frame);
-            auto* out = listenRing[(size_t) slotChannel[(size_t) slot]].data();
-
-            for (int i = 0; i < fftSize; ++i)
-                out[(position + i) & (fftSize - 1)] += frame[i] * synthesisWindow[(size_t) i];
+            overlapAdd (listenRing[(size_t) slotChannel[(size_t) slot]].data(), frame);
         }
     }
 
@@ -1603,11 +1976,7 @@ bool ResonanceEngine::Core::processFrame (int keyChannelsNow, bool listening, fl
     {
         auto* frame = spectrum[(size_t) slot].data();
         fft->performRealOnlyInverseTransform (frame);
-
-        auto* out = outputRing[(size_t) slotChannel[(size_t) slot]].data();
-
-        for (int i = 0; i < fftSize; ++i)
-            out[(position + i) & (fftSize - 1)] += frame[i] * synthesisWindow[(size_t) i];
+        overlapAdd (outputRing[(size_t) slotChannel[(size_t) slot]].data(), frame);
     }
 
     // Readings, every hop.
@@ -1616,9 +1985,10 @@ bool ResonanceEngine::Core::processFrame (int keyChannelsNow, bool listening, fl
 
     for (int slot = 0; slot < numSlots; ++slot)
     {
-        const auto* applied = slots[(size_t) slot].applied.data();
+        const auto& s = slots[(size_t) slot];
+        const auto* applied = s.applied.data();
 
-        for (int k = 0; k < numBins; ++k)
+        for (int k = std::max (0, s.liveFirst - 1); k <= std::min (numBins - 1, s.liveLast + 1); ++k)   // nothing is applied anywhere else
         {
             if (applied[k] > most)
             {
@@ -1697,8 +2067,10 @@ void ResonanceEngine::Core::fillGraph (GraphFrame& frame, int numGraphChannels) 
 
     for (int slot = 0; slot < numSlots; ++slot)
     {
-        const auto* applied = slots[(size_t) slot].applied.data();
-        frame.channelReductionDb[(size_t) slotChannel[(size_t) slot]] = *std::max_element (applied, applied + numBins);
+        const auto& s = slots[(size_t) slot];
+        const auto* applied = s.applied.data();
+        const int from = std::max (0, s.liveFirst - 1), to = std::min (numBins - 1, s.liveLast + 1);   // nothing is applied anywhere else
+        frame.channelReductionDb[(size_t) slotChannel[(size_t) slot]] = to >= from ? *std::max_element (applied + from, applied + to + 1) : 0.0f;
     }
 }
 

@@ -194,6 +194,9 @@ private:
         std::vector<float>  heldPart;       // for the graph: how much of the reduction here is Held Notes' doing
         bool heldRawLive = false, heldPartLive = false;
         float loudest = 0.0f;
+        int liveFirst = 0, liveLast = -1;   // every bin that still holds some reduction lies between these. Nothing is spent on the rest
+        int rawFirst = 0, rawLast = -1;     // and the same for what the last frame left in raw and in spread
+        int spreadFirst = 0, spreadLast = -1;
     };
 
     /** One whole STFT at one FFT size: its delay lines, per bin state and tables. Only one runs, except while Quality crossfades.
@@ -218,6 +221,7 @@ private:
         void updateWidths() noexcept;
         void updateHarmonicSpacing() noexcept;
         void updateRangeMask() noexcept;
+        void updateReach() noexcept;
         void updateSensitivity() noexcept;
         void updateTimeConstants() noexcept;
         void updateListenMask (int band) noexcept;
@@ -243,13 +247,19 @@ private:
         // Per-bin tables. Rebuilt when Sharpness, the range, the bands or the times move.
         std::vector<int> envelopeHalfBase, envelopeHalf, detectorHalf, shapeHalf, refLeftStart, refLeftEnd, refRightStart, refRightEnd;
         std::vector<float> logBinFreq, tiltPosition, levelLift, rangeMask, sensitivity, depthScale, attackCoeffs, releaseCoeffs, listenMask;
-        std::vector<int> scratchDeque;
+        std::vector<float> maxTable;   // scratch for the sliding maxima: the largest of every run of 2, 4, 8... bins
+        std::vector<int> nearGuardBins, referenceDownBin, referenceUpBin;   // where the reference starts and ends, as far as only the bin decides it
         std::vector<float> scratchBins, scratchDetector, displayPower, spacingLog, spacingFlat;
         std::vector<float> harmonicPeak, standing, followed;   // scratch for the comparison with the neighbouring harmonics
         std::vector<int> followHalf;
         std::vector<float> tiltAllowDb, tiltAllowGain, tiltAllowGainSquared;   // how far two sides may differ and still count as tilt, as dB and as power ratios
         std::vector<float> runUp, runDown;   // scratch for a sliding maximum of one fixed width
         int activeFirst = 0, activeLast = -1;   // the bins Low and High let through, from the range mask
+        int maskFirst = 0, maskLast = -1;       // the bins the range mask was last worked out for. It is nothing outside them
+        int envelopeLast = -1;                  // the last bin any reference of a bin between Low and High reaches
+        int widestShape = 1;                    // the widest notch of any bin, in bins either side
+        int displayLast = 0;                    // the last bin the graph, or a change of Quality, ever reads the display spectrum at
+        bool reachStale = true;
         float spacingBins = 0.0f;   // harmonic spacing in bins, with its fraction. 0 when there are no clear harmonics
         int spacingFirstBin = 0, spacingLastBin = 0, spacingMinLag = 0, spacingMaxLag = 0, spacingCounter = 0, spacingHeld = 0, spacingHoldHops = 0;
         int envelopeFloorBins = 0, builtEnvelopeFloor = -1;
@@ -270,8 +280,9 @@ private:
 
     const Core& now() const noexcept  { return cores[(size_t) active]; }
 
-    float stepChannel (Core&, int channel, float x, float gain, float trim, int keyChannels) noexcept;
+    float stepChannel (Core&, int channel, int position, float x, float gain, float trim, int keyChannels) noexcept;
     void advance (Core&, int keyChannels) noexcept;
+    void finishHop (Core&, int keyChannels) noexcept;
     void updateQualityChange() noexcept;
     void startQualityChange (int to) noexcept;
 

@@ -73,6 +73,7 @@ private:
 
         ui::ParamSlider depth, maxCut, sharpness, selectivity, attack, release;
         ui::ParamChoice mode, quality;
+        ui::ParamToggle heldNotes;
         ui::ParamSlider hardThreshold;
         ui::ParamChoice stereoMode;
         ui::ParamSlider link, stereoFocus, sharpnessTilt, attackTilt, releaseTilt, wetTrim;

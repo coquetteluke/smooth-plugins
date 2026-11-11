@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0, 2026-11-11
+
+One new control, **Held Notes**, off by default. With it off nothing changes: every sample is the 0.5.1 sound, and sessions saved before load and play as they did.
+
+- **What it does.** On, in Soft mode, it also takes down a single harmonic that rings on a held note. 0.5.1 only judged a peak against the spectrum a quarter to three quarters of an octave away, so it missed a ring whose neighbouring formants are as tall, and it forgot one as the note wavered. Held Notes judges each bin a second time, against the two harmonics below it and the two above. Hard mode ignores it, and an S, a breath or noise has no harmonics, so it leaves them alone.
+- **On Luke's real takes** (11 whole songs on a Rode NT1, default settings, off then on). Rings that last a quarter of a second or more (48 of them): median cut 4.74 then 5.86 dB. The 20 between 2 and 5 kHz: 0.31 then 4.96 dB. Share cut by 3 dB or more: 58% then 83%. S above 4 kHz -1.27 dB both. Consonant onsets -0.55 then -0.58 dB. Note tails: the gain moves 0.05 then 0.06 dB a frame. High notes, first three harmonics, -0.01 dB both. Level -0.05 then -0.07 dB.
+- **Off is 0.5.1.** NullTest is unchanged and passes. All 11 takes rendered by the installed 0.5.1 and by this build with Held Notes off are equal sample for sample, at the default and at three presets.
+- **What on costs.** About a fifth more CPU: 1.5% then 1.8% of one core, mono at 48 kHz, measured with four other jobs running. The worst single block read 7 to 9% off and 9 to 11% on in quiet rounds; on that loaded Mac single blocks of either jumped to 20% and more now and then. Off costs nothing. Latency is unchanged, 2048 samples in Normal.
+- **In the window.** A Held notes switch at the end of Mode's row. It goes grey in Hard mode, where it does nothing. Pictures are in `docs/window-v4/`. The window's own CPU is unchanged: 4.6% to 4.9% of one core at 30 frames a second, 2.9% in fast core terms.
+- **A real parameter.** New ID `heldNotes`, named Held Notes, added last. No existing ID, name, range or choice changed, and Mode still has two choices. The AU codes are the same.
+- **One new preset, added at the end:** Gentle Polish With Held Notes, the default settings with Held Notes on. Presets 0 to 10 keep their numbers and their sound, and each turns Held Notes off.
+- **Tests.** New `tests/HeldNotesTest.cpp`, written first: 24 of its checks failed on 0.5.1. It covers the control, off against the frozen old engine, a 12 dB ring on synthetic held notes coming down 5.4 to 5.8 dB (limit 3), S and T left alone, old sessions loading with it off, switching without a click, the presets and the window. Every older test still passes.
+- **Not done.** The two limits an earlier pass loosened (DspTest at 330 Hz, SpeechTest's least voice) are not restored: they do not pass with Held Notes on either, since they are about fixed boosts on speech. New values for Boxy Low Mids and Eight Dot Vocal Sculpt wait for Luke on the branch `sung-resonances`.
+
 ## 0.5.1, 2026-11-07
 
 Renamed to Velvet Rope, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.

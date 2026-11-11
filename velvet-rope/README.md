@@ -25,7 +25,7 @@ A calm, near-flat dark window with the colour kept for the graph. Your voice is 
 - **Low and High lines:** drag to set the range. Nothing outside them is touched.
 - **Strip under the graph:** Low, High, a button for each dot, the values of the selected dot, Listen and Remove. A faint number is a free dot, and clicking it adds it.
 - **Band Listen on:** a solid mint banner on the graph says so, everything outside the region goes dark, and Listen lights up. A click on the banner stops it.
-- **Side panel:** Depth, Max Cut, Sharpness, Selectivity, Attack, Release, Quality and Mode are always there. Threshold comes out under Mode in Hard mode.
+- **Side panel:** Depth, Max Cut, Sharpness, Selectivity, Attack, Release, Quality and Mode are always there. Held notes sits at the end of Mode's row and goes grey in Hard mode, where it does nothing. Threshold comes out under Mode in Hard mode.
 - **Surround:** a row under Advanced shows each channel's name and deepest cut. The LFE shows none. The gold on the graph is the deepest of all channels, and the pale line is the shallowest. Stereo Mode is greyed out.
 - **Advanced:** click it to open Threshold, Stereo, Link, Focus, the three tilts, Wet trim and Side chain. Closed, it says how many of them are changed from their defaults, and they keep working. Whether it is open is saved with the session.
 - **Footer:** Bypass, Delta, Mix, Gain, and a one-line hint for whatever is under the mouse.
@@ -34,7 +34,7 @@ A calm, near-flat dark window with the colour kept for the graph. Your voice is 
 
 Every control is a real parameter with its old ID, name and range, shown or not, so automation moves the window and the window moves them, with begin and end of gesture. The window keeps no sound settings of its own. Its graph data comes from the lock free `readGraph`, so it cannot block the audio thread.
 
-Pictures are in `docs/window-v2/`, with the first design kept in `docs/window/` for comparison. They are made by `build/RenderWindow_artefacts/Release/RenderWindow`, which runs real speech from macOS `say` with resonant boosts through the real processor and renders the real window to PNG with no host. `RenderWindow --live` opens a real window with all but one column of pixels off the screen, and measures frames a second, CPU and instructions.
+Pictures are in `docs/window-v4/` (0.6.0, with Held notes), with the earlier designs kept in `docs/window-v3/`, `docs/window-v2/` and `docs/window/` for comparison. They are made by `build/RenderWindow_artefacts/Release/RenderWindow`, which runs real speech from macOS `say` with resonant boosts through the real processor and renders the real window to PNG with no host. `RenderWindow --live` opens a real window with all but one column of pixels off the screen, and measures frames a second, CPU and instructions.
 
 Measured on the 16 GB MacBook's 2x screen with other builds running: 30 frames a second, and 3.0% to 5.0% of one core over 8 runs with audio playing. If macOS puts it on the slow cores it reads 7% to 9% for the same work. With nothing moving it hardly redraws. Closed, it costs nothing. Details are in `docs/window-cpu.md`.
 
@@ -62,6 +62,7 @@ The window's font is Inter, under the SIL Open Font License. See `assets/fonts/O
 - **Bypass**: keeps the delay, crossfades over 20 ms.
 - **Mode**: Soft judges a peak against the bands around it, so it works the same at any level. Hard uses a fixed level, so loud parts get treated and quiet ones don't. Hard is what you want for side chain carving.
 - **Hard Threshold** (-80 to 0 dB, default -36): Hard mode only. A bin over this level is held down toward it, up to Depth. Compared after a 3 dB per octave lift above 1 kHz, so one number suits a voice's falling highs.
+- **Held Notes** (Off or On, default Off): also takes down a single harmonic that rings on a held note. Off is the sound of 0.5.1 to the sample, so nothing saved before it existed changes. It only works in Soft mode, and an S, a breath or noise has no harmonics, so it leaves them alone. On costs about a fifth more CPU: 1.5% of one core off, 1.8% on, mono at 48 kHz on the MacBook with other work running. Numbers on real takes are under What was measured.
 - **Stereo Mode**: Stereo or Mid/Side. Switches with no click. Does nothing over two channels.
 - **Stereo Link** (0 to 100%, default 100): 100 means one gain curve for all channels, so the image can't wander. 0 means each channel on its own. Mid and side are always treated apart. In surround it joins every channel except the LFE.
 - **Stereo Focus** (-100 to +100%, default 0): -100 puts all the treatment on left or mid, +100 on right or side. In surround it goes by left and right side channels, and center channels keep theirs.
@@ -91,6 +92,7 @@ Parameter IDs are saved in sessions and automation. Never rename them.
 - **Tracking Low Latency**: Low Latency, Depth 8, fast. For singing through it while recording.
 - **Eight Dot Vocal Sculpt**: all 8 dots in use, protecting the body of the voice and the air, and looking harder where a vocal gets harsh.
 - **High Detail With Ceiling**: High, Depth 24, Max Cut 6. Strong and detailed, and never more than 6 dB anywhere.
+- **Gentle Polish With Held Notes**: the default settings with Held Notes on.
 
 ## Surround
 
@@ -106,6 +108,8 @@ Windowed FFT (2048 at 48 kHz in Normal, one eighth hop, Hann in and out). Power 
 
 Harmonic spacing is tracked from the spectrum, so on a high note the peak envelope bridges the wider gaps, and the threshold rises a little.
 
+With Held Notes on, in Soft mode, when the voice has clear harmonics (at least 4.5 FFT bins apart, about 105 Hz in Normal, so not in Low Latency below about 420 Hz), each bin is judged a second time against the two harmonics below it and the two above. That catches a held note's ring that the wide reference misses when the formants beside it are as tall. It has to clear its neighbours by 2 dB more than Selectivity asks, its long view is 100 ms at half weight, and it follows a harmonic a 24th of an octave either way as the note wavers. The deeper of the two reductions is used, and Depth is still the most any spot is cut. With Held Notes off none of this runs.
+
 ## Graph data
 
 `SmoothResonanceProcessor::readGraph (smoothres::GraphFrame&)` copies the newest frame without ever blocking the audio thread: 256 log-spaced points from 20 Hz to 20 kHz, about 47 times a second, with input spectrum, output spectrum, gain curve per slot, and the sensitivity curve. `Max Reduction` and `Max Reduction Frequency` are plain atomics.
@@ -113,6 +117,14 @@ Harmonic spacing is tracked from the spectrum, so on a high note the peak envelo
 ## What was measured
 
 Everything is in `tests/results.txt`. Rerun with `zsh tests/run_all.sh` after `cmake --build build --target InstallAU -j 1`. Build each test first with `cmake --build build --target ProcessorTest NullTest FeatureTest DspTest SpeechTest HostCheck LayoutCheck -j 1`.
+
+Held Notes on Luke's real takes (11 whole songs on a Rode NT1, 23.9 minutes of voiced sound, default settings, off then on). A ring here is one harmonic 10 dB or more over the two harmonics either side of it that stays put for a quarter of a second or more; there are 48, most at 1.8 to 1.9 kHz and 2.4 to 4.0 kHz.
+
+- Rings: median cut 4.74 dB off, 5.86 dB on. The 20 between 2 and 5 kHz: 0.31 dB off, 4.96 dB on. Share cut by 3 dB or more: 58% off, 83% on.
+- S sounds above 4 kHz: -1.27 dB off and on. Consonant onsets above 2.5 kHz: -0.55 dB off, -0.58 dB on. Note tails: the gain moves 0.05 dB a frame off, 0.06 dB on.
+- High notes, first three harmonics: -0.01 dB off and on. Level: -0.05 dB off, -0.07 dB on. Latency: 2048 samples off and on.
+- With it off, every sample of all 11 takes equals 0.5.1, at the default and at Harsh Lead Vocal, Boxy Low Mids and Eight Dot Vocal Sculpt.
+- On 6 more takes kept unseen until the end, measured once on the build this judgement was developed on: rings 1.59 dB with the old sound, 5.43 dB with the new judgement. On one quiet, low take four of five rings still came down less than 0.3 dB.
 
 Old sessions: the default, all 8 old presets and a session with every old control moved, loaded both ways, null exactly against renders saved from the 0.4.1 build (`tests/baseline/`). So do the default and presets on real speech at 44.1, 48, 88.2 and 96 kHz against a frozen copy of the 0.4.1 engine (`tests/legacy/`).
 

@@ -86,6 +86,9 @@ namespace
             layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "band" + number + "On", 1 }, "Band " + number + " On", defaults.bands[b].on));
         }
 
+        // Added in 0.6.0, last in the list. Off is the sound of 0.5.1, so a session saved before it existed plays as it did.
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "heldNotes", 1 }, "Held Notes", defaults.heldNotes));
+
         return layout;
     }
 
@@ -105,6 +108,9 @@ namespace
         int quality = 1;
         unsigned dotsOn = 0b00000111;
         Band moreBands[5] = { { 150.0f, 0.0f, 1.0f }, { 600.0f, 0.0f, 1.0f }, { 1500.0f, 0.0f, 1.0f }, { 5000.0f, 0.0f, 1.0f }, { 11000.0f, 0.0f, 1.0f } };
+
+        // Added in 0.6.0. Every preset that does not mention it turns Held Notes off.
+        int heldNotes = 0;
     };
 
     constexpr Band flat1 { 300.0f, 0.0f, 1.0f }, flat2 { 3000.0f, 0.0f, 1.0f }, flat3 { 7000.0f, 0.0f, 1.0f };
@@ -129,6 +135,10 @@ namespace
           { { 500.0f, -5.0f, 0.8f }, { 900.0f, 1.0f, 0.7f }, { 1800.0f, 2.0f, 0.7f }, { 4500.0f, 3.0f, 0.7f }, { 11000.0f, -6.0f, 1.2f } } },
         // Depth at its strongest with a ceiling: finest detail, wider areas held down, and never more than 6 dB anywhere.
         { "High Detail With Ceiling", 24.0f, 70.0f, 50.0f, 15.0f, 150.0f, 800.0f, 14000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, flat2, flat3 }, 6.0f, 2 },
+
+        // Added in 0.6.0, after every older preset so that their numbers stay the same. The default settings with Held Notes on.
+        { "Gentle Polish With Held Notes", 6.0f, 50.0f, 50.0f, 15.0f, 120.0f, 1000.0f, 12000.0f, 100.0f, 0, -36.0f, 0, 0, { flat1, flat2, flat3 }, 24.0f, 1, 0b00000111,
+          { { 150.0f, 0.0f, 1.0f }, { 600.0f, 0.0f, 1.0f }, { 1500.0f, 0.0f, 1.0f }, { 5000.0f, 0.0f, 1.0f }, { 11000.0f, 0.0f, 1.0f } }, 1 },
     };
 }
 
@@ -161,7 +171,8 @@ SmoothResonanceProcessor::SmoothResonanceProcessor()
       sideChainListen (parameters.getRawParameterValue ("sideChainListen")),
       maxCut (parameters.getRawParameterValue ("maxCut")),
       quality (parameters.getRawParameterValue ("quality")),
-      bandListen (parameters.getRawParameterValue ("bandListen"))
+      bandListen (parameters.getRawParameterValue ("bandListen")),
+      heldNotes (parameters.getRawParameterValue ("heldNotes"))
 {
     for (int b = 0; b < smoothres::Params::numBands; ++b)
     {
@@ -336,6 +347,7 @@ void SmoothResonanceProcessor::render (juce::AudioBuffer<float>& buffer, bool fo
         p.bands[b] = { bandFreq[b]->load(), bandSens[b]->load(), bandWidth[b]->load(), bandOn[b]->load() > 0.5f };
 
     p.maxCutDb   = maxCut->load();
+    p.heldNotes  = heldNotes->load() > 0.5f;
     p.quality    = (smoothres::Quality) juce::jlimit (0, smoothres::numQualities - 1, juce::roundToInt (quality->load()));
     p.bandListen = juce::jlimit (0, smoothres::Params::numBands, juce::roundToInt (bandListen->load()));
 
@@ -424,6 +436,7 @@ void SmoothResonanceProcessor::setCurrentProgram (int index)
     set ("sideChainListen", 0.0f);
 
     set ("maxCut", x.maxCut);
+    set ("heldNotes", (float) x.heldNotes);
     set ("quality", (float) x.quality);
     set ("bandListen", 0.0f);
 

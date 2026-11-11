@@ -44,6 +44,17 @@ namespace
     constexpr float persistenceMs      = 500.0f;  // how long a peak has to last before it counts in full
     constexpr float persistenceWeight  = 0.7f;    // share of the judgement that comes from the long view
     constexpr float gateBelowLoudestDb = 50.0f;   // pauses and tails do not count against a peak's persistence
+    // Held Notes. A sung note's ring: one harmonic standing well over the harmonics next to it, for as long as the note is
+    // held. The wide reference above misses it when the neighbouring formants are as tall, and its per-bin long view
+    // forgets it as the note wavers. So, when asked to, a bin is also judged against the two harmonics below it and the
+    // two above.
+    constexpr float harmonicMinBins     = 4.5f;         // harmonics closer together than this run into each other in the FFT
+    constexpr float harmonicThresholdDb = 2.0f;         // a harmonic has to clear its neighbours by this much more than Selectivity asks
+    constexpr float harmonicPersistMs   = 100.0f;       // a held note is short next to a room's ring
+    constexpr float harmonicPersistWeight = 0.5f;
+    constexpr float harmonicFollowOctaves = 1.0f / 24.0f;   // the long view follows a harmonic this far as vibrato moves it
+    constexpr float notJudged          = -1000.0f;
+    constexpr float standsUnder        = -1.0f;        // judged, and no taller than its neighbours: there is nothing to turn down
     constexpr float loudestFallMs      = 1000.0f;
     constexpr float tiltAllowanceLowDb  = 14.0f;  // how far the two sides of a bin may differ and still count as tilt: first formants fall away steeply
     constexpr float tiltAllowanceHighDb = 6.0f;   // and in the highs, where a much larger difference means the edge of a band-limited source
@@ -82,6 +93,32 @@ namespace
                 ++head;
 
             out[k] = in[deque[head]];
+        }
+    }
+
+    /** Sliding maximum over +/- half, the same half for every bin, for bins first to last of in. Three comparisons a bin
+        however wide the window: a running maximum up each block of 2 * half + 1 bins, one down it, and the larger of the two
+        ends. A window is cut short only at the ends of the stretch it is given. */
+    void slidingMaxFixed (const float* in, float* out, float* up, float* down, int first, int last, int half) noexcept
+    {
+        const int n = last - first + 1, width = 2 * half + 1;
+
+        if (n <= 0)
+            return;
+
+        in += first;
+        out += first;
+
+        for (int i = 0; i < n; ++i)
+            up[i] = i % width == 0 ? in[i] : std::max (up[i - 1], in[i]);
+
+        for (int i = n - 1; i >= 0; --i)
+            down[i] = (i % width == width - 1 || i == n - 1) ? in[i] : std::max (down[i + 1], in[i]);
+
+        for (int i = 0; i < n; ++i)
+        {
+            const float upper = up[std::min (i + half, n - 1)];
+            out[i] = i >= half ? std::max (down[i - half], upper) : upper;
         }
     }
 
@@ -216,6 +253,8 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
         s.applied.assign (bins, 0.0f);
         s.gain.assign (bins, 1.0f);
         s.slowExcess.assign (bins, 0.0f);
+        s.slowStanding.assign (bins, 0.0f);
+        s.standingLive = false;
     }
 
     for (int ch = 0; ch < maxKeyChannels; ++ch)
@@ -224,13 +263,20 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
         keySpectrum[(size_t) ch].assign ((size_t) fftSize * 2, 0.0f);
     }
 
-    for (auto* table : { &detectorHalf, &shapeHalf, &refLeftStart, &refLeftEnd, &refRightStart, &refRightEnd })
+    for (auto* table : { &detectorHalf, &shapeHalf, &refLeftStart, &refLeftEnd, &refRightStart, &refRightEnd, &followHalf })
         table->assign ((size_t) numBins, 0);
 
-    for (auto* table : { &rangeMask, &sensitivity, &tiltPosition, &levelLift, &scratchBins, &scratchDetector, &displayPower, &listenMask })
+    for (auto* table : { &rangeMask, &sensitivity, &tiltPosition, &levelLift, &scratchBins, &scratchDetector, &displayPower, &listenMask, &harmonicPeak, &standing, &followed,
+                         &tiltAllowDb, &tiltAllowGain, &tiltAllowGainSquared, &runUp, &runDown })
         table->assign ((size_t) numBins, 0.0f);
 
     depthScale.assign ((size_t) numBins, 1.0f);
+    activeFirst = 0;
+    activeLast = -1;
+
+    for (int k = 0; k < numBins; ++k)
+        followHalf[(size_t) k] = juce::roundToInt ((double) k * (std::pow (2.0, (double) harmonicFollowOctaves) - 1.0));
+
     attackCoeffs.assign ((size_t) numBins, 1.0f);
     releaseCoeffs.assign ((size_t) numBins, 1.0f);
     logBinFreq.resize ((size_t) numBins);
@@ -250,6 +296,14 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
     }
 
     tiltPosition[0] = -1.0f;
+
+    for (int k = 0; k < numBins; ++k)
+    {
+        const auto idx = (size_t) k;
+        tiltAllowDb[idx] = juce::jmap (std::max (tiltPosition[idx], 0.0f), tiltAllowanceLowDb, tiltAllowanceHighDb);
+        tiltAllowGain[idx] = std::pow (10.0f, 0.1f * tiltAllowDb[idx]);
+        tiltAllowGainSquared[idx] = tiltAllowGain[idx] * tiltAllowGain[idx];
+    }
 
     const auto hopSeconds = (double) hopSize / sampleRate;
     envelopeHalfBase.assign ((size_t) numBins, 1);
@@ -271,6 +325,7 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
     detectorCoeff    = coeffForTime (detectorTimeMs, hopSeconds);
     rangeCoeff       = coeffForTime (rangeTimeMs, hopSeconds);
     persistenceCoeff = coeffForTime (persistenceMs, hopSeconds);
+    harmonicCoeff    = coeffForTime (harmonicPersistMs, hopSeconds);
     loudestFallCoeff = 1.0f - coeffForTime (loudestFallMs, hopSeconds);
 
     // The graph's points in this FFT's bins. Same axis as the frames carry.
@@ -319,11 +374,14 @@ void ResonanceEngine::Core::reset() noexcept
         std::fill (s.held.begin(), s.held.end(), 0.0f);
         std::fill (s.applied.begin(), s.applied.end(), 0.0f);
         std::fill (s.slowExcess.begin(), s.slowExcess.end(), 0.0f);
+        std::fill (s.slowStanding.begin(), s.slowStanding.end(), 0.0f);
+        s.standingLive = false;
         s.loudest = 0.0f;
     }
 
     listenDirty = false;
     envelopeFloorBins = 0;
+    spacingBins = 0.0f;
     builtEnvelopeFloor = -1;
     spacingCounter = 0;
     spacingHeld = 0;
@@ -381,12 +439,15 @@ void ResonanceEngine::Core::seedFrom (const Core& from) noexcept
         copyBins (a.held, b.held);
         copyBins (a.applied, b.applied);
         copyBins (a.slowExcess, b.slowExcess);
+        copyBins (a.slowStanding, b.slowStanding);
+        b.standingLive = a.standingLive;
         b.loudest = a.loudest;
     }
 
     copyBins (from.displayPower, displayPower);
 
     envelopeFloorBins = juce::roundToInt ((double) from.envelopeFloorBins / ratio);
+    spacingBins = (float) ((double) from.spacingBins / ratio);
     spacingHeld = juce::roundToInt ((double) from.spacingHeld * spacingHoldHops / juce::jmax (1, from.spacingHoldHops));
 
     focusNow = from.focusNow;
@@ -715,7 +776,7 @@ void ResonanceEngine::Core::updateHarmonicSpacing() noexcept
     if (sum / (float) count < -30.0f)   // silence or close to it
     {
         if (spacingHeld > 0 && --spacingHeld == 0)
-            envelopeFloorBins = 0;
+            envelopeFloorBins = 0, spacingBins = 0.0f;
 
         return;
     }
@@ -781,13 +842,17 @@ void ResonanceEngine::Core::updateHarmonicSpacing() noexcept
         const int wanted = juce::roundToInt ((float) chosen * spacingToEnvelope);
         spacingHeld = spacingHoldHops;
 
+        // The spacing itself, between bins, from the shape of the correlation's top.
+        const float before = scores[chosen - 1], top = scores[chosen], after = scores[chosen + 1], bend = before - 2.0f * top + after;
+        spacingBins = (float) chosen + (bend < -1.0e-6f ? juce::jlimit (-0.5f, 0.5f, 0.5f * (before - after) / bend) : 0.0f);
+
         // Small changes are left alone, so the tables are not rebuilt for every wobble of a note.
         if (std::abs (wanted - envelopeFloorBins) >= std::max (2, envelopeFloorBins / 6))
             envelopeFloorBins = wanted;
     }
     else if (spacingHeld > 0 && --spacingHeld == 0)
     {
-        envelopeFloorBins = 0;
+        envelopeFloorBins = 0, spacingBins = 0.0f;
     }
 }
 
@@ -813,10 +878,19 @@ void ResonanceEngine::Core::updateRangeMask() noexcept
     };
 
     // With Low above High the two tapers multiply out to nothing, so the plug-in does nothing.
+    activeFirst = numBins;
+    activeLast = -1;
+
     for (int k = 0; k < numBins; ++k)
     {
         const float f = logBinFreq[(size_t) k];
         rangeMask[(size_t) k] = taper (logLow - f) * taper (f - logHigh);
+
+        if (rangeMask[(size_t) k] > 0.0f)
+        {
+            activeFirst = std::min (activeFirst, k);
+            activeLast = k;
+        }
     }
 }
 
@@ -932,6 +1006,20 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
     const float gate = std::max (floorPower, s.loudest * juce::Decibels::decibelsToGain (-gateBelowLoudestDb));
     const float minimum = floorPower * 1.0e-3f;
 
+    // Held Notes, in Soft mode, on a voice with clear harmonics: the tallest bin within half a spacing reads, at a harmonic's
+    // place, that harmonic's height, so the neighbours of bin k are found one and two spacings either side of it.
+    const bool harmonics = params.heldNotes && ! hard && spacingBins >= harmonicMinBins && activeLast >= activeFirst;
+    const int oneAway = juce::roundToInt (spacingBins), twoAway = juce::roundToInt (2.0f * spacingBins);
+
+    if (harmonics)
+    {
+        // Only for the bins Low and High let through, and as far past them as their neighbours and those neighbours' windows reach.
+        const int half = std::max (1, juce::roundToInt (0.5f * spacingBins));
+        slidingMaxFixed (s.smoothedPower.data(), harmonicPeak.data(), runUp.data(), runDown.data(),
+                         std::max (0, activeFirst - twoAway - half), std::min (numBins - 1, activeLast + twoAway + half), half);
+        std::fill (standing.begin(), standing.end(), notJudged);
+    }
+
     for (int k = 0; k < numBins; ++k)
     {
         const auto idx = (size_t) k;
@@ -939,6 +1027,24 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
 
         if (rangeMask[idx] <= 0.0f || depth <= 0.0f || depthScale[idx] <= 0.0f || detector[k] < floorPower)
             continue;
+
+        if (harmonics && k - twoAway >= 1 && k + twoAway <= numBins - 1)
+        {
+            // How far the bin stands over the two harmonics below and the two above: the mean of the two sides in dB, held to
+            // the lower side plus what a tilt can explain, as for the wide reference. Worked out on powers, so that a bin no
+            // taller than its neighbours costs no logarithm and a taller one costs one.
+            const float level = std::max (detector[k], minimum);
+            const float below = std::max (0.5f * (harmonicPeak[(size_t) (k - oneAway)] + harmonicPeak[(size_t) (k - twoAway)]), minimum);
+            const float above = std::max (0.5f * (harmonicPeak[(size_t) (k + oneAway)] + harmonicPeak[(size_t) (k + twoAway)]), minimum);
+            const float taller = std::max (below, above), lower = std::min (below, above);
+
+            if (level * level <= taller * lower || level * tiltAllowGain[idx] <= taller)
+                standing[idx] = standsUnder;
+            else if (taller <= lower * tiltAllowGainSquared[idx])
+                standing[idx] = 5.0f * std::log10 (level * level / (taller * lower));
+            else
+                standing[idx] = 10.0f * std::log10 (level / taller) + tiltAllowDb[idx];
+        }
 
         const bool hasLeft  = refLeftEnd[idx]    >= refLeftStart[idx];
         const bool hasRight = refRightStart[idx] <= refRightEnd[idx];
@@ -1002,6 +1108,70 @@ void ResonanceEngine::Core::detect (Slot& s) noexcept
 
         // Never push a peak below the spectrum around it, however large Depth is.
         s.raw[idx] = std::min ({ softOver * softSlope, limit, std::max (excessDb, 0.0f) });
+    }
+
+    // Held Notes: the same judgement against the neighbouring harmonics. The long view takes the tallest reading within a
+    // 24th of an octave, so that a harmonic wavering with vibrato still counts as one thing that stays. The deeper reduction
+    // wins. Off, or with no harmonics to judge, the long view lets go, and once it is empty nothing more is spent on it.
+    if (! harmonics)
+    {
+        if (s.standingLive)
+        {
+            bool any = false;
+
+            for (auto& slow : s.slowStanding)
+            {
+                slow = params.heldNotes ? slow - harmonicCoeff * slow : 0.0f;
+
+                if (slow < 1.0e-6f)
+                    slow = 0.0f;
+
+                any = any || slow > 0.0f;
+            }
+
+            s.standingLive = any;
+        }
+
+        return;
+    }
+
+    // Outside Low and High nothing is judged, so the windows need not look there.
+    slidingMax (standing.data() + activeFirst, followed.data() + activeFirst, scratchDeque.data(), activeLast - activeFirst + 1, followHalf.data() + activeFirst);
+    s.standingLive = true;
+
+    for (int k = 0; k < numBins; ++k)
+    {
+        const auto idx = (size_t) k;
+        float& slow = s.slowStanding[idx];
+        const float stands = standing[idx];
+
+        if (stands <= notJudged)   // which every bin outside Low and High is, so followed is never read there
+        {
+            if (slow > 0.0f)
+            {
+                slow -= harmonicCoeff * slow;
+
+                if (slow < 1.0e-6f)
+                    slow = 0.0f;
+            }
+
+            continue;
+        }
+
+        if (detector[k] > gate)
+            slow += harmonicCoeff * (std::max (followed[idx], 0.0f) - slow);
+
+        if (stands <= 0.0f)
+            continue;
+
+        const float judged = std::min (stands, harmonicPersistWeight * slow + (1.0f - harmonicPersistWeight) * stands);
+        const float over = judged - (threshold + harmonicThresholdDb + sparseLift + juce::jmap (std::max (tiltPosition[idx], 0.0f), thresholdOffsetLowDb, thresholdOffsetHighDb) - sensitivity[idx]);
+
+        if (over <= -kneeDb)
+            continue;
+
+        const float softOver = over >= kneeDb ? over : (over + kneeDb) * (over + kneeDb) / (4.0f * kneeDb);
+        s.raw[idx] = std::max (s.raw[idx], std::min ({ softOver * softSlope, depth * depthScale[idx], stands }));
     }
 }
 

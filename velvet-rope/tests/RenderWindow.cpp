@@ -375,7 +375,7 @@ int main (int argc, char** argv)
         return runLive (argc > 2 ? atoi (argv[2]) : 5, argc > 3 ? atoi (argv[3]) : 6, ! (argc > 4 && juce::String (argv[4]) == "silent"), argc > 4 && juce::String (argv[4]) == "background");
 
     const bool cpuOnly = argc > 1 && juce::String (argv[1]) == "--cpu";
-    const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 && ! cpuOnly ? argv[1] : "docs/window-v3");
+    const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 && ! cpuOnly ? argv[1] : "docs/window-v4");
     folder.createDirectory();
 
     auto voice = loadVoice();
@@ -587,6 +587,16 @@ int main (int argc, char** argv)
         const auto now = juce::Time::getCurrentTime();
         graph.mouseMove (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &graph, &graph, now, at, now, 0, false));
         s.saveBoth (folder, "dot-hovered");
+    }
+
+    // State 13b: the default settings with Held notes on and hovered, which shows its hint.
+    if (! cpuOnly)
+    {
+        Session s;
+        setParam (s.processor, "heldNotes", 1.0f);
+        s.play (voice, 0, bestFrame + 1);
+        s.editor->previewHover ("heldNotes");
+        s.saveBoth (folder, "held-notes-on-hovered");
     }
 
     // State 14 and 15: surround layouts, closed and with Advanced open, on real speech with a different resonance in each pair.

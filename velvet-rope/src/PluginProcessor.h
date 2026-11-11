@@ -141,7 +141,7 @@ private:
     std::atomic<float>* depth, * sharpness, * selectivity, * attack, * release, * lowFreq, * highFreq,
                       * mix, * outputGain, * delta, * stereoMode, * bypass,
                       * mode, * hardThreshold, * link, * stereoFocus, * sharpnessTilt, * attackTilt, * releaseTilt, * wetTrim,
-                      * sideChain, * sideChainListen, * maxCut, * quality, * bandListen;
+                      * sideChain, * sideChainListen, * maxCut, * quality, * bandListen, * heldNotes;
     std::atomic<float>* bandFreq[smoothres::Params::numBands], * bandSens[smoothres::Params::numBands], * bandWidth[smoothres::Params::numBands], * bandOn[smoothres::Params::numBands];
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SmoothResonanceProcessor)

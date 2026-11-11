@@ -108,6 +108,8 @@ static void testParameters()
         { "band6Freq", "Band 6 Frequency", 20, 20000, 1500 }, { "band6Sens", "Band 6 Sensitivity", -12, 12, 0 }, { "band6Width", "Band 6 Width", 0.1f, 4, 1 }, { "band6On", "Band 6 On", 0, 1, 0 },
         { "band7Freq", "Band 7 Frequency", 20, 20000, 5000 }, { "band7Sens", "Band 7 Sensitivity", -12, 12, 0 }, { "band7Width", "Band 7 Width", 0.1f, 4, 1 }, { "band7On", "Band 7 On", 0, 1, 0 },
         { "band8Freq", "Band 8 Frequency", 20, 20000, 11000 }, { "band8Sens", "Band 8 Sensitivity", -12, 12, 0 }, { "band8Width", "Band 8 Width", 0.1f, 4, 1 }, { "band8On", "Band 8 On", 0, 1, 0 },
+        // Added in 0.6.0, last.
+        { "heldNotes", "Held Notes", 0, 1, 0 },
     };
 
     bool allOk = true;

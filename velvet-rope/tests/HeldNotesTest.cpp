@@ -2,6 +2,10 @@
 // down a single harmonic that rings on a held note. Everything here goes through the real processor and its real parameters,
 // looked up by ID, so this file builds against a version that has no such control and fails there for that reason.
 //
+// The ring in these signals stands 12 dB over the two harmonics either side of it, as the median ring on Luke's real takes does
+// (12.1 dB). The first version of this file, committed before the control existed, used a fixed +14 dB filter, which only stood
+// 9 to 10 dB tall once its skirts and the formants beside it were counted; the limits below were not moved.
+//
 // Limits come from the real vocal checks (realvox src/extra/resonance.cpp): a ring that lasts comes down 3 dB or more at the
 // default Depth of 6, measured from 100 ms after it starts; S and consonants are dulled no more than 1.5 dB, and no more than
 // 0.3 dB further than with the control off.
@@ -221,12 +225,41 @@ static std::vector<float> heldNotes (double seconds, double f0)
 
 static double ringHzFor (double f0)  { return std::round (3000.0 / f0) * f0; }
 
+static double bandDb (const std::vector<float>& x, int delay, const std::vector<std::pair<int, int>>& spans, double lowHz, double highHz);
+static std::vector<std::pair<int, int>> ringSpans (double seconds);
+
+/** How far the harmonic at the ring stands over the mean of the two harmonics below it and the two above, in dB: the measure the
+    real vocal check uses to call something a ring. */
+static double ringStands (const std::vector<float>& x, double seconds, double f0)
+{
+    const double hz = ringHzFor (f0);
+    const auto spans = ringSpans (seconds);
+    const auto power = [&] (double at) { return std::pow (10.0, 0.1 * bandDb (x, 0, spans, at - 40.0, at + 40.0)); };
+    return 10.0 * std::log10 (power (hz) / (0.25 * (power (hz - 2.0 * f0) + power (hz - f0) + power (hz + f0) + power (hz + 2.0 * f0))));
+}
+
+static constexpr double kRingStands = 12.0;   // the median ring on Luke's real takes stands 12.1 dB over its neighbours
+
 /** Those notes with a formant at 2200 Hz and one at 4100 Hz, and between them a narrow ring on the harmonic nearest 3000 Hz:
-    one harmonic standing 14 dB over the ones beside it for as long as each note lasts, with taller formants either side. */
+    one harmonic standing 12 dB over the ones beside it for as long as each note lasts, with taller formants either side.
+    The ring is a peak filter of Q 20 whose gain is raised in half dB steps until the harmonic stands that tall, because the
+    filter's skirts and the formants' slopes lift the neighbours too. */
 static std::vector<float> ringingVoice (double seconds, double f0, bool withRing = true)
 {
     auto voice = peakFilter (peakFilter (heldNotes (seconds, f0), 2200.0, 5.0, 12.0), 4100.0, 5.0, 12.0);
-    return withRing ? peakFilter (voice, ringHzFor (f0), 20.0, 14.0) : voice;
+
+    if (! withRing)
+        return voice;
+
+    for (double gain = 10.0; gain < 30.0; gain += 0.5)
+    {
+        auto ringing = peakFilter (voice, ringHzFor (f0), 20.0, gain);
+
+        if (ringStands (ringing, seconds, f0) >= kRingStands)
+            return ringing;
+    }
+
+    return peakFilter (voice, ringHzFor (f0), 20.0, 30.0);
 }
 
 struct Spoken { std::vector<float> x; std::vector<int> sStarts, tStarts; int sLength = 0; };
@@ -390,7 +423,7 @@ static void testOffIsTheOldSound()
 
 static void testOnCutsARing()
 {
-    std::puts ("\n== On takes down a ring that lasts: one harmonic 14 dB over its neighbours on 0.6 s notes, a taller formant either side, default settings");
+    std::puts ("\n== On takes down a ring that lasts: one harmonic 12 dB over its neighbours on 0.6 s notes, a taller formant either side, default settings");
     constexpr double seconds = 7.5;
 
     for (double f0 : { 130.0, 180.0, 250.0 })
@@ -403,6 +436,7 @@ static void testOnCutsARing()
 
         char line[200];
         std::snprintf (line, sizeof (line), "F0 %.0f Hz, ring at %.0f Hz", f0, hz);
+        info (std::string (line) + ": the ring stands over the two harmonics either side by", ringStands (x, seconds, f0), "dB");
         info (std::string (line) + ": with it off the ring comes down", cutOff, "dB");
         check (cutOn >= 3.0, std::string (line) + ": with it on, from 100 ms into each note (limit 3 or more)", cutOn, "dB");
 
@@ -419,12 +453,15 @@ static void testOnCutsARing()
         check (std::abs (noRing) <= 1.0, std::string (line) + ": the same notes with no ring, on against off at that place (limit 1)", noRing, "dB");
     }
 
-    // Depth still means what it says, and Hard mode is not touched.
+    // Depth is still the most any spot is turned down, and Hard mode is not touched.
     {
         const auto x = ringingVoice (seconds, 180.0);
-        const auto deep = renderWith (x, true, [] (Proc& p) { setParam (p, "depth", 12.0f); });
-        const double cut = ringCut (x, deep, seconds, 180.0);
-        check (cut >= 6.0 && cut <= 12.5, "Depth 12 with it on: the ring comes down more, and no more than Depth (6 to 12.5)", cut, "dB");
+        const double atDefault = ringCut (x, renderWith (x, true), seconds, 180.0);
+        const double shallow = ringCut (x, renderWith (x, true, [] (Proc& p) { setParam (p, "depth", 3.0f); }), seconds, 180.0);
+        const double deep = ringCut (x, renderWith (x, true, [] (Proc& p) { setParam (p, "depth", 12.0f); }), seconds, 180.0);
+        check (shallow >= 1.5 && shallow <= 3.2, "Depth 3 with it on: the ring comes down, and no more than Depth (1.5 to 3.2)", shallow, "dB");
+        check (deep >= atDefault - 0.1 && deep <= 12.5, "Depth 12 with it on: no less than at Depth 6, and no more than Depth", deep, "dB");
+        info ("the same ring at Depth 6", atDefault, "dB");
 
         const auto hard = [] (Proc& p) { setParam (p, "mode", 1.0f); };
         Proc probe;

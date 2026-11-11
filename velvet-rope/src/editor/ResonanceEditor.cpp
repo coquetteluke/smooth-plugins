@@ -529,6 +529,7 @@ ResonanceEditor::Panel::Panel (ResonanceEditor& e, SmoothResonanceProcessor& p)
       release (p.parameters, "release", "Release", "How fast it lets go.", Kind::dial, Unit::ms),
       mode (p.parameters, "mode", "Mode", "Soft compares each spot to its neighbours. Hard uses a fixed level."),
       quality (p.parameters, "quality", "Quality", "Low Latency 11 ms, for recording. Normal 43 ms. High 85 ms, finest detail, slower to react."),
+      heldNotes (p.parameters, "heldNotes", "Held notes", "Also takes down one harmonic that rings on a held note. Soft mode only.", tone::text),
       hardThreshold (p.parameters, "hardThreshold", "Threshold", "In Hard mode, the level where it starts working.", Kind::row, Unit::db),
       stereoMode (p.parameters, "stereoMode", "Stereo", "Stereo treats left and right. Mid/Side treats center and sides."),
       link (p.parameters, "link", "Link", "At 100% both sides move together. Lower treats them apart.", Kind::row, Unit::percent),
@@ -564,7 +565,7 @@ ResonanceEditor::Panel::Panel (ResonanceEditor& e, SmoothResonanceProcessor& p)
     addChildComponent (*channelMeters);
     addAndMakeVisible (*listenButton);
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &depth, &maxCut, &sharpness, &selectivity, &attack, &release, &mode, &quality, &hardThreshold, &stereoMode,
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &depth, &maxCut, &sharpness, &selectivity, &attack, &release, &mode, &quality, &heldNotes, &hardThreshold, &stereoMode,
                                                                         &link, &stereoFocus, &sharpnessTilt, &attackTilt, &releaseTilt, &wetTrim,
                                                                         &sideChain, &sideChainListen, &lowFreq, &highFreq, &bypass, &delta, &mix, &outputGain })
         addAndMakeVisible (c);
@@ -778,7 +779,12 @@ void ResonanceEditor::Panel::layoutSide()
 
     place (quality);
     y += 2;
-    place (mode);
+
+    // Held notes belongs to Soft mode, so it sits on Mode's row, at its end.
+    constexpr int heldWidth = 86;
+    mode.setBounds (sideLeft, y, width - heldWidth - 6, rowHeight);
+    heldNotes.setBounds (sideLeft + width - heldWidth, y + 1, heldWidth, rowHeight - 2);
+    y += rowHeight;
 
     // Threshold belongs to Hard mode, so it is out with Mode whenever it does something, and in Advanced the rest of the time.
     const bool hard = mode.getSelected() == 1;
@@ -1041,7 +1047,8 @@ void ResonanceEditor::tick (double dtSeconds)
         panel.repaint (sideLeft, 0, designWidth - sideLeft, designHeight - footerHeight);
     }
 
-    // Threshold only does something in Hard mode, and comes out next to Mode when it does.
+    // Threshold only does something in Hard mode, and comes out next to Mode when it does. Held notes only does something
+    // in Soft mode, and goes grey in Hard.
     const bool hard = panel.mode.getSelected() == 1;
 
     if (panel.hardThreshold.isEnabled() != hard)
@@ -1049,6 +1056,12 @@ void ResonanceEditor::tick (double dtSeconds)
         panel.hardThreshold.setEnabled (hard);
         panel.layoutSide();
         panel.repaint (sideLeft, 0, designWidth - sideLeft, designHeight - footerHeight);
+    }
+
+    if (panel.heldNotes.isEnabled() == hard)
+    {
+        panel.heldNotes.setEnabled (! hard);
+        panel.heldNotes.setAlpha (hard ? 0.4f : 1.0f);
     }
 
     if (--changesCountdown <= 0)

@@ -67,6 +67,10 @@ struct Params
     Quality quality    = Quality::normal;
     int     bandListen = 0;          // 0 off. 1 to 8 solos that dot's region. With Delta, only what is being taken out of it
 
+    // Added in 0.6.0. Off is the sound of 0.5.1 to the sample. On, Soft mode also takes down a single harmonic that rings on
+    // a held note: each bin is judged a second time, against the two harmonics below it and the two above. Hard mode ignores it.
+    bool    heldNotes  = false;
+
     SensitivityBand bands[numBands] = { { 300.0f, 0.0f, 1.0f, true }, { 3000.0f, 0.0f, 1.0f, true }, { 7000.0f, 0.0f, 1.0f, true },
                                         { 150.0f, 0.0f, 1.0f, false }, { 600.0f, 0.0f, 1.0f, false }, { 1500.0f, 0.0f, 1.0f, false },
                                         { 5000.0f, 0.0f, 1.0f, false }, { 11000.0f, 0.0f, 1.0f, false } };
@@ -105,6 +109,9 @@ struct GraphFrame
         -> weighed by how long it has been sticking out
         -> threshold, slope, Depth limit               = raw reduction per bin
            (Hard mode: detector against a fixed level instead)
+        -> with Held Notes on, in Soft mode, on a voice with clear harmonics: the same again with the two harmonics
+           below and the two above as the reference, with a shorter long view that follows a wandering note, and
+           the deeper of the two reductions is kept. With it off none of this runs
         -> Link between the channels: at 100% every channel takes the deepest of them all
         -> widened and smoothed across frequency
         -> attack and release per bin
@@ -177,6 +184,8 @@ private:
         std::vector<float>  applied;
         std::vector<float>  gain;
         std::vector<float>  slowExcess;
+        std::vector<float>  slowStanding;   // Held Notes: the same long view, for how far a bin stands over its neighbouring harmonics
+        bool standingLive = false;          // false while slowStanding is all zero, so that nothing is spent on it
         float loudest = 0.0f;
     };
 
@@ -228,6 +237,12 @@ private:
         std::vector<float> logBinFreq, tiltPosition, levelLift, rangeMask, sensitivity, depthScale, attackCoeffs, releaseCoeffs, listenMask;
         std::vector<int> scratchDeque;
         std::vector<float> scratchBins, scratchDetector, displayPower, spacingLog, spacingFlat;
+        std::vector<float> harmonicPeak, standing, followed;   // scratch for the comparison with the neighbouring harmonics
+        std::vector<int> followHalf;
+        std::vector<float> tiltAllowDb, tiltAllowGain, tiltAllowGainSquared;   // how far two sides may differ and still count as tilt, as dB and as power ratios
+        std::vector<float> runUp, runDown;   // scratch for a sliding maximum of one fixed width
+        int activeFirst = 0, activeLast = -1;   // the bins Low and High let through, from the range mask
+        float spacingBins = 0.0f;   // harmonic spacing in bins, with its fraction. 0 when there are no clear harmonics
         int spacingFirstBin = 0, spacingLastBin = 0, spacingMinLag = 0, spacingMaxLag = 0, spacingCounter = 0, spacingHeld = 0, spacingHoldHops = 0;
         int envelopeFloorBins = 0, builtEnvelopeFloor = -1;
 
@@ -235,6 +250,7 @@ private:
         float bandGlide[Params::numBands][3] {}, bandBuilt[Params::numBands][3] {};
         int listenBuiltBand = -1;
         float listenBuiltHz = 0.0f, listenBuiltWidth = 0.0f;
+        float harmonicCoeff = 1.0f;
         float detectorCoeff = 1.0f, rangeCoeff = 1.0f, persistenceCoeff = 1.0f, loudestFallCoeff = 1.0f, focusNow = 0.0f, maxCutNow = 24.0f, cutLimit = 1.0e9f;
         float builtAttackMs = -1.0f, builtReleaseMs = -1.0f, builtAttackTilt = -9.0f, builtReleaseTilt = -9.0f;
         std::array<float, maxChannels> channelMost {};

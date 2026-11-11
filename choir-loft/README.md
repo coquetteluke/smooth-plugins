@@ -1,10 +1,10 @@
 # Choir Loft
 
-Up to eight harmony voices from one lead vocal. Formants stay where they are, so the voices sound like people and not like a sped up tape. Each voice has its own timing, pitch, throat, tone, breath and consonants, so together they aim to sound like separate singers. The Tight preset turns all of that off and sits exactly on the notes.
+Up to eight harmony voices from one lead vocal. Formants stay where they are, so the voices sound like people and not like a sped up tape. Each voice has its own timing, pitch, throat, tone, breath and consonants, so together they aim to sound like separate singers. The Tight preset turns all of that off and sits exactly on the notes. Human (1.5.0) goes from the robot sound at 0, which is the default and the sound of every earlier version, to voices that move the way a singer does.
 
 **Load it:** Audio Units > Luke Garito > Choir Loft. AU code `aumf SHrm Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. With mono in, the voices still spread across the stereo field.
 
-Everything here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
+Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2 and 1.5.0 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
 
 ## First settings to try
 
@@ -31,6 +31,7 @@ Every control is a real AU parameter that a host can find by name.
 | Voice N Throat | 70 to 140%. Above 100 lowers that voice's formants, as a longer throat would. Defaults differ per voice, about 20% between the extremes. |
 | Voice N Tone | -100 to +100%. Darker or brighter, for good: a shelf at 1.6 kHz. Defaults differ per voice. |
 | Humanize | How a person differs from a machine, note by note. A scoop from below (up to 70 cents, less when coming down), a slow settle (up to 18 cents), landing a little off the note (up to 8 cents at random plus up to 5 cents of the voice's own habit), standing behind the lead (up to 26 ms by voice plus up to 18 ms per note), a slower glide, a softer start to a phrase, its own vibrato depth and timing. Above 0 it also turns on period blending and high end unevenness. 0 is exact. |
+| Human | 0 to 100%. 0, the default, is the robot sound: the plug-in as it was before 1.5.0, with nothing of this running. Above 0 each voice moves the way a singer does: a wander and a flutter of its own inside every note (random, not a steady wobble), a small part of your own movement on the note, a vibrato whose speed and depth no longer hold still, a level of its own instead of an exact copy of yours, and its own place behind you on each note. It never moves a voice off its note on average. Humanize is the note by note character (scoops, landing off the note, standing behind the lead). Human is what happens inside the note. They work together or apart. |
 | Vibrato | 0 to 100%, up to +/-60 cents. Starts 180 ms into a note. Each voice's rate is slightly different. |
 | Vibrato Rate | 3 to 8 Hz. Voice 1 runs at this, the others up to 7% away. |
 | Lead Level | -60 (Off) to +6 dB. |
@@ -44,7 +45,7 @@ Every control is a real AU parameter that a host can find by name.
 | Breath | 0 to 100%. Noise of each voice's own, following that voice's high end. 100 is about 7 dB under the voice above 3 kHz. |
 | Chord Root, Chord Type | Used by Chord Tones. |
 | Chord Hold | Keeps a MIDI chord after the keys are up, until the next new note. The sustain pedal works too. |
-| Input Type | Voice range. Sets tracking range and latency. Soprano 150 Hz to 1.3 kHz, Alto/Tenor 98 Hz to 1 kHz, Low Male 65 to 600 Hz, Wide Range 65 Hz to 1.3 kHz. |
+| Input Type | Voice range. Sets tracking range and latency. Soprano 150 Hz to 1.3 kHz, Alto/Tenor 98 Hz to 1 kHz, Low Male 65 to 600 Hz, Wide Range 65 Hz to 1.3 kHz. Since 1.5.0 Alto/Tenor also follows notes under its range, down to 65 Hz, at the same latency: see "Low notes and Human". |
 | Tracking | Which sounds count as pitched. 0 is choosy, 100 lets rough, breathy sound count. |
 | Reference A4 | 415 to 466 Hz. |
 | Bypass | Keeps the same delay. |
@@ -67,7 +68,7 @@ The top half shows what each voice sings and where it sits. On the left, each vo
 
 Drag a singer: left and right pans it, up and down changes its interval. In the MIDI modes MIDI decides the note, so a drag only pans. A click with no movement switches, a drag moves. Two quick clicks are off and on again, so a double-click on a singer does not reset it. Double-click its controls for that.
 
-Below the display, the row of cards starts with the lead: its name and switch, the note you are singing, Level and Pan. Then each voice has a card with its note, its interval in words, Level, Pan, Drift and Tone. Up to 4 voices there are 4 wide cards, with the spare ones dimmed. Above that there is a card per singer in narrower columns, so all of them stay in view. Under those are Humanize, Vibrato, Harmony and Mix. Advanced holds Throat, Vibrato Rate, Glide, Follow Lead, Breath, Consonants, Scatter, Voice range, Tracking and Reference A4. When Advanced opens, the display gets shorter instead of the window getting bigger.
+Below the display, the row of cards starts with the lead: its name and switch, the note you are singing, Level and Pan. Then each voice has a card with its note, its interval in words, Level, Pan, Drift and Tone. Up to 4 voices there are 4 wide cards, with the spare ones dimmed. Above that there is a card per singer in narrower columns, so all of them stay in view. Under those are Human, Humanize and Vibrato, which say how the voices sing, then Harmony and Mix. Advanced holds Throat, Vibrato Rate, Glide, Follow Lead, Breath, Consonants, Scatter, Voice range, Tracking and Reference A4. When Advanced opens, the display gets shorter instead of the window getting bigger.
 
 The Mode row says In Key where the parameter is called Scale Interval, and Fixed where it is Fixed Interval. Key and Scale swap with Chord and Type in Chord Tones mode, and Follow Key swaps with Chord Hold in the MIDI modes. Whichever pair is not by the display is in Advanced, so every control always has a place.
 
@@ -89,7 +90,7 @@ CPU, real window at 2x on this Mac: every run is in `docs/window-cpu.md`. `tests
 
 ## Presets
 
-Pop Thirds And Fifths, Third Above, Third Below, Full Stack, Gang Unison, Wide Octaves, Power Fifths, MIDI Choir, MIDI Chords Only (lead off), Chord Tones Pad, Tight. Six Part Stack, Eight Part Choir, MIDI Eight Part Choir. Presets never change Key, Scale, Follow Key or Input Type. They all put every singer back on.
+Pop Thirds And Fifths, Third Above, Third Below, Full Stack, Gang Unison, Wide Octaves, Power Fifths, MIDI Choir, MIDI Chords Only (lead off), Chord Tones Pad, Tight. Six Part Stack, Eight Part Choir, MIDI Eight Part Choir. Presets never change Key, Scale, Follow Key, Input Type or Human, so the robot or human choice stays as you set it while you try presets. Tight alone puts Human at 0, because it promises exact tuning. They all put every singer back on.
 
 Tight is exact tuning: no Drift, Humanize, Vibrato, Tone, Breath or Scatter, Throat 100, Follow Lead 0, Consonants 35. It meets the 1.0.0 limits. It is not a bit for bit copy of 1.0.0, because the vowel end fix below applies everywhere. For the 1.0.0 default sound itself, set Drift 25, Humanize 20, Vibrato 10, Throat 100, 96, 104, 92, Glide 20, Follow Lead 25, Consonants 35, Tone, Breath and Scatter 0.
 
@@ -103,9 +104,9 @@ On a vocal peaking at -6 dBFS, measured output peaks: two voices at defaults 0.6
 
 Input > clean bad samples > history > pitch tracker (on left and right mixed) > note logic on a 1 ms tick > up to eight grain voices reading the shared mono history, each with its own consonant path > per voice all-pass, level match, Tone, Breath, fade, Level, Pan > summed with the delay matched lead > Mix > Bypass > output.
 
-- `src/PitchTracker.h`: from Smooth Tune. Since 1.4.1 a start must also repeat in its even harmonics. Since 1.4.2 it must also repeat once its formants are taken out by linear prediction, unless plainly periodic, and reports how far back the start reaches so voices can be written back to it. Changes: marks slide much more slowly towards the loudest part of each period, because that slide bent shifted pitch by up to 8.6 cents. Since 1.4.0, once a note is under way, a move to two or three times the current period must also hold over three windows, so breathy sound no longer drops it an octave or a twelfth for a few ms.
+- `src/PitchTracker.h`: from Smooth Tune. Since 1.5.0 it can follow notes under its range without the range getting slower: where the range's own window finds nothing periodic, or while a low note is being followed, it also looks at the longer periods over a longer window, which reaches further back in time and adds no delay. Since 1.4.1 a start must also repeat in its even harmonics. Since 1.4.2 it must also repeat once its formants are taken out by linear prediction, unless plainly periodic, and reports how far back the start reaches so voices can be written back to it. Changes: marks slide much more slowly towards the loudest part of each period, because that slide bent shifted pitch by up to 8.6 cents. Since 1.4.0, once a note is under way, a move to two or three times the current period must also hold over three windows, so breathy sound no longer drops it an octave or a twelfth for a few ms.
 - `src/VoiceShifter.h`: pitch-synchronous grains, one input period of window each side of a mark, spaced at the wanted output period. Timing lag comes from choosing an older period, so it cannot bend pitch. Unvoiced sound is read straight at one held offset, so it is the input at a lag, with no grain spacing on it. A slight reading speed change cancels the formant drag at large shifts. With Humanize above 0, a grain reads between two neighbouring periods instead of repeating or dropping whole ones, and where it reads is nudged at random per grain, so the high end stops repeating exactly while pitch stays put.
-- `src/HarmonyBrain.h`: the modes, Glide, Follow Lead, and each voice's drift, vibrato and humanize. Each voice hears the lead late by its own lag, so its note changes come late by themselves. Since 1.4.0 a start is a phrase after silence, pitch coming back after 10 ms or more without it, or a reattack. In a start's first 50 ms plus the voice's lag, and after a note held under 80 ms, notes change without a glide; glides are for legato notes. While the lead rises out of a start, the voices bend with it. `src/MidiChord.h`: held notes and voice assignment. `src/Scales.h`: scales, chords, intervals. `src/KeyFollower.h`: the key file.
+- `src/HarmonyBrain.h`: the modes, Glide, Follow Lead, and each voice's drift, vibrato and humanize. `HumanVoice` there is the Human control: random numbers of its own, so at 0 nothing else changes. Each voice hears the lead late by its own lag, so its note changes come late by themselves. Since 1.4.0 a start is a phrase after silence, pitch coming back after 10 ms or more without it, or a reattack. In a start's first 50 ms plus the voice's lag, and after a note held under 80 ms, notes change without a glide; glides are for legato notes. While the lead rises out of a start, the voices bend with it. `src/MidiChord.h`: held notes and voice assignment. `src/Scales.h`: scales, chords, intervals. `src/KeyFollower.h`: the key file.
 - `src/PluginProcessor.cpp`: parameters, latency, MIDI timing, the mix. Since 1.4.0: the first 30 ms of pitch of each stretch are rewritten with the newest reading; a reattack is the lead 9 dB louder than 20 to 30 ms before; the level match reads faster for 60 ms after a start. MIDI waits for the latency, so a chord change lines up with the lead. Pitch from the tracker is looked up in a short history for the same reason, and so is voicing, per voice: a voice keeps singing until the end of a vowel it is reading, not until the tracker has seen the vowel end, which in 1.0.0 cut each vowel short and left its last moments at the lead's pitch.
 - `getReadings()` and `getPitchPoint()` give a later window everything without touching audio.
 
@@ -140,9 +141,106 @@ Still failing: breathy starts on high notes, where the aspiration noise goes thr
 
 `PluginTest onsets`, `PluginTest notrigger`; `PluginTest onsettrace`, `trackertrace` and `corpustrace` print one start frame by frame.
 
+## Low notes and Human (1.5.0)
+
+Luke, on 1.4.4: "it misses low notes a lot and the voices sound robotic like really robotic. i mean i like the robotic sound but i also want a more human option". Both were measured on 11 of his own dry takes (Rode NT1, whole songs, 2247 voice seconds of pitched singing) with `realvox/RealVox.cpp`, whose checks and pass rules were committed before any change was measured (commits 1f8e91e and 772d144). Six more takes were kept blind and run once at the end, after 1.5.0 was committed: those numbers are in `~/smooth-plugins/_vox/rode/work/harmony/REPORT.md`.
+
+### Low notes
+
+Alto/Tenor, the default Input Type, tracked from 98 Hz. Luke's low notes sit at 91 to 97 Hz, just under it. Every held note of each take (200 ms or more on one pitch), each voice, default settings:
+
+| Lead pitch | Voice notes | 1.4.4 sang them | 1.5.0 | Time on the note, 1.4.4 | 1.5.0 |
+|---|---|---|---|---|---|
+| under 98 Hz | 28 | 6 (12 missed, 8 dropped out part way, 2 on another note) | 28 | 42.0% | 88.0% |
+| 98 to 130 Hz | 700 | 697 | 700 | 95.7% | 95.7% |
+| 130 Hz and up | 2630 | 2623 | 2622 | 94.4% | 94.4% |
+
+Time on the note is under 100% even when nothing is wrong, because a voice gliding between two notes is on neither. All 22 misses under 98 Hz had one cause: the note was under the range (the tracker found no period in 20 of them and too rough a one in 2). Above 98 Hz nothing stood out: 10 of 3330 voice notes failed in 1.4.4 and 8 in 1.5.0, and where a voice was off its note the tracker was right 72 to 87% of the time, which is the glide.
+
+The fix keeps the latency at 13.7 ms. A tracker's delay is how far ahead it looks, not how long its window is, so the range's own window is untouched and decides how fast a start is called, exactly as before. Only where that window finds nothing periodic, or while a low note is already being followed, does the tracker also look at periods from 98 Hz down to 65 Hz, over a window as long as the longest of them, which reaches about 10 ms further back. A voice on such a note reads up to a period later than it otherwise would. That is the voice's lag, of which the default voices have 5 to 25 ms anyway, not the plug-in's delay. Under the range the tracker is choosier, so fry and the creak at the end of a word, which before 1.5.0 never sang, still mostly do not: a start there needs half the usual limit.
+
+What it costs: on held notes above 98 Hz, nothing found. Octave errors 4 (1.4.4: 6), late notes 2 (0), share of time an octave off 0.63% (0.64%). Phrase and word starts: the medians did not move (22, 24 and 22 ms with Humanize and Drift at 0, where nothing is random). A little more breath and creak sings, since some of it repeats at 65 to 98 Hz: with Humanize and Drift at 0, voices sing through 12.24% of breath frames (1.4.4: 12.12%) and through 3.76% of the unpitched frames inside phrases (3.56%); starts after a consonant, 90th percentile 28 ms (24); breathy starts, median 20 ms (18). The dropout share fell from 2.17% to 1.48%. Widening the whole range to 65 Hz at the same latency was built and measured too: it gets 91.8% under 98 Hz, and moved those three medians one 2 ms step later each, so it was not used. Wide Range and Low Male, which need 20.6 ms, get 91.7% and 92.1%.
+
+### The robot sound, and what was measured to be robotic about it
+
+At the default settings, against Luke himself on the same notes, and against Luke singing the same part twice in one take (19 held notes where a line comes round again, the nearest thing to a real double):
+
+| What | Voices, 1.4.4 | Luke, or his two passes | |
+|---|---|---|---|
+| Pitch spread inside a held note | 5.3 cents | 20.1 cents | 3.8 times stiller |
+| of it slower than 150 ms | 2.3 cents | 12.5 cents | 5.4 times |
+| of it faster | 4.3 cents | 11.1 cents | 2.6 times |
+| Strongest steady wobble | 5.2 cents at 5.0 Hz, the built in vibrato | 15.9 cents at 3.5 Hz | a different, fixed rate |
+| Level curve inside a note against the lead's, how alike | 0.81 | 0.13 between his two passes | a copy of his level |
+| Two voices' movement in common | 0.42 | 0.12 between his two passes | they move as a block |
+| Interval between the two voices, spread inside a note | 6.1 cents | 25.7 between his two passes | 4 times tighter |
+| Ends of the two voices apart | 4 ms | 40 ms between his two passes (11 ends) | together |
+| Starts of the two voices apart | 6 ms | 14 ms (2 starts only) | nearly together |
+| Note average off its note | 4.5 cents | 16.7 between his two passes, 26.5 off his own note | far more exact |
+| Note changes, 10 to 90% | 70 ms | 76 ms | the same: not a cause |
+| Spectrum shape against the lead | voice 1 2% up, voice 2 8% down | 0.1% between his two passes | not one throat: not a cause |
+| S sounds, two voices alike | 0.19 (1 is a copy) | | not copies: not a cause |
+
+So the robot is, in order: pitch held still inside a note with one steady wobble on it; a level that copies the lead's; the voices moving as one block; the voices ending and starting together. Instant note changes, one throat and copied consonants, which were suspects, are not it.
+
+### Human
+
+![Human at 65](docs/window/human@2x.png)
+
+One control, 0 to 100%, 0 by default. At 0 none of it runs. Above 0, for each voice, from its own random numbers: a wander (turning over a few times a second) and a flutter in pitch that ease in as each note lands, a little of the lead's own movement on the note (smoothed, a different amount per voice, and not how far off the note the lead is), a vibrato whose rate and depth drift, a level that keeps part of its own through the lead's quick swells and dips plus a small wander, and a small shift per note in how far behind the lead the voice stands. Note changes, throat and consonants are left as they are.
+
+Its limits were written into `realvox/RealVox.cpp` before it existed (U1 to U9: in tune, not sloppy, starts no later, held notes no worse), with four numbers for what more human had to mean at 100 (V1 to V4). The working set:
+
+| | Human 0 | 35 | 65 | 100 | Limit | Luke |
+|---|---|---|---|---|---|---|
+| Pitch spread inside a note, cents | 5.3 | 6.2 | 8.0 | 10.4 | no more than Luke's (U3); 10 or more at 100 (V1) | 20.2 |
+| Two voices' movement in common | 0.40 | 0.37 | 0.35 | 0.32 | 0.30 or less at 100 (V2) | 0.12 |
+| Interval between the voices, spread, cents | 6.1 | 7.3 | 9.5 | 12.2 | 15 at most (U4) | 25.7 |
+| Note average off its note, cents | 4.6 | 5.0 | 6.6 | 7.8 | 10 at most (U1) | 16.7 |
+| Level curve like the lead's | 0.82 | 0.78 | 0.74 | 0.64 | 0.65 or less at 100 (V3) | 0.13 |
+| Level against the lead, spread, dB | 0.71 | 0.74 | 0.80 | 0.88 | 1.21 at most (U8) | 1.21 |
+| Voice 1 and voice 2 start after the lead, ms | 46 and 53 | 46 and 53 | 46 and 53 | 46 and 53 | 60 at most each (U5) | |
+| Both, 90th percentile, ms | 73 | 72 | 73 | 74 | 80 at most (U5) | |
+| Ends of the two voices apart, ms | 4 | 3 | 4 | 4 | 8 or more at 100 (V4), 40 at most (U7) | 40 |
+| Note changes, 10 to 90%, ms | 68 | 68 | 68 | 68 | 120 at most (U6) | 76 |
+
+Every limit U1 to U8 holds at 35, 65 and 100. U9, held notes no worse than at Human 0, holds at 65 and 100; at 35 one of its seven rules fails, the share of held notes sung right from 98 to 130 Hz, 0.9971 against 1.0000 with 0.002 allowed: 2 of 700 voice notes (take 02 at 29.7 s, take 04 at 12.4 s) were read an octave off for 55 and 30 ms. The first was traced: the voice was on its note there and the tool's pitch reading had picked a ripple, so this looks like the measure and not the voice, but the rule stands as written and it failed.
+
+Of the four numbers for "more human" at 100, two were reached (pitch spread 10.4 cents against 10, level curves 0.64 against 0.65) and two were not: the two voices still move together 0.32 against 0.30, and their ends are still 4 ms apart against 8. A voice ends when the lead's own note dies away; letting a voice go early was built, made voices miss notes (88 of 3358), and was taken out. So at 100 Human moves a voice a third of the way from the robot to Luke in pitch movement (5.3 to 10.4 cents, Luke 20.2), a quarter of the way in level (0.82 to 0.64, his two passes 0.13), and not at all in when it starts and stops.
+
+### What else changed in the sound, and the proof that nothing more did
+
+1.5.0 changes the sound with Human at 0 in two places, both on purpose. Alto/Tenor sings notes under 98 Hz. And a click is gone: at a start, a voice's own copy of the consonant before the note used to jump to the note's new place behind the lead while it was still fading out (Humanize draws that place per note), a step in what it reads. Of the 40 clicks the shared tool listed on Luke's takes at 1.4.4's defaults, 2 were this; the other 38 are clicks and creaky pulses in the takes themselves, sung back by a voice 5 to 60 ms later, which is the voice doing its job. The copy now stays where it was from the start until it has faded, about 5 ms.
+
+The proof that nothing else moved: the 1.5.0 source with just those two changes left out renders all 11 working takes bit for bit as 1.4.4 does, at the default, at Full Stack and at Tight (`RealVox hash`, 33 renders, 33 the same). So the Human control at 0, the new parameter and everything else add nothing. With the two changes in, against 1.4.4, Human at 0:
+
+- Soprano, Low Male and Wide Range, and any take that never goes under 98 Hz: only the click fix differs. Wide Range on the 11 takes: the difference is 40 to 55 dB under the render, the largest single sample -29 dBFS.
+- Alto/Tenor (the default, and every preset, since presets leave Input Type alone): the same file as 1.4.4 up to the first moment the tracker follows something under 98 Hz, which is 0.5 to 23.5 s into these takes (with the low note fix alone built in; with the click fix as well, the first voice start differs by the 40 to 55 dB above). From that moment the file is a different one for the rest of the take, 1.6 to 2.2 dB under the render itself, as different as two passes of the same voices. Two reasons, neither a change in what the voices do. A voice is rebuilt from grains set at its own pitch pulses, and once it has sung one thing differently its pulses fall at other instants from then on: the same note and the same sound, not the same samples (with Humanize and Drift at 0 the difference is still 2.7 to 5.5 dB under the render). And each voice draws its note by note choices (how far behind the lead, how it lands) from one run of random numbers, so one more sung note moves every later choice along by one. That it is the same sound is what the measures say: every robot number above reads the same on 1.4.4 and on 1.5.0 at Human 0 (pitch spread 5.3 and 5.3 cents, level curve 0.81 and 0.82, voices together 0.42 and 0.40, voice 1 starting 46 ms after the lead on both and voice 2 52 and 53 ms), and above 130 Hz the held note table moves no more than 1.4.4 moves against itself when the take is slid by 21 or 42 ms: notes sung right 99.73% and 99.70%, where 1.4.4 against itself moves 0.04%; time on the note 94.38% and 94.40%, where it moves 0.08%.
+
+The 22 null tests in `tests/` pin the sound on a synthetic voice. The low note fix and Human at 0 left all 22 as they were. The click fix changed 4 of the 5 and 11 of the 12 presets they cover (Tight has no Humanize, so nothing moved there); those now pin 1.5.0 at Human 0.
+
+### Before or after a doubler
+
+Luke runs Duo before Choir Loft. Takes 02, 10 and 12 were put through the installed Duo, and through Tune Pro alone, then into Choir Loft at its defaults, and judged against the notes of the dry take:
+
+| Into Choir Loft | Under 98 Hz, sung of 28 | 98 to 130 Hz, of 262 | 130 Hz and up, of 896 | Time on the note, the three bands | Octave errors |
+|---|---|---|---|---|---|
+| 1.4.4, dry | 6 | 259 | 895 | 40.6%, 96.9%, 94.1% | 2 |
+| 1.4.4, Duo first | 4 | 257 | 889 | 38.6%, 93.6%, 91.6% | 8 |
+| 1.4.4, Tune Pro first | 6 | 256 | 896 | 36.5%, 95.0%, 92.7% | 0 |
+| 1.5.0, dry | 28 | 262 | 893 | 90.7%, 96.8%, 94.2% | 2 |
+| 1.5.0, Duo first | 28 | 259 | 879 | 86.5%, 93.8%, 91.4% | 14 |
+| 1.5.0, Tune Pro first | 28 | 260 | 895 | 85.6%, 94.9%, 92.7% | 3 |
+
+A doubled lead costs the voices about 3 points of time on the note in every band and brings octave errors, in both versions: two copies of the voice a few ms and cents apart do not repeat cleanly. 1.5.0 behind Duo reads an octave low more often than 1.4.4 does (13 voice notes above 130 Hz against 7). Choir Loft was not tuned for a doubled lead. It does better placed before Duo.
+
+### Level
+
+Two voices at -6 dB on top of the lead add 1.76 dB of power, and the takes read +1.75 to +1.84 dB while Luke sings. Peaks rise more where a voice's pulse lands on the lead's: +1.8 to +4.5 dB at the default on these takes (1.4.4: +1.4 to +4.5; take 05, the hottest: dry -7.7 dBFS, out -3.2 in both), +3.4 to +6.2 dB on Full Stack (1.4.4: +2.9 to +6.5; take 05: -1.5 dBFS, 1.4.4 -1.2). There is no limiter, so a lead that peaks above about -4.5 dBFS can pass 0 dBFS at the default, and one above about -6.5 can on Full Stack. This is as designed, and 1.5.0 does not change it.
+
 ## Latency
 
-Exact and reported, the same bypassed. At 48 kHz: Soprano 9.0 ms, Alto/Tenor 13.7 ms (default), Low Male and Wide Range 20.6 ms. The lead and dry path are delayed to match. Changing Input Type fades out, jumps and fades in over 4 ms, then tells the host.
+Exact and reported, the same bypassed. At 48 kHz: Soprano 9.0 ms, Alto/Tenor 13.7 ms (default), Low Male and Wide Range 20.6 ms. Since 1.5.0 Alto/Tenor follows notes down to 65 Hz at its 13.7 ms. The lead and dry path are delayed to match. Changing Input Type fades out, jumps and fades in over 4 ms, then tells the host.
 
 ## 1.1.0 against 1.0.0
 
@@ -177,7 +275,7 @@ Exact and reported, the same bypassed. At 48 kHz: Soprano 9.0 ms, Alto/Tenor 13.
 
 ## Measured
 
-All in `tests/results.txt`: 563 pass, 3 fail as of 1.4.2, the 3 the breathy high starts in the phrase start test (see Phrase starts). Pitch, formant, level, pan, click and timing figures below are on plain settings, which is what Tight gives. Limits are in `tests/PassLimits.h`, committed before any DSP existed. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`.
+All in `tests/results.txt`: 611 pass, 3 fail as of 1.5.0, the 3 the breathy high starts in the phrase start test (see Phrase starts). Pitch, formant, level, pan, click and timing figures below are on plain settings, which is what Tight gives. Limits are in `tests/PassLimits.h`, committed before any DSP existed. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`.
 
 - Voice pitch against target, 95th percentile, 24 keys, every degree, 1056 notes: Scale Interval 2.3 cents, Fixed Interval 1.8, MIDI Chord 0.03. Limit 5.
 - Scale intervals: every seven note scale, root, degree and interval, all right. Chord assignment, Chord Hold, pedal and channels: all right, no voice crossings in 2000 random chords.

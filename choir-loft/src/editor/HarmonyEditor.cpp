@@ -293,6 +293,7 @@ HarmonyEditor::Panel::Panel (HarmonyEditor& e, PluginProcessor& p)
       leadLevel (p.apvts, "leadLevel", "Level", "How loud your own voice is. All the way down leaves only the harmonies.", tone::text),
       harmonyLevel (p.apvts, "harmonyLevel", "Harmony", "How loud all the voices are together.", neutralBar),
       mix (p.apvts, "mix", "Mix", "0 is your vocal alone, 100 is the lead and voices.", neutralBar),
+      human (p.apvts, "human", "Human", "0 is the robot sound. Higher, and each voice moves like a singer inside a note: its own pitch, vibrato and level.", neutralBar),
       vibratoRate (p.apvts, "vibratoRate", "Vibrato Rate", "How fast the vibrato is. Each voice runs a little apart from the others.", neutralBar),
       glide (p.apvts, "glide", "Glide", "How long the voices take to slide to a new note.", neutralBar),
       followLead (p.apvts, "followLead", "Follow Lead", "How much of your own pitch wander the voices copy. 0 sits right on the note.", neutralBar),
@@ -329,7 +330,7 @@ HarmonyEditor::Panel::Panel (HarmonyEditor& e, PluginProcessor& p)
         addChildComponent (*throat[v]);
     }
 
-    for (auto* c : { (juce::Component*) &humanize, (juce::Component*) &vibrato, (juce::Component*) &harmonyLevel, (juce::Component*) &mix,
+    for (auto* c : { (juce::Component*) &human, (juce::Component*) &humanize, (juce::Component*) &vibrato, (juce::Component*) &harmonyLevel, (juce::Component*) &mix,
                      (juce::Component*) &leadLevel, (juce::Component*) &leadPan })
         addAndMakeVisible (c);
 
@@ -550,9 +551,17 @@ void HarmonyEditor::Panel::resized()
     const int globalY = designHeight - 18 - bottomHeight - 12 - globalHeight;
     int column = 0;
 
-    // On the same four columns as Advanced. The lead's level and switch are on its card.
-    for (auto* c : { (juce::Component*) &humanize, (juce::Component*) &vibrato, (juce::Component*) &harmonyLevel, (juce::Component*) &mix })
-        c->setBounds (columnX (column++), globalY, columnWidth(), globalHeight);
+    // Harmony and Mix stay on Advanced's third and fourth columns. The three that say how the voices sing, Human, Humanize and Vibrato,
+    // share the first two columns, so the row lines up with Advanced at both ends and in the middle. The lead's level and switch are on its card.
+    const int singSpan = 2 * columnWidth() + gap, singWidth = (singSpan - 2 * gap) / 3;
+    for (auto* c : { (juce::Component*) &human, (juce::Component*) &humanize, (juce::Component*) &vibrato })
+    {
+        const int x = columnX (0) + column * (singWidth + gap);
+        c->setBounds (x, globalY, column == 2 ? columnX (0) + singSpan - x : singWidth, globalHeight);
+        ++column;
+    }
+    harmonyLevel.setBounds (columnX (2), globalY, columnWidth(), globalHeight);
+    mix.setBounds (columnX (3), globalY, columnWidth(), globalHeight);
 
     const int bottomY = globalY + globalHeight + 12;
     advancedHeader->setBounds (margin, bottomY, 110, bottomHeight);

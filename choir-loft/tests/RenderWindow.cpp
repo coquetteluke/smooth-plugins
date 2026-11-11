@@ -371,6 +371,15 @@ int main (int argc, char** argv)
         s.saveBoth (folder, "advanced-open");
     }
 
+    // Human turned up, with the mouse over it so the line under the controls says what it does.
+    {
+        Session s;
+        setParam (s.processor, "human", 65.0f);
+        s.play (sung, 0, sungEnd);
+        s.editor->previewHover ("human");
+        s.saveBoth (folder, "human");
+    }
+
     // Bypassed.
     {
         Session s;

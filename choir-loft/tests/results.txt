@@ -1,5 +1,5 @@
 PASS  parameter names are clear, unique, no em dash
-INFO  parameter count = 94.000 
+INFO  parameter count = 95.000 
 PASS  factory presets = 14.000 
 PASS  preset names are not empty, no em dash
 PASS  presets change the state
@@ -106,6 +106,7 @@ PASS  no click when Voice 6 On jumps, biggest step = 0.008
 PASS  no click when Voice 7 On jumps, biggest step = 0.008 
 PASS  no click when Voice 8 On jumps, biggest step = 0.008 
 PASS  no click when Lead On jumps, biggest step = 0.008 
+PASS  no click when Human jumps, biggest step = 0.014 
 PASS  C major: a third above C is E, a major third
 PASS  C major: a third above E is G, a minor third
 PASS  C major: a third above D is F, a minor third
@@ -334,7 +335,7 @@ PASS  real speech and say singing: fixed fifth, median distance from lead plus t
 PASS  real material: biggest sample step in the voice against the input, worst file = 0.886 times
 PASS  real material, Tight preset: lead with two voices against the lead alone, 99th percentile of 20 ms frames = 4.320 dB
 INFO  real material, defaults: the same, voices running on behind a lead that has stopped = 7.637 dB
-PASS  CPU on one core, 48 kHz stereo, 4 voices, Wide Range, voice at 180 Hz with vibrato (machine busy with other builds) = 1.650 %
+PASS  CPU on one core, 48 kHz stereo, 4 voices, Wide Range, voice at 180 Hz with vibrato (machine busy with other builds) = 2.292 %
 METRIC  note change, how late voices arrive after the lead, average = 39.000 ms
 METRIC  note change, spread between earliest and latest voice, median = 19.000 ms
 METRIC  body of a note, distance from target, median = 3.663 cents
@@ -454,27 +455,51 @@ PASS  Consonant Scatter 100 spreads an S at least 10 ms more than 0, 100 reads =
 PASS  Consonant Scatter 0 leaves copies, 100 does not, best lag at 100 = 0.053 
 PASS  a breath through a voice at defaults fades, late against early = -7.491 dB
 PASS  Drift 100: level wander, peak to peak = 2.936 dB
-PASS  null test: bit for bit the same as 1.4.2, each preset at its voice count, first opened
-PASS  null test: bit for bit the same as 1.4.2, each preset at its voice count, preset 0
-PASS  null test: bit for bit the same as 1.4.2, each preset at its voice count, preset 1
-PASS  null test: bit for bit the same as 1.4.2, each preset at its voice count, preset 2
-PASS  null test: bit for bit the same as 1.4.2, each preset at its voice count, preset 3
-PASS  null test: bit for bit the same as 1.4.2, each preset at its voice count, preset 4
-PASS  null test: bit for bit the same as 1.4.2, each preset at its voice count, preset 5
-PASS  null test: bit for bit the same as 1.4.2, each preset at its voice count, preset 6
-PASS  null test: bit for bit the same as 1.4.2, each preset at its voice count, preset 7
-PASS  null test: bit for bit the same as 1.4.2, each preset at its voice count, preset 8
-PASS  null test: bit for bit the same as 1.4.2, each preset at its voice count, preset 9
-PASS  null test: bit for bit the same as 1.4.2, each preset at its voice count, preset 10
-PASS  null test: output identical to 1.4.2, four voices, preset 0
+PASS  Human is a real parameter
+PASS  Human runs from 0 to 100
+PASS  Human starts at 0, the sound before it existed
+PASS  Human reads 65 %, 65
+PASS  Human comes back with the session = 65.000 %
+PASS  a session from before 1.5.0 opens with Human at 0 = 0.000 %
+PASS  and its own settings come back as they were saved
+PASS  a preset leaves Human where it is
+PASS  Tight, the exact one, puts Human at 0
+INFO  Human 0: note average against its note, median = 3.040 cents
+INFO  Human 0: pitch spread inside a note, median = 3.238 cents
+INFO  Human 0: pitch spread on one long note = 5.226 cents
+INFO  Human 0: the two voices' movement in common = 0.069 
+INFO  Human 0: interval between the two voices, spread inside 0.6 s, median = 6.637 cents
+INFO  Human 35: pitch spread on one long note = 6.368 cents
+PASS  Human 100: in tune, a voice's average over a note against its note, median = 5.533 cents
+PASS  Human 35: the same = 4.168 cents
+PASS  Human 100: a voice moves more on a long note than at 0, and no more than a singer, spread = 11.915 cents
+PASS  Human 100: and inside shorter notes no more than a singer does, median spread = 7.893 cents
+PASS  Human 35 sits between 0 and 100 = 6.368 cents
+PASS  Human 100: the two voices move on their own, movement in common = 0.100 
+PASS  Human 100: the interval between the two voices holds, spread inside 0.6 s, median = 12.755 cents
+PASS  Human 100: the voices are as loud as at 0 = 0.004 dB
+PASS  Human 100: no clicks, biggest step against Human 0 = 1.096 times
+PASS  null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, first opened
+PASS  null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, preset 0
+PASS  null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, preset 1
+PASS  null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, preset 2
+PASS  null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, preset 3
+PASS  null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, preset 4
+PASS  null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, preset 5
+PASS  null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, preset 6
+PASS  null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, preset 7
+PASS  null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, preset 8
+PASS  null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, preset 9
+PASS  null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, preset 10
+PASS  null test: output identical to 1.5.0 at Human 0, four voices, preset 0
 PASS  null test: identical with the window open and drawing, preset 0
-PASS  null test: output identical to 1.4.2, four voices, preset 3
+PASS  null test: output identical to 1.5.0 at Human 0, four voices, preset 3
 PASS  null test: identical with the window open and drawing, preset 3
-PASS  null test: output identical to 1.4.2, four voices, preset 4
+PASS  null test: output identical to 1.5.0 at Human 0, four voices, preset 4
 PASS  null test: identical with the window open and drawing, preset 4
-PASS  null test: output identical to 1.4.2, four voices, preset 7
+PASS  null test: output identical to 1.5.0 at Human 0, four voices, preset 7
 PASS  null test: identical with the window open and drawing, preset 7
-PASS  null test: output identical to 1.4.2, four voices, preset 10
+PASS  null test: output identical to 1.5.0 at Human 0, four voices, preset 10
 PASS  null test: identical with the window open and drawing, preset 10
 PASS  the processor opens the Harmony window
 PASS  every parameter has a control in the window = 0.000 missing
@@ -492,6 +517,17 @@ PASS  and its Level and Pan dim
 PASS  a second click brings it back
 PASS  every interval's words fit in its card at every voice count and Mode, worst at 8 voices, mode 0, -24 st = 0.000 px over
 PASS  and the letters are narrowed by 3% at most to do it = 1.697 %
+PASS  Human shows at every voice count, Advanced closed = 0.000 hidden
+PASS  Human, Humanize and Vibrato sit side by side left of Harmony, Advanced closed = 0.000 misplaced
+PASS  every bar shows its whole name and value at every voice count, Advanced closed, tightest is leadLevel (Level -12.5 dB) at 5 voices = -3.908 px over
+PASS  Human shows at every voice count, Advanced open = 0.000 hidden
+PASS  Human, Humanize and Vibrato sit side by side left of Harmony, Advanced open = 0.000 misplaced
+PASS  every bar shows its whole name and value at every voice count, Advanced open, tightest is leadLevel (Level -12.5 dB) at 5 voices = -3.908 px over
+PASS  Human reads 0% when the window first opens
+PASS  typing 65 sets Human, and it reads 65%
+PASS  as one gesture = 1.000 gestures
+PASS  double-click on Human returns to 0, the robot sound
+PASS  automation moves the Human control
 PASS  automation of Key leaves Follow Key on
 PASS  picking a Key in the window sets Key
 PASS  picking a Key in the window turns Follow Key off
@@ -548,7 +584,7 @@ PASS  and its card shows that note, A3
 PASS  voice 1 reads the note it sings, C4
 PASS  voice 2 reads the note it sings, E4
 PASS  the window opens and shuts 60 times with no audio
-PASS  the window opens, draws and shuts 60 times with audio running = 20743.000 blocks
+PASS  the window opens, draws and shuts 60 times with audio running = 24798.000 blocks
 PASS  every preset, key extreme and scale draws = 84.000 pictures
 PASS  window size and Advanced come back with the session
 PASS  and the window opens that way = 1500.000 wide
@@ -644,7 +680,7 @@ PASS  8 notes on 8 voices: lowest note on voice 1, in order
 PASS  8 voices, 2000 random chord changes: no voice crossings = 0.000 
 PASS  8 voices: every note gets a voice = 0.000 
 PASS  8 voices: moving one note moves only that voice = 0.000 
-PASS  8 voices: working out a chord takes well under one block = 2.514 us
+PASS  8 voices: working out a chord takes well under one block = 2.995 us
 PASS  MIDI Channel: voice 5 takes channel 5, voice 8 takes channel 8
 PASS  voices together at 5 voices turn down by = -0.969 dB
 PASS  voices together at 6 voices turn down by = -1.761 dB
@@ -693,29 +729,29 @@ PASS  singers off against the same singers at Level Off: what is left = -240.000
 PASS  and the rest are still singing = -21.183 dB
 PASS  voice 1 coming back: pitch 50 ms later against its note = 0.003 cents
 PASS  voice 7 coming back: pitch 50 ms later against its note = 0.004 cents
-INFO  CPU, one core, eight singers on = 2.645 %
-INFO  CPU, one core, two of eight on = 0.919 %
-PASS  off singers' cost, as a share of what they cost on = 0.130 
+INFO  CPU, one core, eight singers on = 3.560 %
+INFO  CPU, one core, two of eight on = 1.205 %
+PASS  off singers' cost, as a share of what they cost on = 0.118 
 PASS  singer selection and voice count come back with the session
 PASS  a session from before opens with everyone on and its own voice count = 2.000 
 PASS  Voices Sounding counts singers you hear = 6.000 
-INFO  phrase starts, default, hard start: 24 starts, missed 0, wrong first note 0, time to sound past lag median 6.9 p95 14.0 worst 14.9 ms
+INFO  phrase starts, default, hard start: 24 starts, missed 0, wrong first note 0, time to sound past lag median 6.9 p95 14.9 worst 16.9 ms
 INFO  phrase starts, default, soft start: 24 starts, missed 0, wrong first note 0, time to sound past lag median -25.1 p95 -14.0 worst -11.1 ms
 INFO  phrase starts, default, scoop 1 st: 24 starts, missed 0, wrong first note 0, time to sound past lag median -8.5 p95 11.5 worst 16.5 ms
 INFO  phrase starts, default, scoop 2 st: 24 starts, missed 0, wrong first note 0, time to sound past lag median -0.1 p95 8.9 worst 11.9 ms
 INFO  phrase starts, default, breathy start: 24 starts, missed 0, wrong first note 0, time to sound past lag median 26.7 p95 67.9 worst 72.7 ms
-INFO  phrase starts, default, creaky start: 24 starts, missed 0, wrong first note 0, time to sound past lag median 8.9 p95 16.8 worst 17.1 ms
+INFO  phrase starts, default, creaky start: 24 starts, missed 0, wrong first note 0, time to sound past lag median 9.5 p95 16.8 worst 17.1 ms
 INFO  phrase starts, default, s into vowel: 24 starts, missed 0, wrong first note 0, time to sound past lag median 10.8 p95 19.9 worst 20.8 ms
-INFO  phrase starts, default, t into vowel: 24 starts, missed 0, wrong first note 0, time to sound past lag median 6.9 p95 12.9 worst 14.9 ms
+INFO  phrase starts, default, t into vowel: 24 starts, missed 0, wrong first note 0, time to sound past lag median 6.0 p95 14.9 worst 14.9 ms
 INFO  phrase starts, default, m into vowel: 24 starts, missed 0, wrong first note 0, time to sound past lag median 6.9 p95 16.9 worst 26.0 ms
-INFO  phrase starts, default, l into vowel: 24 starts, missed 0, wrong first note 0, time to sound past lag median 8.0 p95 16.9 worst 18.0 ms
+INFO  phrase starts, default, l into vowel: 24 starts, missed 0, wrong first note 0, time to sound past lag median 6.9 p95 16.0 worst 16.9 ms
 INFO  phrase starts, default, vibrato at once: 24 starts, missed 0, wrong first note 0, time to sound past lag median 6.1 p95 16.9 worst 18.0 ms
-INFO  phrase starts, default, first note 150 ms: 24 starts, missed 0, wrong first note 0, time to sound past lag median 8.9 p95 14.9 worst 16.0 ms
-INFO  phrase starts, default, first note 250 ms: 24 starts, missed 0, wrong first note 0, time to sound past lag median 6.9 p95 14.0 worst 14.9 ms
+INFO  phrase starts, default, first note 150 ms: 24 starts, missed 0, wrong first note 0, time to sound past lag median 10.0 p95 14.9 worst 18.0 ms
+INFO  phrase starts, default, first note 250 ms: 24 starts, missed 0, wrong first note 0, time to sound past lag median 8.0 p95 14.9 worst 16.9 ms
 INFO  phrase starts, default, after 100 ms gap: 24 starts, missed 0, wrong first note 0, time to sound past lag median 8.3 p95 16.9 worst 16.9 ms
-INFO  phrase starts, default, room reverb: 48 starts, missed 0, wrong first note 0, time to sound past lag median 10.6 p95 16.7 worst 18.6 ms
-INFO  phrase starts, default, quiet take: 24 starts, missed 0, wrong first note 0, time to sound past lag median 6.9 p95 14.0 worst 14.9 ms
-INFO  phrase starts, default, bright take: 24 starts, missed 0, wrong first note 0, time to sound past lag median 8.0 p95 14.9 worst 14.9 ms
+INFO  phrase starts, default, room reverb: 48 starts, missed 0, wrong first note 0, time to sound past lag median 10.6 p95 16.9 worst 18.6 ms
+INFO  phrase starts, default, quiet take: 24 starts, missed 0, wrong first note 0, time to sound past lag median 6.9 p95 14.9 worst 16.9 ms
+INFO  phrase starts, default, bright take: 24 starts, missed 0, wrong first note 0, time to sound past lag median 8.1 p95 14.9 worst 16.9 ms
 PASS  phrase starts, default: first notes where a voice never sounded, of 432 = 0.000 
 PASS  phrase starts, default: voices that sang another note first = 0.000 
 FAIL  phrase starts, default: time to sound past the voice's lag, 95th percentile, worst kind (breathy start) = 67.896 ms

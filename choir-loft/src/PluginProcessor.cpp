@@ -8,13 +8,15 @@ using namespace smoothharmony;
 
 namespace
 {
-    struct InputRange { const char* name; double lowHz, highHz; };
+    struct InputRange { const char* name; double lowHz, highHz, belowHz; };
     // The lowest note sets the latency, because a grain needs one full period plus the time to find its mark.
+    // belowHz (1.5.0): Alto/Tenor also follows notes under its range, down to 65 Hz, at the same latency. The tracker looks further back
+    // for those, and a voice on one reads a period or so later than it otherwise would, which is its lag, not the plug-in's delay.
     constexpr InputRange inputRanges[] = {
-        { "Soprano",    150.0, 1300.0 },
-        { "Alto/Tenor",  98.0, 1000.0 },
-        { "Low Male",    65.0,  600.0 },
-        { "Wide Range",  65.0, 1300.0 },
+        { "Soprano",    150.0, 1300.0,  0.0 },
+        { "Alto/Tenor",  98.0, 1000.0, 65.0 },
+        { "Low Male",    65.0,  600.0,  0.0 },
+        { "Wide Range",  65.0, 1300.0,  0.0 },
     };
     constexpr int numInputTypes = (int) std::size (inputRanges);
 
@@ -232,6 +234,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     for (int v = 0; v < maxVoices; ++v)
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { voiceId (v, "On"), 1 }, "Voice " + String (v + 1) + " On", true));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "leadOn", 1 }, "Lead On", true));
+
+    // 1.5.0. From the robot sound at 0, which is exactly the sound before this control existed, to voices that move the way a singer does.
+    // A new parameter with a later version hint, so every older one keeps its place and its AU address.
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "human", 2 }, "Human", percent, 0.0f, fixedText (0, "%")));
     return layout;
 }
 
@@ -248,6 +254,7 @@ PluginProcessor::PluginProcessor (const Options& options)
     voicesParam = apvts.getRawParameterValue ("voices");
     moreVoices = apvts.getRawParameterValue ("moreVoices");
     leadOn = apvts.getRawParameterValue ("leadOn");
+    human = apvts.getRawParameterValue ("human");
     for (int v = 0; v < maxVoices; ++v)
     {
         auto& vp = voiceParams[(size_t) v];
@@ -314,14 +321,14 @@ int PluginProcessor::latencyFor (int type, double sampleRate) noexcept
 void PluginProcessor::trackingRange (int type, double& lowestHz, double& highestHz) noexcept
 {
     const auto& range = inputRanges[(size_t) juce::jlimit (0, numInputTypes - 1, type)];
-    lowestHz = range.lowHz;
+    lowestHz = range.belowHz > 0.0 ? range.belowHz : range.lowHz;
     highestHz = range.highHz;
 }
 
 void PluginProcessor::prepareTrackerLike (smoothharmony::PitchTracker& t, int type) noexcept
 {
     const auto& range = inputRanges[(size_t) juce::jlimit (0, numInputTypes - 1, type)];
-    t.setRange (range.lowHz, range.highHz);
+    t.setRange (range.lowHz, range.highHz, range.belowHz);
 }
 
 bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -360,8 +367,12 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
         voice.fastMatch = 0;
         voice.voicedNow = false;
         voice.attackStep = 1.0 / (0.008 * sr);
+        voice.leadFast = voice.leadSlow = 0.0;
+        voice.wanderNow = 1.0;
         voice.wander = 1.0;
         voice.lagSamples = 0.0;
+        voice.scatterLag = 0.0;
+        voice.scatterHeld = false;
         voice.consonantDelay = 0;
         voice.consonantMix = voice.consonantSoft = voice.consonantLow = voice.unvoicedFor = 0.0;
         voice.consonantLevel = 1.0;
@@ -398,6 +409,8 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     matchPowerFast = 1.0 - std::exp (-1.0 / (0.02 * sr));
     matchGain = 1.0 - std::exp (-1.0 / (0.03 * sr));
     envelopeStep = 1.0 / (0.008 * sr);
+    humanFastK = 1.0 - std::exp (-1.0 / (0.015 * sr));
+    humanSlowK = 1.0 - std::exp (-1.0 / (0.3 * sr));
     fadeGain = 1.0f;
     fading = false;
     bypassMix = bypass->get() ? 0.0f : 1.0f;
@@ -464,6 +477,7 @@ void PluginProcessor::readSettings() noexcept
     settings.glideMs = glide->load (std::memory_order_relaxed);
     settings.followLead = followLead->load (std::memory_order_relaxed) * 0.01;
     settings.humanize = humanize->load (std::memory_order_relaxed) * 0.01;
+    settings.human = human->load (std::memory_order_relaxed) * 0.01;
     settings.vibrato = vibrato->load (std::memory_order_relaxed) * 0.01;
     settings.vibratoHz = vibratoRate->load (std::memory_order_relaxed);
     settings.referenceHz = reference->load (std::memory_order_relaxed);
@@ -614,6 +628,7 @@ void PluginProcessor::tick() noexcept
         const int startBack = juce::jlimit (0, pitchRingSize - 1, juce::roundToInt ((readsMs - seesStartMs) * 0.001 / tickSeconds));
         const bool sungNow = voicedRing[(size_t) ((pitchRingAt - endBack) & (pitchRingSize - 1))]
                           || voicedRing[(size_t) ((pitchRingAt - startBack) & (pitchRingSize - 1))];
+
         auto& singer = brain.singer (v);
 
         if (sungNow && ! voice.voicedNow)
@@ -640,11 +655,30 @@ void PluginProcessor::tick() noexcept
         c.voiced = sungNow;
         c.lag = lagMs * 0.001 * sr;
         voice.lagSamples = c.lag;
+        // 1.5.0: a start gives the voice a new place behind the lead (Humanize draws it per note), and the voice's own copy of the consonant
+        // before the note, which is still fading out, used to jump to that new place at once: a step in what it reads, heard as a small
+        // click at the start of a word (2 of the 40 clicks the shared tool listed on Luke's takes; the other 38 were clicks in the takes
+        // themselves, sung back by a voice). The copy now stays where it was from the start until it has faded out.
+        if (brain.startedNow())
+            voice.scatterHeld = true;
+        else if (voice.scatterHeld && voice.voicedNow && voice.consonantMix <= 0.0)
+            voice.scatterHeld = false;
+        if (! voice.scatterHeld)
+            voice.scatterLag = voice.lagSamples;
         c.jitter = juce::jmax (settings.drift[(size_t) v] * 0.0035, settings.humanize * 0.006);
         c.shimmer = settings.drift[(size_t) v] * 0.1;
         c.blendPeriods = settings.humanize > 0.0;
         c.readJitter = settings.humanize * 3.0 * sr / 48000.0;
         voice.wander = brain.levelWander (v);
+        if (brain.humanOn())
+        {
+            // The voice keeps part of its own level through the lead's quick swells and dips: the lead's level over the last 300 ms against
+            // its level right now, to a power, 4 dB at most either way. Each voice by its own amount, so a note that dies away does not
+            // end in every voice at the same moment.
+            const double keep = settings.human * HumanVoice::holdsLevel (v);
+            if (voice.leadFast > 1.0e-10 && voice.leadSlow > 1.0e-10)
+                voice.wander *= juce::jlimit (0.631, 1.585, std::pow (voice.leadSlow / voice.leadFast, 0.5 * keep));
+        }
         if (sungNow)
         {
             if (voiced)
@@ -705,6 +739,7 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     const auto endEvent = midi.cend();
     const double smooth = smoothing;
     const double step = envelopeStep;
+    const bool humanOn = settings.human > 0.0;
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -783,7 +818,7 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             voice.consonantMix += juce::jlimit (-mixStep, mixStep, wantMix - voice.consonantMix);
             if (voice.consonantMix > 0.0)
             {
-                const int base = latencyNow + voice.consonantDelay + juce::roundToInt (voice.lagSamples);
+                const int base = latencyNow + voice.consonantDelay + juce::roundToInt (voice.scatterLag);
                 double scattered = 0.0;
                 for (int t = 0; t < VoiceChannel::numTaps; ++t)
                     scattered += (double) (voice.tapSign[(size_t) t] * history.delayed (InputHistory::mono, base + voice.tapDelay[(size_t) t]));
@@ -842,7 +877,20 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
                 y += breathNow * 0.2 * voice.breathEnv * voice.breathLow;
             }
 
-            y *= voice.wander;
+            if (humanOn)
+            {
+                // Level of the part of the lead this voice reads, quick and slow, for holding its own level. Smoothed gain, so a step in it
+                // every ms is never heard.
+                const double read = (double) history.delayed (InputHistory::mono, latencyNow + juce::roundToInt (voice.lagSamples));
+                voice.leadFast += humanFastK * (read * read - voice.leadFast);
+                voice.leadSlow += humanSlowK * (read * read - voice.leadSlow);
+                voice.wanderNow += smooth * (voice.wander - voice.wanderNow);
+                y *= voice.wanderNow;
+            }
+            else
+            {
+                y *= voice.wander;
+            }
 
             const double rise = voice.gainTarget > voice.gain && voice.voicedNow ? voice.attackStep : step;
             voice.gain += juce::jlimit (-step, rise, voice.gainTarget - voice.gain);
@@ -1003,6 +1051,10 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("consonants", preset.consonantAmount);
     set ("consonantScatter", preset.scatter);
     set ("breath", preset.breathAmount);
+    // Presets leave Human alone, like Key and Input Type: it is how the voices sing whatever the arrangement. Tight is the exception,
+    // since it promises exact tuning.
+    if (juce::String (preset.name) == "Tight")
+        set ("human", 0.0f);
 }
 
 juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new HarmonyEditor (*this); }

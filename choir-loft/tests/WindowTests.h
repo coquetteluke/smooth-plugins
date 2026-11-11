@@ -2,21 +2,27 @@
 // The window, tested without a screen. Included by PluginTest.cpp, inside its namespace.
 // The sound pinned bit for bit, by `PluginTest fingerprints`. These held the 1.1.0 and 1.2.0 numbers until 1.4.0, which changed how voices
 // start on purpose (phrase starts, see tests/OnsetTests.h): 1.3.1's output was still identical to 1.1.0 at presets 0, 3, 4, 7 and 10 and to 1.2.0
-// at every preset. 1.4.0's numbers held through 1.4.1. They now hold 1.4.2's, which changed starts on purpose again (a start is checked for breath
-// and written back to where it began), so any later change to the sound that is not meant shows here again.
+// at every preset. 1.4.0's numbers held through 1.4.1. 1.4.2 changed starts on purpose again (a start is checked for breath and written back to
+// where it began), and its numbers held through 1.4.4.
+// They now hold 1.5.0's with Human at 0. 1.5.0 fixed a click: at a start a voice's own copy of the consonant before the note jumped to the
+// note's new place behind the lead while it was still fading out. That changes the 5 ms after each start wherever Consonant Scatter is above
+// 0, so every preset but Tight moved. Tight has no scatter and still gives 1.4.2's two numbers, bit for bit. The other change to the sound
+// in 1.5.0, Alto/Tenor following notes under 98 Hz, does not show here: this material never goes that low. With those two changes left out,
+// the 1.5.0 source gives 1.4.4's output bit for bit on Luke's 11 takes at the default, Full Stack and Tight (realvox, see the README), so
+// nothing else in 1.5.0, the Human control at 0 included, touches the sound. Any later change that is not meant shows here again.
 
 namespace windowtests
 {
 struct Fingerprint { int preset; std::uint64_t sum; };
 // Presets 0, 3, 4, 7 and 10 with four voices, as 1.1.0 measured them.
-constexpr Fingerprint before11[] = { { 0, 12818841854264193108ull }, { 3, 12907498536360948131ull }, { 4, 2500416939669775649ull },
-                                     { 7, 11081300044336594333ull }, { 10, 10127561413671478685ull } };
+constexpr Fingerprint before11[] = { { 0, 16083541039105683034ull }, { 3, 1027493210404867167ull }, { 4, 572548499475733402ull },
+                                     { 7, 13330512059821666201ull }, { 10, 10127561413671478685ull } };
 
 // Each preset at its own voice count. -1 is the settings as first opened.
 constexpr Fingerprint before12[] = {
-    { -1, 2657617877710388680ull }, { 0, 4367488579188949946ull }, { 1, 11980532212819135226ull }, { 2, 16175963810789148513ull },
-    { 3, 12907498536360948131ull }, { 4, 2500416939669775649ull }, { 5, 10886257309218582723ull }, { 6, 14897896334850659995ull },
-    { 7, 11081300044336594333ull }, { 8, 4028450179717546323ull }, { 9, 10608019693936896976ull }, { 10, 10475156097746397600ull } };
+    { -1, 12650593462791849468ull }, { 0, 5834493182794573315ull }, { 1, 6130733053392173979ull }, { 2, 3177900060742711242ull },
+    { 3, 1027493210404867167ull }, { 4, 572548499475733402ull }, { 5, 8298960366594396617ull }, { 6, 1358350818603808123ull },
+    { 7, 13330512059821666201ull }, { 8, 11299366534786095666ull }, { 9, 8903147316526792999ull }, { 10, 10475156097746397600ull } };
 
 inline void collectIds (juce::Component& c, std::set<juce::String>& ids)
 {
@@ -66,14 +72,14 @@ void testWindow()
     const juce::StringArray readings { "detectedPitch", "leadNote", "voice1Note", "voice2Note", "voice3Note", "voice4Note", "voice5Note", "voice6Note", "voice7Note", "voice8Note",
                                        "voicesSounding", "activeKey" };
 
-    // The sound, bit for bit, against 1.4.2, and with the window open and drawing all the way through.
+    // The sound, bit for bit, against 1.5.0 with Human at 0 (Tight: against 1.4.2 still), and with the window open and drawing all the way through.
     for (const auto& f : before12)
         check (outputFingerprintOf (f.preset, false, false) == f.sum,
-               "null test: bit for bit the same as 1.4.2, each preset at its voice count, " + (f.preset < 0 ? std::string ("first opened") : "preset " + std::to_string (f.preset)));
+               "null test: bit for bit the same as 1.5.0 at Human 0, each preset at its voice count, " + (f.preset < 0 ? std::string ("first opened") : "preset " + std::to_string (f.preset)));
 
     for (const auto& f : before11)
     {
-        check (outputFingerprint (f.preset) == f.sum, "null test: output identical to 1.4.2, four voices, preset " + std::to_string (f.preset));
+        check (outputFingerprint (f.preset) == f.sum, "null test: output identical to 1.5.0 at Human 0, four voices, preset " + std::to_string (f.preset));
 
         check (outputFingerprintWithWindow (f.preset) == f.sum, "null test: identical with the window open and drawing, preset " + std::to_string (f.preset));
     }
@@ -246,6 +252,98 @@ void testWindow()
 
         check (worst <= 0.01, "every interval's words fit in its card at every voice count and Mode, worst at " + where, worst, "px over");
         check (squeeze <= 0.03, "and the letters are narrowed by 3% at most to do it", 100.0 * squeeze, "%");
+    }
+
+    // 1.5.0: Human sits in the bottom row, first of the three that say how the voices sing, at every voice count, with Advanced open or shut.
+    // And no bar anywhere in the window cuts its name or its value short, at every voice count, with long values in every bar.
+    for (const bool open : { false, true })
+    {
+        auto p = make();
+        p->advancedOpen.store (open);
+        auto e = openWindow (*p);
+        auto& panel = e->getPanel();
+        int hidden = 0, misplaced = 0, bars = 0;
+        double worst = -1.0e9;
+        std::string where;
+
+        setParam (*p, "glide", 500.0f);
+        setParam (*p, "vibratoRate", 5.55f);
+        setParam (*p, "reference", 441.5f);
+        setParam (*p, "harmonyLevel", -12.5f);
+        setParam (*p, "leadLevel", -12.5f);
+        setParam (*p, "leadPan", -100.0f);
+        for (int v = 0; v < 8; ++v)
+        {
+            setParam (*p, vid (v, "Level"), -12.5f);
+            setParam (*p, vid (v, "Pan"), -100.0f);
+            setParam (*p, vid (v, "Drift"), 100.0f);
+            setParam (*p, vid (v, "Tone"), -100.0f);
+            setParam (*p, vid (v, "Throat"), 140.0f);
+        }
+
+        for (int voices = 1; voices <= 8; ++voices)
+            for (const float amount : { 0.0f, 35.0f, 100.0f })
+            {
+                setParam (*p, "voices", (float) juce::jmin (voices, 4));
+                setParam (*p, "moreVoices", (float) juce::jmax (0, voices - 4));
+                setParam (*p, "human", amount);
+                setParam (*p, "humanize", amount);
+                setParam (*p, "vibrato", amount);
+                setParam (*p, "mix", amount);
+                e->tick (1.0 / 30.0);
+
+                auto* human = findById<ui::BarSlider> (panel, "human");
+                auto* humanize = findById<ui::BarSlider> (panel, "humanize");
+                auto* vibrato = findById<ui::BarSlider> (panel, "vibrato");
+                auto* harmony = findById<ui::BarSlider> (panel, "harmonyLevel");
+                if (human == nullptr || ! human->isVisible() || human->getAlpha() < 0.99f || human->getWidth() < 120)
+                    ++hidden;
+                else if (human->getY() != humanize->getY() || human->getHeight() != humanize->getHeight() || human->getX() < 0
+                         || human->getRight() > humanize->getX() || humanize->getRight() > vibrato->getX() || vibrato->getRight() > harmony->getX())
+                    ++misplaced;
+
+                std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+                {
+                    if (! c.isVisible())
+                        return;
+                    if (auto* bar = dynamic_cast<ui::BarSlider*> (&c))
+                    {
+                        ++bars;
+                        const double over = bar->textOverflow();
+                        if (over > worst)
+                        {
+                            worst = over;
+                            where = bar->getComponentID().toStdString() + " (" + bar->labelText().toStdString() + " " + bar->valueText().toStdString() + ") at " + std::to_string (voices) + " voices";
+                        }
+                    }
+                    for (auto* child : c.getChildren())
+                        walk (*child);
+                };
+                walk (panel);
+            }
+
+        const std::string state = open ? "Advanced open" : "Advanced closed";
+        check (hidden == 0, "Human shows at every voice count, " + state, (double) hidden, "hidden");
+        check (misplaced == 0, "Human, Humanize and Vibrato sit side by side left of Harmony, " + state, (double) misplaced, "misplaced");
+        check (bars > 0 && worst <= 0.0, "every bar shows its whole name and value at every voice count, " + state + ", tightest is " + where, worst, "px over");
+    }
+
+    // Human by hand
+    {
+        auto p = make();
+        auto e = openWindow (*p);
+        auto* bar = findById<ui::BarSlider> (*e, "human");
+        auto* prm = p->apvts.getParameter ("human");
+        check (bar != nullptr && bar->valueText() == "0%", "Human reads 0% when the window first opens");
+        GestureCount watch;
+        prm->addListener (&watch);
+        bar->applyTyped ("65");
+        check (std::abs (prm->convertFrom0to1 (prm->getValue()) - 65.0f) < 0.01f && bar->valueText() == "65%", "typing 65 sets Human, and it reads " + bar->valueText().toStdString());
+        check (watch.begins == 1 && watch.ends == 1, "as one gesture", (double) watch.begins, "gestures");
+        check (std::abs (bar->getDoubleClickReturnValue()) < 0.01, "double-click on Human returns to 0, the robot sound");
+        setParam (*p, "human", 20.0f);
+        check (std::abs (bar->getValue() - 20.0) < 0.01, "automation moves the Human control");
+        prm->removeListener (&watch);
     }
 
     // A Key or Scale picked by hand wins over Follow Key

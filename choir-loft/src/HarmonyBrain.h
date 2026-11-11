@@ -124,6 +124,113 @@ private:
     double scoopSeconds = 0.045, glideScale = 1.0, delayNow = vibratoDelay, depthScale = 1.0, humanizeNow = 0.0;
 };
 
+// 1.5.0, the Human control. What it adds to one voice, all of it scaled by the amount, none of it reaching the sound at 0, and none of it
+// drawing from the Singer's own random numbers, so the sound at 0 is the sound before this existed, bit for bit.
+// What was measured on Luke's own takes (realvox, RealVox robot) is what it goes after, in this order:
+//  - inside a held note a voice sat 4 times stiller than he does (5 cents of spread against 20), and what movement it had was one steady
+//    5 Hz sine. So: a slow wander and a faster flutter of the voice's own, both random, a part of the lead's own movement on the note,
+//    smoothed and by a different amount for each voice, and a vibrato whose rate and depth no longer hold still.
+//  - a voice's level followed the lead's exactly (curves alike 0.81, against 0.13 for Luke singing a part twice). So: a level wander of
+//    its own, and the voice keeps part of its own level through the lead's quick swells and dips (the processor does that, see holdsLevel).
+//  - the two voices moved as one block (0.42 in common, against 0.12). All of the above is per voice, from its own random numbers.
+//  - voices ended within 4 ms of each other (Luke's two passes: 40 ms) and started 6 ms apart. So: each note gets its own small shift in
+//    how far behind the lead the voice stands, and each voice holds its level by its own amount as a note dies away. (Letting go of a
+//    note early was tried and taken out: the tracker's short gaps are mended after the fact, and a voice that had let go stayed off.)
+// Note changes were left alone: the voices already take about as long over one as he does (70 ms against 76).
+class HumanVoice
+{
+public:
+    static constexpr double slowCents = 10.5, fastCents = 7.5, levelDb = 0.5, rateShare = 0.08, depthShare = 0.3;
+    static constexpr double earlierMs = 3.0, laterMs = 11.0;
+    // At Human 100, how much of the lead's quick level movement a voice does not copy
+    static double holdsLevel (int v) noexcept
+    {
+        static constexpr double share[8] = { 0.7, 0.3, 0.55, 0.25, 0.6, 0.35, 0.5, 0.4 };
+        return share[v];
+    }
+
+    void prepare (int index, double tickSeconds) noexcept
+    {
+        voice = index;
+        tick = tickSeconds;
+        reset();
+    }
+
+    void reset() noexcept
+    {
+        random = 0xC2B2AE35u * (std::uint32_t) (voice + 1) + 0x27D4EB2Fu;
+        slow = slowMean = fast = fastMean = level = rate = depth = followed = leadMean = 0.0;
+        lagDraw = 0.0;
+        landed = 1.0;
+        cents = 0.0;
+        gain = 1.0;
+    }
+
+    // A new note or a new phrase: this note's own place behind the lead
+    void noteEvent() noexcept
+    {
+        lagDraw = nextRandom();
+        leadMean = 0.0;
+        // A note's first moments already carry Humanize's scoop and settle. The wander comes back in over the next tenth of a second, so
+        // the two do not pile up and push a voice off its note as it lands.
+        landed *= 0.35;
+    }
+
+    // amount: 0 to 1, above 0. leadOffNote: how far the lead is from the note this voice hears it on, in semitones, or 0 when there is none.
+    // followShare: how much of the lead's movement is left to follow, 1 less what Follow Lead already copies.
+    void update (double amount, double leadOffNote, double followShare) noexcept
+    {
+        static constexpr double followGain[8] = { 0.13, 0.09, 0.11, 0.075, 0.1, 0.085, 0.12, 0.07 };
+        static constexpr double followSeconds[8] = { 0.03, 0.055, 0.04, 0.07, 0.045, 0.06, 0.035, 0.075 };
+        // The wander turns over within a note, as Luke's does, and has its long average taken out, so it moves the voice about its note
+        // and not off it.
+        walk (slow, 0.3);
+        walk (fast, 0.04);
+        walk (level, 0.25);
+        walk (rate, 2.0);
+        walk (depth, 2.0);
+        slowMean += tick / 1.5 * (slow - slowMean);
+        fastMean += tick / 0.3 * (fast - fastMean);
+        landed += tick / 0.1 * (1.0 - landed);
+
+        // The lead's movement about where it has been sitting on this note, not how far off the note it is: a voice that copied a flat
+        // lead would be flat too. Smoothed, since a singer follows what they hear and never its fastest part.
+        leadMean += tick / 0.2 * (leadOffNote - leadMean);
+        followed += tick / followSeconds[voice] * ((leadOffNote - leadMean) - followed);
+
+        cents = std::clamp (amount * (landed * (slowCents * (slow - slowMean) + fastCents * (fast - fastMean)) + 100.0 * followGain[voice] * followShare * followed), -35.0, 35.0);
+        gain = std::pow (10.0, amount * levelDb * level / 20.0);
+        amountNow = amount;
+    }
+
+    double pitchCents() const noexcept { return cents; }
+    double levelGain() const noexcept { return gain; }
+    double vibratoRateScale() const noexcept { return 1.0 + amountNow * rateShare * rate; }
+    double vibratoDepthScale() const noexcept { return 1.0 + amountNow * depthShare * depth; }
+    // Added to how far behind the lead the voice stands, for this note: a little earlier or later
+    double lagOffsetMs() const noexcept { return amountNow * (lagDraw < 0.0 ? earlierMs : laterMs) * lagDraw; }
+
+private:
+    // A random walk that stays about one unit wide: pulled back to 0 over the given time
+    void walk (double& x, double seconds) noexcept
+    {
+        x += -x * tick / seconds + std::sqrt (6.0 * tick / seconds) * nextRandom();
+        x = std::clamp (x, -2.5, 2.5);
+    }
+
+    double nextRandom() noexcept
+    {
+        random ^= random << 13; random ^= random >> 17; random ^= random << 5;
+        return (double) (random & 0xFFFFFFu) / 8388607.5 - 1.0;
+    }
+
+    int voice = 0;
+    double tick = 0.001;
+    std::uint32_t random = 1;
+    double slow = 0.0, slowMean = 0.0, fast = 0.0, fastMean = 0.0, level = 0.0, rate = 0.0, depth = 0.0, followed = 0.0, leadMean = 0.0;
+    double lagDraw = 0.0, cents = 0.0, gain = 1.0, amountNow = 0.0, landed = 1.0;
+};
+
 class HarmonyBrain
 {
 public:
@@ -140,6 +247,7 @@ public:
         double glideMs = 20.0;
         double followLead = 0.25;       // 0 to 1: how much of the lead's own pitch wander the voices copy, in modes with a set note
         double humanize = 0.0;          // 0 to 1
+        double human = 0.0;             // 0 to 1. 0 is the sound before 1.5.0, exactly
         double vibrato = 0.0;           // 0 to 1
         double vibratoHz = 5.5;
         double referenceHz = 440.0;
@@ -161,7 +269,10 @@ public:
         riseSmoothing = 1.0 - std::exp (-tick / 0.005);   // pitch smoothed over 5 ms for its slope
         scoopRelease = std::exp (-tick / 0.02);
         for (int v = 0; v < maxVoices; ++v)
+        {
             singers[(size_t) v].prepare (v, tick);
+            humans[(size_t) v].prepare (v, tick);
+        }
         reset();
     }
 
@@ -180,6 +291,7 @@ public:
         for (int v = 0; v < maxVoices; ++v)
         {
             singers[(size_t) v].reset();
+            humans[(size_t) v].reset();
             voices[(size_t) v] = {};
             remains[(size_t) v] = 0.0;
             noteHeld[(size_t) v] = 0.0;
@@ -341,10 +453,15 @@ public:
             }
 
             auto& singer = singers[(size_t) v];
+            auto& person = humans[(size_t) v];
+            const bool humanOn = s.human > 0.0;
             const bool wasSounding = sounding[(size_t) v];
             if (wantsPitch)
             {
                 const double aim = wanted + fine;
+                if (humanOn && (! wasSounding || phraseStart || discrete != lastDiscrete[(size_t) v] || s.mode != lastMode
+                                || (s.mode == modeFixed && chromaticNote != oldChromatic)))
+                    person.noteEvent();
                 if (! wasSounding || phraseStart)
                 {
                     remains[(size_t) v] = 0.0;
@@ -377,17 +494,38 @@ public:
             }
             sounding[(size_t) v] = wantsPitch;
 
-            singer.update (s.drift[(size_t) v], s.vibrato, s.vibratoHz);
-            out.pitch = out.target + singer.pitchCents() * 0.01;
+            if (humanOn)
+            {
+                // How far the lead is from the note this voice hears it on. Fixed Interval already copies all of the lead, so nothing is left to follow.
+                const double off = ! wantsPitch || s.mode == modeFixed ? 0.0 : std::clamp (p - (s.mode == modeScale ? scaleNote : chromaticNote), -1.0, 1.0);
+                person.update (s.human, off, 1.0 - std::clamp (s.followLead, 0.0, 1.0));
+                singer.update (s.drift[(size_t) v], s.vibrato * person.vibratoDepthScale(), s.vibratoHz * person.vibratoRateScale());
+                out.pitch = out.target + (singer.pitchCents() + person.pitchCents()) * 0.01;
+            }
+            else
+            {
+                singer.update (s.drift[(size_t) v], s.vibrato, s.vibratoHz);
+                out.pitch = out.target + singer.pitchCents() * 0.01;
+            }
+            humanActive = humanOn;
             out.on = on;
         }
         lastMode = s.mode;
     }
 
     const Voice& voice (int v) const noexcept { return voices[(size_t) v]; }
-    double lagMilliseconds (int v) const noexcept { return singers[(size_t) v].lagMilliseconds(); }
+    double lagMilliseconds (int v) const noexcept
+    {
+        const double lag = singers[(size_t) v].lagMilliseconds();
+        return humanActive ? std::max (0.0, lag + humans[(size_t) v].lagOffsetMs()) : lag;
+    }
     bool startedNow() const noexcept { return startedThisTick; }   // a phrase or a fresh start inside one began on the last update
-    double levelWander (int v) const noexcept { return singers[(size_t) v].levelWander(); }
+    double levelWander (int v) const noexcept
+    {
+        const double wander = singers[(size_t) v].levelWander();
+        return humanActive ? wander * humans[(size_t) v].levelGain() : wander;
+    }
+    bool humanOn() const noexcept { return humanActive; }
     Singer& singer (int v) noexcept { return singers[(size_t) v]; }
     int leadNote() const noexcept { return hasLead ? leadChromaticNote : -1; }
 
@@ -421,6 +559,8 @@ private:
     double sr = 48000.0, tick = 0.001;
     MidiChord chord;
     std::array<Singer, maxVoices> singers;
+    std::array<HumanVoice, maxVoices> humans;
+    bool humanActive = false;
     std::array<Voice, maxVoices> voices {};
     std::array<double, maxVoices> remains {}, lastPitch {}, noteHeld {};
     std::array<int, maxVoices> lastDiscrete {}, voiceScaleNote {}, voiceChromaticNote {}, midiHeld {}, midiAge {};

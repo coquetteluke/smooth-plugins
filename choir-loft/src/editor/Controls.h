@@ -45,6 +45,10 @@ namespace ui
         void startTyping();
         void applyTyped (const juce::String&);
 
+        /** How much wider the name and the value together are than the bar, with a gap between them, in pixels. 0 or less means both show whole. */
+        float textOverflow() const;
+        const juce::String& labelText() const noexcept  { return label; }
+
     private:
         void timerCallback() override;
         juce::Rectangle<int> valueArea() const;

@@ -89,6 +89,13 @@ namespace ui
         return unit == "%" ? text + unit : text + " " + unit;
     }
 
+    float BarSlider::textOverflow() const
+    {
+        const float name = juce::GlyphArrangement::getStringWidth (font (Weight::regular, 13.0f), label);
+        const float value = juce::GlyphArrangement::getStringWidth (font (Weight::medium, 13.0f), valueText());
+        return name + value + 8.0f - (float) getWidth();
+    }
+
     juce::Rectangle<int> BarSlider::valueArea() const
     {
         return getLocalBounds().removeFromRight (juce::jmin (84, getWidth() / 2));

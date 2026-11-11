@@ -38,7 +38,8 @@ The second session's takes are in `~/smooth-plugins/_vox/rode/` (17 takes, `TAKE
     RealVox humanlimits <records> <at human 0> [full]   the limits U1 to U8 for the Human option, and with full the targets V1 to V4
     RealVox tracker <take.wav> <from s> <to s>   what the plug-in's tracker says each ms, beside the reference
     RealVox lowcensus <take.wav> ...             where the tracker calls a pitch under 98 Hz, and how well the sound repeated there
-    RealVox hash <take.wav> ...                  a hash of every output sample at the untouched defaults, for a bit for bit check
+    RealVox wanted <take.wav> <from s> <to s>    what the note logic asks of voices 1 and 2, block by block: note, pitch and lag
+    RealVox hash <take.wav> ...                  a hash of every output sample at the untouched defaults, for a bit for bit check, and the peak against the dry take's
     RealVox diff <a.f32> <b.f32>                 where two raw renders differ (written by hash with REALVOX_RAW=<folder>)
 
 What each measures and the pass rules are in the comment blocks in `RealVox.cpp`. Settings from the environment, in every mode:

@@ -2121,6 +2121,178 @@ void testHuman()
     }
 }
 
+// 1.5.0: the Human control. At 0 it is the sound before it existed: the null tests in WindowTests.h hold that bit for bit, since they run at
+// the settings as first opened and at every older preset. Above 0 the voices move more, each on its own, and stay in tune. The limits are
+// the ones realvox/RealVox.cpp sets for real takes (U1, U3, U4, V1, V2), written there before the control existed, here on a made up voice
+// whose pitch is known.
+struct HumanReading { double noteOff = 0.0, spread = 0.0, steadySpread = 0.0, together = 0.0, interval = 0.0, levelDb = 0.0, jump = 0.0; };
+
+HumanReading humanReading (float amount)
+{
+    HumanReading r;
+    const auto mask = scaleMask (0, scaleMajor);
+    const auto tweak = [&] (PluginProcessor& q)
+    {
+        human::setIf (q, "mode", (float) modeScale);
+        human::setIf (q, "key", 0.0f);
+        human::setIf (q, "scale", (float) scaleMajor);
+        human::setIf (q, "consonants", 0.0f);
+        human::setIf (q, "breath", 0.0f);
+        human::setIf (q, "human", amount);
+    };
+
+    // In tune: a phrase of held notes, each voice's average over the body of each note against its harmony note
+    {
+        const std::vector<int> notes { 57, 59, 60, 62, 64, 62, 60, 57, 60, 64, 62, 59 };
+        const double noteSec = 0.6;
+        std::vector<double> hz;
+        for (int n : notes) hz.push_back (noteHz (n));
+        const auto x = voice::synth (voice::phrase (hz, noteSec, SR, 0.0, 0.0), voice::vowelA, SR);
+        std::vector<double> offs, spreads;
+        for (int v = 0; v < 2; ++v)
+        {
+            auto p = human::defaultsSolo (v, tweak);
+            const int interval = juce::roundToInt (p->apvts.getRawParameterValue (vid (v, "Interval"))->load());
+            const auto o = mono (render (*p, x, 256));
+            const double latSec = (double) p->getLatencySamples() / SR;
+            for (size_t i = 0; i < notes.size(); ++i)
+            {
+                const int want = harmonyNote (notes[i], interval, mask);
+                const double start = (double) i * noteSec + latSec;
+                std::vector<double> body;
+                for (double t = start + 0.25; t < start + noteSec - 0.05; t += 0.005)
+                {
+                    const double f = pitchNear (o.data(), (long) o.size(), (long) (t * SR), noteHz (want), SR, 0.05, 3.0, 0.02);
+                    if (f > 0.0) body.push_back (cents (f, noteHz (want)));
+                }
+                if (body.size() < 20) continue;
+                double mean = 0.0, var = 0.0;
+                for (double c : body) mean += c / (double) body.size();
+                for (double c : body) var += (c - mean) * (c - mean) / (double) body.size();
+                offs.push_back (std::abs (mean));
+                spreads.push_back (std::sqrt (var));
+            }
+        }
+        r.noteOff = median (offs);
+        r.spread = median (spreads);
+    }
+
+    // Each on its own: one long note, the two voices' pitch against each other
+    {
+        const auto x = voice::synth (voice::steady (220.0, 8.0, SR), voice::vowelA, SR);
+        std::array<std::vector<double>, 2> trace;
+        std::array<std::vector<float>, 2> out;
+        for (int v = 0; v < 2; ++v)
+        {
+            auto p = human::defaultsSolo (v, tweak);
+            const int interval = juce::roundToInt (p->apvts.getRawParameterValue (vid (v, "Interval"))->load());
+            const double want = noteHz (harmonyNote (57, interval, mask));
+            out[(size_t) v] = mono (render (*p, x, 256));
+            const auto& o = out[(size_t) v];
+            for (double t = 1.0; t < 7.5; t += 0.01)
+            {
+                const double f = pitchNear (o.data(), (long) o.size(), (long) (t * SR), want, SR, 0.05, 3.0, 0.02);
+                trace[(size_t) v].push_back (f > 0.0 ? cents (f, want) : std::nan (""));
+            }
+            r.levelDb += 0.5 * toDb (rms (o.data() + (int) SR, (int) (6.0 * SR)));
+            double biggest = 0.0;
+            for (size_t i = (size_t) SR; i + 1 < (size_t) (7.0 * SR); ++i) biggest = std::max (biggest, (double) std::abs (o[i + 1] - o[i]));
+            r.jump = std::max (r.jump, biggest);
+        }
+        double ma = 0, mb = 0; int n = 0;
+        for (size_t i = 0; i < trace[0].size(); ++i) if (std::isfinite (trace[0][i]) && std::isfinite (trace[1][i])) { ma += trace[0][i]; mb += trace[1][i]; ++n; }
+        ma /= std::max (n, 1); mb /= std::max (n, 1);
+        double c = 0, ea = 0, eb = 0, ed = 0;
+        for (size_t i = 0; i < trace[0].size(); ++i)
+            if (std::isfinite (trace[0][i]) && std::isfinite (trace[1][i]))
+            {
+                const double a = trace[0][i] - ma, b = trace[1][i] - mb;
+                c += a * b; ea += a * a; eb += b * b; ed += (a - b) * (a - b);
+            }
+        r.together = c / std::sqrt (std::max (ea * eb, 1.0e-12));
+        r.steadySpread = std::sqrt (0.5 * (ea + eb) / std::max (n, 1));
+        // The interval between the two voices as the real take limit U4 reads it: its spread inside a note of ordinary length, here 0.6 s
+        // stretches of the long note, median.
+        juce::ignoreUnused (ed);
+        std::vector<double> stretches;
+        for (size_t from = 0; from + 60 <= trace[0].size(); from += 60)
+        {
+            double mean = 0.0, var = 0.0; int count = 0;
+            for (size_t i = from; i < from + 60; ++i) if (std::isfinite (trace[0][i]) && std::isfinite (trace[1][i])) { mean += trace[0][i] - trace[1][i]; ++count; }
+            if (count < 40) continue;
+            mean /= count;
+            for (size_t i = from; i < from + 60; ++i) if (std::isfinite (trace[0][i]) && std::isfinite (trace[1][i])) var += (trace[0][i] - trace[1][i] - mean) * (trace[0][i] - trace[1][i] - mean) / count;
+            stretches.push_back (std::sqrt (var));
+        }
+        r.interval = median (stretches);
+    }
+    return r;
+}
+
+void testHumanOption()
+{
+    // The parameter, and sessions
+    {
+        auto p = make();
+        auto* prm = p->apvts.getParameter ("human");
+        check (prm != nullptr, "Human is a real parameter");
+        if (prm == nullptr) return;
+        check (prm->getName (64) == "Human" && prm->convertFrom0to1 (0.0f) == 0.0f && prm->convertFrom0to1 (1.0f) == 100.0f, "Human runs from 0 to 100");
+        check (prm->convertFrom0to1 (prm->getDefaultValue()) == 0.0f && prm->convertFrom0to1 (prm->getValue()) == 0.0f, "Human starts at 0, the sound before it existed");
+        check (prm->getText (prm->convertTo0to1 (65.0f), 16) == "65" && prm->getLabel() == "%", "Human reads 65 %, " + prm->getText (prm->convertTo0to1 (65.0f), 16).toStdString());
+
+        setParam (*p, "human", 65.0f);
+        juce::MemoryBlock saved;
+        p->getStateInformation (saved);
+        auto q = make();
+        q->setStateInformation (saved.getData(), (int) saved.getSize());
+        check (std::abs (q->apvts.getRawParameterValue ("human")->load() - 65.0f) < 0.05f, "Human comes back with the session", q->apvts.getRawParameterValue ("human")->load(), "%");
+
+        // A session saved before 1.5.0 has no Human in it
+        auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+        int removed = 0;
+        for (auto* child = xml->getFirstChildElement(); child != nullptr;)
+        {
+            auto* next = child->getNextElement();
+            if (child->getStringAttribute ("id") == "human") { xml->removeChildElement (child, true); ++removed; }
+            child = next;
+        }
+        juce::MemoryBlock older;
+        juce::AudioProcessor::copyXmlToBinary (*xml, older);
+        auto o = make();
+        setParam (*o, "human", 40.0f);
+        setParam (*o, "humanize", 12.0f);
+        o->setStateInformation (older.getData(), (int) older.getSize());
+        check (removed == 1 && o->apvts.getRawParameterValue ("human")->load() == 0.0f, "a session from before 1.5.0 opens with Human at 0", o->apvts.getRawParameterValue ("human")->load(), "%");
+        check (std::abs (o->apvts.getRawParameterValue ("humanize")->load() - 50.0f) < 0.05f, "and its own settings come back as they were saved");
+
+        auto t = make();
+        setParam (*t, "human", 65.0f);
+        t->setCurrentProgram (3);
+        check (std::abs (t->apvts.getRawParameterValue ("human")->load() - 65.0f) < 0.05f, "a preset leaves Human where it is");
+        t->setCurrentProgram (tightPreset);
+        check (t->apvts.getRawParameterValue ("human")->load() == 0.0f, "Tight, the exact one, puts Human at 0");
+    }
+
+    const auto robot = humanReading (0.0f), some = humanReading (35.0f), most = humanReading (100.0f);
+    info ("Human 0: note average against its note, median", robot.noteOff, "cents");
+    info ("Human 0: pitch spread inside a note, median", robot.spread, "cents");
+    info ("Human 0: pitch spread on one long note", robot.steadySpread, "cents");
+    info ("Human 0: the two voices' movement in common", robot.together, "");
+    info ("Human 0: interval between the two voices, spread inside 0.6 s, median", robot.interval, "cents");
+    info ("Human 35: pitch spread on one long note", some.steadySpread, "cents");
+    check (most.noteOff <= 10.0, "Human 100: in tune, a voice's average over a note against its note, median", most.noteOff, "cents");
+    check (some.noteOff <= 10.0, "Human 35: the same", some.noteOff, "cents");
+    // The lead here is a made up voice that does not move at all, so there is nothing of it to follow: the real takes read higher (realvox V1).
+    check (most.steadySpread >= 1.4 * robot.steadySpread && most.steadySpread <= 20.0, "Human 100: a voice moves more on a long note than at 0, and no more than a singer, spread", most.steadySpread, "cents");
+    check (most.spread <= 20.0, "Human 100: and inside shorter notes no more than a singer does, median spread", most.spread, "cents");
+    check (some.steadySpread > robot.steadySpread && some.steadySpread < most.steadySpread, "Human 35 sits between 0 and 100", some.steadySpread, "cents");
+    check (most.together <= 0.30, "Human 100: the two voices move on their own, movement in common", most.together, "");
+    check (most.interval <= 15.0, "Human 100: the interval between the two voices holds, spread inside 0.6 s, median", most.interval, "cents");
+    check (std::abs (most.levelDb - robot.levelDb) <= 1.0, "Human 100: the voices are as loud as at 0", most.levelDb - robot.levelDb, "dB");
+    check (most.jump <= limits::clickJumpRatio * robot.jump, "Human 100: no clicks, biggest step against Human 0", most.jump / std::max (robot.jump, 1.0e-12), "times");
+}
+
 // A fingerprint of the output on one preset: every sample of real sung material, both channels, bit for bit.
 // With a window, it is open from the start and draws after every block, on this thread.
 // allFour: all four first voices singing. Otherwise the preset's own count. Preset -1 is the settings as first opened.
@@ -2229,6 +2401,7 @@ int main (int argc, char** argv)
     if (want ("real")) testRealMaterial();
     if (want ("cpu")) testCpu();
     if (want ("humanchecks")) testHuman();
+    if (want ("humanoption")) testHumanOption();
     if (want ("window")) testWindow();
     if (want ("eight")) testEightVoices();
     if (want ("onsets")) { onsets::testPhraseStarts(); onsets::testCorpusStarts(); }

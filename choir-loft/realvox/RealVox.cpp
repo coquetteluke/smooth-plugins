@@ -1391,9 +1391,11 @@ int hashTakes (int argc, char** argv)
         }
         const char* preset = std::getenv ("REALVOX_PRESET");
         const char* set = std::getenv ("REALVOX_SET");
-        std::printf ("H %s preset %s set %s latency %d samples %d hash %016llx peak %.2f dBFS\n", file.getFileNameWithoutExtension().toRawUTF8(),
+        float dryPeak = 0.0f;
+        for (float v : x) dryPeak = std::max (dryPeak, std::abs (v));
+        std::printf ("H %s preset %s set %s latency %d samples %d hash %016llx peak %.2f dBFS (the dry take %.2f, so %+.2f dB)\n", file.getFileNameWithoutExtension().toRawUTF8(),
                      preset != nullptr ? p->getProgramName (std::atoi (preset)).toRawUTF8() : "default", set != nullptr ? set : "none", p->getLatencySamples(), n,
-                     (unsigned long long) h, toDb (peak));
+                     (unsigned long long) h, toDb (peak), toDb (dryPeak), toDb (peak) - toDb (dryPeak));
         std::fflush (stdout);
         if (rawDir != nullptr)
         {
@@ -2141,6 +2143,30 @@ int main (int argc, char** argv)
             show ("under 98 Hz", dipsLow);
             show ("98 Hz or more", dipsHigh);
             show ("no pitch", dipsNone);
+        }
+        return 0;
+    }
+    if (mode == "wanted" && argc >= 5)
+    {
+        // What the note logic asks of voices 1 and 2 through a stretch of a take, block by block: RealVox wanted <take.wav> <from s> <to s>
+        Dry d;
+        if (! d.load (cwd.getChildFile (argv[2]))) return 1;
+        auto p = makeProcessor();
+        applyEnvironment (*p);
+        setParam (*p, "key", (float) d.key);
+        setParam (*p, "scale", (float) d.scale);
+        prepare (*p);
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        const long from = (long) (std::atof (argv[3]) * SR), to = std::min ((long) d.x.size(), (long) (std::atof (argv[4]) * SR));
+        for (long pos = 0; pos + block <= to; pos += block)
+        {
+            for (int c = 0; c < 2; ++c) std::copy_n (d.x.data() + pos, block, buf.getWritePointer (c));
+            p->processBlock (buf, midi);
+            if (pos < from) continue;
+            const auto r = p->getReadings();
+            std::printf ("%8.3f s  lead %6.1f Hz note %3d   voice 1 note %3d pitch %7.2f lag %5.1f ms   voice 2 note %3d pitch %7.2f lag %5.1f ms\n", pos / SR, r.detectedHz, r.leadNote,
+                         r.voiceNote[0], r.voicePitch[0], r.voiceLagMs[0], r.voiceNote[1], r.voicePitch[1], r.voiceLagMs[1]);
         }
         return 0;
     }

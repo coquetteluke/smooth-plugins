@@ -164,6 +164,10 @@ private:
 
         bool voicedNow = false;                  // the part of the lead this voice is singing right now is voiced
         double attackStep = 0.0, wander = 1.0, lagSamples = 0.0;
+        double scatterLag = 0.0;                 // where the voice's own consonant reads, held from a start until that consonant has faded out
+        bool scatterHeld = false;
+        // Human (1.5.0): the lead's level, quick and slow, where this voice reads it, and the smoothed gain made from them. Unused with Human at 0.
+        double leadFast = 0.0, leadSlow = 0.0, wanderNow = 1.0;
 
         // Consonants: this voice's own version of each one, later and softer, and with its own waveform.
         static constexpr int numTaps = 16;
@@ -196,7 +200,7 @@ private:
                        *humanize = nullptr, *vibrato = nullptr, *vibratoRate = nullptr, *leadLevel = nullptr, *leadPan = nullptr, *mix = nullptr,
                        *harmonyLevel = nullptr, *glide = nullptr, *followLead = nullptr, *consonants = nullptr, *inputType = nullptr,
                        *tracking = nullptr, *reference = nullptr, *chordRoot = nullptr, *chordType = nullptr, *chordHold = nullptr,
-                       *breath = nullptr, *consonantScatter = nullptr, *moreVoices = nullptr, *leadOn = nullptr;
+                       *breath = nullptr, *consonantScatter = nullptr, *moreVoices = nullptr, *leadOn = nullptr, *human = nullptr;
     struct VoiceParams { std::atomic<float>* interval = nullptr, *level = nullptr, *pan = nullptr, *drift = nullptr, *throat = nullptr, *tone = nullptr, *on = nullptr; };
     std::array<VoiceParams, maxVoices> voiceParams {};
     juce::AudioParameterBool* bypass = nullptr;
@@ -231,7 +235,7 @@ private:
 
     double sr = 48000.0, smoothing = 0.001, consonantGain = 0.35, envelopeStep = 0.001, matchPower = 0.001, matchPowerFast = 0.01, matchGain = 0.001;
     double scatterNow = 0.0, breathNow = 0.0, breathEnvK = 0.01, breathHighK = 0.2, breathLowK = 0.6, toneK = 0.2, mixStep = 0.01, consonantLowK = 0.05;
-    double leadDisplayPeak = 0.0;
+    double leadDisplayPeak = 0.0, humanFastK = 0.01, humanSlowK = 0.001;
     double leadHear = 1.0, leadHearTarget = 1.0, hearStep = 0.001;
     double leadGain = 1.0, leadGainTarget = 1.0, leadL = 1.0, leadR = 1.0, leadLTarget = 1.0, leadRTarget = 1.0;
     double harmonyGain = 1.0, harmonyGainTarget = 1.0, mixNow = 1.0, mixTarget = 1.0;

@@ -82,6 +82,7 @@ public:
         while (fastSize < (int) (sr * 0.25)) fastSize *= 2;
         fast.assign ((size_t) fastSize * 2, 0.0f);
         curve.assign (1024, 1.0f);
+        lowCurve.assign (1024, 1.0f);
         lpcIn.assign (2 * 1024 + 64, 0.0f);
         lpcOut.assign (2 * 1024 + 64, 0.0f);
         rumble.highPass (50.0, sr, 0.707);
@@ -94,7 +95,11 @@ public:
     }
 
     // Clears tracking state, so a change of range starts clean. No allocation.
-    void setRange (double lowestHz, double highestHz) noexcept
+    // belowHz (1.5.0), when under lowestHz: notes from there up to lowestHz are followed too, without the range itself getting any slower.
+    // The window that sets how fast a start is called stays the one for lowestHz. Only when that window finds nothing periodic, or a note
+    // under the range is already being followed, are the longer periods looked at as well, over a window as long as the longest of them,
+    // which reaches further back in time and adds no delay. See lowDip().
+    void setRange (double lowestHz, double highestHz, double belowHz = 0.0) noexcept
     {
         lowHz = lowestHz;
         highHz = highestHz;
@@ -103,6 +108,12 @@ public:
         window = tauMax;
         periodMin = sr / highHz * 0.9;
         periodMax = sr / lowHz * 1.1;
+        lowTauMax = 0;
+        if (belowHz > 0.0 && belowHz < lowestHz)
+        {
+            lowTauMax = std::min ((int) curve.size() - 3, (int) std::ceil (slowRate / belowHz) + 1);
+            periodMax = sr / belowHz * 1.1;
+        }
         clearTracking();
     }
 
@@ -245,7 +256,8 @@ private:
                 ++numDips;
             }
         }
-        if (numDips == 0 || lowest > 0.9f)
+        const bool rangeHasDip = numDips > 0 && lowest <= 0.9f;
+        if (! rangeHasDip && lowTauMax <= tauMax)
         {
             noPitch();
             whyNow = whyNoDip;
@@ -257,12 +269,65 @@ private:
         // second harmonic, from winning.
         const float limit = lowest * 1.5f + 0.03f;
         int chosen = 0;
-        for (int i = 0; i < numDips; ++i)
-            if (dipValue[(size_t) i] <= limit) { chosen = i; break; }
+        if (rangeHasDip)
+            for (int i = 0; i < numDips; ++i)
+                if (dipValue[(size_t) i] <= limit) { chosen = i; break; }
+
+        // Under the range (1.5.0). Looked at only where the range itself has nothing to offer (no dip, or none good enough to be called
+        // voiced), or while a note under the range is being followed, so a note inside the range is read exactly as before.
+        bool usingLow = false;
+        if (lowTauMax > tauMax)
+        {
+            const bool onLow = voiced && tauCurrent > (double) tauMax;
+            const bool rangeGood = rangeHasDip && dipValue[(size_t) chosen] < (voiced ? voicedOff : voicedOn);
+            double lowTau = 0.0;
+            float lowValue = 2.0f;
+            if ((onLow || ! rangeGood) && numDips < (int) dipTau.size() && lowDip (lowTau, lowValue))
+            {
+                bool take = onLow;
+                if (! take && ! voiced)
+                {
+                    // A new note. Twice a period always fits wherever the period does, and on a rough start fits better, the longer window
+                    // averaging more of the noise away. So the long period must be plainly the better of the two, asked at full rate over
+                    // the same stretch, and the same against a third of it if the range has a dip there.
+                    take = clearlyDeeper (lowTau, 0.5 * lowTau);
+                    for (int i = 0; i < numDips && take; ++i)
+                        if (std::abs (lowTau / (dipTau[(size_t) i] * 3.0) - 1.0) < 0.04 && ! clearlyDeeper (lowTau, dipTau[(size_t) i]))
+                            take = false;
+                }
+                // A note that slides down out of the range keeps going. One that is in the range and turns rough for a moment is not moved
+                // an octave down: it goes unvoiced as before.
+                if (! take && voiced && lowTau < 1.3 * tauCurrent)
+                    take = true;
+                if (take)
+                {
+                    dipTau[(size_t) numDips] = lowTau;
+                    dipValue[(size_t) numDips] = lowValue;
+                    // While on a low note the range's own dips are mostly its harmonics. When one of those is good enough to be called
+                    // voiced, the low dip only joins the list: the usual rules for a change of period then weigh the two, and a move to a
+                    // shorter related period needs it to be about as deep. So a note that began an octave low comes back up.
+                    if (! rangeGood)
+                    {
+                        chosen = numDips;
+                        usingLow = true;
+                    }
+                    ++numDips;
+                }
+            }
+            if (! rangeHasDip && ! usingLow)
+            {
+                noPitch();
+                whyNow = whyNoDip;
+                return;
+            }
+        }
 
         // A strong second harmonic, say on a low vowel whose first formant sits right on it, can make half the period look deep.
         // If a multiple of the chosen period is much deeper still, that multiple is the true period.
-        if (dipValue[(size_t) chosen] < 0.08f)
+        if (usingLow)
+        {
+        }
+        else if (dipValue[(size_t) chosen] < 0.08f)
             for (int i = chosen + 1; i < numDips; ++i)
             {
                 const double multiple = dipTau[(size_t) i] / dipTau[(size_t) chosen];
@@ -289,15 +354,22 @@ private:
         if (voiced) ++voicedAnalyses;
         trackContinuity (tau, dip, numDips);
 
-        // Where the current run of nearly periodic sound began, for a start to be written back to.
+        // Under the range the tracker is choosier: fry and the creak at the end of a word repeat at these periods too, roughly, and before
+        // 1.5.0 they were left alone. A sung low note repeats far better than they do (on Luke's takes a median difference of 0.01 to 0.14
+        // against 0.24), so there a start needs half the usual limit and a held note the usual limit for a start.
+        const bool underRange = lowTauMax > tauMax && tauCurrent > (double) tauMax;
+        const float limitNow = underRange ? (voiced ? voicedOn : 0.5f * voicedOn) : (voiced ? voicedOff : voicedOn);
+
+        // Where the current run of nearly periodic sound began, for a start to be written back to. Under the range only sound good enough
+        // to start a note counts, so a creak before a word does not pull the word's start back over it.
         if (! voiced)
         {
-            if (dipCurrent < nearlyPeriodic && ! isFricative()) { if (nearSince < 0) nearSince = slowCount; }
+            if (dipCurrent < (underRange ? limitNow : nearlyPeriodic) && ! isFricative()) { if (nearSince < 0) nearSince = slowCount; }
             else nearSince = -1;
         }
 
         // Voiced or not, with votes so one lucky frame of noise does nothing.
-        const bool looksVoiced = dipCurrent < (voiced ? voicedOff : voicedOn) && ! isFricative();
+        const bool looksVoiced = dipCurrent < limitNow && ! isFricative();
         whyNow = looksVoiced ? (voiced ? whyVoiced : whyVotes) : (isFricative() ? whyHiss : whyRough);
         if (looksVoiced)
         {
@@ -443,6 +515,54 @@ private:
         {
             dipCurrent = dip;
         }
+    }
+
+    // The first deep dip among the periods under the range, from the range's longest period to lowTauMax, over a window as long as the
+    // longest of them: a window shorter than a period can fall between two pulses of a low, creaky note and see nothing. False if there
+    // is none. It only reaches further back, so it costs no delay; a low note is called a few ms later than one in the range.
+    bool lowDip (double& tauOut, float& valueOut) noexcept
+    {
+        const int span = lowTauMax;
+        if (slowCount < span + lowTauMax + 3)
+            return false;
+        const int end = (int) ((slowCount - 1) & (long long) (slowSize - 1)) + slowSize + 1;
+        const float* base = slow.data() + end - span;
+        const float e0 = dotProduct (base, base, span);
+        if (e0 / (float) span < gateEnergy)
+            return false;
+        const int first = tauMax, last = lowTauMax + 1;
+        float e = dotProduct (base - first, base - first, span);
+        for (int tau = first; tau <= last; ++tau)
+        {
+            const float c = dotProduct (base, base - tau, span);
+            const float den = e0 + e;
+            lowCurve[(size_t) tau] = den > 1.0e-12f ? 1.0f - 2.0f * c / den : 1.0f;
+            const float leaving = base[span - 1 - tau], arriving = base[-tau - 1];
+            e = std::max (0.0f, e + arriving * arriving - leaving * leaving);
+        }
+        float lowest = 2.0f;
+        for (int tau = first + 1; tau <= lowTauMax; ++tau)
+        {
+            const float a = lowCurve[(size_t) tau - 1], b = lowCurve[(size_t) tau], c = lowCurve[(size_t) tau + 1];
+            if (b <= a && b < c)
+                lowest = std::min (lowest, b);
+        }
+        if (lowest > 0.9f)
+            return false;
+        const float limit = lowest * 1.5f + 0.03f;
+        for (int tau = first + 1; tau <= lowTauMax; ++tau)
+        {
+            const float a = lowCurve[(size_t) tau - 1], b = lowCurve[(size_t) tau], c = lowCurve[(size_t) tau + 1];
+            if (b <= a && b < c && b <= limit)
+            {
+                const float den = a - 2.0f * b + c;
+                const float shift = den > 1.0e-9f ? std::clamp (0.5f * (a - c) / den, -0.5f, 0.5f) : 0.0f;
+                tauOut = (double) tau + shift;
+                valueOut = b - 0.25f * (a - c) * shift;
+                return true;
+            }
+        }
+        return false;
     }
 
     // Is one period much deeper than another? Asked at full rate, because at 12 kHz a period falling between two samples
@@ -770,7 +890,8 @@ private:
     int decimation = 4, hop = 16, slowSize = 8192, fastSize = 16384;
     int tauMin = 8, tauMax = 180, window = 180;
     double periodMin = 30.0, periodMax = 800.0;
-    std::vector<float> slow, fast, curve;
+    std::vector<float> slow, fast, curve, lowCurve;
+    int lowTauMax = 0;   // longest period looked at under the range, in slow samples. 0: none
     Biquad rumble, presence, coarseA, coarseB;
     double envFull = 0.0, envLow = 0.0;
     long long count = 0, slowCount = 0;

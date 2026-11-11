@@ -87,6 +87,7 @@ private:
         std::unique_ptr<VoiceStrip> strips[PluginProcessor::maxVoices];
 
         ui::BarSlider humanize, vibrato, leadLevel, harmonyLevel, mix;
+        ui::BarSlider human;   // 1.5.0: from the robot sound to voices that move like singers
 
         // Advanced
         std::unique_ptr<ui::BarSlider> throat[PluginProcessor::maxVoices];

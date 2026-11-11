@@ -187,6 +187,7 @@ public:
         // keeps adding to it. Where the count last left zero is where the change began, and the reading is rebuilt from there.
         double voiceChangeEvidence = 2.5; // the count that says the song has moved, seconds of held notes
         double voiceChangeWindow = 30.0; // a count that has not got there this long after it left zero starts again: straying, not a change
+        double voiceRefSeconds = 20.0;  // a change is measured against the set on show once that has been sure, or has been on show this long
         double voiceChangeWatch = 1.0;  // from this count on a change is being weighed: the reading is called not sure until it is settled
         double voiceChangeFull = 1.0;   // frames until a held note counts in full toward it (heldFull for the long memory)
         double voiceChangeFit = 0.85;   // and of the held notes since the change began, the new set covers at least this share,
@@ -1462,11 +1463,15 @@ private:
                 const bool weighing = weighingChange (shown < 12 ? shown : (shown - 12 + 3) % 12);
                 // And a reading the long memory has just moved to other notes has not earned trust yet.
                 current.unsure = smoothedMargin < knobs.voiceUnsureMargin || weighing || heardSeconds - lastDrift < knobs.voiceMoveUnsure;
-                if (current.unsure) current.confidence = std::min (current.confidence, 0.49f);
+                if (current.unsure)
+                {
+                    current.confidence = std::min (current.confidence, 0.49f);
+                    smoothedConfidence = std::min (smoothedConfidence, 0.49); // so a pause in the singing cannot show it higher
+                }
                 // What a change is measured against: the set on show once it has been sure, or has stayed on show for a whole window.
                 const int showing = shown < 12 ? shown : (shown - 12 + 3) % 12;
                 if (showing != shownSetBefore) { shownSetBefore = showing; shownSince = heardSeconds; }
-                if (current.confidence >= 0.5f || heardSeconds - shownSince >= knobs.voiceChangeWindow)
+                if (current.confidence >= 0.5f || heardSeconds - shownSince >= knobs.voiceRefSeconds)
                 {
                     const int set = showing;
                     if (set != sureSet) clearChangeCounts(); // the counts were against another set

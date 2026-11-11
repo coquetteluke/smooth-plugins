@@ -271,8 +271,12 @@ void report (const std::vector<Row>& rows, Check&& check, Info&& info)
         info (r.label + "ends on the right 7 notes", r.rightPercent(), "%");
         line (r.medianSettleExact() >= 0.0 && r.medianSettleExact() <= mixlimits::medianSettle, "median time until the exact key is shown and kept (-1: never, in half the clips)", r.medianSettleExact(), "s");
         info (r.label + "median time until the right 7 notes are shown and kept (-1: never, in half the clips)", r.medianSettleNotes(), "s");
-        line (r.movedPercent() <= mixlimits::movedPercent, "clips whose reading moves after 8 s", r.movedPercent(), "%");
-        line (r.bounces <= mixlimits::bounces, "bounces, A to B and back to A", r.bounces, "");
+        // Reported, not checked. The two flicker limits were first drafted here as checks, straight from the chord tests. Those
+        // run 24 s clips; over these one minute clips the music ALONE, whose reading is bit identical to 1.5.0, already moves
+        // after 8 s on 2.9% of clips (dev seeds 5000 to 5003, limit 1%). So as checks they would have judged 1.5.0 on long
+        // clips, not a voice on top of music. Changed before the held out seed was run; the numbers are printed for the next pass.
+        info (r.label + "clips whose reading moves after 8 s (chord tests, 24 s clips: limit 1)", r.movedPercent(), "%");
+        info (r.label + "bounces, A to B and back to A (chord tests, 24 s clips: limit 0)", r.bounces, "");
         line (r.wrongConfidentPercent() <= mixlimits::wrongConfidentPercent, "share of the time at confidence 0.5 or more on the wrong 7 notes", r.wrongConfidentPercent(), "%");
         info (r.label + "share of the time at confidence 0.5 or more on the right 7 notes", r.rightConfidentPercent(), "%");
         info (r.label + "changes of reading after the first, a clip", r.changesPerClip(), "");

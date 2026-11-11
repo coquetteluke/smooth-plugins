@@ -70,6 +70,7 @@ public:
         firstGrain = true;
         pulseOffset = 0.0;
         pulseGrains = 0;
+        heardOffset = 0.0;
     }
 
     // Store one input sample for one channel.
@@ -87,6 +88,10 @@ public:
         const long long index = written - 1 - latency;
         return index < 0 ? 0.0f : delay[(size_t) channel][(size_t) (index & (long long) (size - 1))];
     }
+
+    // Where the sound in the last output sample was read from, against the reported delay, in samples: the grains' read offsets,
+    // weighted by their windows. 0 on a pass. Negative: read from earlier in the input.
+    double readOffset() const noexcept { return heardOffset; }
 
     // One output sample per channel. tracker indexes count the same input samples as written.
     void step (const PitchTracker& tracker, const Control& control, float* out) noexcept
@@ -117,7 +122,7 @@ public:
         }
 
         double sum[2] = { 0.0, 0.0 };
-        double weight = 0.0;
+        double weight = 0.0, offsetSum = 0.0;
         int keep = 0;
         for (int k = 0; k < numActive; ++k)
         {
@@ -142,11 +147,13 @@ public:
             if (w <= 0.0)
                 continue;
             weight += w;
+            offsetSum += w * h.offset;
             const double scaled = w * h.gain;
             for (int ch = 0; ch < channels; ++ch)
                 sum[ch] += scaled * read (ch, h, n, t, newest);
         }
         numActive = keep;
+        heardOffset = weight > 0.0 ? offsetSum / weight : 0.0;
 
         // Plain grains are the voice itself, so overlaps are kept to its level. Whitened grains hold one pulse each and their overlaps are nearly empty.
         const double divide = weight > 1.0 && plain ? 1.0 / weight : 1.0;
@@ -538,7 +545,7 @@ private:
     Grain pending;
     bool havePending = false, needDecision = true, firstGrain = true;
     Plan planned = Plan::pass;
-    double peakOfNewest = 0.0, lastOffset = 0.0, plannedOffset = 0.0, pulseOffset = 0.0;
+    double peakOfNewest = 0.0, lastOffset = 0.0, plannedOffset = 0.0, pulseOffset = 0.0, heardOffset = 0.0;
     static constexpr bool walkLockedOffset = true;
     static constexpr double lockedWalkShare = 0.001;
     int pulseGrains = 0;

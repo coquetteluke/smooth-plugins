@@ -1439,6 +1439,81 @@ void testVowelChange()
     note ("  and the tool's floor: the new vowel as sung against that real voice, worst", floor * 100.0, "%");
 }
 
+// ------------------------------------------------------------------------------------------- a tick inside a corrected note
+
+// Added 2026-11-11 from real takes (02 at 7.085 s, 01 at 163.325 s), with both limits set before the fix was run. In Low Latency a grain is
+// heard up to 0.6 of a period from where it was read, and in Alto/Tenor from 98 to about 140 Hz up to a whole period. The voice was whitened
+// with the vocal tract model of the moment it was read and shaped with the model of the moment it was heard. A tick in the voice (a mouth
+// click, a hard glottal closure) changes that model within a few ms, so the tick came out 11 to 21 dB louder above 9 kHz than it was sung and
+// the vowel under it about 10 dB down for 5 to 15 ms. Here: a held vowel that is being corrected, with a tick every 137 ms so the ticks meet
+// every read offset. Limits: a tick comes out no more than 6 dB louder above 9 kHz than it went in (twice as loud), and no 10 ms frame within
+// 30 ms after a tick is more than 6 dB under the input's.
+void testTickInNote()
+{
+    if (gEngine != 0)
+        return;
+    const auto run = [] (int type, double hz, double& loudest, double& deepest)
+    {
+        auto x = voice::synth (voice::steady (hz, 3.0, SR), voice::vowelA, SR, -50.0);
+        std::vector<long> ticks;
+        for (long at = (long) (0.6 * SR); at < (long) (2.8 * SR); at += (long) (0.137 * SR))
+        {
+            // Three samples, up, down, up: nearly all of it above 9 kHz
+            x[(size_t) at] += 0.012f; x[(size_t) at + 1] -= 0.024f; x[(size_t) at + 2] += 0.012f;
+            ticks.push_back (at);
+        }
+        auto p = tuner (type, 0.0f);
+        const auto y = mono (render (*p, x, 256));
+        const int latency = p->getLatencySamples();
+        const auto highBand = [] (const std::vector<float>& v, long from, long length)
+        {
+            double sum = 0.0;
+            for (long i = std::max (2L, from); i < from + length && i < (long) v.size(); ++i)
+            {
+                const double d = (double) v[(size_t) i] - 2.0 * v[(size_t) i - 1] + v[(size_t) i - 2];
+                sum += d * d;
+            }
+            return toDb (std::sqrt (sum / (double) length));
+        };
+        loudest = -100.0; deepest = 100.0;
+        const long frame = (long) (0.005 * SR), level = (long) (0.010 * SR);
+        for (long at : ticks)
+        {
+            const double in = highBand (x, at - frame / 2, frame);
+            double out = -200.0;
+            for (long k = at - 3 * frame; k <= at + 4 * frame; k += frame / 2)
+                out = std::max (out, highBand (y, k + latency - frame / 2, frame));
+            loudest = std::max (loudest, out - in);
+            for (long k = at; k <= at + (long) (0.030 * SR) - level; k += level / 2)
+                deepest = std::min (deepest, toDb (rms (y.data() + k + latency, (int) level)) - toDb (rms (x.data() + k, (int) level)));
+        }
+    };
+    double loudest = 0.0, deepest = 0.0, worstLoud = -100.0, worstDeep = 100.0;
+    for (double hz : { 102.0, 106.0, 118.0, 131.0 })   // 31 cents flat of G#2, 36 sharp, 35 sharp of A#2, 16 sharp of C3
+    {
+        run (altoTenor, hz, loudest, deepest);
+        worstLoud = std::max (worstLoud, loudest); worstDeep = std::min (worstDeep, deepest);
+    }
+    chk (worstLoud <= 6.0, "a tick in a corrected note at 102 to 131 Hz, Alto/Tenor: above 9 kHz the tick comes out louder than it went in by, worst", worstLoud, "dB");
+    chk (worstDeep >= -6.0, "  the 10 ms after a tick against the input, deepest", worstDeep, "dB");
+    worstLoud = -100.0; worstDeep = 100.0;
+    for (double hz : { 81.0, 90.0 })   // 28 cents flat of E2, 46 flat of F#2: under the range, followed since 1.6.0
+    {
+        run (altoTenor, hz, loudest, deepest);
+        worstLoud = std::max (worstLoud, loudest); worstDeep = std::min (worstDeep, deepest);
+    }
+    chk (worstLoud <= 6.0, "a tick in a corrected note at 81 and 90 Hz, Alto/Tenor: above 9 kHz the tick comes out louder than it went in by, worst", worstLoud, "dB");
+    chk (worstDeep >= -6.0, "  the 10 ms after a tick against the input, deepest", worstDeep, "dB");
+    worstLoud = -100.0; worstDeep = 100.0;
+    for (double hz : { 81.0, 102.0, 118.0, 185.0 })
+    {
+        run (lowMale, hz, loudest, deepest);
+        worstLoud = std::max (worstLoud, loudest); worstDeep = std::min (worstDeep, deepest);
+    }
+    chk (worstLoud <= 6.0, "a tick in a corrected note at 81 to 185 Hz, Low Male: above 9 kHz the tick comes out louder than it went in by, worst", worstLoud, "dB");
+    chk (worstDeep >= -6.0, "  the 10 ms after a tick against the input, deepest", worstDeep, "dB");
+}
+
 // ------------------------------------------------------------------------------------------- notes under the range
 
 // Alto/Tenor is the default Input Type and its range starts at 98 Hz, but men sing under that (Luke: 77 to 95 Hz, 2026-11-10 takes).
@@ -3824,6 +3899,7 @@ int main (int argc, char** argv)
         if (want ("gen")) testVibratoGenerator();
         if (want ("mix")) testMix();
         if (want ("low")) testLowNotes();
+        if (want ("tick")) testTickInNote();
         if (want ("timing")) testTiming();
         if (want ("hold")) testTargetHold();
     }

@@ -16,6 +16,9 @@
 #include "PitchTracker.h"
 #include "PsolaShifter.h"
 
+#ifndef MODEL_FOLLOWS_GRAINS
+ #define MODEL_FOLLOWS_GRAINS true
+#endif
 namespace smoothtune
 {
 class TuneEngine
@@ -202,7 +205,15 @@ public:
                 }
                 else
                 {
-                    envelope.loadSynthesisFor (at);
+                    // The vocal tract model is put back for the moment the grains were read from, not for the moment they are heard. A grain
+                    // is cut up to 0.6 of a period from where it is heard, and in Alto/Tenor from 98 to about 140 Hz, where the mark for the
+                    // nearer period is not known in time, up to a whole period (10 ms). Each sample was whitened with the model of its own
+                    // moment; shaped with a later one, any quick change in the model between the two came out as a fault. A tick in the voice
+                    // is the plain case: the model that whitened it had not seen it yet, the model 7 ms later has, and is flatter for it, so
+                    // the tick came out 11 to 21 dB louder above 9 kHz and the vowel under it 10 dB down for 5 to 15 ms (real takes: 02 at
+                    // 7.085 s, 01 at 163.325 s). High Quality is left as it was: its settings were tuned with the model at the output's moment.
+                    const long long modelAt = modelFollowsGrains && mode != highQuality ? std::max (0LL, at + (long long) std::llround (shifter.readOffset())) : at;
+                    envelope.loadSynthesisFor (modelAt);
                     wet[0] = (float) envelope.shape (0, (double) wet[0]);
                     if (channels > 1) wet[1] = (float) envelope.shape (1, (double) wet[1]);
                 }
@@ -491,6 +502,7 @@ private:
         return period;
     }
 
+    static constexpr bool modelFollowsGrains = MODEL_FOLLOWS_GRAINS;
     static constexpr bool alignPitch = true;
     // High Quality is left as it was, for now. Its control runs ahead in the same way (73 samples at the median of Luke's takes in
     // Alto/Tenor, 261 in Low Male), and reading it in line fixes that (20 samples late in Low Male), but High Quality's vocal tract

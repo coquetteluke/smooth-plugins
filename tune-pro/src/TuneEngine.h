@@ -16,8 +16,12 @@
 #include "PitchTracker.h"
 #include "PsolaShifter.h"
 
-#ifndef MODEL_FOLLOWS_GRAINS
- #define MODEL_FOLLOWS_GRAINS true
+// TUNE_AS_160 builds the engine as 1.6.0 had it (the four changes of 1.6.1 switched off), for measuring before and after with one
+// test binary. With it the Low Latency null test passes against 1.6.0's own numbers, which is the proof that nothing else moved.
+#ifdef TUNE_AS_160
+ #define TUNE_161_CHANGES false
+#else
+ #define TUNE_161_CHANGES true
 #endif
 namespace smoothtune
 {
@@ -530,9 +534,9 @@ private:
         return period;
     }
 
-    static constexpr bool modelFollowsGrains = MODEL_FOLLOWS_GRAINS;
-    static constexpr bool exactPassHighQuality = true;
-    static constexpr bool readAheadOnLowNotes = true;
+    static constexpr bool modelFollowsGrains = TUNE_161_CHANGES;
+    static constexpr bool exactPassHighQuality = TUNE_161_CHANGES;
+    static constexpr bool readAheadOnLowNotes = TUNE_161_CHANGES;
     // Periods in samples at 48 kHz between which the age goes from grainPitchAge to lowNotePitchAge (141 Hz to 120 Hz)
     static constexpr double lowNotePitchAge = 1.85, lowNoteAgeFrom = 340.0, lowNoteAgeTo = 400.0;
     // 60 and 15 cents as ratios of the period
@@ -542,7 +546,7 @@ private:
     // Alto/Tenor, 261 in Low Male), and reading it in line fixes that (20 samples late in Low Male), but High Quality's vocal tract
     // settings were all tuned with the lead in place: with it gone the ninth held out set's speaking formant move reads 5.00% against
     // 4.62% (limit 4). So that needs High Quality's settings looked at again, on a held out set that has not been seen.
-    static constexpr bool alignHighQuality = true;
+    static constexpr bool alignHighQuality = TUNE_161_CHANGES;
     // On Luke's real takes the readings are a little older than on the steady test voice (weak marks hold their period, and under
     // about 140 Hz in Alto/Tenor the reading is older than the whole latency, which nothing can make up for): with the test voice's
     // 1.92 the pitch came 68 samples late at the median of 11 takes in Alto/Tenor and 19 in Low Male. 2.02 keeps the test voice

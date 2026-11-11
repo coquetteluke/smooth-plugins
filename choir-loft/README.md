@@ -49,6 +49,7 @@ Every control is a real AU parameter that a host can find by name.
 | Tracking | Which sounds count as pitched. 0 is choosy, 100 lets rough, breathy sound count. |
 | Reference A4 | 415 to 466 Hz. |
 | Bypass | Keeps the same delay. |
+| Ceiling | Off or on, off by default (1.5.2). On, what comes out never passes -0.3 dBFS: one gain for both channels comes down at once when a sample would pass a soft knee, holds for 30 ms and comes back over 200 ms. No look ahead, so no added delay. A take with room to spare is not touched, and Bypass still passes the vocal untouched. |
 
 Readings, which never write automation: Detected Pitch, Lead Note, Voice 1 to 8 Note, Voices Sounding, Active Key. An off singer reads no note and does not count as sounding. The window draws from them live. Hosts read them by name.
 
@@ -71,6 +72,8 @@ Drag a singer: left and right pans it, up and down changes its interval. In the 
 Below the display, the row of cards starts with the lead: its name and switch, the note you are singing, Level and Pan. Then each voice has a card with its note, its interval in words, Level, Pan, Drift and Tone. Up to 4 voices there are 4 wide cards, with the spare ones dimmed. Above that there is a card per singer in narrower columns, so all of them stay in view. Under those are Human, Humanize and Vibrato, which say how the voices sing, then Harmony and Mix. Advanced holds Throat, Vibrato Rate, Glide, Follow Lead, Breath, Consonants, Scatter, Voice range, Tracking and Reference A4. When Advanced opens, the display gets shorter instead of the window getting bigger.
 
 The Mode row says In Key where the parameter is called Scale Interval, and Fixed where it is Fixed Interval. Key and Scale swap with Chord and Type in Chord Tones mode, and Follow Key swaps with Chord Hold in the MIDI modes. Whichever pair is not by the display is in Advanced, so every control always has a place.
+
+In the top row, between the presets and the voice count, are the Ceiling switch and the output's loudest moment in words ("Out -3.0 dB"). From -1 dBFS up the words turn warm white and say "near full scale", above 0 "over full scale"; they hold for a second and a half and go out when nothing plays (1.5.2).
 
 Every control is a real parameter with the same ID, name and range as before. Double-click resets, click a value to type it, the arrows on an interval step to the next interval, and Shift gives a finer drag. The size and whether Advanced is open are saved with the session, and nothing else was added to saved state. The line under the controls explains whatever is under the mouse.
 
@@ -96,7 +99,7 @@ Tight is exact tuning: no Drift, Humanize, Vibrato, Tone, Breath or Scatter, Thr
 
 ## Level with many voices
 
-Voices add level and there is no limiter. Up to 4 voices nothing changes. Above 4, the voices together turn down so 8 stay about as loud as 4, which is what unrelated voices add up to: -1.0 dB at 5, -1.8 at 6, -2.4 at 7, -3.0 at 8. Voices 5 to 8 also start 3 dB lower than the first four, at -9 dB, and the new presets turn the lead down a little.
+Voices add level, and until 1.5.2 nothing held the output under full scale. Since 1.5.2 there is Ceiling, off by default (see Controls and "The leak, the note ends and the ceiling"), and the window says when the output is within 1 dB of full scale whether Ceiling is on or not. Up to 4 voices nothing changes. Above 4, the voices together turn down so 8 stay about as loud as 4, which is what unrelated voices add up to: -1.0 dB at 5, -1.8 at 6, -2.4 at 7, -3.0 at 8. Voices 5 to 8 also start 3 dB lower than the first four, at -9 dB, and the new presets turn the lead down a little.
 
 On a vocal peaking at -6 dBFS, measured output peaks: two voices at defaults 0.64, Voices set to 8 at defaults 0.80, Six Part Stack 0.55, Eight Part Choir 0.48, MIDI Eight Part Choir 0.59. A vocal peaking near full scale can still pass 0 dBFS, as it could before. Turning singers off does not turn the rest up.
 

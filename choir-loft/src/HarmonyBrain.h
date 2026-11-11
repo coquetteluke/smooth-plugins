@@ -143,8 +143,8 @@ private:
 class HumanVoice
 {
 public:
-    static constexpr double slowCents = 12.5, fastCents = 7.5, levelDb = 0.65, rateShare = 0.08, depthShare = 0.3;
-    static constexpr double earlierMs = 3.0, laterMs = 11.0;
+    static constexpr double slowCents = 13.5, fastCents = 7.5, levelDb = 0.65, rateShare = 0.08, depthShare = 0.3;
+    static constexpr double earlierMs = 3.0, laterMs = 7.0;   // 1.5.2: later was 11; a voice that far behind landed late on short notes
     // At Human 100, how much of the lead's quick level movement a voice does not copy
     static double holdsLevel (int v) noexcept
     {
@@ -185,7 +185,9 @@ public:
         leadMean = 0.0;
         // A note's first moments already carry Humanize's scoop and settle. The wander comes back in over the next tenth of a second, so
         // the two do not pile up and push a voice off its note as it lands.
-        landed *= 0.35;
+        // 1.5.2: further out, and back over 150 ms. At Human 100 two held notes of the working set went wrong at their start for this:
+        // a voice landing 20 ms later on its note than at Human 0, or 80 cents under it for 30 ms where the lead itself was sliding.
+        landed *= 0.1;
     }
 
     // amount: 0 to 1, above 0. leadOffNote: how far the lead is from the note this voice hears it on, in semitones, or 0 when there is none.
@@ -194,7 +196,9 @@ public:
     {
         // 1.5.1: half of what 1.5.0 followed. What the voices take from the lead they take together, and at 100 the two default voices
         // still moved together 0.32 where two passes of Luke move 0.12.
-        static constexpr double followGain[8] = { 0.065, 0.045, 0.055, 0.0375, 0.05, 0.0425, 0.06, 0.035 };
+        // 1.5.2: a fifth less again, so the share the two voices have in common (0.27 to 0.31 over the runs of the working set, 0.30
+        // allowed) sits clear of its limit, and a voice does not follow the lead under its note when the lead slides into one.
+        static constexpr double followGain[8] = { 0.052, 0.036, 0.044, 0.03, 0.04, 0.034, 0.048, 0.028 };
         // How far a voice falls behind over a held note (1.5.1), in ms at Human 100: singers do not let go of a note together. It grows
         // from 200 ms into the note, so a voice still comes in where it did and moves with the lead through short notes, and ends a
         // long one later by its own amount. Two passes of Luke end
@@ -212,7 +216,7 @@ public:
         walk (depth, 2.0);
         slowMean += tick / 1.5 * (slow - slowMean);
         fastMean += tick / 0.3 * (fast - fastMean);
-        landed += tick / 0.1 * (1.0 - landed);
+        landed += tick / 0.15 * (1.0 - landed);
 
         // The lead's movement about where it has been sitting on this note, not how far off the note it is: a voice that copied a flat
         // lead would be flat too. Smoothed, since a singer follows what they hear and never its fastest part.

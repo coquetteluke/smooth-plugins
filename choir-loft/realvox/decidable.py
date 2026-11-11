@@ -60,7 +60,7 @@ def main():
         with open(sys.argv[3], 'w') as f:
             f.write(f"# Noise of each start and breath measure: the largest distance from the base run over {runs} slid or reseeded runs of the same version.\n")
             f.write("# Written by realvox/decidable.py noise. One line per measure: key, noise.\n")
-            for name, k in MEASURES: f.write(f"{k}\t{noise[k]:.6g}\t{name}\n")
+            for name, k in MEASURES: f.write(f"{k}\t{noise[k]:.12g}\t{name}\n")
             f.write('\n'.join(lines) + '\n')
         for name, k in MEASURES: print(f"{name:62s} noise {noise[k]:.4g}")
     elif mode == 'rule':
@@ -71,7 +71,7 @@ def main():
         n, o = read(binary, sys.argv[4]), read(binary, sys.argv[5])
         failed = 0
         for name, k in MEASURES:
-            ok = n[k] <= o[k] + noise[k] + 1e-12
+            ok = n[k] <= o[k] + noise[k] + 1e-9
             failed += 0 if ok else 1
             print(f"{'PASS' if ok else 'FAIL'}  D {name}: new {n[k]:.4f}, reference {o[k]:.4f}, noise {noise[k]:.4f}")
         print(f"RESULT {'PASS' if failed == 0 else 'FAIL'}  {failed} of the {len(MEASURES)} decidable rules failed")

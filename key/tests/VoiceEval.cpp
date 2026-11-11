@@ -12,7 +12,7 @@ static bool setKnob (KeyAnalyser::Knobs& k, const std::string& name, double v)
 {
     using K = KeyAnalyser::Knobs;
     static const std::pair<const char*, double K::*> table[] = {
-        { "voiceModel", &K::voiceModel }, { "heldShare", &K::heldShare }, { "heldFull", &K::heldFull }, { "tauVoice", &K::tauVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight }, { "voiceChangeEvidence", &K::voiceChangeEvidence }, { "voiceChangeFit", &K::voiceChangeFit }, { "voiceChangeOld", &K::voiceChangeOld }, { "voiceChangeShared", &K::voiceChangeShared }, { "voiceChangeFull", &K::voiceChangeFull }, { "voiceChangeWindow", &K::voiceChangeWindow }, { "voiceChangeWatch", &K::voiceChangeWatch }, { "voiceInheritEvidence", &K::voiceInheritEvidence }, { "voiceInheritHeld", &K::voiceInheritHeld }, { "voiceChangeSlack", &K::voiceChangeSlack }, { "voiceMoveEvidence", &K::voiceMoveEvidence }, { "voiceUnsureMargin", &K::voiceUnsureMargin }, { "voiceSureHeld", &K::voiceSureHeld }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh }, { "voiceMargin", &K::voiceMargin }, { "voiceHome", &K::voiceHome }, { "offKeyEnter", &K::offKeyEnter }, { "offKeyLeave", &K::offKeyLeave }, { "offKeyLeaveSeconds", &K::offKeyLeaveSeconds }, { "clarityTau", &K::clarityTau },
+        { "voiceModel", &K::voiceModel }, { "heldShare", &K::heldShare }, { "heldFull", &K::heldFull }, { "tauVoice", &K::tauVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight }, { "voiceChangeEvidence", &K::voiceChangeEvidence }, { "voiceChangeFit", &K::voiceChangeFit }, { "voiceChangeOld", &K::voiceChangeOld }, { "voiceChangeShared", &K::voiceChangeShared }, { "voiceChangeFull", &K::voiceChangeFull }, { "voiceChangeWindow", &K::voiceChangeWindow }, { "voiceChangeWatch", &K::voiceChangeWatch }, { "voiceInheritEvidence", &K::voiceInheritEvidence }, { "voiceInheritHeld", &K::voiceInheritHeld }, { "voiceMoveUnsure", &K::voiceMoveUnsure }, { "voiceSureSigma", &K::voiceSureSigma }, { "voiceChangeSlack", &K::voiceChangeSlack }, { "voiceMoveEvidence", &K::voiceMoveEvidence }, { "voiceUnsureMargin", &K::voiceUnsureMargin }, { "voiceSureHeld", &K::voiceSureHeld }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh }, { "voiceMargin", &K::voiceMargin }, { "voiceHome", &K::voiceHome }, { "offKeyEnter", &K::offKeyEnter }, { "offKeyLeave", &K::offKeyLeave }, { "offKeyLeaveSeconds", &K::offKeyLeaveSeconds }, { "clarityTau", &K::clarityTau },
         { "dwellStable", &K::dwellStable }, { "marginStable", &K::marginStable }, { "holdStable", &K::holdStable }, { "firstStable", &K::firstStable },
         { "firstLeadStable", &K::firstLeadStable }, { "relativeGuard", &K::relativeGuard }, { "returnGuard", &K::returnGuard },
     };
@@ -99,14 +99,19 @@ int main (int argc, char** argv)
                 clip.insert (clip.end(), second.begin(), second.end());
                 a.reset(); a.setResponse (Response::stable); a.setSource (Source::voice);
                 std::printf ("CLIP %d%s -> %d:", tonic, minor ? "m" : "M", notesOf (corpus::keyIndex ((tonic + semis) % 12, minor == 1)));
-                int last = -1;
+                int last = -1, sureWrong = 0;
                 for (int pos = 0; pos < (int) clip.size(); pos += 512)
                 {
                     a.push (clip.data() + pos, std::min (512, (int) clip.size() - pos));
                     const auto& r = a.reading();
                     const int k = r.key < 0 ? -1 : r.key + (r.minor ? 12 : 0);
                     if (k != last) { std::printf (" %.1f:%d(%d)", (pos + 512) / sr, k, notesOf (k)); last = k; }
+                    const double t = (pos + 512) / sr;
+                    if (t >= half + 30.0 && k >= 0 && r.confidence >= 0.5f && notesOf (k) != notesOf (corpus::keyIndex ((tonic + semis) % 12, minor == 1))) ++sureWrong;
+                    if (t >= half + 30.0 && t < half + 30.0 + 512 / sr)
+                        std::printf (" | at +30 s: %d conf %.2f%s alt %d |", notesOf (k), (double) r.confidence, r.unsure ? " unsure" : "", notesOf (r.altKey < 0 ? -1 : r.altKey + (r.altMinor ? 12 : 0)));
                 }
+                std::printf (" sureWrongFrames %d alt %d", sureWrong, notesOf (a.reading().altKey < 0 ? -1 : a.reading().altKey + (a.reading().altMinor ? 12 : 0)));
                 std::printf (" conf %.2f%s\n", (double) a.reading().confidence, a.reading().unsure ? " unsure" : "");
             }
         return 0;
@@ -118,8 +123,8 @@ int main (int argc, char** argv)
     }
     if (only.empty() || only == "step2") {
     const auto u2 = runStepUp (a, seed + 3, step, 45.0, 2);
-    std::printf ("Single Voice up two semitones, %d clips: followed in 30 s %.1f%% (limit %.0f), median %.1f s, ends on the new notes %.1f%%\n", u2.total, u2.followedPercent(),
-                 limits::voiceStepUp2Percent, medianOf (u2.times), u2.endRightPercent());
+    std::printf ("Single Voice up two semitones, %d clips: followed in 30 s or not sure from then on %.1f%%, followed in 30 s %.1f%%, median %.1f s, ends on the new notes %.1f%%\n", u2.total, u2.honestPercent(), u2.followedPercent(),
+                 medianOf (u2.times), u2.endRightPercent());
     }
     return 0;
 }

@@ -1,7 +1,8 @@
 #pragma once
 // A number that changes if any reading the analyser gives changes by even one bit. Proves the window's extra read-only data does
-// not alter detection. The expected value is from the analyser as last changed on purpose: 1.6.0, for the lone voice reading. Half of
-// these clips run in Single Voice, which 1.6.0 reads differently; the Full Mix half is pinned to 1.5.1 by expectedChordsInMix below.
+// not alter detection. The expected value is the one 1.5.0 and 1.5.1 gave: since 1.7.0 the lone voice reading applies only to
+// a sound with no tuning of its own, so these clean clips, in both Sources, read exactly as they did before 1.6.0 (which had
+// changed the Single Voice half, 0x96fd1a25267dfa4b). The Full Mix chord clips are pinned by expectedChordsInMix below as well.
 // Standalone: clang++ -std=c++17 -O2 -Isrc -Itests -x c++ -DFINGERPRINT_MAIN tests/ReadingFingerprint.h -o build/ReadingFingerprint
 #include "KeyCorpus.h"
 #include <cstdint>
@@ -9,7 +10,7 @@
 
 namespace fingerprint
 {
-inline constexpr std::uint64_t expectedBefore = 0x96fd1a25267dfa4bull;
+inline constexpr std::uint64_t expectedBefore = 0x7630f100ad4cf801ull;
 
 inline void mix (std::uint64_t& h, const void* data, size_t n)
 {

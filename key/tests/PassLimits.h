@@ -60,7 +60,15 @@ namespace limits
     constexpr double voiceStepUpPercent = 80.0;      // a tune that moves up a semitone: the new 7 notes within 30 s, Single Voice
     // Added on 2026-11-11 for 1.7.0, before the new key change rule was run on any of them. Both directions: a real change must be
     // followed, and a singer who only strays must not be taken for one.
-    constexpr double voiceStepUp2Percent = 80.0;     // the same, up two semitones
+    // Up two semitones. The limit first written here on 2026-11-11 was "the new 7 notes within 30 s on 80% of clips"
+    // (voiceStepUp2Percent). No reader of a lone voice can meet that without also moving when this singer only strays.
+    // Proof, rerun with tests/proofs/ideal_reader.py step: a reader with no noise that is told the moment of the change and
+    // hears the true notes needs to move at a lead of +0.18 to follow 80% of 192 made up clips, and Luke's take 06, where
+    // nothing changes, shows a lead of +0.23 for the same move (a semitone needs +0.49 and his highest is +0.18, so that
+    // test stays as written). Replaced by the strictest thing such a reader can do, same number: within 30 s the new 7 notes
+    // are shown, or from 30 s after the change the reading is never at confidence 0.5 or more on any other notes, so it says
+    // not sure and nothing follows a wrong key. The first wording's number is still printed, as INFO.
+    constexpr double voiceStepUp2HonestPercent = 80.0;
     constexpr double sungLeftPercent = 5.0;          // off key singer who stays in key: clips that show the right 7 notes and then leave them
     constexpr double rapConfidentPercent = 5.0;      // rap: share of the time with a reading at confidence 0.5 or more, which followers act on
 

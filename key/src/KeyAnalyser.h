@@ -198,7 +198,13 @@ public:
                                         // two apart favour the new one by this many seconds of held notes
         double voiceInheritEvidence = 0.5; // the same, for leaving a key that was on show before the sound was taken for a lone voice,
         double voiceInheritHeld = 6.0;  // until there are this many seconds of held notes: while they are few their leader changes with every phrase
-        double voiceUnsureMargin = 0.33; // a lone voice's reading is called not sure when its lead over the runner up is under this (see Reading::margin)
+        double voiceMoveUnsure = 15.0;  // and for this long after the long memory has moved it to another set of notes
+        double voiceUnsureMargin = 0.5; // a lone voice's reading is called not sure when its margin is under this (see Reading::margin)
+        // The margin of a lone voice's reading: by how many seconds of held notes the notes that tell the shown set from its
+        // nearest rival favour the shown one, against what chance alone gives. A handful of notes can favour a wrong key by
+        // half a second; that is not knowledge. The lead needed grows with the square root of the seconds in memory, as the
+        // scatter of a count does. A margin of 0.5 is a lead of exactly voiceSureSigma times that root.
+        double voiceSureSigma = 0.3;
         double voiceSureHeld = 6.0;     // seconds of held notes in memory before the confidence can be full
         double voiceMargin = 2.0;       // a new key must lead the shown one by this many times the usual margin
         double voiceHome = 1.0;         // how much the listener ratings count in choosing between a key and its relative. 0: the even profile alone
@@ -282,7 +288,7 @@ public:
         std::fill (ring.begin(), ring.end(), 0.0);
         ringPos = 0; hopCounter = 0; windowFilled = 0;
         trebleMemory.fill (0.0); bassMemory.fill (0.0); opening.fill (0.0); chordMemory.fill (0.0); recentMemory.fill (0.0);
-        heldMemory.fill (0.0); clearChangeCounts(); changePeak.fill (0.0); sureSet = -1; inheritedSet = -1; heldSeconds = 0.0; voiceFit = 0.0; lastTopPc = -1; heldRun = 0;
+        heldMemory.fill (0.0); clearChangeCounts(); changePeak.fill (0.0); sureSet = -1; inheritedSet = -1; shownSetBefore = -1; shownSince = 0.0; heldSeconds = 0.0; voiceFit = 0.0; lastTopPc = -1; heldRun = 0;
         tunWeight = 0.0; tuneClarity = 1.0; clarityAvg = -1.0; clearSeconds = 0.0; offKey = false; keyChanges = 0;
         for (auto& f : frameHistory) f.fill (0.0);
         for (auto& f : frameTreble) f.fill (0.0);
@@ -300,7 +306,7 @@ public:
         presence = 0.0; contrast = 0.0;
         tunRe = tunIm = 0.0; tuning = 0.0;
         loudest = 0.0;
-        candidate = -1; dwell = 0.0; previousShown = -1; lastMove = -1000.0;
+        candidate = -1; dwell = 0.0; previousShown = -1; lastMove = -1000.0; lastDrift = -1000.0; smoothedMargin = 1.0;
         cadence.fill (0.0); heldChord = pendingChord = -1; pendingFrames = 0;
         current = Reading {};
         resetTempo();
@@ -792,6 +798,13 @@ private:
             {
                 const double changeWeight = frameWeight * std::min (1.0, (heldRun - 1) / std::max (1.0, knobs.voiceChangeFull));
                 const double changeNow = changeWeight * hopSeconds;
+                // The same count with no time limit, against the sure set: slow evidence cannot move the reading, but it can say not sure.
+                for (int n = 0; n < 12; ++n)
+                {
+                    if (n == sureSet) continue;
+                    const bool inNew = inSignature (topPc, n), inOld = inSignature (topPc, sureSet);
+                    weighScore[(size_t) n] = std::max (0.0, weighScore[(size_t) n] + (inNew && ! inOld ? changeNow : (inOld && ! inNew ? -changeNow : 0.0)));
+                }
                 for (int n = 0; n < 12; ++n)
                 {
                     if (changeScore[(size_t) n] > 0.0 && heardSeconds - changeStart[(size_t) n] > knobs.voiceChangeWindow)
@@ -822,16 +835,20 @@ private:
     void clearChangeCounts() noexcept
     {
         changeScore.fill (0.0);
+        weighScore.fill (0.0);
         changeRef.fill (-1);
         for (auto& m : changeNotes) m.fill (0.0);
     }
 
-    // A change of key is being weighed: some far set's count is well off zero.
-    bool weighingChange() const noexcept
+    // A change of key is being weighed: the count of some set other than the one on show is well off zero. This takes in the
+    // sets a whole step away (5 notes shared), which the count can never confirm inside its window: tests/proofs/ideal_reader.py
+    // shows that even a reader with no noise cannot tell such a move from this singer's straying in 30 s. So the reading says
+    // not sure, and the long memory settles it. Sets a fifth away differ in one note; the margin covers those.
+    bool weighingChange (int shownSet) const noexcept
     {
+        if (sureSet < 0) return false;
         for (int n = 0; n < 12; ++n)
-            if (changeRef[(size_t) n] >= 0 && n != changeRef[(size_t) n] && changeScore[(size_t) n] >= knobs.voiceChangeWatch
-                && sharedNotes (n, changeRef[(size_t) n]) <= (int) knobs.voiceChangeShared)
+            if (n != sureSet && n != shownSet && weighScore[(size_t) n] >= knobs.voiceChangeWatch && sharedNotes (n, sureSet) <= 5)
                 return true;
         return false;
     }
@@ -1381,7 +1398,7 @@ private:
                 }
                 lastMove = heardSeconds;
                 previousShown = shown;
-                if (top != relativeOf (shown)) inheritedSet = -1;
+                if (top != relativeOf (shown)) { inheritedSet = -1; lastDrift = heardSeconds; }
                 shown = top;
                 candidate = -1;
                 dwell = 0.0;
@@ -1419,14 +1436,39 @@ private:
             if (voicePath())
             {
                 // Two sets of notes about equally likely: say so. Under 0.5 nothing that follows this reading acts on it.
+                double heldTotal = 0.0, nearest = 1.0e9;
+                for (auto x : heldMemory) heldTotal += x;
+                int rival = -1;
+                for (int k = 0; k < 12; ++k)
+                {
+                    if (inSignature (0, k) == inSignature (0, shown) && sharedNotes (k, shown < 12 ? shown : (shown - 12 + 3) % 12) == 7) continue;
+                    double lead = 0.0;
+                    for (int i = 0; i < 12; ++i)
+                        lead += heldMemory[(size_t) i] * ((inSignature (i, shown) ? 1.0 : 0.0) - (inSignature (i, k) ? 1.0 : 0.0));
+                    if (lead < nearest) { nearest = lead; rival = k; }
+                }
+                const double needed = knobs.voiceSureSigma * std::sqrt (std::max (heldTotal * hopSeconds, 1.0e-9));
+                current.margin = (float) std::clamp (0.5 * nearest * hopSeconds / needed, 0.0, 1.0);
+                if (rival >= 0)
+                {
+                    // The runner up is the set the notes tell least from the shown one, named in the shown key's own scale.
+                    const int named = current.minor ? 12 + (rival + 9) % 12 : rival;
+                    current.altKey = named % 12;
+                    current.altMinor = named >= 12;
+                    current.altConfidence = (float) std::clamp ((probs[(size_t) rival] + probs[(size_t) relativeOf (rival)]) * gate * presence * enough, 0.0, 1.0);
+                }
                 smoothedMargin += ((double) current.margin - smoothedMargin) * (1.0 - std::exp (-hopSeconds / 0.8));
                 current.margin = (float) std::clamp (smoothedMargin, 0.0, 1.0);
-                const bool weighing = weighingChange();
-                current.unsure = smoothedMargin < knobs.voiceUnsureMargin || weighing;
+                const bool weighing = weighingChange (shown < 12 ? shown : (shown - 12 + 3) % 12);
+                // And a reading the long memory has just moved to other notes has not earned trust yet.
+                current.unsure = smoothedMargin < knobs.voiceUnsureMargin || weighing || heardSeconds - lastDrift < knobs.voiceMoveUnsure;
                 if (current.unsure) current.confidence = std::min (current.confidence, 0.49f);
-                if (current.confidence >= 0.5f)
+                // What a change is measured against: the set on show once it has been sure, or has stayed on show for a whole window.
+                const int showing = shown < 12 ? shown : (shown - 12 + 3) % 12;
+                if (showing != shownSetBefore) { shownSetBefore = showing; shownSince = heardSeconds; }
+                if (current.confidence >= 0.5f || heardSeconds - shownSince >= knobs.voiceChangeWindow)
                 {
-                    const int set = shown < 12 ? shown : (shown - 12 + 3) % 12;
+                    const int set = showing;
                     if (set != sureSet) clearChangeCounts(); // the counts were against another set
                     sureSet = set;
                     sureMinor = shown >= 12;
@@ -1515,9 +1557,12 @@ private:
     double tuneClarity = 1.0, clarityAvg = -1.0, clearSeconds = 0.0;
     double heldSeconds = 0.0, heldNow = 0.0, voiceFit = 0.0, tunWeight = 0.0;
     std::array<double, 12> changeScore {}, changePeak {};        // the running count per set of 7 notes (as its major key), and its highest so far
+    int shownSetBefore = -1;
+    double shownSince = 0.0;
     int inheritedSet = -1;                                        // the set on show when the sound was taken for a lone voice, until the reading leaves it
     bool sureMinor = false;
     int sureSet = -1;                                             // the last set of 7 notes that was shown with confidence 0.5 or more: what a change is measured against
+    std::array<double, 12> weighScore {};                         // the same count with no time limit, against the sure set
     std::array<double, 12> changeStart {};                        // when each count left zero
     std::array<int, 12> changeRef {};                             // the shown set each count is measured against, from when it left zero
     std::array<std::array<double, 12>, 12> changeNotes {};        // held notes since each count left zero
@@ -1543,7 +1588,7 @@ private:
     double lastMove = -1000.0;
     std::array<double, 24> cadence {};
     int heldChord = -1, pendingChord = -1, pendingFrames = 0;
-    double dwell = 0.0, smoothedConfidence = 0.0, smoothedMargin = 1.0;
+    double dwell = 0.0, smoothedConfidence = 0.0, smoothedMargin = 1.0, lastDrift = -1000.0;
     Reading current;
 };
 } // namespace smoothkey

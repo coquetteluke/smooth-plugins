@@ -62,7 +62,7 @@ static void testWindow()
 
     // Detection, bit for bit, against the analyser as last changed on purpose. The window's extra data must not change a single reading.
     const auto print = fingerprint::readingFingerprint();
-    check (print == fingerprint::expectedBefore, "every reading bit identical to the saved analyser fingerprint");
+    check (print == fingerprint::expectedBefore, "every reading bit identical to the saved analyser fingerprint (the 1.5.0 value)");
 
     // The heavy letters really are heavy, not the font's default weight.
     check (textWidth ("A#", heavy, 1000.0f) > textWidth ("A#", book, 1000.0f) * 1.05f, "the font gives a true heavy weight, wider than regular by a factor of",

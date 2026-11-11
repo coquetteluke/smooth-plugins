@@ -19,13 +19,14 @@ struct VoiceTrace
     double firstRight = -1.0;
     int changes = 0, noteChanges = 0; // after the first reading: every change, and changes of the 7 notes
     bool everRead = false;
+    bool sureWrongLate = false;   // at confidence 0.5 or more on other notes than the wanted ones, later than `late` seconds: a follower would act on it
     bool leftRight = false;       // showed the right 7 notes, then other notes: a false key change when the song did not move
     double confidentShare = 0.0;  // share of the clip with a reading at confidence 0.5 or more, which is what followers act on
     double meanConfidence = 0.0, finalHz = 440.0;
 };
 
 // from: only what happens after this many seconds counts for firstRight
-inline VoiceTrace trace (KeyAnalyser& a, const std::vector<float>& audio, double sr, int want, double from = 0.0)
+inline VoiceTrace trace (KeyAnalyser& a, const std::vector<float>& audio, double sr, int want, double from = 0.0, double late = 1.0e9)
 {
     VoiceTrace tr;
     int last = -1;
@@ -46,6 +47,7 @@ inline VoiceTrace trace (KeyAnalyser& a, const std::vector<float>& audio, double
         else since = -1.0;
         if (k >= 0 && t >= from) { if (notesOf (k) == notesOf (want)) wasRight = true; else if (wasRight) tr.leftRight = true; }
         if (k >= 0 && r.confidence >= 0.5f) ++confident;
+        if (k >= 0 && r.confidence >= 0.5f && t >= late && notesOf (k) != notesOf (want)) tr.sureWrongLate = true;
         if (k != last)
         {
             if (last >= 0) { ++tr.changes; if (notesOf (k) != notesOf (last)) ++tr.noteChanges; }
@@ -130,8 +132,10 @@ inline RapResult runRap (KeyAnalyser& a, Source source, unsigned seed, int clips
 
 struct StepResult
 {
-    int total = 0, followed = 0, endRight = 0;
+    int total = 0, followed = 0, endRight = 0, honest = 0;
     std::vector<double> times;
+    // Followed within 30 s, or from 30 s after the change never at confidence 0.5 or more on anything but the new notes.
+    double honestPercent() const { return total ? 100.0 * honest / total : 0.0; }
     double followedPercent() const { return total ? 100.0 * followed / total : 0.0; }
     double endRightPercent() const { return total ? 100.0 * endRight / total : 0.0; }
 };
@@ -151,9 +155,11 @@ inline StepResult runStepUp (KeyAnalyser& a, unsigned seed, int tonicStep = 1, d
             a.setResponse (Response::stable);
             a.setSource (Source::voice);
             const int want = corpus::keyIndex ((tonic + semitones) % 12, minor == 1);
-            const auto tr = trace (a, clip, sr, want, half);
+            const auto tr = trace (a, clip, sr, want, half, half + 30.0);
             ++res.total;
-            if (tr.firstRight >= 0.0 && tr.firstRight - half <= 30.0) { ++res.followed; res.times.push_back (tr.firstRight - half); }
+            const bool inTime = tr.firstRight >= 0.0 && tr.firstRight - half <= 30.0;
+            if (inTime) { ++res.followed; res.times.push_back (tr.firstRight - half); }
+            if (inTime || ! tr.sureWrongLate) ++res.honest;
             if (notesOf (tr.finalKey) == notesOf (want)) ++res.endRight;
         }
     return res;

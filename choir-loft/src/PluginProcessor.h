@@ -171,6 +171,8 @@ private:
         double attackStep = 0.0, wander = 1.0, lagSamples = 0.0;
         double scatterLag = 0.0;                 // where the voice's own consonant reads, held from a start until that consonant has faded out
         bool scatterHeld = false;
+        bool endHolding = false;                 // Human: holding the end of a note (1.5.2)
+        double endHeldMs = 0.0, endHoldMs = 0.0, endFadeMs = 0.0;
         // Human (1.5.0): the lead's level, quick and slow, where this voice reads it, and the smoothed gain made from them. Unused with Human at 0.
         double leadFast = 0.0, leadSlow = 0.0, wanderNow = 1.0;
 

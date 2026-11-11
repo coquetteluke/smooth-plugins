@@ -174,6 +174,9 @@ public:
     {
         lagDraw = nextRandom();
         trailDraw = 0.7 + 0.3 * nextRandom();
+        // 1.5.2: this note's own end. How long the voice holds on after the lead lets go, and how long it takes to die away.
+        endHoldDraw = 0.7 + 0.3 * nextRandom();
+        endFadeDraw = 0.5 + 0.5 * nextRandom();
         noteAge = 0.0;
         if (fresh) trail = 0.0;
         leadMean = 0.0;
@@ -228,6 +231,20 @@ public:
     }
     double vibratoDepthScale() const noexcept { return 1.0 + amountNow * depthShare * depth; }
     // Added to how far behind the lead the voice stands, for this note: a little earlier or later
+    // Each singer lets go of a note at a slightly different moment (1.5.2). At Human 100 a voice holds its last period for up to this
+    // long after the lead's note ends, by its own amount and a little differently every note, then dies away over its own time. Two
+    // passes of Luke end 40 ms apart; before this the voices ended 4 to 6 ms apart, because a voice ended where the lead's note was
+    // called over and nothing but its place behind the lead could move that.
+    double endHoldMs() const noexcept
+    {
+        static constexpr double holds[8] = { 5.0, 24.0, 12.0, 20.0, 8.0, 22.0, 10.0, 18.0 };
+        return amountNow * holds[voice] * endHoldDraw;
+    }
+    double endFadeMs() const noexcept
+    {
+        static constexpr double fades[8] = { 10.0, 18.0, 14.0, 12.0, 16.0, 10.0, 18.0, 14.0 };
+        return amountNow * fades[voice] * endFadeDraw;
+    }
     double lagOffsetMs() const noexcept { return amountNow * ((lagDraw < 0.0 ? earlierMs : laterMs) * lagDraw + trail); }
 
 private:
@@ -249,6 +266,7 @@ private:
     std::uint32_t random = 1;
     double slow = 0.0, slowMean = 0.0, fast = 0.0, fastMean = 0.0, level = 0.0, rate = 0.0, depth = 0.0, followed = 0.0, leadMean = 0.0;
     double lagDraw = 0.0, cents = 0.0, gain = 1.0, amountNow = 0.0, landed = 1.0, trail = 0.0, trailDraw = 0.0, noteAge = 0.0;
+    double endHoldDraw = 0.85, endFadeDraw = 0.75;
 };
 
 class HarmonyBrain
@@ -534,6 +552,9 @@ public:
     }
 
     const Voice& voice (int v) const noexcept { return voices[(size_t) v]; }
+    // Human only: this voice's own end for the note it is on. 0 with Human at 0.
+    double endHoldMs (int v) const noexcept { return humanActive ? humans[(size_t) v].endHoldMs() : 0.0; }
+    double endFadeMs (int v) const noexcept { return humanActive ? humans[(size_t) v].endFadeMs() : 0.0; }
     double lagMilliseconds (int v) const noexcept
     {
         const double lag = singers[(size_t) v].lagMilliseconds();

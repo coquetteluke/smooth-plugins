@@ -367,6 +367,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
             voice.allpass[(size_t) a].set (juce::jmin (allPassHz[v][a], sr * 0.45), 0.8, sr);
         voice.control = {};
         voice.gain = voice.gainTarget = 0.0;
+        voice.endHolding = false;
         voice.powerIn = voice.powerOut = 0.0;
         voice.match = 1.0;
         voice.fastMatch = 0;
@@ -644,8 +645,41 @@ void PluginProcessor::tick() noexcept
         const double readsMs = 1000.0 * (double) latencyNow / sr + lagMs;
         const int endBack = juce::jlimit (0, pitchRingSize - 1, juce::roundToInt ((readsMs - seesEndMs) * 0.001 / tickSeconds));
         const int startBack = juce::jlimit (0, pitchRingSize - 1, juce::roundToInt ((readsMs - seesStartMs) * 0.001 / tickSeconds));
-        const bool sungNow = voicedRing[(size_t) ((pitchRingAt - endBack) & (pitchRingSize - 1))]
+        const bool sungRaw = voicedRing[(size_t) ((pitchRingAt - endBack) & (pitchRingSize - 1))]
                           || voicedRing[(size_t) ((pitchRingAt - startBack) & (pitchRingSize - 1))];
+
+        // Human, 1.5.2: the voice's own note end. Where the lead's note is over for this voice, the voice holds on for its own time, on
+        // the last of the note (its read point stops moving, so it keeps singing the lead's last periods and never reads into the
+        // consonant or the silence after), and then dies away over its own time. If the lead comes back meanwhile, a new note or a
+        // gap the tracker mends, the hold is over at once and the voice is where it would have been. With Human at 0 none of this runs.
+        bool sungNow = sungRaw;
+        double endGain = 1.0, endLagMs = 0.0;
+        if (brain.humanOn())
+        {
+            if (sungRaw)
+                voice.endHolding = false;
+            else if (voice.voicedNow && ! voice.endHolding && wanted.on)
+            {
+                voice.endHolding = true;
+                voice.endHeldMs = 0.0;
+                voice.endHoldMs = brain.endHoldMs (v);
+                voice.endFadeMs = brain.endFadeMs (v);
+            }
+            if (voice.endHolding)
+            {
+                voice.endHeldMs += 1000.0 * tickSeconds;
+                if (voice.endHeldMs < voice.endHoldMs + voice.endFadeMs)
+                {
+                    sungNow = true;
+                    endLagMs = voice.endHeldMs;
+                    endGain = voice.endHeldMs <= voice.endHoldMs ? 1.0 : 1.0 - (voice.endHeldMs - voice.endHoldMs) / juce::jmax (1.0, voice.endFadeMs);
+                }
+                else
+                    voice.endHolding = false;
+            }
+        }
+        else
+            voice.endHolding = false;
 
         auto& singer = brain.singer (v);
 
@@ -673,6 +707,8 @@ void PluginProcessor::tick() noexcept
         c.voiced = sungNow;
         c.lag = lagMs * 0.001 * sr;
         voice.lagSamples = c.lag;
+        if (endLagMs > 0.0)
+            c.lag += endLagMs * 0.001 * sr;   // holding the end of a note: the read point stays where it was
         // 1.5.0: a start gives the voice a new place behind the lead (Humanize draws it per note), and the voice's own copy of the consonant
         // before the note, which is still fading out, used to jump to that new place at once: a step in what it reads, heard as a small
         // click at the start of a word (2 of the 40 clicks the shared tool listed on Luke's takes; the other 38 were clicks in the takes
@@ -709,7 +745,7 @@ void PluginProcessor::tick() noexcept
         // A long stretch without pitch is a breath, not a consonant, and real singers do not breathe together. It fades on, with Scatter.
         const double breathFade = 1.0 - scatterNow * juce::jlimit (0.0, 1.0, (voice.unvoicedFor - 0.12) / 0.15);
         const double consonantTarget = consonantGain * voice.consonantLevel * breathFade;
-        voice.gainTarget = ! wanted.on ? 0.0 : (sungNow ? 1.0 : consonantTarget);
+        voice.gainTarget = ! wanted.on ? 0.0 : (sungNow ? endGain : consonantTarget);
     }
 
     if (++historyPhase >= 5)
@@ -859,7 +895,7 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             // A shift changes how much of a vowel's energy lands on a harmonic, so a voice comes out a dB or two away from the lead, more on
             // vowels with one narrow low formant. A slow match on voiced sound takes that out. Consonants are read as they are, so no match there.
             double wanted = 1.0;
-            if (voice.voicedNow)
+            if (voice.voicedNow && ! voice.endHolding)
             {
                 // The part of the lead this voice is reading, or a voice that stands back reads as too quiet at every onset and gets pushed.
                 const double inputNow = (double) history.delayed (InputHistory::mono, latencyNow + juce::roundToInt (voice.lagSamples));

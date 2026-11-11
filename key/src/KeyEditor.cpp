@@ -209,7 +209,7 @@ struct KeyEditor::Panel final : juce::Component
         reset.setBounds (x, rowY, 70, rowH);                  x += 70 + 10;
         lock.setBounds (x, rowY, 70, rowH);                   x += 70 + 28;
         source.setBounds (x, rowY, 214, rowH);
-        status.setBounds (W - margin - 220, rowY, 220, rowH);
+        status.setBounds (W - margin - 250, rowY, 250, rowH);
 
         const int footerTop = H - 40;
         const int bodyBottom = footerTop - 8 - juce::roundToInt ((float) advancedH * advanced);
@@ -520,7 +520,7 @@ void KeyEditor::refresh()
     else if (d.manual) statusText = "Set by hand";
     else if (bypassed) statusText = "Bypassed";
     else if (! d.active) statusText = "Paused";
-    else if (waiting) statusText = "Lock waiting for a key";
+    else if (waiting) statusText = "Lock waiting for a sure key";
     else if (! d.signal) statusText = d.key >= 0 ? "No audio, last key heard" : "Waiting for audio";
     else if (d.unsure) statusText = "Hearing audio, not sure";
     else statusText = d.key >= 0 ? "Hearing audio" : "Hearing audio, no key yet";
@@ -530,7 +530,9 @@ void KeyEditor::refresh()
 
     HeroView::Content hero;
     hero.hasKey = d.key >= 0;
-    hero.dimmed = dimmed;
+    // In a close call the big letters go grey, as they do for a key that is no longer sounding: from across the room a
+    // black key reads as an answer, and this is not one yet.
+    hero.dimmed = dimmed || d.unsure;
     hero.manual = picking;
 
     if (d.key >= 0)

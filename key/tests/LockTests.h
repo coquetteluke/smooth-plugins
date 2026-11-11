@@ -952,6 +952,25 @@ static void testLockWindow()
            "a close call names both keys: " + ed->getSecondLineText().toStdString() + " [" + ed->getUseText().toStdString() + "]");
     check (ed->getCentreText() == "44% not sure" && ed->getStatusText() == "Hearing audio, not sure", "and says not sure in the circle and the status: " + ed->getCentreText().toStdString() + " / " + ed->getStatusText().toStdString());
     allFit = fits ("close call") && allFit;
+    {
+        // From across the room a black key reads as an answer. In a close call the big letters are grey: no black in them at all.
+        const auto countBlack = [&]
+        {
+            const auto image = ed->createComponentSnapshot (ed->getLocalBounds());
+            const float toWindow = (float) ed->getWidth() / (float) KeyEditor::designWidth;
+            const auto letters = (ed->getKeyLetterBounds().toFloat() * toWindow).getSmallestIntegerContainer().getIntersection (image.getBounds());
+            long black = 0;
+            for (int y = letters.getY(); y < letters.getBottom(); y += 2)
+                for (int x = letters.getX(); x < letters.getRight(); x += 2)
+                    if (image.getPixelAt (x, y).getBrightness() < 0.1f) ++black;
+            return black;
+        };
+        const long inCloseCall = countBlack();
+        show (&eMajor, [] (const PluginProcessor::Display& d) { return ! d.unsure && d.key == 4; });
+        const long whenSure = countBlack();
+        check (inCloseCall == 0 && whenSure > 500, "a close call greys the big key letters, and a sure key is black: black samples in a close call", (double) inCloseCall);
+        show (&eOrA, [] (const PluginProcessor::Display& d) { return d.unsure; });
+    }
     show (&wideClose, [&] (const PluginProcessor::Display& d) { return d.unsure && d.key == widest % 12; });
     info ("the widest close call the line can be asked to show, of the line's width", 100.0 * (line->wordsWidth() + 16.0f + line->actionWidth()) / (float) line->getWidth(), "%");
     allFit = fits ("widest close call") && allFit;
@@ -1064,7 +1083,7 @@ static void testLockWindow()
         auto waitingEd = openWindow (w);
         sleepMs (120);
         waitingEd->refresh();
-        check (waitingEd->getStatusText() == "Lock waiting for a key" && waitingEd->getSecondLineText() == "Lock is on. It will hold the first sure key." && waitingEd->getKeyText() == "--",
+        check (waitingEd->getStatusText() == "Lock waiting for a sure key" && waitingEd->getSecondLineText() == "Lock is on. It will hold the first sure key." && waitingEd->getKeyText() == "--",
                "Lock on with no key yet: the window says it is waiting: " + waitingEd->getStatusText().toStdString() + " / " + waitingEd->getSecondLineText().toStdString());
         auto* waitingLine = findById<SecondLine> (waitingEd->getPanel(), "second");
         auto* waitingStatus = findById<Readout> (waitingEd->getPanel(), "status");

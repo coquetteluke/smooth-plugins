@@ -4238,8 +4238,11 @@ int main (int argc, char** argv)
         note ("w10dev dev voices 110 and 165 Hz: against input", men.move * 100.0, "%"); note ("w10dev dev voices: against real", men.moveReal * 100.0, "%"); note ("w10dev dev voices: flatter", men.flatter, "dB"); note ("w10dev dev voices: level", men.level, "dB");
         return 0;
     }
-    if (only == "heldout11") testHeldOutEleventh();   // one run, after the fix it was written for
-    if (only == "heldout10") testHeldOutTenth();   // not part of a full run until it has had its one run, after the changes it was written for
+    // The eleventh set had its one run on 2026-11-11 and FAILS on 1.6.0 and 1.6.1 alike (tests/results-heldout11.txt and -1.6.0.txt: held u at
+    // 221 Hz in High Quality, held u, y and o in Low Latency). It is not fixed, so it is not part of a full run, which would otherwise never
+    // read clean; it runs by name. That is a known failing test, listed in README and CHANGELOG, not a passing one.
+    if (only == "heldout11") testHeldOutEleventh();
+    if (want ("heldout10")) testHeldOutTenth();   // had its one run on 2026-11-11 (tests/results-heldout10.txt); a regression test since
     if (want ("vowel")) testVowelChange();
     gEngine = 0;
     if (want ("llnull")) testLowLatencyNull();

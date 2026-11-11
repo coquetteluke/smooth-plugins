@@ -77,6 +77,7 @@ public:
         inputType = inputTypeIndex;
         mode = modeIndex;
         latency = latencyFor (lowHz, mode, sr);
+        baseLatency = latencyFor (lowHz, lowLatency, sr);
         tracker.reset();
         tracker.setRange (lowHz, highHz);
         tracker.setStrictOctaveUp (mode == highQuality ? highQualityStrictOctaveUp : 0.0);
@@ -332,6 +333,9 @@ private:
             else if (period <= 0.0 && ahead > 0.0)
                 period = ahead;
         }
+        // The pitch itself is read from further back still, so that it is in line with the audio the grains are giving out. See pitchInLine.
+        if (alignPitch && period > 0.0)
+            period = pitchInLine (period, (ringAt + size - controlDelayTicks) % size);
         ringAt = (ringAt + 1) % size;
 
         corrector.update (period, shared.settings, point.held, tickSeconds);
@@ -451,7 +455,41 @@ private:
         envelope.setStrength (shared.settings.classic || grainsIdle ? 0.0 : 1.0);
     }
 
+    // The grains give out the input one whole latency late: 1.33 times the Input Type's longest period, so that even its lowest note has
+    // its mark in time. The pitch the tracker reports is younger than that. It is the spacing of its two newest marks, which on average
+    // is pitchAgePeriods old, counting the half grain until a decision is heard: about two of the voice's own periods, not of the
+    // longest one. So on every note above the bottom of the range the pitch control ran ahead of the audio, by the difference: the
+    // output began to bend up to 11 ms before the sound it belonged to (Low Male and Wide Range, measured on real takes: 4 to 11 ms; Alto/Tenor about
+    // 1 ms). The control is now read that much further back, a little more on a short period and nothing at the bottom of the range.
+    // Whether a sound is voiced at all is still decided where it was, so a note is not picked up any later.
+    double pitchInLine (double period, int nominal) const noexcept
+    {
+        const double lead = ((double) baseLatency - pitchAgePeriods * period) / (double) tickSamples;
+        if (lead <= 0.0)
+            return period;
+        const int size = (int) ring.size();
+        const int whole = (int) lead;
+        const double part = lead - whole;
+        const double a = ring[(size_t) ((nominal + 2 * size - whole) % size)].period;
+        const double b = ring[(size_t) ((nominal + 2 * size - whole - 1) % size)].period;
+        if (a > 0.0 && b > 0.0)
+            return a + part * (b - a);
+        if (a > 0.0)
+            return a;
+        // The note is younger than that: the oldest reading it has
+        for (int k = whole - 1; k > 0; --k)
+        {
+            const double p = ring[(size_t) ((nominal + 2 * size - k) % size)].period;
+            if (p > 0.0)
+                return p;
+        }
+        return period;
+    }
+
+    static constexpr bool alignPitch = false;
+    static constexpr double pitchAgePeriods = 2.08;
     double sr = 48000.0, tickSeconds = 0.001;
+    int baseLatency = 0;
     int channels = 2, tickSamples = 48, tickPhase = 0, latency = 0, inputType = 1, mode = lowLatency;
     PitchTracker tracker;
     PsolaShifter shifter;

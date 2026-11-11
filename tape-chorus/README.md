@@ -140,4 +140,27 @@ Offline, in `tests/PluginTest.cpp`. Full numbers are in `tests/results.txt`.
 - Output is identical at block sizes 512, 37 and 1, and after preparing again, at default settings and with everything on. With everything on there are also no allocations, no denormals, and it recovers from NaN and infinite input.
 - Damaged saved state and NaN, infinite or huge input cannot stick in the audio path.
 
-These are synthetic test signals. They do not prove it sounds good on a real voice. That still needs listening.
+Those are synthetic test signals. New in 0.4.0 in the same file: a control that is moved arrives exactly (a few seconds after a move the output is the output of that setting held from the start, at 44.1, 48 and 96 kHz), one still voice sits within 0.01 sample of Delay Time at 44.1, 48, 88.2 and 96 kHz and the dry signal has no delay at all, Bypass and Mix 0 give back every sample unchanged, Bypass switched under a 1 kHz tone leaves nothing above 8 kHz louder than 105 dB under the tone, Low Cut and High Cut glide with no staircase, and Clean does what the Clean section says.
+
+## On a real voice
+
+Measured on 2026-11-11 on 11 of Luke's takes (Rode NT1, sung and rap, 39 s to 227 s each), through the real AU, with `~/smooth-plugins/_shared/realvox` and the checks in its `src/extra/tape-chorus.cpp`. Every limit there was written before the first run. The full report is `~/smooth-plugins/_vox/rode/work/tape-chorus/REPORT.md`.
+
+What holds, at the default, on every take:
+
+- Bypass and Mix 0 give back the take sample for sample. Latency reported 0, measured 0. With Spread at 0, left and right are identical to the last bit.
+- Level against the dry on voiced sound: within 0.12 dB. Peak: up to 2.3 dB over the dry's peak, nothing over 0 dBFS.
+- In mono the default loses 0.8 dB at most in any octave band, and 2.6 dB in its worst quarter second. At Spread 100 it is 0.7 dB and 3.3 dB.
+- No click made by the plug-in: at the default, with Bypass switched every half second, with every control moved at random ten times a second, at Degrade 100, Random 100 and Rate 10 with Depth 8. Each event the click rule raised was tested two ways: against a model built from one still voice, and by making the same render on a steady tone, where a jump of a delay or a gain would show as a step. No jump on any take.
+- Feedback 90 stays bounded, holds the voiced level within 0.43 dB of Feedback 0, and its tail dies to exact silence with no DC and no rise in CPU.
+- Noise is at the level the control says within 0.2 dB and adds exactly nothing at 0. Degrade never moves the gain faster than 0.9 % in one sample.
+- Rate and Depth measure within 0.4 % and 0.2 % of what is set. One voice at the default moves 17.8 cents at most (9.3 rms): 13.1 from Rate and Depth, which is what Pitch Swing shows, the rest from Wow and Flutter.
+
+What does not hold, and why it is left:
+
+- **A tuner or pitch tracker after Tape Chorus reads a wobble.** Against the dry voice, 5 % of the voiced moments read more than 15 to 97 cents off at the default, depending on the take (median moment 1.5 to 4 cents). Every preset does this. Put tuners, Duo and Choir Loft before it, not after.
+- **With Clean off**, as in 0.3.1: Saturation 100 lifts the voice 3.7 dB and S sounds 3.6 dB; the fold back line at 23 kHz; the hash from Wow and Flutter; low notes a fraction of a sample early. All four are gone with Clean on (level change 0.3 dB at most, S sounds unchanged).
+- **Feedback 90** can lift a peak up to 3.8 dB over the dry's peak on a note that sits on the comb (3 of 11 takes over 3 dB). Nothing passed -3.9 dBFS.
+- **Mono, voices only (Mix 100) at Spread 100**: a held note can drop 10 to 14 dB for a quarter of a second. With the dry signal in, as in every preset, see the numbers above.
+- **Presets**: Worn Cassette and Cassette Backing lose 9.4 and 8.6 dB in mono in their worst quarter second. Wide Four Voices, Worn Cassette and Resonant Tape Swirl peak 3.0 to 3.2 dB over the dry. They are left as they are, because changing them changes how they sound.
+

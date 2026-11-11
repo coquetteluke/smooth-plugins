@@ -184,7 +184,9 @@ private:
             energy += v * v;
         }
         const int half = N / 2;
-        if (energy < 1.0e-11 * N)
+        // Only true silence (about -200 dBFS): a fixed threshold at -110 dBFS made the quiet gaps of a take quieter by 12 dB be
+        // treated differently from the same take at its own level (1.2.1).
+        if (energy < 1.0e-20 * N)
         {
             // Silence: no filter at all, so nothing can ring and nothing decays into denormals.
             f.analysis.fill (0.0);

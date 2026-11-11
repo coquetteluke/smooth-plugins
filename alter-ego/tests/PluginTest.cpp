@@ -678,6 +678,27 @@ void testWhisper()
     const auto out = run (*p, in);
     const double c = combDb (out, 196.0, 0.5, 2.9), full = combDb (in, 196.0, 0.5, 2.9);
     check (c > limits::whisperCombDb && c < full - 6.0, "Whisper 50 sits between: on against between the harmonics", c, "dB");
+
+    // The breath is the same noise whenever Whisper was switched on (1.2.1): switched on at 0.5 s, the output from 1.5 s on is the
+    // output of Whisper 100 from the start. Before, the noise went on from wherever it was and the two never met again.
+    {
+        const auto v = voice::synth (voice::steady (196.0, 3.0, SR), voice::vowelA, SR, -40.0);
+        auto a = make();
+        setParam (*a, "whisper", 100.0f);
+        const auto outA = run (*a, v);
+        auto b = make();
+        prepare (*b, 1, SR, 256);
+        const int at = (int) (0.5 * SR / 256);
+        const auto outB = mono (render (*b, v, 256, nullptr, [&] (int idx) { if (idx == at) setParam (*b, "whisper", 100.0f); }));
+        double e = 0.0, s = 0.0;
+        for (long i = (long) (1.5 * SR); i < (long) v.size(); ++i)
+        {
+            const double d = (double) outB[(size_t) i] - outA[(size_t) i];
+            e += d * d; s += (double) outA[(size_t) i] * outA[(size_t) i];
+        }
+        const double nb = 10.0 * std::log10 (std::max (e, 1.0e-30) / std::max (s, 1.0e-30));
+        check (nb <= limits::whisperRepeatNullDb, "Whisper 100 switched on at 0.5 s: from 1.5 s on, against Whisper 100 from the start", nb, "dB");
+    }
 }
 
 // ------------------------------------------------------------------------------------------------- Mix
@@ -1081,6 +1102,48 @@ void testSoftNoteBurst()
     check (worst <= limits::guardBurstDb, "a soft note with two strong harmonics, Pitch +7, +5 and -7: loudest 10 ms frame over the input's, worst", worst, "dB");
 }
 
+// ------------------------------------------------------------------------------------------------- input level
+
+// Nothing in the plug-in should depend on how loud the voice was recorded (1.2.1, from the real vocal re-test, where Pitch +7 on a
+// take times 4 read -2.9 dB against the plain render). A loud phrase and a quiet one (the quiet one under the old -60 dBFS gate,
+// over it times 4), Pitch +7, the input times exactly 4 and times exactly 0.25 (no rounding), scaled back: each phrase against the
+// render at the plain level.
+void testInputLevel()
+{
+    auto loud = voice::synth (voice::steady (190.0, 1.0, SR), voice::vowelA, SR, -60.0, -18.0, 5);
+    const auto quiet = voice::synth (voice::steady (150.0, 1.0, SR), voice::vowelE, SR, -60.0, -66.0, 6);
+    const long split = (long) loud.size();
+    std::vector<float> in = loud;
+    in.insert (in.end(), quiet.begin(), quiet.end());
+    in.resize (in.size() + (size_t) (0.2 * SR), 0.0f);
+    const auto render1 = [&] (float scale)
+    {
+        auto p = make();
+        setParam (*p, "pitch", 7.0f);
+        std::vector<float> x = in;
+        for (auto& v : x) v *= scale;
+        auto o = run (*p, x);
+        for (auto& v : o) v /= scale;
+        return o;
+    };
+    const auto plain = render1 (1.0f);
+    double worst = -400.0;
+    for (float scale : { 4.0f, 0.25f })
+    {
+        const auto o = render1 (scale);
+        for (int part = 0; part < 2; ++part)
+        {
+            const long a = part == 0 ? 0 : split, b = part == 0 ? split : (long) plain.size();
+            double e = 0.0, s = 0.0;
+            for (long i = a; i < b; ++i) { const double d = (double) o[(size_t) i] - plain[(size_t) i]; e += d * d; s += (double) plain[(size_t) i] * plain[(size_t) i]; }
+            const double nb = 10.0 * std::log10 (std::max (e, 1.0e-30) / std::max (s, 1.0e-30));
+            std::printf ("  input times %.2f, %s phrase: %.1f dB against the plain level\n", scale, part == 0 ? "loud" : "quiet", nb);
+            worst = std::max (worst, nb);
+        }
+    }
+    check (worst <= limits::inputLevelNullDb, "Pitch +7 with the input times 4 and times 0.25, scaled back, against the plain level, worst phrase", worst, "dB");
+}
+
 // ------------------------------------------------------------------------------------------------- Range Match
 
 void testRangeMatch()
@@ -1100,6 +1163,27 @@ void testRangeMatch()
         worst = std::max (worst, e);
     }
     check (worst <= limits::rangeMatchSemitones, "Range Match: a voice anywhere over two octaves lands on A3, worst", worst, "st");
+
+    // Switched off, the voice is back to itself as fast as a Pitch move (added 1.2.1, from the real vocal re-test: it took 1.4 s).
+    {
+        auto q = make();
+        setParam (*q, "rangeMatch", 1.0f);
+        const auto v = voice::synth (voice::steady (110.0, 5.0, SR), voice::vowelA, SR, -40.0);
+        const int block = 256;
+        prepare (*q, 1, SR, block);
+        const int offAt = (int) (2.5 * SR / block);
+        const auto o = mono (render (*q, v, block, nullptr, [&] (int idx) { if (idx == offAt) setParam (*q, "rangeMatch", 0.0f); }));
+        const int L = q->getLatencySamples();
+        const long off = (long) offAt * block;
+        double e = 0.0, s = 0.0;
+        for (long i = off + (long) (0.5 * SR); i < off + (long) (1.5 * SR); ++i)
+        {
+            const double d = (double) o[(size_t) i] - v[(size_t) (i - L)];
+            e += d * d; s += (double) v[(size_t) (i - L)] * v[(size_t) (i - L)];
+        }
+        const double nb = 10.0 * std::log10 (std::max (e, 1.0e-30) / std::max (s, 1.0e-30));
+        check (nb <= limits::rangeMatchBackNullDb, "Range Match switched off at +12 st: 0.5 to 1.5 s later, against the delayed input", nb, "dB");
+    }
 
     // Off does nothing
     auto p = make();
@@ -1860,6 +1944,7 @@ int main (int argc, char** argv)
     if (want ("real")) testRealMaterial();
     if (want ("guard")) testPeakGuard();
     if (want ("burst")) testSoftNoteBurst();
+    if (want ("level")) testInputLevel();
     if (want ("range")) testRangeMatch();
     if (want ("presets")) testOutputAndPresets();
     if (want ("blocks")) testBlocksAndStereo();

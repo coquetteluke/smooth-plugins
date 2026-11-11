@@ -31,6 +31,7 @@ namespace limits
     constexpr double whisperFormantFraction = 0.05;   // formant shape scale against the input
     constexpr double whisperShapeDb = 4.0;            // RMS difference of 300 Hz smoothed spectrum shape, 200 Hz to 5 kHz
     constexpr double whisperLevelDb = 3.0;            // level against the input
+    constexpr double whisperRepeatNullDb = -80.0;     // (1.2.1) switched on later: once settled, against Whisper 100 from the start. Set before this test ran
 
     // Mix
     constexpr double mixNullDb = -100.0;              // Mix 0 against the input delayed by the reported latency
@@ -54,6 +55,10 @@ namespace limits
 
     // Range Match
     constexpr double rangeMatchSemitones = 1.0;       // median output pitch against the set centre, input anywhere over two octaves
+    constexpr double rangeMatchBackNullDb = -40.0;    // (1.2.1) switched off: 0.5 to 1.5 s later against the delayed input. The real vocal check's own limit, set before this test ran
+
+    // Input level (1.2.1), the real vocal check's own limit, set before this test ran
+    constexpr double inputLevelNullDb = -60.0;        // Pitch +7, input times 4 and times 0.25, scaled back, against the plain level, each phrase
 
     // CPU
     constexpr double cpuPercent = 15.0;               // of one core, 48 kHz stereo, machine busy with other builds

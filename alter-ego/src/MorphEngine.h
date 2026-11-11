@@ -128,11 +128,11 @@ public:
         learnedFrames = 0;
         rangeHeld = 0.0;
         rangeNow = 0.0;
+        rangeWasActive = rangeFast = false;
         current = {};
         started = false;
         formantRatio = sharpen = 1.0;
         control = {};
-        randomState = 0x9E3779B97F4A7C15ull;
         jitterHeld = 0.0;
         breathPower.fill (0.0);
         levelIn = levelOut = 0.0;
@@ -213,7 +213,7 @@ public:
                 envelope.synthesisAt (outputIndex, synthesisK.data(), synthesisGain);
 
             const double pulse = current.robot > 0.0 ? nextPulse() : 0.0;
-            const double noise = current.whisper > 0.0 ? nextGaussian() : 0.0;
+            const double noise = current.whisper > 0.0 ? gaussianAt (input) : 0.0;
             const double keep = std::cos (0.5 * M_PI * current.whisper), breath = std::sin (0.5 * M_PI * current.whisper);
 
             const int dryAt = (int) ((input - total) & (long long) (delaySize - 1));
@@ -259,7 +259,8 @@ public:
             levelOut += levelRate * (powerOut - levelOut);
             if (control.voiced)
             {
-                const double target = std::clamp (std::sqrt ((levelIn + 1.0e-10) / (levelOut + 1.0e-10)), 0.125, 8.0);
+                // The guard against 0 / 0 is far under any real level, so the match is the same for a voice at any level (1.2.1)
+                const double target = std::clamp (std::sqrt ((levelIn + 1.0e-30) / (levelOut + 1.0e-30)), 0.125, 8.0);
                 levelGain += levelGainRate * (target - levelGain);
             }
             else
@@ -372,19 +373,32 @@ private:
         return out;
     }
 
-    double nextUniform() noexcept
+    // Random numbers that belong to a moment of the input rather than to the order they were asked for: the value for input sample
+    // (or tick) n is always the same. So Whisper's breath and Monster's shake are the same noise whenever they were switched on, and a
+    // setting reached by moving a control ends up as exactly the same sound as that setting from the start. Before 1.2.1 the noise
+    // went on from wherever it was, and two renders of Whisper 100 differed by up to 3.5 dB in a 10 ms frame (1.2.1).
+    static uint64_t mix64 (uint64_t z) noexcept
     {
-        randomState ^= randomState << 13;
-        randomState ^= randomState >> 7;
-        randomState ^= randomState << 17;
-        return (double) (randomState >> 11) * (1.0 / 9007199254740992.0);
+        z += 0x9E3779B97F4A7C15ull;
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+        return z ^ (z >> 31);
     }
 
-    double nextGaussian() noexcept
+    static double uniformAt (long long n, uint64_t stream) noexcept
     {
+        return (double) (mix64 ((uint64_t) n * 2u + stream) >> 11) * (1.0 / 9007199254740992.0);
+    }
+
+    // Sum of six uniforms, as before: near Gaussian, variance 1. Two 64 bit draws give the six 21 bit uniforms.
+    static double gaussianAt (long long n) noexcept
+    {
+        const uint64_t a = mix64 ((uint64_t) n * 2u), b = mix64 ((uint64_t) n * 2u + 1u);
+        constexpr double unit = 1.0 / 2097152.0;
+        constexpr uint64_t mask = (1u << 21) - 1u;
         double s = 0.0;
-        for (int i = 0; i < 6; ++i)
-            s += nextUniform();
+        for (int k = 0; k < 3; ++k)
+            s += ((double) ((a >> (21 * k)) & mask) + 0.5) * unit + ((double) ((b >> (21 * k)) & mask) + 0.5) * unit;
         return (s - 3.0) * std::sqrt (2.0);
     }
 
@@ -419,7 +433,8 @@ private:
             if (learnedFrames < 300) ++learnedFrames;
         }
         double rangeWanted = 0.0;
-        if (s.rangeMatch && learnedFrames >= 150 && c.robot <= 0.0)
+        const bool rangeActive = s.rangeMatch && learnedFrames >= 150 && c.robot <= 0.0;
+        if (rangeActive)
         {
             const double ideal = 12.0 * (std::log2 (std::max (s.rangeCentreHz, 20.0)) - learned);
             if (std::abs (ideal - rangeHeld) > 0.75)
@@ -428,7 +443,13 @@ private:
         }
         else
             rangeHeld = 0.0;
-        rangeNow += rangeSmooth * (rangeWanted - rangeNow);
+        // The slow glide is for the whole semitone steps Range Match takes as a voice drifts. Switching it on or off (or a Robot
+        // taking over) is a move of the Pitch kind and goes at Pitch's speed: at the slow rate the voice took 1.4 s to come back to
+        // its own pitch after Range Match was switched off (1.2.1).
+        if (rangeActive != rangeWasActive)
+            rangeFast = true;
+        rangeWasActive = rangeActive;
+        rangeNow += (rangeFast ? pitchSmooth : rangeSmooth) * (rangeWanted - rangeNow);
 
         const double wantPitch = s.pitchSemitones + amount * c.pitchSemitones;
         const double wantFormant = s.formantSemitones + amount * c.formantSemitones;
@@ -464,7 +485,7 @@ private:
         if (std::abs (current.monster - amount * c.monster) < 1.0e-3) current.monster = amount * c.monster;
         if (std::abs (current.whisper - s.whisper) < 1.0e-3) current.whisper = s.whisper;
         if (std::abs (current.vibrato - s.vibratoCents) < 1.0e-2) current.vibrato = s.vibratoCents;
-        if (std::abs (rangeNow - rangeWanted) < 1.0e-3) rangeNow = rangeWanted;
+        if (std::abs (rangeNow - rangeWanted) < 1.0e-3) { rangeNow = rangeWanted; rangeFast = false; }
 
         lfoPhase += std::clamp (s.vibratoHz, 0.01, 40.0) * tickEvery / sr;
         if (lfoPhase >= 1.0) lfoPhase -= 1.0;
@@ -512,7 +533,7 @@ private:
         control.alternate = 0.10 * current.monster;
         control.gainAlternate = 0.35 * current.monster;
         if (current.monster > 0.0)
-            jitterHeld += 0.15 * ((2.0 * nextUniform() - 1.0) - jitterHeld);
+            jitterHeld += 0.15 * ((2.0 * uniformAt (historyAt, 1u) - 1.0) - jitterHeld);
         control.jitter = 0.04 * current.monster * jitterHeld;
         formantRatio = std::pow (2.0, current.formant / 12.0);
         sharpen = 1.0 + 0.5 * current.robot;
@@ -544,7 +565,7 @@ private:
     long long pulseClock = 0;
     double lfoPhase = 0.0, lastPeriod = 0.0, learned = 0.0, rangeHeld = 0.0, rangeNow = 0.0, jitterHeld = 0.0;
     int learnedFrames = 0;
-    uint64_t randomState = 0x9E3779B97F4A7C15ull;
+    bool rangeWasActive = false, rangeFast = false;
     std::array<double, 2> breathPower {};
     double tilt = 0.97;
     std::array<Biquad, 2> airFilter;

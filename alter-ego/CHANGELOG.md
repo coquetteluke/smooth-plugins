@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1, 2026-11-11
+
+Second pass of the real vocal re-test. The default and Clean Slate are untouched (still the delayed input, -142 dB).
+
+- Fixed: switching Range Match off took 1.4 s to bring the voice back to its own pitch (half a second after switching off, the voice was still a third of a semitone away: -3.6 dB against the dry on a real take, limit -40). Switching it on or off, or a Robot taking over, now glides at Pitch's speed; the slow glide stays for the semitone steps it takes as a voice drifts. On the take it reads -150 dB.
+- Fixed: the output depended on how loud the voice was recorded. Three fixed thresholds did it: the tracker's gate at -60 dBFS (quiet ends of notes passed unshifted on a quiet take and shifted on a loud one), the envelope's silence test at -110 dBFS and the level match's guard against 0 / 0. Pitch +7 on a real take with the input times 4, scaled back, read -2.9 dB against the plain render; it reads -195 dB, and -201 dB for times a quarter. The gate now sits 40 dB under the loudest the voice has been lately. Renders at the take's own level differ from 1.2.0 about as much as 1.2.0 differed from itself with the input 12 dB louder (7% of frames by over 1 dB).
+- Changed: Whisper's breath and Monster's shake are now noise that belongs to the moment of the input, so they are the same whenever the control was moved, and a setting reached by moving a control ends up as exactly the sound of that setting from the start. Before, two renders of Whisper 100 differed by up to 3.5 dB in a 10 ms frame with nothing moved. Same kind of noise, a different draw of it.
+- Tests: Range Match switched off (-107 dB, limit -40), input times 4 and times a quarter (-166 dB, limit -60), Whisper switched on later against Whisper from the start (-331 dB, limit -80). Each failed on 1.2.0 first (3.1 dB, -27.4 dB, 3.0 dB).
+
 ## 1.2.0, 2026-11-11
 
 From the real vocal re-test on the Rode takes (17 takes of Luke singing and rapping). The default and Clean Slate are untouched: still the delayed input, to -142 dB. Every other setting sounds as it did except at the faults below.

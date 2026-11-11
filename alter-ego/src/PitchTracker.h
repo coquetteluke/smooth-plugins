@@ -87,6 +87,7 @@ public:
         coarseA.lowPass (3000.0, sr, 0.541);
         coarseB.lowPass (3000.0, sr, 1.307);
         envAttack = 1.0 - std::exp (-1.0 / (0.0015 * sr));
+        loudestFall = std::pow (10.0, -0.6 * hop / slowRate);   // 6 dB a second, in power, per analysis
         setRange (lowHz, highHz);
         reset();
     }
@@ -114,6 +115,7 @@ public:
         rumble.clear(); presence.clear(); coarseA.clear(); coarseB.clear();
         envFull = envLow = 0.0;
         count = 0; slowCount = 0;
+        loudest = 0.0;
         decimationPhase = 0; hopPhase = 0;
         clearTracking();
     }
@@ -194,7 +196,14 @@ private:
         const float* base = slow.data() + end - window;
 
         const float e0 = dotProduct (base, base, window);
-        if (e0 / (float) window < gateEnergy)
+        // The gate answers to the voice's own level, not to full scale, so the same voice recorded 12 dB quieter or louder is
+        // tracked the same way (1.2.1). With a fixed -60 dBFS gate the quiet ends of notes passed unshifted on a quiet take and were
+        // shifted on a loud one: Pitch +7 on a real take with the input times 4, scaled back, read -2.9 dB against the plain render.
+        // The loudest the voice has been lately, falling 6 dB a second; the gate sits 40 dB under that. Only true silence (-120 dBFS)
+        // is gated on its own.
+        const double level = (double) e0 / (double) window;
+        loudest = std::max (level, loudest * loudestFall);
+        if (level < std::max (silenceEnergy, loudest * relativeGate))
         {
             noPitch();
             return;
@@ -572,7 +581,9 @@ private:
     long long count = 0, slowCount = 0;
     int decimationPhase = 0, hopPhase = 0;
 
-    static constexpr float gateEnergy = 1.0e-6f; // -60 dBFS: quieter sounds pass through untouched
+    static constexpr double relativeGate = 1.0e-4;   // 40 dB under the loudest lately: quieter sounds pass through untouched
+    static constexpr double silenceEnergy = 1.0e-12; // -120 dBFS
+    double loudest = 0.0, loudestFall = 0.9999;
     float voicedOn = 0.30f, voicedOff = 0.38f;
     std::array<double, 64> dipTau {};
     std::array<float, 64> dipValue {};

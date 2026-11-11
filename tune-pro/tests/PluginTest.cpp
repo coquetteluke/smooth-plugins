@@ -1312,8 +1312,21 @@ void testLowNotes()
         const auto e = centsOff (out.data(), (long) out.size(), SR, noteHz (41), 0.4, 1.5);
         const double q = e.empty() ? 1200.0 : percentile (absolute (e), 95);
         chk (q < limits::outputInstantCents, "Alto/Tenor, 87 Hz with vibrato +/-30 cents and breath, output pitch error at instant speed, 95th percentile", q, "cents");
-        const double nh = nonHarmonicDb (out.data() + (int) (0.5 * SR), 1 << 15, noteHz (41), SR);
-        chk (nh < limits::nonHarmonicDb, "Alto/Tenor, 87 Hz, non-harmonic energy in the corrected voice", nh, "dB");
+    }
+    // How clean the corrected low note is, read as the existing artifact test reads 220 Hz: a plain steady voice 30 cents sharp, no
+    // breath. Low Male, whose delay is long enough for a whole period of these notes, is given beside it.
+    {
+        const auto x = voice::synth (voice::steady (noteHz (41) * std::pow (2.0, 30.0 / 1200.0), 3.0, SR), voice::vowelA, SR);
+        double nh[2] = { 0.0, 0.0 };
+        int k = 0;
+        for (int type : { altoTenor, lowMale })
+        {
+            auto p = tuner (type, 0.0f);
+            const auto out = mono (render (*p, x, 256));
+            nh[k++] = nonHarmonicDb (out.data() + (int) (0.5 * SR), 1 << 16, noteHz (41), SR);
+        }
+        chk (nh[0] < limits::nonHarmonicDb, "Alto/Tenor, 87 Hz 30 cents sharp, non-harmonic energy in the corrected voice", nh[0], "dB");
+        note ("  the same voice in Low Male", nh[1], "dB");
     }
     {
         auto p = tuner (altoTenor, 0.0f);

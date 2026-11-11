@@ -93,10 +93,10 @@ public:
     }
 
     // Clears tracking state, so a change of range starts clean. No allocation.
-    // belowHz (1.6.0), when under lowestHz: notes from there up to lowestHz are followed too. The range itself is read exactly as before:
-    // the longer periods are only looked at where the range has nothing good enough to be called voiced, or while a note under the
-    // range is already being followed, over a window as long as the longest of them. That window reaches further back in time, not
-    // further ahead, so it adds no delay. See lowDip().
+    // belowHz (1.6.0), when under lowestHz: notes from there up to lowestHz are followed too, by a second, separate reading that only
+    // ever speaks where the range's own reading says "not voiced". The range's reading is the code it always was and never sees the
+    // second one, so a note inside the range is read exactly as before. The second reading looks at the longer periods over a window
+    // as long as the longest of them, which reaches further back in time, not further ahead: it adds no delay. See analyseLow().
     void setRange (double lowestHz, double highestHz, double belowHz = 0.0) noexcept
     {
         lowHz = lowestHz;
@@ -107,16 +107,17 @@ public:
         periodMin = sr / highHz * 0.9;
         periodMax = sr / lowHz * 1.1;
         lowTauMax = 0;
+        lowPeriodMax = periodMax;
         if (belowHz > 0.0 && belowHz < lowestHz)
         {
             lowTauMax = std::min ((int) curve.size() - 3, (int) std::ceil (slowRate / belowHz) + 1);
-            periodMax = sr / belowHz * 1.1;
+            lowPeriodMax = sr / belowHz * 1.1;
         }
         clearTracking();
     }
 
     // True while the note being followed is under the range (only with belowHz set).
-    bool isUnderRange() const noexcept { return voiced && pastRange (tauCurrent); }
+    bool isUnderRange() const noexcept { return lowActive; }
 
     // Upper limit on the difference function for calling a sound voiced: lower is choosier.
     void setVoicingLimit (float limit) noexcept { voicedOn = limit; voicedOff = limit + 0.08f; }
@@ -158,29 +159,38 @@ public:
             if (++hopPhase >= hop)
             {
                 hopPhase = 0;
-                analyse();
+                if (lowTauMax > tauMax)
+                {
+                    const bool wasVoiced = voiced, hadMarks = markValid;
+                    analyse();
+                    analyseLow (wasVoiced, hadMarks);
+                }
+                else
+                    analyse();
             }
         }
 
         // A hiss-like sound shows at once, long before the difference function has moved. Consonants must not be shifted.
         if (voiced && envFull > 3.0 * envLow + 1.0e-12 && envFull > 1.0e-9)
             setUnvoiced();
+        if (lowActive && envFull > 3.0 * envLow + 1.0e-12 && envFull > 1.0e-9)
+            endLow();
 
-        if (voiced)
+        if (voiced || lowActive)
             stepMarks();
     }
 
     long long now() const noexcept { return count - 1; }        // index of the newest input sample
-    bool isVoiced() const noexcept { return voiced; }
+    bool isVoiced() const noexcept { return voiced || lowActive; }
     bool isFricative() const noexcept { return envFull > 3.0 * envLow + 1.0e-12 && envFull > 1.0e-9; }
-    double coarsePeriod() const noexcept { return tauCurrent * decimation; }
+    double coarsePeriod() const noexcept { return (lowActive ? lowTauCurrent : tauCurrent) * decimation; }
     // 0, the default, leaves the octave rule as it always was (Low Latency and Classic keep it, so their output does not change).
     // Above 0: see trackContinuity. High Quality sets 2.
     void setStrictOctaveUp (double times) noexcept { strictOctaveUp = std::max (0.0, times); }
     float difference() const noexcept { return dipCurrent; }    // 0 = perfectly periodic
 
     // Best period right now in input samples, 0 when not voiced.
-    double period() const noexcept { return ! voiced ? 0.0 : (markValid ? finePeriod : coarsePeriod()); }
+    double period() const noexcept { return ! (voiced || lowActive) ? 0.0 : (markValid ? finePeriod : coarsePeriod()); }
 
     // Marks count up by sequence number. Valid sequence numbers are firstMark() to lastMark().
     long long lastMark() const noexcept { return markSeq - 1; }
@@ -193,6 +203,7 @@ private:
     {
         tauCurrent = 0.0; dipCurrent = 1.0f; voiced = false; voicedVotes = 0; unvoicedVotes = 0; pendingVotes = 0; pendingTau = 0.0;
         markValid = false; finePeriod = 0.0; weakMarks = 0; markSeq = 0; lastMarkPosition = -1.0e12; mismatchVotes = 0;
+        lowActive = false; lowVotes = 0; lowBad = 0; lowTauCurrent = 0.0; lowVotedTau = 1.0; lowDipCurrent = 1.0f;
     }
 
     void setUnvoiced() noexcept
@@ -244,8 +255,7 @@ private:
                 ++numDips;
             }
         }
-        const bool rangeHasDip = numDips > 0 && lowest <= 0.9f;
-        if (! rangeHasDip && lowTauMax <= tauMax)
+        if (numDips == 0 || lowest > 0.9f)
         {
             noPitch();
             return;
@@ -256,68 +266,18 @@ private:
         // second harmonic, from winning.
         const float limit = lowest * 1.5f + 0.03f;
         int chosen = 0;
-        if (rangeHasDip)
-            for (int i = 0; i < numDips; ++i)
-                if (dipValue[(size_t) i] <= limit) { chosen = i; break; }
-
-        // Under the range (1.6.0). Looked at only where no dip in the range is good enough to be called voiced, which is where the
-        // tracker used to say "no pitch" whatever else happened, or while a note under the range is being followed. So a note inside
-        // the range is read exactly as before.
-        bool usingLow = false;
-        if (lowTauMax > tauMax)
-        {
-            const bool onLow = voiced && pastRange (tauCurrent);
-            const bool rangeGood = rangeHasDip && lowest < (voiced ? voicedOff : voicedOn);
-            double lowTau = 0.0;
-            float lowValue = 2.0f;
-            if ((onLow || ! rangeGood) && numDips < (int) dipTau.size() && lowDip (lowTau, lowValue))
-            {
-                bool take = onLow;
-                if (! take && ! voiced)
-                {
-                    // A new note. Twice a period always fits wherever the period does, and on a rough start fits better, the longer
-                    // window averaging more of the noise away. So the long period must be plainly the better of the two, asked at full
-                    // rate over the same stretch, and the same against a third of it where the range has a dip there.
-                    take = clearlyDeeper (lowTau, 0.5 * lowTau, lowTauMax);
-                    for (int i = 0; i < numDips && take; ++i)
-                        if (std::abs (lowTau / (dipTau[(size_t) i] * 3.0) - 1.0) < 0.04 && ! clearlyDeeper (lowTau, dipTau[(size_t) i], lowTauMax))
-                            take = false;
-                }
-                // A note that slides down out of the range keeps going. One that is in the range and turns rough for a moment is not
-                // moved an octave down: it goes unvoiced as before.
-                if (! take && voiced && lowTau < 1.3 * tauCurrent)
-                    take = true;
-                if (take)
-                {
-                    dipTau[(size_t) numDips] = lowTau;
-                    dipValue[(size_t) numDips] = lowValue;
-                    // While on a low note the range's own dips are mostly its harmonics. When one of those is good enough to be called
-                    // voiced, the low dip only joins the list: the usual rules for a change of period then weigh the two, and a move to
-                    // a shorter related period needs it to be about as deep. So a note that began an octave low comes back up.
-                    if (! rangeGood)
-                    {
-                        chosen = numDips;
-                        usingLow = true;
-                    }
-                    ++numDips;
-                }
-            }
-            if (! rangeHasDip && ! usingLow)
-            {
-                noPitch();
-                return;
-            }
-        }
+        for (int i = 0; i < numDips; ++i)
+            if (dipValue[(size_t) i] <= limit) { chosen = i; break; }
 
         // A strong second harmonic, say on a low vowel whose first formant sits right on it, can make half the period look deep.
         // If a multiple of the chosen period is much deeper still, that multiple is the true period.
-        if (! usingLow && dipValue[(size_t) chosen] < 0.08f)
+        if (dipValue[(size_t) chosen] < 0.08f)
             for (int i = chosen + 1; i < numDips; ++i)
             {
                 const double multiple = dipTau[(size_t) i] / dipTau[(size_t) chosen];
                 const double nearestWhole = std::round (multiple);
                 if (nearestWhole >= 2.0 && nearestWhole <= 3.0 && std::abs (multiple / nearestWhole - 1.0) < 0.04
-                    && clearlyDeeper (dipTau[(size_t) i], dipTau[(size_t) chosen], pastRange (dipTau[(size_t) i]) ? lowTauMax : 0))
+                    && clearlyDeeper (dipTau[(size_t) i], dipTau[(size_t) chosen]))
                 {
                     chosen = i;
                     break;
@@ -328,14 +288,8 @@ private:
         float dip = dipValue[(size_t) chosen];
         trackContinuity (tau, dip, numDips);
 
-        // Under the range the tracker is choosier: fry and the creak at the end of a word repeat at these periods too, roughly, and
-        // before 1.6.0 they were left alone. A sung low note repeats far better than they do, so there a start needs half the usual
-        // limit and a held note the usual limit for a start.
-        const bool underRange = pastRange (tauCurrent);
-        const float limitNow = underRange ? (voiced ? voicedOn : 0.5f * voicedOn) : (voiced ? voicedOff : voicedOn);
-
         // Voiced or not, with votes so one lucky frame of noise does nothing.
-        const bool looksVoiced = dipCurrent < limitNow && ! isFricative();
+        const bool looksVoiced = dipCurrent < (voiced ? voicedOff : voicedOn) && ! isFricative();
         if (looksVoiced)
         {
             unvoicedVotes = 0;
@@ -347,7 +301,9 @@ private:
                 if (voicedVotes >= 3)
                 {
                     voiced = true;
-                    markValid = false;
+                    // A note that came up into the range from under it keeps its marks. Never true without belowHz.
+                    if (! lowActive)
+                        markValid = false;
                 }
             }
         }
@@ -359,7 +315,7 @@ private:
         }
 
         // A real change of note that the marks did not follow: start them again from the coarse period.
-        if (voiced && markValid && std::abs (coarsePeriod() / finePeriod - 1.0) > 0.12)
+        if (voiced && ! lowActive && markValid && std::abs (coarsePeriod() / finePeriod - 1.0) > 0.12)
         {
             if (++mismatchVotes >= 2) { markValid = false; mismatchVotes = 0; }
         }
@@ -449,12 +405,109 @@ private:
         }
     }
 
-    // A period under the range. A dip the range itself found can sit up to half a step past its last period, and still belongs to it.
-    bool pastRange (double tau) const noexcept { return lowTauMax > tauMax && tau > (double) tauMax + 0.5; }
+    // ---- under the range (1.6.0) ----
+    // Runs after analyse() on every frame, and only with belowHz set. analyse() above is the range's reading, unchanged; this one
+    // follows a note the range cannot see. It starts only while the range says "not voiced" and is not counting votes for a note of
+    // its own, and it hands back the moment the range calls a note. It is choosier than the range: fry and the creak at the end of a
+    // word repeat at these periods too, roughly, and up to 1.5.1 they were left alone. A start needs half the range's limit, three
+    // frames in a row, and the long period plainly better than half and a third of it (twice or three times a period always fits
+    // wherever the period does); a held note needs the range's limit for a start.
+    void analyseLow (bool wasVoiced, bool hadMarks) noexcept
+    {
+        double lowTau = 0.0;
+        float lowValue = 2.0f;
+        const bool have = lowDip (lowTau, lowValue);
+
+        if (voiced)
+        {
+            if (lowActive)
+            {
+                // The range has called a note while one under it is being followed. If the range's period is a half or a third of the
+                // low one, and the low one is plainly the better fit, the range is reading a harmonic of the same note: stay on it.
+                const double r = lowTauCurrent / tauCurrent, whole = std::round (r);
+                const bool harmonic = whole >= 2.0 && whole <= 3.0 && std::abs (r / whole - 1.0) < 0.04;
+                if (have && harmonic && std::abs (lowTau / lowTauCurrent - 1.0) < 0.08 && lowValue < voicedOn && ! isFricative()
+                    && clearlyDeeper (lowTau, tauCurrent, lowTauMax))
+                {
+                    lowTauCurrent = lowTau;
+                    lowDipCurrent = lowValue;
+                    lowBad = 0;
+                    return;
+                }
+            }
+            // Otherwise the range has the note. If it came up from under the range, that is the hand over; marks were kept in analyse().
+            lowActive = false;
+            lowBad = 0;
+            // A note in the range that is failing may be on its way down out of it: count, so the low reading is ready when it goes.
+            const bool sliding = unvoicedVotes > 0 && have && lowValue < voicedOn && lowTau < 1.3 * tauCurrent && ! isFricative();
+            lowVotes = sliding ? lowVotes + 1 : 0;
+            if (sliding) lowVotedTau = lowTau;
+            return;
+        }
+
+        if (! lowActive)
+        {
+            bool candidate = false;
+            if (wasVoiced && lowVotes >= 2 && have && lowValue < voicedOn && ! isFricative())
+            {
+                // The range has just let go of a note that was sliding down under it: carry on with its marks.
+                lowActive = true;
+                lowTauCurrent = lowTau;
+                lowDipCurrent = lowValue;
+                lowBad = 0;
+                lowVotes = 0;
+                markValid = hadMarks;
+                return;
+            }
+            if (have && voicedVotes == 0 && lowValue < 0.5f * voicedOn && ! isFricative())
+                candidate = clearlyDeeper (lowTau, 0.5 * lowTau, lowTauMax) && clearlyDeeper (lowTau, lowTau / 3.0, lowTauMax);
+            const bool steady = lowVotes == 0 || std::abs (lowTau / lowVotedTau - 1.0) < 0.05;
+            lowVotes = candidate ? (steady ? lowVotes + 1 : 1) : 0;
+            if (candidate) lowVotedTau = lowTau;
+            if (lowVotes >= 3)
+            {
+                lowActive = true;
+                lowTauCurrent = lowTau;
+                lowDipCurrent = lowValue;
+                lowBad = 0;
+                lowVotes = 0;
+                markValid = false;
+            }
+            return;
+        }
+
+        // Following a low note
+        if (have && std::abs (lowTau / lowTauCurrent - 1.0) < 0.08)
+        {
+            lowTauCurrent = lowTau;
+            lowDipCurrent = lowValue;
+        }
+        else
+            lowDipCurrent = 1.0f;
+        if (lowDipCurrent < voicedOn && ! isFricative())
+            lowBad = 0;
+        else if (++lowBad >= 4)   // one frame more than the range needs to call a note, so a note rising into the range is handed over, not dropped
+            endLow();
+        if (lowActive && markValid && std::abs (coarsePeriod() / finePeriod - 1.0) > 0.12)
+        {
+            if (++mismatchVotes >= 2) { markValid = false; mismatchVotes = 0; }
+        }
+        else if (lowActive)
+            mismatchVotes = 0;
+    }
+
+    void endLow() noexcept
+    {
+        lowActive = false;
+        lowBad = 0;
+        lowVotes = 0;
+        if (! voiced)
+            markValid = false;
+    }
 
     // The first deep dip among the periods under the range, from the range's longest period to lowTauMax, over a window as long as
     // the longest of them: a window shorter than a period can fall between two pulses of a low note and see nothing. False if there
-    // is none. It only reaches further back, so it costs no delay; a low note is called a few ms later than one in the range.
+    // is none or the sound is too quiet.
     bool lowDip (double& tauOut, float& valueOut) noexcept
     {
         const int span = lowTauMax;
@@ -583,7 +636,7 @@ private:
         const double position = (double) (start + best);
 
         // The window that proved this sound periodic reaches back, so grains can use marks from all of it.
-        const double back = (double) (window + tauCurrent) * decimation;
+        const double back = (lowActive ? (double) lowTauMax + lowTauCurrent : (double) (window + tauCurrent)) * decimation;
         int steps = (int) (back / period);
         steps = std::clamp (steps, 0, 16);
         for (int k = steps; k >= 1; --k)
@@ -668,7 +721,7 @@ private:
         }
         weakMarks = 0;
 
-        finePeriod = std::clamp (lagExact, periodMin, periodMax);
+        finePeriod = std::clamp (lagExact, periodMin, lowActive ? lowPeriodMax : periodMax);
         double position = lastMarkPosition + lagExact;
 
         // Keep marks near the loudest part of each period. Marks that slide against the waveform bend a shifted voice's pitch by as much, so
@@ -700,7 +753,7 @@ private:
     double sr = 48000.0, slowRate = 12000.0, lowHz = 70.0, highHz = 1300.0, envAttack = 0.01;
     int decimation = 4, hop = 16, slowSize = 8192, fastSize = 16384;
     int tauMin = 8, tauMax = 180, window = 180, lowTauMax = 0;
-    double periodMin = 30.0, periodMax = 800.0;
+    double periodMin = 30.0, periodMax = 800.0, lowPeriodMax = 800.0;
     std::vector<float> slow, fast, curve, lowCurve;
     Biquad rumble, presence, coarseA, coarseB;
     double envFull = 0.0, envLow = 0.0;
@@ -715,6 +768,11 @@ private:
     float dipCurrent = 1.0f;
     int pendingVotes = 0, voicedVotes = 0, unvoicedVotes = 0, mismatchVotes = 0;
     bool voiced = false;
+    // The reading under the range. All of it stays at rest without belowHz.
+    bool lowActive = false;
+    int lowVotes = 0, lowBad = 0;
+    double lowTauCurrent = 0.0, lowVotedTau = 1.0;
+    float lowDipCurrent = 1.0f;
 
     std::array<Mark, maxMarks> marks {};
     long long markSeq = 0;

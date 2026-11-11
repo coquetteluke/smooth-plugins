@@ -14,7 +14,7 @@ namespace
     // a note in the range gets. Notes at and above 98 Hz are read as before.
     constexpr InputRange inputRanges[] = {
         { "Soprano",    150.0, 1300.0,  0.0 },
-        { "Alto/Tenor",  98.0, 1000.0,  0.0 },
+        { "Alto/Tenor",  98.0, 1000.0, 70.0 },
         { "Low Male",    65.0,  600.0,  0.0 },
         { "Wide Range",  65.0, 1300.0,  0.0 },
     };

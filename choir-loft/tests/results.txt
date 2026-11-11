@@ -335,7 +335,7 @@ PASS  real speech and say singing: fixed fifth, median distance from lead plus t
 PASS  real material: biggest sample step in the voice against the input, worst file = 0.886 times
 PASS  real material, Tight preset: lead with two voices against the lead alone, 99th percentile of 20 ms frames = 4.320 dB
 INFO  real material, defaults: the same, voices running on behind a lead that has stopped = 7.637 dB
-PASS  CPU on one core, 48 kHz stereo, 4 voices, Wide Range, voice at 180 Hz with vibrato (machine busy with other builds) = 2.292 %
+PASS  CPU on one core, 48 kHz stereo, 4 voices, Wide Range, voice at 180 Hz with vibrato (machine busy with other builds) = 2.623 %
 METRIC  note change, how late voices arrive after the lead, average = 39.000 ms
 METRIC  note change, spread between earliest and latest voice, median = 19.000 ms
 METRIC  body of a note, distance from target, median = 3.663 cents
@@ -584,7 +584,7 @@ PASS  and its card shows that note, A3
 PASS  voice 1 reads the note it sings, C4
 PASS  voice 2 reads the note it sings, E4
 PASS  the window opens and shuts 60 times with no audio
-PASS  the window opens, draws and shuts 60 times with audio running = 24798.000 blocks
+PASS  the window opens, draws and shuts 60 times with audio running = 25977.000 blocks
 PASS  every preset, key extreme and scale draws = 84.000 pictures
 PASS  window size and Advanced come back with the session
 PASS  and the window opens that way = 1500.000 wide
@@ -680,7 +680,7 @@ PASS  8 notes on 8 voices: lowest note on voice 1, in order
 PASS  8 voices, 2000 random chord changes: no voice crossings = 0.000 
 PASS  8 voices: every note gets a voice = 0.000 
 PASS  8 voices: moving one note moves only that voice = 0.000 
-PASS  8 voices: working out a chord takes well under one block = 2.995 us
+PASS  8 voices: working out a chord takes well under one block = 5.170 us
 PASS  MIDI Channel: voice 5 takes channel 5, voice 8 takes channel 8
 PASS  voices together at 5 voices turn down by = -0.969 dB
 PASS  voices together at 6 voices turn down by = -1.761 dB
@@ -729,9 +729,9 @@ PASS  singers off against the same singers at Level Off: what is left = -240.000
 PASS  and the rest are still singing = -21.183 dB
 PASS  voice 1 coming back: pitch 50 ms later against its note = 0.003 cents
 PASS  voice 7 coming back: pitch 50 ms later against its note = 0.004 cents
-INFO  CPU, one core, eight singers on = 3.560 %
-INFO  CPU, one core, two of eight on = 1.205 %
-PASS  off singers' cost, as a share of what they cost on = 0.118 
+INFO  CPU, one core, eight singers on = 3.285 %
+INFO  CPU, one core, two of eight on = 1.098 %
+PASS  off singers' cost, as a share of what they cost on = 0.112 
 PASS  singer selection and voice count come back with the session
 PASS  a session from before opens with everyone on and its own voice count = 2.000 
 PASS  Voices Sounding counts singers you hear = 6.000 

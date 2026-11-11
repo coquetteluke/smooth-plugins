@@ -2312,12 +2312,11 @@ static void testOldResponse()
         {
             p.setCurrentProgram (i);
             const auto name = p.getProgramName (i);
-            const bool wantOld = name == "Parallel Body" || name == "Airy Encode" || name == "Worn Cassette"
-                              || name == "Slow Reel Haze" || name == "Starved Grit" || name == "Old Radio Voice";
+            const bool wantOld = false; // since 0.4.3 every factory preset uses the new response (Luke said yes on 2026-11-11)
             if (p.oldResponse.load() != wantOld || p.programMatchingSettings() != i)
                 ++presetsWrong;
         }
-        check (presetsWrong == 0, "old response: the six presets that use what changed keep it, the other five do not, wrong", (double) presetsWrong);
+        check (presetsWrong == 0, "old response: no factory preset keeps it since 0.4.3, wrong", (double) presetsWrong);
     }
     // Switching while playing
     {

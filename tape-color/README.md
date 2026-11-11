@@ -67,9 +67,9 @@ Finish:
 
 So that nothing made with 0.3.1 changes its sound, the plug-in keeps the old response for whatever was made with it:
 
-- Six factory presets keep it, because their sound hangs on one of those four things: Parallel Body (Mix 40 and High Cut), Airy Encode (compander), Worn Cassette (compander, and Auto Level on dark tape), Slow Reel Haze, Starved Grit and Old Radio Voice (Auto Level on slow tape). They sound as they did.
+- No factory preset keeps it since 0.4.3: all eleven use the new response. Parallel Body, Airy Encode, Worn Cassette, Slow Reel Haze, Starved Grit and Old Radio Voice kept it until 0.4.2, so they sound different from 0.3.1 now. A session saved with one of them before 0.4.3 keeps the sound it was saved with.
 - A session saved before 0.4.0 keeps it if it uses Mix under 100, High Cut, the compander, or Auto Level together with slow tape, Age over about 40, Head Spacing over about 30 or Bias over about 55. With none of those in use there is nothing to keep.
-- Everything else gets the new response: a new instance, the other five presets (Tape Start, Clean Reel, Vocal Glue, Warm Lead, Phone Call), and any session saved from 0.4.0 on keeps whichever it had.
+- Everything else gets the new response: a new instance, every preset, and any session saved from 0.4.0 on keeps whichever it had.
 
 It is not a control and has no button: it travels with the preset or the session, in eight bytes after the saved settings. Picking a preset sets it for that preset. At Mix 100 the old response also leaves the tape on the reported latency, so the timing fix reaches every session.
 
@@ -81,12 +81,12 @@ It is not a control and has no button: it travels with the preset or the session
 | Clean Reel | Light Drive at 30 ips on soft tape |
 | Vocal Glue | Drive 13, a touch of Bias, faint wow and flutter |
 | Warm Lead | Drive 17, Bias 30, light Age, a little hiss and grain |
-| Airy Encode | Dynamic Soft encode only, for air on a vocal. Keeps the old response |
-| Parallel Body | Drive 26 on hard tape, High Cut 12 kHz, Mix 40. Keeps the old response |
-| Slow Reel Haze | 7.5 ips, Age 20, Random Drift, head spacing. Left and right move together, so it is safe in mono. Keeps the old response |
-| Starved Grit | Bias -70 on hard tape with grain. Keeps the old response |
-| Worn Cassette | 3.75 ips, Age 100, dropouts, mismatched compander. Left and right move together, so it is safe in mono. Keeps the old response |
-| Old Radio Voice | Small Radio device with tape wear. Keeps the old response |
+| Airy Encode | Dynamic Soft encode only at Encode 30 (60 until 0.4.2), for a little air on a vocal |
+| Parallel Body | Drive 26 on hard tape, High Cut 12 kHz, Mix 40 |
+| Slow Reel Haze | 7.5 ips, Age 20, Random Drift, head spacing. Left and right move together, so it is safe in mono |
+| Starved Grit | Bias -70 on hard tape with grain |
+| Worn Cassette | 3.75 ips, Age 100, dropouts, mismatched compander. Left and right move together, so it is safe in mono |
+| Old Radio Voice | Small Radio device with tape wear |
 | Phone Call | Telephone device with hot tape |
 
 ## Signal flow

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.3, 2026-11-11
+
+Luke said yes to both on 2026-11-11.
+
+- Every factory preset now uses the new response. Parallel Body, Airy Encode, Worn Cassette, Slow Reel Haze, Starved Grit and Old Radio Voice kept 0.3.1's response until 0.4.2. Measured before on the 11 working takes (0.4.2 then 0.4.3): Parallel Body gets brighter (16 kHz band -7.18 to -1.83 dB) because the blend of dry and tape no longer combs the top; Worn Cassette is half a dB quieter and its S 4.8 dB duller; Slow Reel Haze's S 1 dB duller; Starved Grit and Old Radio Voice move 0.1 to 0.15 dB.
+- Airy Encode's Encode goes from 60 to 30. In Luke's chain it sits after Pro-DS, and at 60 it put 2.9 dB of S back. At 30 it puts back 1.10 to 2.12 dB, median 1.41 dB (S against the voice, 4 to 8 kHz, over the 11 working takes).
+- A session saved with one of these presets keeps the sound it was saved with.
+- Every real vocal check passes on all six presets on all 11 working takes. In the suite only the level lines of the six presets and the old-response preset line moved (573 pass, 0 fail).
+
 ## 0.4.2, 2026-11-11
 
 Worn Cassette and Slow Reel Haze are safe in mono. Luke said yes to this on 2026-11-11. Both presets set Stereo Drift (30 and 25) and Head Azimuth (15 and 8), which pull left and right apart, so a mono voice lost level when the two sides were summed. Both controls are now 0 in these two presets. Their stereo movement is gone; everything else in them is as it was, and both still keep the old response.

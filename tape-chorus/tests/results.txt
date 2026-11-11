@@ -1,6 +1,6 @@
 PASS  parameter names are clear, unique, no em dash
-INFO  parameter count = 28.000 
-PASS  factory presets = 13.000 
+INFO  parameter count = 29.000 
+PASS  factory presets = 16.000 
 PASS  preset names are not empty, no em dash
 PASS  presets change the state
 PASS  state save and restore
@@ -49,6 +49,7 @@ PASS  no click when Degrade jumps, biggest step = 0.005
 PASS  no click when Degrade Rate jumps, biggest step = 0.005 
 PASS  no click when Noise jumps, biggest step = 0.021 
 PASS  no click when Noise Gate jumps, biggest step = 0.005 
+PASS  no click when Clean jumps, biggest step = 0.005 
 PASS  Voices 1: copies of one pulse = 1.000 
 PASS  Voices 2: copies of one pulse = 2.000 
 PASS  Voices 3: copies of one pulse = 3.000 
@@ -207,6 +208,9 @@ PASS  preset Cassette Backing: level against input = -1.899 dB
 PASS  preset Lo-Fi Tape Double: level against input = -1.610 dB
 PASS  preset Random Drift Double: level against input = -0.488 dB
 PASS  preset Resonant Tape Swirl: level against input = -1.287 dB
+PASS  preset Clean Vocal Double: level against input = -0.377 dB
+PASS  preset Clean Wide Stack: level against input = -0.621 dB
+PASS  preset Worn Cassette Clean: level against input = -2.414 dB
 PASS  damaged state: every control ends up in range
 PASS  damaged state: NaN depth does not reach the audio
 PASS  damaged state: infinite delay does not reach the audio = 15.000 ms
@@ -454,4 +458,46 @@ PASS  arrives: degrade stepped, 5.5 s later against the setting held from the st
 PASS  arrives: noise stepped, 5.5 s later against the setting held from the start, 96000 Hz = -440.143 dB
 PASS  arrives: inputGain stepped, 5.5 s later against the setting held from the start, 96000 Hz = -433.090 dB
 PASS  arrives: outputGain stepped, 5.5 s later against the setting held from the start, 96000 Hz = -445.243 dB
+PASS  Clean, Saturation 100, 5 kHz sine: worst fold back from 2 to 23 kHz, below the tone = -96.152 dB
+PASS  Clean, Saturation 100, 5 kHz sine: the 23 kHz line, below the tone (the limit that was dropped) = -119.495 dB
+PASS  Clean at 44.1 kHz, Saturation 100, 4.5 kHz sine: the 21.6 kHz line, below the tone = -97.601 dB
+PASS  Clean, Wow 15 and Flutter 10 (the default): hash further than 200 Hz from a 3 kHz tone = -69.245 dB
+PASS  Clean, Wow 100 and Flutter 100: hash further than 200 Hz from a 3 kHz tone = -48.631 dB
+PASS  Clean, Wow 100: peak swing, between half of 2.5 ms and all of it = 2.247 ms
+PASS  Clean, Flutter 100: peak swing, between half of 0.25 ms and all of it = 0.229 ms
+PASS  Clean, Saturation 20: level change of a -40 dBFS tone = -0.000 dB
+PASS  Clean, Saturation 20: level change of a -12 dBFS tone, never up = -0.244 dB
+PASS  Clean, Saturation 50: level change of a -40 dBFS tone = -0.002 dB
+PASS  Clean, Saturation 50: level change of a -12 dBFS tone, never up = -1.306 dB
+PASS  Clean, Saturation 100: level change of a -40 dBFS tone = -0.008 dB
+PASS  Clean, Saturation 100: level change of a -12 dBFS tone, never up = -3.529 dB
+PASS  Clean: Delay Time 15 ms at 44100 Hz, one still voice against the control = -0.001 samples
+PASS  Clean: reported latency at 44100 Hz = 0.000 samples
+PASS  Clean against standard at 44100 Hz: level at 1 kHz = -0.003 dB
+PASS  Clean against standard at 44100 Hz: level at 15 kHz = 0.001 dB
+PASS  Clean: Delay Time 15 ms at 48000 Hz, one still voice against the control = -0.001 samples
+PASS  Clean: reported latency at 48000 Hz = 0.000 samples
+PASS  Clean against standard at 48000 Hz: level at 1 kHz = -0.002 dB
+PASS  Clean against standard at 48000 Hz: level at 15 kHz = -0.000 dB
+PASS  Clean: Delay Time 15 ms at 88200 Hz, one still voice against the control = -0.002 samples
+PASS  Clean: reported latency at 88200 Hz = 0.000 samples
+PASS  Clean against standard at 88200 Hz: level at 1 kHz = -0.000 dB
+PASS  Clean against standard at 88200 Hz: level at 15 kHz = -0.001 dB
+PASS  Clean: Delay Time 15 ms at 96000 Hz, one still voice against the control = -0.002 samples
+PASS  Clean: reported latency at 96000 Hz = 0.000 samples
+PASS  Clean against standard at 96000 Hz: level at 1 kHz = 0.000 dB
+PASS  Clean against standard at 96000 Hz: level at 15 kHz = -0.000 dB
+PASS  Clean switched under a 200 Hz tone: the switch changes the output, largest difference from never switching = 0.025 
+PASS  Clean switched under a 200 Hz tone at Saturation 50: loudest moment above 8 kHz, below the tone (never switched: -137.4 dB) = -110.602 dB
+PASS  Clean, everything on: same output at block 512 and block 37, largest difference = -240.000 dB
+PASS  Clean, everything on: same output at block 512 and block 1, largest difference = -240.000 dB
+PASS  Clean, everything on: finite, no denormals
+PASS  the 13 presets from before 0.4.0 all switch Clean off
+PASS  the 13 presets from before 0.4.0 keep their numbers and names
+PASS  new presets come after the old ones = 16.000 
+PASS  Clean is off by default
+PASS  Clean is the last control in the list, after every control 0.3.1 had
+PASS  Bypass switched 4 times a second under a 1 kHz tone at 44100 Hz: loudest moment above 8 kHz, below the tone (never switched: -130.7 dB) = -104.890 dB
+PASS  Bypass switched 4 times a second under a 1 kHz tone at 48000 Hz: loudest moment above 8 kHz, below the tone (never switched: -131.9 dB) = -131.900 dB
+PASS  Bypass switched 4 times a second under a 1 kHz tone at 96000 Hz: loudest moment above 8 kHz, below the tone (never switched: -131.2 dB) = -130.408 dB
 RESULT PASS  0 failures

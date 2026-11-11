@@ -123,6 +123,7 @@ public:
         levelFix = fastLevelFix = slowLevelFix = 0.0f;
         slowEnergyIn = slowEnergyOut = 0.0;
         levelAmount = target.levelMatch ? 1.0f : 0.0f;
+        framesSinceControlMoved = 1000;
         tiltVoicing = 0.0f;
         noiseState = 0x9E3779B9u;
         channelShare = { 1.0f, 1.0f };
@@ -183,6 +184,7 @@ private:
             v = std::abs (next - to) < close ? to : next;
         };
         const auto before = current;
+        const float tiltBefore = smoothedTilt, breathBefore = smoothedBreath, wideningBefore = smoothedWidening, highPassBefore = smoothedHighPass;
         towardsLog (current.tract.length, target.tract.length);
         towardsLog (current.tract.width, target.tract.width);
         for (size_t p = 0; p < TractShape::numPoints; ++p)
@@ -200,6 +202,12 @@ private:
             moved = moved || before.tract.widths[p] != current.tract.widths[p] || before.tract.places[p] != current.tract.places[p];
         if (moved) mapIsCurrent = false;
         refreshMap();
+
+        // While a control is on its way somewhere the level match has to keep up with it (see shapeFrame). Counted in frames.
+        const bool shaping = moved || tiltBefore != smoothedTilt || breathBefore != smoothedBreath
+                          || wideningBefore != smoothedWidening || highPassBefore != smoothedHighPass;
+        if (shaping) framesSinceControlMoved = 0;
+        else if (framesSinceControlMoved < 1000) ++framesSinceControlMoved;
     }
 
     void refreshMap() noexcept
@@ -352,6 +360,14 @@ private:
             }
             fastWanted = juce::jlimit (-1.4f, 1.4f, (float) (0.5 * std::log (modelIn / modelOut)));
 
+            // Both steps are paced for a voice moving through a fixed setting. When the setting itself moves (a control dragged or
+            // automated, a preset chosen while audio plays) the gain changes within 40 ms, and the slow step still held the two
+            // second average of the old setting: on a real vocal the level ran up to 8 dB over for a tenth of a second. So while a
+            // control is moving the slow average starts again at every frame, which makes it match the level of that frame alone,
+            // and when the control arrives it builds up as it does from a fresh start. A still setting never gets here, so its sound
+            // is the same to the last bit.
+            if (framesSinceControlMoved < 2)
+                slowEnergyIn = slowEnergyOut = 0.0;
             const int lowBin = (int) (60.0 / (binHz * 0.5)), highBin = std::min (analysisHalf - 1, (int) (16000.0 / (binHz * 0.5)));
             const float noiseWeight = noiseToVoice * gate * gate;
             const float afterFast = std::exp (2.0f * levelAmount * fastLevelFix);
@@ -492,6 +508,7 @@ private:
     float levelFix = 0.0f, fastLevelFix = 0.0f, slowLevelFix = 0.0f, levelAmount = 1.0f, tiltVoicing = 0.0f;
     double slowEnergyIn = 0.0, slowEnergyOut = 0.0, levelTimeCoef = 0.03;
     bool mapIsCurrent = false, identityMap = true, frameIsSilent = true;
+    int framesSinceControlMoved = 1000;
     std::array<std::vector<float>, maxChannels> inputRing, overlap;
     std::vector<juce::dsp::Complex<float>> analysisIn, analysisOut;
     std::vector<float> synthWindow, analysisWindow, power, spectrum, noiseSpectrum, logGain, wanted, finerEnvelope, readHz, breathShape, wantedOnSynthGrid, modelGain;

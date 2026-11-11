@@ -101,6 +101,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
                                                        AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "levelMatch", 1 }, "Level Match", true));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "bypass", 1 }, "Bypass", false));
+    // Added in 0.4.0, off by default, so sessions from before it sound as they did. No preset touches it.
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "peakGuard", 1 }, "Peak Guard", false));
     return layout;
 }
 
@@ -123,12 +125,28 @@ PluginProcessor::PluginProcessor()
     mix = apvts.getRawParameterValue ("mix");
     outputGain = apvts.getRawParameterValue ("output");
     levelMatch = apvts.getRawParameterValue ("levelMatch");
+    peakGuard = apvts.getRawParameterValue ("peakGuard");
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
+    bypass->addListener (this);
 
     outputLevel = new ReadingParameter ("outputLevel", "Output Level", -60.0f, 24.0f, -60.0f, juce::AudioProcessorParameter::Category::outputMeter);
     addParameter (outputLevel);
     engine.prepare (48000.0, 2);
     setLatencySamples (engine.latencySamples());
+}
+
+PluginProcessor::~PluginProcessor()
+{
+    bypass->removeListener (this);
+}
+
+void PluginProcessor::parameterValueChanged (int, float newValue)
+{
+    const bool on = newValue >= 0.5f;
+    if (on && ! bypassWasOn.exchange (true))
+        bypassSwitchedOnAtMs.store (juce::Time::getMillisecondCounterHiRes());
+    else if (! on)
+        bypassWasOn.store (false);
 }
 
 bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -173,11 +191,23 @@ void PluginProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     bypassMix.reset (sampleRate, 0.02);
     gainSmoothed.reset (sampleRate, 0.02);
     meterFall = (float) std::exp (-1.0 / (0.3 * sampleRate));
-    reset();
+    guardRelease = (float) (1.0 - std::exp (-1.0 / (0.1 * sampleRate)));
+    clearState();
     setLatencySamples (engine.latencySamples());
 }
 
 void PluginProcessor::reset()
+{
+    // A host that switches its own bypass on reaches the plug-in through the AU wrapper, which sets the Bypass parameter and then
+    // calls reset() in the same call. Clearing at that moment would cut the 32 ms still inside the delay line out of the bypassed
+    // sound and start the engine again from nothing. So a reset that comes right behind Bypass going on is left out, and the fade
+    // to the delayed input carries on from where the audio is. Every other reset clears as before.
+    if (bypass->get() && juce::Time::getMillisecondCounterHiRes() - bypassSwitchedOnAtMs.load() < 20.0)
+        return;
+    clearState();
+}
+
+void PluginProcessor::clearState()
 {
     engine.setControls (readControls());
     engine.reset();
@@ -187,6 +217,8 @@ void PluginProcessor::reset()
     bypassMix.setCurrentAndTargetValue (bypass->get() ? 0.0f : 1.0f);
     gainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (outputGain->load()));
     meterPeak = 0.0f;
+    heldInputPeak = 0.0f;
+    guardGain = 1.0f;
 }
 
 void PluginProcessor::render (juce::AudioBuffer<float>& buffer, bool forceBypass) noexcept
@@ -222,6 +254,14 @@ void PluginProcessor::render (juce::AudioBuffer<float>& buffer, bool forceBypass
     }
     dryPos = pos;
 
+    // The input runs one latency ahead of the output, so its highest peak so far already covers the sound now coming out.
+    float held = heldInputPeak;
+    for (int ch = 0; ch < numCh; ++ch)
+        for (int i = 0; i < n; ++i)
+            held = juce::jmax (held, std::abs (io[ch][i]));
+    heldInputPeak = held;
+    const bool guard = peakGuard->load() > 0.5f;
+
     engine.process (io, n);
 
     float meter = meterPeak;
@@ -237,6 +277,26 @@ void PluginProcessor::render (juce::AudioBuffer<float>& buffer, bool forceBypass
             const float out = (io[ch][i] * wetAmount + dryOut.getReadPointer (ch)[i] * (1.0f - wetAmount)) * overall;
             io[ch][i] = out;
             biggest = juce::jmax (biggest, std::abs (out));
+        }
+        if (guard)
+        {
+            // Moving formants changes the shape of the wave, so peaks can come out higher than they went in at the same level.
+            // With Peak Guard on the output is held at or under the highest peak the input has had (times Output Gain): the gain
+            // drops at once on a sample that would pass it and comes back over about 100 ms. Off, nothing here runs.
+            const float ceiling = held * overall;
+            const float want = biggest > ceiling ? ceiling / biggest : 1.0f;
+            guardGain = juce::jmin (want, guardGain + guardRelease * (1.0f - guardGain));
+            if (guardGain < 1.0f)
+            {
+                // The limit to the ceiling only catches the last bit of rounding in the product.
+                for (int ch = 0; ch < numCh; ++ch)
+                    io[ch][i] = juce::jlimit (-ceiling, ceiling, io[ch][i] * guardGain);
+                biggest = juce::jmin (ceiling, biggest * guardGain);
+            }
+        }
+        else
+        {
+            guardGain = 1.0f;
         }
         meter = biggest > meter ? biggest : meter * meterFall;
     }

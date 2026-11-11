@@ -68,7 +68,7 @@ private:
 
         ui::ParamChoice sourceVoice, modelVoice, range, precision;
         ui::ParamSlider pulse, breathHp;
-        ui::ParamToggle levelMatch;
+        ui::ParamToggle levelMatch, peakGuard;
 
         juce::Label hintLine;
         juce::String latencyShown;

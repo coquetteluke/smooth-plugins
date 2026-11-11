@@ -30,10 +30,12 @@ private:
 };
 
 // Parameters, presets, Mix, Bypass and Output around the formant engine. All the sound shaping lives in src/formant.
-class PluginProcessor final : public juce::AudioProcessor
+class PluginProcessor final : public juce::AudioProcessor,
+                              private juce::AudioProcessorParameter::Listener
 {
 public:
     PluginProcessor();
+    ~PluginProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -77,6 +79,9 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
     formant::FormantEngine::Controls readControls() const noexcept;
     void render (juce::AudioBuffer<float>&, bool forceBypass) noexcept;
+    void clearState();
+    void parameterValueChanged (int, float newValue) override;
+    void parameterGestureChanged (int, bool) override {}
 
     formant::FormantEngine engine;
 
@@ -94,13 +99,19 @@ private:
     std::atomic<float>* mix = nullptr;
     std::atomic<float>* outputGain = nullptr;
     std::atomic<float>* levelMatch = nullptr;
+    std::atomic<float>* peakGuard = nullptr;
     juce::AudioParameterBool* bypass = nullptr;
+    // When Bypass last went from off to on, on juce::Time's millisecond clock. See reset().
+    std::atomic<double> bypassSwitchedOnAtMs { -1.0e12 };
+    std::atomic<bool> bypassWasOn { false };
 
     juce::SmoothedValue<float> mixSmoothed, bypassMix, gainSmoothed;
     std::array<std::vector<float>, 2> dryDelay;
     juce::AudioBuffer<float> dryOut;
     int dryPos = 0, dryLength = 0;
     float meterPeak = 0.0f, meterFall = 0.999f;
+    // Peak Guard: the highest input peak since the last reset, and the gain it is holding the output down by.
+    float heldInputPeak = 0.0f, guardGain = 1.0f, guardRelease = 0.0f;
     int currentProgram = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)

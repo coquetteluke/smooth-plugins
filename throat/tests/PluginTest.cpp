@@ -879,6 +879,121 @@ static void testCpu (const std::vector<float>& speech)
     timeIt ({ { "length", 1.3f }, { "width", 1.5f }, { "width5", 0.6f }, { "breath", 50.0f }, { "pulse", 30.0f }, { "precision", 0.0f } }, "CPU, everything on");
 }
 
+// A host that switches its own bypass on reaches the plug-in through the AU wrapper, which sets the Bypass parameter and calls reset()
+// straight after it. Limits written before the fix was measured: no hole (0.3.1 gave 32 ms of silence there), and the delayed input
+// from 100 ms after the switch.
+static void testHostBypassSwitch()
+{
+    const double sr = 48000.0;
+    const auto x = lab::voice (lab::schwa(), sr, 2.0, 110.0, 130.0);
+    {
+        PluginProcessor p;
+        apply (p, { { "length", 1.3f } });
+        prepare (p, 2, sr, 512);
+        const int d = p.getLatencySamples(), onBlock = 60, at = onBlock * 512;
+        auto out = render (p, x, 512, nullptr, [&] (int idx)
+        {
+            if (idx != onBlock) return;
+            p.apvts.getParameter ("bypass")->setValueNotifyingHost (1.0f);
+            p.reset();
+        });
+        double lowest = 1.0e9;
+        for (int a = at; a + 240 <= at + 2880; a += 240)
+            lowest = std::min (lowest, toDb (rms (out.getReadPointer (0) + a, 240)) - toDb (rms (x.data() + a - d, 240)));
+        check (lowest >= -6.0, "Host bypass switched on under audio: quietest 5 ms of the next 60 ms against the delayed input", lowest, "dB");
+        double diff = 1.0e-30, ref = 1.0e-30;
+        for (int i = at + 4800; i < (int) x.size(); ++i)
+        {
+            const double e = (double) out.getSample (0, i) - x[(size_t) (i - d)];
+            diff += e * e; ref += (double) x[(size_t) (i - d)] * x[(size_t) (i - d)];
+        }
+        check (10.0 * std::log10 (diff / ref) <= -100.0, "Host bypass switched on under audio: delayed input from 100 ms after, difference", 10.0 * std::log10 (diff / ref), "dB");
+    }
+    // Any other reset still clears everything: one that comes well after Bypass went on, and one with Bypass off.
+    for (int bypassed : { 1, 0 })
+    {
+        PluginProcessor p;
+        apply (p, { { "length", 1.3f }, { "bypass", (float) bypassed } });
+        prepare (p, 2, sr, 512);
+        render (p, x, 512);
+        juce::Thread::sleep (40);
+        p.reset();
+        const std::vector<float> quiet (9600, 0.0f);
+        auto out = render (p, quiet, 512);
+        const double pk = peak (out.getReadPointer (0), out.getNumSamples());
+        check (pk == 0.0, bypassed ? "A reset 40 ms after Bypass went on clears the delay, peak after it" : "A reset with Bypass off clears the delay, peak after it", pk);
+    }
+}
+
+// A preset chosen while audio plays, and Neutral chosen again 2 s later. 0.3.1 let the level run up to 8 dB over for about a tenth
+// of a second on a real vocal, because the gain moved in 40 ms and the slow part of the level match held the old setting's average. Limit written before the fix was measured:
+// no 10 ms frame of the half second after either move more than 3 dB over or under the input's level in the same frame.
+static void testMoveLevel()
+{
+    const double sr = 48000.0;
+    const auto x = lab::voice (lab::vowelA(), sr, 4.0, 110.0, 130.0);
+    PluginProcessor names;
+    for (const char* preset : { "Giant", "Tiny", "Big Chest", "Rounded Lips" })
+    {
+        int program = -1;
+        for (int i = 0; i < names.getNumPrograms(); ++i) if (names.getProgramName (i) == preset) program = i;
+        PluginProcessor p;
+        prepare (p, 2, sr, 512);
+        const int d = p.getLatencySamples(), thereBlock = 94, backBlock = 281;
+        auto out = render (p, x, 512, nullptr, [&] (int idx)
+        {
+            if (idx == thereBlock) p.setCurrentProgram (program);
+            if (idx == backBlock) p.setCurrentProgram (0);
+        });
+        double over = -1.0e9, under = -1.0e9;
+        for (int at : { thereBlock * 512, backBlock * 512 })
+            for (int a = at; a + 480 <= at + 24000; a += 480)
+            {
+                const double change = toDb (rms (out.getReadPointer (0) + a, 480)) - toDb (rms (x.data() + a - d, 480));
+                over = std::max (over, change); under = std::max (under, -change);
+            }
+        check (program >= 0 && over <= 3.0, std::string ("Preset ") + preset + " chosen under audio and Neutral chosen again: highest 10 ms frame over the input", over, "dB");
+        check (program >= 0 && under <= 3.0, std::string ("Preset ") + preset + " chosen under audio and Neutral chosen again: lowest 10 ms frame under the input", under, "dB");
+    }
+}
+
+// Peak Guard, new in 0.4.0 and off by default. Limits written before it was measured: with it on the output never peaks higher than
+// the input has, nothing passes 0 dBFS on a take that peaks at -0.1 dBFS, the level falls by no more than the peak it took off plus
+// 0.5 dB, and with nothing to hold it changes nothing.
+static void testPeakGuard()
+{
+    const double sr = 48000.0;
+    auto x = lab::voice (lab::vowelA(), sr, 3.0, 110.0, 130.0);
+    const double hot = std::pow (10.0, -0.1 / 20.0), was = peak (x.data(), (int) x.size());
+    for (auto& v : x) v = (float) (v * hot / was);
+    const double inPeak = peak (x.data(), (int) x.size());
+    const int skip = (int) (0.2 * sr), n = (int) x.size() - skip;
+    struct Case { const char* name; Settings s; };
+    const Case cases[] = { { "Length 0.70", { { "length", 0.7f } } }, { "Length 1.30", { { "length", 1.3f } } },
+                           { "Length 0.62, Width 0.75, Model Loud", { { "length", 0.62f }, { "width", 0.75f }, { "modelVoice", 2.0f } } } };
+    for (const auto& c : cases)
+    {
+        auto guarded = c.s;
+        guarded.push_back ({ "peakGuard", 1.0f });
+        const auto off = run (x, c.s, sr), on = run (x, guarded, sr);
+        const double pOff = peak (off.data(), (int) off.size()), pOn = peak (on.data(), (int) on.size());
+        info (std::string ("Hot voice, ") + c.name + ": peak with Peak Guard off", toDb (pOff), "dBFS");
+        check (pOn <= inPeak, std::string ("Hot voice, ") + c.name + ": Peak Guard on, output peak against the input's", toDb (pOn) - toDb (inPeak), "dB");
+        int over = 0;
+        for (float v : on) over += std::abs (v) > 1.0f ? 1 : 0;
+        check (over == 0, std::string ("Hot voice, ") + c.name + ": Peak Guard on, samples over 0 dBFS", over, "");
+        const double fell = toDb (rms (off.data() + skip, n)) - toDb (rms (on.data() + skip, n));
+        const double took = std::max (0.0, toDb (pOff) - toDb (inPeak));
+        check (fell <= took + 0.5 && fell >= -0.01, std::string ("Hot voice, ") + c.name + ": Peak Guard lowers the level by (it took " + std::to_string (took).substr (0, 4) + " dB off the peak)", fell, "dB");
+    }
+    const auto neutral = run (x, { { "peakGuard", 1.0f } }, sr);
+    check (nullDb (x, neutral, skip, (int) x.size()) <= -100.0, "Peak Guard on at neutral settings, difference from the input", nullDb (x, neutral, skip, (int) x.size()), "dB");
+    // Nothing to hold: at Mix 0 the output is the delayed input, which never passes its own highest peak, so every sample is left alone.
+    const Settings plain { { "length", 1.1f }, { "mix", 0.0f } }, plainGuarded { { "length", 1.1f }, { "mix", 0.0f }, { "peakGuard", 1.0f } };
+    const auto a = run (x, plain, sr), b = run (x, plainGuarded, sr);
+    check (nullDb (a, b, 0, (int) a.size()) <= -200.0, "Peak Guard on with no peak to hold (Mix 0): difference from Peak Guard off", nullDb (a, b, 0, (int) a.size()), "dB");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -898,6 +1013,7 @@ int main()
     }
 
     testLatency();
+    testHostBypassSwitch();
     testNeutral (speech);
     testLength (lab::schwa(), "male neutral vowel", 80.0, 125.0);
     testLength (lab::vowelA(), "male ah", 80.0, 125.0);
@@ -918,6 +1034,8 @@ int main()
     testRates();
     testStereo();
     testLevelMatchAndOutput();
+    testMoveLevel();
+    testPeakGuard();
     testPresets (speech[0].second);
     testCpu (speech[0].second);
     return finish();

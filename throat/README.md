@@ -13,7 +13,7 @@ The tube is your singer's vocal tract seen from the side: cords at the bottom, l
 - Drag a point out or in for width, and along the tube for its place. Shift gives a finer drag. Double-click resets a point. Reset puts Length, Width and all five points back to the singer's own.
 - Under the bend: pitch and F1 to F5 in Hz, original against model, above the two formant curves. Pitch stays the same in both rows.
 - The table under the tube holds every point's numbers. Click one to type, or drag it up and down.
-- Advanced holds the voice types, Pulse, Air tone (Breath High Pass), Range, Precision and Level Match.
+- Advanced holds the voice types, Pulse, Air tone (Breath High Pass), Range, Precision, Level Match and Peak Guard.
 - Drag the corner to resize. The size and whether Advanced is open are saved with the session, and nothing else is added.
 
 The live shape is a picture of the formants through a simple tube formula, compressed to fit. It is the same physics the engine uses, but it is not a measurement of a real throat, and it drives nothing in the sound. Pictures are in `docs/window`.
@@ -36,7 +36,8 @@ Ratios read as plain numbers, where 1.00 is the singer's own. Between 0.80 and 1
 - **Mix** (0 to 100 %, default 100): blend with the dry signal, delayed to match. The wet path has no phase change, so it blends without combing.
 - **Output Gain** (-24 to +12 dB, default 0).
 - **Level Match** (on or off, default on): holds the level steady as formants and the voice type change. About 150 ms from the model, then about 2 s from the real spectrum.
-- **Bypass**: fades to the input, delayed by the same amount. Takes Output Gain out too.
+- **Bypass**: fades to the input, delayed by the same amount. Takes Output Gain out too. A host that switches its own bypass gets the same fade, with no gap.
+- **Peak Guard** (on or off, default off): moving formants changes the shape of the wave, so a peak can come out higher than it went in at the same level. On, the output is held at or under the highest peak the input has had since playback started (times Output Gain): the gain drops at once on a sample that would pass it and comes back over about 100 ms. A take that did not clip going in then cannot clip coming out. Off, nothing is added and the sound is as before. No preset changes it.
 
 Read only, for a host to read by name. It never writes automation and is never saved:
 

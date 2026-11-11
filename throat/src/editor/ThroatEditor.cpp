@@ -258,7 +258,8 @@ ThroatEditor::Panel::Panel (ThroatEditor& e, PluginProcessor& p)
       precision (p.apvts, "precision", "Precision", "How narrow the model's formants can be. Try Extreme for big changes or if you hear whistling."),
       pulse (p.apvts, "pulse", "Pulse", "How long the vocal cords stay open. Wider is darker and softer, narrower is brighter.", Kind::row, Unit::signedPercent),
       breathHp (p.apvts, "breathHp", "Air tone", "The breath sits above this. Low is raspy, high is whispery.", Kind::row, Unit::hz),
-      levelMatch (p.apvts, "levelMatch", "Level match", "Keeps the level steady as the throat changes.", ParamToggle::Kind::row)
+      levelMatch (p.apvts, "levelMatch", "Level match", "Keeps the level steady as the throat changes.", ParamToggle::Kind::row),
+      peakGuard (p.apvts, "peakGuard", "Peak guard", "Holds the output's peaks at or under the input's highest, so a take that did not clip going in cannot clip coming out.", ParamToggle::Kind::row)
 {
     setOpaque (true);
 
@@ -272,7 +273,7 @@ ThroatEditor::Panel::Panel (ThroatEditor& e, PluginProcessor& p)
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &view, presets.get(), advancedHeader.get(), resetButton.get(), &bypass,
                                                                         &length, &width, &breath, &mix, &output,
-                                                                        &sourceVoice, &modelVoice, &range, &precision, &pulse, &breathHp, &levelMatch })
+                                                                        &sourceVoice, &modelVoice, &range, &precision, &pulse, &breathHp, &levelMatch, &peakGuard })
         addAndMakeVisible (c);
 
     for (int i = 0; i < TractView::numPoints; ++i)
@@ -388,7 +389,7 @@ int ThroatEditor::Panel::countAdvancedChanges() const
 {
     int changed = 0;
 
-    for (const char* id : { "sourceVoice", "modelVoice", "range", "precision", "pulse", "breathHp", "levelMatch" })
+    for (const char* id : { "sourceVoice", "modelVoice", "range", "precision", "pulse", "breathHp", "levelMatch", "peakGuard" })
     {
         const auto* p = processor.apvts.getParameter (id);
         changed += std::abs (p->getValue() - p->getDefaultValue()) > 1.0e-4f ? 1 : 0;
@@ -423,6 +424,13 @@ void ThroatEditor::Panel::layoutSide()
         c->setAlpha (a);
         next (*c, 34, 2);
     }
+
+    // The two switches share the last row, so the column keeps its height.
+    const int half = (sideWidth - 20) / 2;
+    peakGuard.setVisible (show);
+    peakGuard.setAlpha (a);
+    peakGuard.setBounds (levelMatch.getBounds().withLeft (sideLeft + sideWidth - half));
+    levelMatch.setBounds (levelMatch.getBounds().withWidth (half));
 }
 
 void ThroatEditor::Panel::resized()

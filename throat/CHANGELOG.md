@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0, 2026-11-11
+
+From the real vocal re-test on the Rode takes. A still setting sounds exactly as in 0.3.1, sample for sample: the default, every preset, and saved sessions.
+
+- Fixed: a host that switches its own bypass on under audio got 32 ms of silence and a click, and the engine started again from nothing. The AU wrapper resets the plug-in in the same call that sets Bypass, and that reset emptied the delay line. A reset that comes right behind Bypass going on is now left out, so the host's bypass fades like the Bypass control does. Every other reset clears as before.
+- Fixed: choosing a preset or moving a control while audio plays let the level jump for about a tenth of a second (up to 8 dB on a real vocal), because the gain moved in 40 ms and the slow part of the level match still held the old setting's two second average. While a control is moving the level match now follows frame by frame.
+- New: Peak Guard, in Advanced, off by default. Moving formants changes the shape of the wave, so peaks can come out higher than they went in at the same level (up to 3 dB over full scale on a take that peaks just under it). On, the output never peaks higher than the input has. No preset changes it, and off it adds nothing.
+
 ## 0.3.1, 2026-11-07
 
 Renamed to Throat, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.

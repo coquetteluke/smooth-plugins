@@ -15,8 +15,8 @@ namespace
         float random = 0.0f, randomRate = 1.0f;
         bool unsync = false;
         float degrade = 0.0f, degradeRate = 2.0f, noise = 0.0f;
-        // Added in 0.4.0. Off for every preset that existed before it.
-        bool clean = false;
+        // Added in 0.4.0. On in every preset since 0.5.0 (Luke left this call to the lead on 2026-11-11).
+        bool clean = true;
     };
 
     constexpr float lowOff = TapeChorusEngine::lowCutOffHz, highOff = TapeChorusEngine::highCutOffHz;
@@ -97,8 +97,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     floatParam ("noise", "Noise", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, "%");
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "noiseGate", 1 }, "Noise Gate", true));
 
-    // Added in 0.4.0, last. Off is the sound of 0.3.1.
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "clean", 1 }, "Clean", false));
+    // Added in 0.4.0, last. Off is the sound of 0.3.1. On in a new instance since 0.5.0; a session saved before 0.4.0 has no Clean in
+    // it and opens with Clean off (see setStateInformation), so it sounds as it did.
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "clean", 1 }, "Clean", true));
     return layout;
 }
 
@@ -292,6 +293,17 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             advancedOpen.store (xml->getBoolAttribute ("advancedOpen", false), std::memory_order_relaxed);
             xml->removeAttribute ("windowWidth");
             xml->removeAttribute ("advancedOpen");
+            // A session saved before 0.4.0 has no Clean in it. A control missing from a session goes to its default, and Clean's default is
+            // on since 0.5.0, so such a session is given Clean off here: it opens with the sound it was saved with.
+            bool hasClean = false;
+            for (auto* c : xml->getChildIterator())
+                if (c->getStringAttribute ("id") == "clean") hasClean = true;
+            if (! hasClean)
+            {
+                auto* c = xml->createNewChildElement ("PARAM");
+                c->setAttribute ("id", "clean");
+                c->setAttribute ("value", 0.0);
+            }
             applySafeState (apvts, *xml);
         }
 }

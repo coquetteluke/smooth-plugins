@@ -92,6 +92,7 @@ public:
         // Smoothers run once per tick.
         cSlow = coef (0.12); cMid = coef (0.06); cFast = coef (0.03); cVoice = coef (0.25); cVoiceSoft = coef (0.08); cVoiceFade = coef (0.008);
         gainSlew = (float) (tickSec / 0.03);   // a voice fades in or out in 30 ms
+        cMixSoft = coef (0.008);
         mixSlew = (float) (tickSec / 0.02);
 
         // Fixed filters
@@ -105,6 +106,7 @@ public:
         wowHz = p.wowHz; flutterHz = p.flutterHz;
         setWowFilters(); setFlutterFilters();
         loopLpA = 1.0 - std::exp (-juce::MathConstants<double>::twoPi * 12000.0 / sr);
+        topLowA = 1.0 - std::exp (-juce::MathConstants<double>::twoPi * topSplitHz / sr);
         loopHpA = 1.0 - std::exp (-juce::MathConstants<double>::twoPi * 40.0 / sr);
         meterDecay = std::exp (-1.0 / (0.3 * sr));
         gateAttack = 1.0 - std::exp (-1.0 / (0.005 * sr));
@@ -138,7 +140,7 @@ public:
 
         depth = p.depthMs; rate = p.rateHz; centre = p.delayMs; wow = p.wowPct * 0.01f * maxWowMs; flutter = p.flutterPct * 0.01f * maxFlutterMs;
         spread = p.spreadPct * 0.01f; drive = p.satPct * 0.01f * maxSatDrive; toneG = juce::Decibels::decibelsToGain (p.toneDb);
-        mix = p.mixPct * 0.01f;
+        mix = mixAim = p.mixPct * 0.01f;
         on = p.bypass ? 0.0f : 1.0f;
         inGain = inGainNext = 1.0f + on * (inRaw - 1.0f);
         outGain = outGainNext = 1.0f + on * (outRaw - 1.0f);
@@ -284,6 +286,17 @@ private:
     static float gainFromDb (float db) { return std::abs (db) < 0.005f ? 1.0f : juce::Decibels::decibelsToGain (db); }
 
     static float feedbackFrom (const Params& p) { return juce::jlimit (0.0f, maxFeedbackPct, p.feedbackPct) * 0.01f; }
+
+    // Near the top of Feedback the voices come down (Luke left this call to the lead on 2026-11-11): at Feedback 90 the peaks of a voice
+    // read up to 3.8 dB over the dry's on his takes, where the limit is 3. The loop passes lows more fully than highs (it rolls off the
+    // top), so the level held as Feedback rises was right for neither: white noise came out 1.9 dB under Feedback 0 and darker noise 0.4 dB
+    // over it. So what goes onto the tape is split at 1 kHz, and at Feedback 90 the band under it comes down 2 dB and the band over it
+    // comes up 0.3 dB: a voice comes down about 0.9 dB, white noise stays where it was. Exactly 1 at Feedback 70 and below, then smoothly
+    // (from a slope of 0 at 70) to those amounts at 90.
+    static constexpr double topLowDb = 2.0, topHighDb = 0.3, topSplitHz = 1000.0;
+    static double feedbackTopShare (double fb) { const double s = std::min (1.0, (fb - 0.7) / 0.2); return s * s; }
+    static double feedbackTopLow (double fb) { return fb <= 0.7 ? 1.0 : std::pow (10.0, -topLowDb * feedbackTopShare (fb) / 20.0); }
+    static double feedbackTopHigh (double fb) { return fb <= 0.7 ? 1.0 : std::pow (10.0, topHighDb * feedbackTopShare (fb) / 20.0); }
     static bool lowCutIsOn (const Params& p) { return p.lowCutHz > lowCutOffHz + 0.01f; }
     static bool highCutIsOn (const Params& p) { return p.highCutHz < highCutOffHz - 0.5f; }
     static float noiseGain (const Params& p)
@@ -525,7 +538,11 @@ private:
         toneG = toneGNext;
         smooth (toneGNext, juce::Decibels::decibelsToGain (target.toneDb), cFast);
         mixPrev = mix; onPrev = on;
-        slew (mix, target.mixPct * 0.01f, mixSlew);
+        // Two stages, as a voice fades: a straight glide, then a follower, so Mix starts and ends its move gently. Up to 0.4.0 it was the
+        // straight glide alone, with a corner at each end that left a tick on a steady tone (70 to 77 dB under a 1 kHz tone), and on Luke's
+        // blind take 11 a corner the realvox tone twin picked out, 6 samples before one of its control steps, which it then missed.
+        slew (mixAim, target.mixPct * 0.01f, mixSlew);
+        smooth (mix, mixAim, cMixSoft);
         slew (on, target.bypass ? 0.0f : 1.0f, mixSlew);
         fading = on != onPrev;
         dryGain = dryGainNext; wetGain = wetGainNext;
@@ -736,6 +753,7 @@ private:
             const double shareNow = (double) (tapShare + tp * (tapShareNext - tapShare));
             // 0.92 because the loop rolls off the very top: this splits the difference between white noise and darker sounds like a voice.
             const double inputScale = std::sqrt (1.0 - 0.92 * (double) fbNow * fbNow * shareNow);
+            const double topLow = feedbackTopLow ((double) fbNow), topHigh = feedbackTopHigh ((double) fbNow);
             const float hissNow = (hiss + tp * (hissNext - hiss)) * (gate + tp * (gateNext - gate));
             const float hissA = uniform (hissRngA), hissB = uniform (hissRngB);
             const float hissTo[2] = { hissNow * hissA, hissNow * (hissCos * hissA + hissSin * hissB) };
@@ -759,7 +777,10 @@ private:
                 st.dcX = deY; st.dcY = dcStandard; st.dcYClean = dcClean;
                 const float cleanNow = cleanAmt + tp * (cleanAmtNext - cleanAmt);
                 const double dc = cleanNow > 0.0f ? dcStandard + (double) cleanNow * (dcClean - dcStandard) : dcStandard;
-                const float onTape = (float) (inputScale * (dc + (double) hissTo[ch]) + (double) (fbNow * backTo[ch]));
+                double toTape = dc + (double) hissTo[ch];
+                st.tapeLow += topLowA * (toTape - st.tapeLow);   // always runs, so it is ready the moment Feedback passes 70
+                if (topLow != 1.0) toTape = topLow * st.tapeLow + topHigh * (toTape - st.tapeLow);
+                const float onTape = (float) (inputScale * toTape + (double) (fbNow * backTo[ch]));
                 line[(size_t) ch][(size_t) writeIndex] = onTape;
                 tapeMost = std::max (tapeMost, std::abs (onTape));
             }
@@ -908,7 +929,7 @@ private:
 
     struct ChannelState
     {
-        double pre = 0, deIn = 0, deOut = 0, dcX = 0, dcY = 0, dcYClean = 0, toneZ = 0, loopLp = 0, loopHp = 0;
+        double pre = 0, deIn = 0, deOut = 0, dcX = 0, dcY = 0, dcYClean = 0, toneZ = 0, loopLp = 0, loopHp = 0, tapeLow = 0;
         Cut low, high;
     };
 
@@ -919,7 +940,7 @@ private:
     double wetLatency = 0.0, minDelayMs = 1.0;
     std::unique_ptr<FastOversampler> os;
     CleanOversampler cleanOs;
-    float onPrev = 1.0f, mixPrev = 0.0f, inRawPrev = 1.0f, outRawPrev = 1.0f;
+    float onPrev = 1.0f, mixPrev = 0.0f, mixAim = 0.0f, inRawPrev = 1.0f, outRawPrev = 1.0f;
     bool fading = false;
     float cleanAmt = 0.0f, cleanAmtNext = 0.0f;
     bool cleanRunning = false, standardRunning = true;
@@ -927,8 +948,8 @@ private:
     double wowSmoothC = 0.0, flutSmoothC = 0.0, wowSmoothA = 0.0, wowSmoothB = 0.0, flutSmoothA = 0.0, flutSmoothB = 0.0;
     std::array<std::vector<float>, 2> line;
     std::array<ChannelState, 2> chan;
-    double preB0 = 1, preB1 = 0, preA1 = 0, dcR = 0.999, dcRClean = 0.9999, toneA = 0.1;
-    double cSlow = 0.1, cMid = 0.1, cFast = 0.1, cVoice = 0.1, cVoiceSoft = 0.1, cVoiceFade = 0.1;
+    double preB0 = 1, preB1 = 0, preA1 = 0, dcR = 0.999, dcRClean = 0.9999, toneA = 0.1, topLowA = 0.1;
+    double cSlow = 0.1, cMid = 0.1, cFast = 0.1, cVoice = 0.1, cVoiceSoft = 0.1, cVoiceFade = 0.1, cMixSoft = 0.1;
     float gainSlew = 0.1f, mixSlew = 0.1f;
     double wowNoiseC = 0, flutNoiseLoC = 0, flutNoiseHiC = 0;
     double lfo = 0, wowA = 0, wowB = 0, flutA = 0, flutB = 0, wowNoise = 0, flutLo = 0, flutHi = 0;

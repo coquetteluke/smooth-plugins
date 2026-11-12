@@ -1205,6 +1205,36 @@ void testVocoder()
             }
         check (worstBurst <= limits::vocoderLevelDb, "Vocoder on, notes starting out of a pause with a room under it and an S before: 10 ms level in a note's first 100 ms against its steady level, worst (" + burstAt + ")", worstBurst, "dB");
     }
+    // On from the start, the first note after a room (2026-11-12, 1.2.1 Robot Stack on Luke's take 06: +2.6 dBFS at 0.69 s, the first
+    // note; the gain learnt on the room's noise stood in for the voiced one). Written before the change: the first note's 10 ms level in
+    // its first 100 ms against its steady level, at most limits::vocoderLevelDb, after 0.6 s of room (about -62 dBFS) or of silence.
+    {
+        double worst = -100.0;
+        std::string worstName;
+        for (double hz : { 110.0, 196.0, 294.0 })
+            for (double room : { 0.0, 0.0008 })
+                for (int wave : { 0, 2 })
+                {
+                    std::vector<double> f0 ((size_t) (0.6 * SR), 0.0);
+                    const auto nt = voice::steady (hz, 1.5, SR);
+                    f0.insert (f0.end(), nt.begin(), nt.end());
+                    auto x = voice::synth (f0, voice::vowelA, SR, -35.0);
+                    for (size_t i = 0; i < (size_t) (0.6 * SR); ++i) x[i] = 0.0f;
+                    std::mt19937 g (9);
+                    std::normal_distribution<double> gauss (0.0, 1.0);
+                    for (auto& v : x) v += (float) (room * gauss (g));
+                    auto p = with ({ { "vocoderOn", 1 }, { "vocoderMix", 60 }, { "vocoderWave", (float) wave } });
+                    const auto out = left (render (*p, x, 256));
+                    const int a = (int) (0.6 * SR) + p->getLatencySamples();
+                    const double steady = toDb (rms (out.data() + a + (int) (0.5 * SR), (int) (0.8 * SR)));
+                    for (int f = 0; f < 10; ++f)
+                    {
+                        const double b = toDb (rms (out.data() + a + f * 480, 480)) - steady;
+                        if (b > worst) { worst = b; worstName = std::to_string ((int) hz) + " Hz, " + (room > 0.0 ? "room" : "silence") + ", Wave " + std::to_string (wave); }
+                    }
+                }
+        check (worst <= limits::vocoderLevelDb, "Vocoder on from the start: the first note's 10 ms level in its first 100 ms against its steady level, worst (" + worstName + ")", worst, "dB");
+    }
     // Switched on mid-note on bright sources, whose level match sits far from where it starts (2026-11-12: on Luke's take 06 the tone came in
     // at -7.6 dBFS peak for its first 20 ms against -20 to -24 dBFS after, about 13 dB over). Written before any change. A saw at 110 to
     // 330 Hz (quiet and loud) and say singing: the tone alone (output minus Vocoder off) over its first 100 ms against its own steady level,

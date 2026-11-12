@@ -59,7 +59,7 @@ PASS  no click when Vocoder On jumps, biggest step = 0.018
 PASS  no click when Vocoder Mix jumps, biggest step = 0.005 
 PASS  no click when Vocoder Octave jumps, biggest step = 0.005 
 PASS  no click when Vocoder Wave jumps, biggest step = 0.005 
-PASS  no click when Distortion On jumps, biggest step = 0.007 
+PASS  no click when Distortion On jumps, biggest step = 0.005 
 PASS  no click when Distortion Type jumps, biggest step = 0.005 
 PASS  no click when Distortion Drive jumps, biggest step = 0.005 
 PASS  no click when Distortion Tone jumps, biggest step = 0.005 
@@ -273,19 +273,21 @@ PASS  Vocoder switched on at the loudest moments of say speech and singing: step
 PASS  Vocoder tone stops when the voice stops, level = -240.000 dBFS
 INFO  Distortion Drive 0, Tube: THD 1.52 %, level change -0.00 dB
 PASS  Distortion Drive 0, THD on a -18 dBFS tone = 1.523 %
-INFO  Distortion Drive 25, Tube: THD 4.19 %, level change 0.00 dB
-INFO  Distortion Drive 50, Tube: THD 10.48 %, level change 0.01 dB
-INFO  Distortion Drive 75, Tube: THD 24.48 %, level change 0.00 dB
-INFO  Distortion Drive 100, Tube: THD 37.99 %, level change -0.00 dB
+INFO  Distortion Drive 25, Tube: THD 4.19 %, level change -0.00 dB
+INFO  Distortion Drive 50, Tube: THD 10.48 %, level change -0.01 dB
+INFO  Distortion Drive 75, Tube: THD 24.48 %, level change -0.00 dB
+INFO  Distortion Drive 100, Tube: THD 37.99 %, level change 0.00 dB
 PASS  Distortion Drive 100, THD on a -18 dBFS tone = 37.988 %
 PASS  Distortion THD rises with every step of Drive
 PASS  Distortion level holds within the limit across Drive, unless a line above says otherwise
-PASS  Distortion on a voice keeps its level within a few dB (+/-3, the real vocal check), Drive 0 to 50, every Type, peaks -6 to -30 dBFS, worst (peaks -30 dBFS, Drive 50, Type 1) = 0.010 dB
+PASS  Distortion on a voice keeps its level within a few dB (+/-3, the real vocal check), Drive 0 to 50, every Type, peaks -6 to -30 dBFS, worst (peaks -6 dBFS, Drive 50, Type 2) = 0.042 dB
+PASS  Distortion switched on mid-note: step in the 30 ms after against the second either side, worst (peaks -6 dBFS, Drive 30, Type 0) = 1.002 
+PASS    10 ms level in the first 300 ms against Distortion on all along, worst (peaks -6 dBFS, Drive 60, Type 1) = -0.332 dB
 PASS  Distortion Type Clip, Drive 100, THD = 40.386 %
 PASS  Distortion Type Fold, Drive 100, THD = 223.876 %
-PASS  Distortion Drive 50, 5.2 kHz tone: non-harmonic energy against the total = -55.337 dB
-PASS  Distortion Tone 800 Hz against 18 kHz takes the 5th harmonic down by = 7.995 dB
-PASS  Distortion Mix 50 has less THD than Mix 100, measured = 18.340 %
+PASS  Distortion Drive 50, 5.2 kHz tone: non-harmonic energy against the total = -55.350 dB
+PASS  Distortion Tone 800 Hz against 18 kHz takes the 5th harmonic down by = 7.981 dB
+PASS  Distortion Mix 50 has less THD than Mix 100, measured = 18.344 %
 PASS  Filter High Pass at 880 Hz, tone at 880 Hz = -3.012 dB
 PASS    tone two octaves under the cutoff = -24.117 dB
 PASS  Filter Low Pass at 220 Hz, tone at 220 Hz = -3.012 dB
@@ -373,8 +375,8 @@ INFO  Doubler steady step 0.00538, switching step 0.00511, steady bend 0.000271,
 PASS  Doubler on and off does not click, biggest step = 0.005 
 INFO  Vocoder steady step 0.00936, switching step 0.01693, steady bend 0.006226, switching bend 0.006808
 PASS  Vocoder on and off does not click, biggest step = 0.017 
-INFO  Distortion steady step 0.00447, switching step 0.00732, steady bend 0.000126, switching bend 0.000206
-PASS  Distortion on and off does not click, biggest step = 0.007 
+INFO  Distortion steady step 0.00447, switching step 0.00458, steady bend 0.000126, switching bend 0.000199
+PASS  Distortion on and off does not click, biggest step = 0.005 
 INFO  Filter steady step 0.00360, switching step 0.00361, steady bend 0.000104, switching bend 0.000107
 PASS  Filter on and off does not click, biggest step = 0.004 
 INFO  Ring steady step 0.00360, switching step 0.00360, steady bend 0.000146, switching bend 0.000146
@@ -389,7 +391,7 @@ PASS  Motion on, on a say voice: difference from off = 2.895 dB
 PASS  Harmony on, on a say voice: difference from off = -5.713 dB
 PASS  Doubler on, on a say voice: difference from off = -9.099 dB
 PASS  Vocoder on, on a say voice: difference from off = 0.342 dB
-PASS  Distortion on, on a say voice: difference from off = -15.864 dB
+PASS  Distortion on, on a say voice: difference from off = -15.861 dB
 PASS  Filter on, on a say voice: difference from off = 2.245 dB
 PASS  Ring on, on a say voice: difference from off = -4.376 dB
 PASS  Delay on, on a say voice: difference from off = -5.833 dB
@@ -403,7 +405,7 @@ PASS    both sides have signal = -17.951 dBFS
 PASS    and the same as mono in, mono out, difference = -240.000 dB
 PASS  mono in, stereo out is an accepted layout
 PASS  mono in, stereo out, all on: finite
-PASS  mono in, stereo out, all on: side against left = -1.463 dB
+PASS  mono in, stereo out, all on: side against left = -1.367 dB
 PASS  stereo in: a 12 dB louder left stays 12 dB louder = 12.041 dB
 PASS  all on: no playhead against a playhead from bar 1 at 120 BPM, difference = -240.000 dB
 PASS  all on: a playhead with no tempo falls back to 120 BPM, difference = -240.000 dB
@@ -412,8 +414,8 @@ PASS  all on: block 32 against 137, difference = -240.000 dB
 PASS  all on: prepareToPlay again gives the same output, difference = -240.000 dB
 PASS  all on: state saved and loaded gives the same output, difference = -240.000 dB
 PASS  all on: recovers after NaN, infinity and huge input, peak in the last second = 0.573 
-PASS  all on at 44100 Hz: finite, with signal, level = -18.134 dBFS
-PASS  all on at 96000 Hz: finite, with signal, level = -16.738 dBFS
+PASS  all on at 44100 Hz: finite, with signal, level = -15.222 dBFS
+PASS  all on at 96000 Hz: finite, with signal, level = -14.719 dBFS
 PASS  readings send nothing to the host while audio runs, parameter changes = 0.000 
 PASS  a reading is not automatable
 PASS  Detected Pitch reads the voice = 222.003 Hz
@@ -495,9 +497,9 @@ PASS  the smallest saved size lays out = 481.000
 PASS  Advanced saved open stays open
 PASS  window open and drawing against no window, must be exact zero, difference = -240.000 dB
 PASS  20 windows opened and closed with no audio
-PASS  40 windows opened, drawn and closed with audio running, blocks processed = 1007.000 
-INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 6.098 %
-PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 10.550 %
+PASS  40 windows opened, drawn and closed with audio running, blocks processed = 507.000 
+INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 2.687 %
+PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 4.535 %
 PASS  Alto/Tenor, held notes under its range, 78 to 92 Hz, output pitch error at instant speed, worst 95th percentile = 0.004 cents
 INFO    worst case is at = 92.499 Hz
 PASS  Alto/Tenor, 87 Hz with vibrato +/-30 cents and breath, output pitch error at instant speed, 95th percentile = 1.328 cents

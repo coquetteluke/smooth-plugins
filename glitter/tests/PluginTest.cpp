@@ -1205,6 +1205,42 @@ void testVocoder()
             }
         check (worstBurst <= limits::vocoderLevelDb, "Vocoder on, notes starting out of a pause with a room under it and an S before: 10 ms level in a note's first 100 ms against its steady level, worst (" + burstAt + ")", worstBurst, "dB");
     }
+    // Switched on mid-note on bright sources, whose level match sits far from where it starts (2026-11-12: on Luke's take 06 the tone came in
+    // at -7.6 dBFS peak for its first 20 ms against -20 to -24 dBFS after, about 13 dB over). Written before any change. A saw at 110 to
+    // 330 Hz (quiet and loud) and say singing: the tone alone (output minus Vocoder off) over its first 100 ms against its own steady level,
+    // in 10 ms frames, at most limits::vocoderLevelDb.
+    {
+        double worst = -100.0;
+        std::string worstName;
+        std::vector<std::pair<std::string, std::vector<float>>> sources;
+        for (double hz : { 110.0, 220.0, 330.0 })
+            for (double amp : { 0.02, 0.2 })
+            {
+                std::vector<float> x ((size_t) (3.0 * SR));
+                double ph = 0.0;
+                for (auto& v : x) { ph += hz * (1.0 + 0.003 * std::sin (ph * 0.0005)) / SR; ph -= std::floor (ph); v = (float) (amp * (2.0 * ph - 1.0)); }
+                sources.push_back ({ "saw " + std::to_string ((int) hz) + " Hz " + (amp < 0.1 ? "quiet" : "loud"), x });
+            }
+        sources.push_back ({ "held_kathy.wav", loadWav ("held_kathy.wav") });
+        for (const auto& [name, x] : sources)
+        {
+            const int onBlock = (int) (1.2 * SR / 256), t1 = onBlock * 256;
+            auto off = with ({ { "vocoderMix", 40 } });
+            auto on = with ({ { "vocoderOn", 0 }, { "vocoderMix", 40 } });
+            const auto a = left (render (*off, x, 256));
+            const auto b = left (render (*on, x, 256, nullptr, [&on, onBlock] (int idx) { if (idx == onBlock) setParam (*on, "vocoderOn", 1.0f); }));
+            std::vector<float> tone (b.size());
+            for (size_t i = 0; i < b.size(); ++i) tone[i] = b[i] - a[i];
+            if (t1 + (int) (1.2 * SR) > (int) tone.size()) continue;
+            const double steady = toDb (rms (tone.data() + t1 + (int) (0.4 * SR), (int) (0.8 * SR)));
+            for (int f = 0; f < 10; ++f)
+            {
+                const double d = toDb (rms (tone.data() + t1 + f * 480, 480)) - steady;
+                if (d > worst) { worst = d; worstName = name; }
+            }
+        }
+        check (worst <= limits::vocoderLevelDb, "Vocoder switched on mid-note on bright sources: the tone's 10 ms level in its first 100 ms against its steady level, worst (" + worstName + ")", worst, "dB");
+    }
     // Switched on during say speech and singing at its loudest voiced moments, the real vocal check's own rule (2026-11-12: on Luke's
     // take 06 the step in the 30 ms after the switch was 1.83 times the biggest step in the half second either side). Written before any
     // change: biggest step in the 30 ms after the switch over the biggest in the 0.5 s before and the 0.5 s after that, at most

@@ -621,7 +621,7 @@ static void testFeedback()
             // At Mix 50 the dry path joins in. The limit written first was 1.5 dB per step on both sides, and it is back for 10 of the
             // 12 steps (2026-11-12; it had been lowered to 0.3 dB for all 12 before the first commit).
             // The two left at 0.3 dB: 0 to 30% with the wet before the dry, either sign (measured 0.58 and 0.45 dB). Not a fault in the
-            // code: a model of this structure gives 0.74 and 0.43 dB there, and the other ten steps within 0.8 dB of what it gives. With
+            // code: a model of this structure gives 0.74 and 0.43 dB there, and the other ten steps within 1.1 dB of what it gives. With
             // the wet ahead the comb peaks are as high as on the late side but its lobes are broad, so the median rises with them. The
             // mirror of the late side would need echoes that run ahead of the wet, audio not yet in. Taking the first echo off the dry
             // path does not do it (0.91 dB in the model). What reaches 1.5 dB changes the default (Feedback 30, Mix 50) on the early half

@@ -456,12 +456,12 @@ static void testSaturation()
     // Level at the nominal -12 dBFS stays close at every drive. This is the standard curve, Clean off (the default up to 0.4.0). With
     // Clean on, the default since 0.5.0, quiet sound keeps its level exactly and a -12 dBFS tone can only come down: see testClean.
     {
-        const auto levelAt = [&] (float s)
+        const auto levelAt = [&] (float s, bool cleanOn = false)
         {
             PluginProcessor p;
             plain (p, 1);
             set (p, "saturation", s);
-            set (p, "clean", 0.0f);
+            set (p, "clean", cleanOn ? 1.0f : 0.0f);
             prepare (p, 2, sr, 512);
             std::vector<float> in (48000);
             sine (in.data(), 48000, 1000.0, sr, 0.25);
@@ -470,6 +470,8 @@ static void testSaturation()
         };
         const double change = levelAt (100.0f) - levelAt (0.0f);
         check (std::abs (change) < 3.0, "Saturation 100: level change of a -12 dBFS tone", change, "dB");
+        const double changeClean = levelAt (100.0f, true) - levelAt (0.0f, true);
+        check (std::abs (changeClean) < 3.0, "Clean on, Saturation 100: level change of a -12 dBFS tone", changeClean, "dB");
     }
     // Aliasing: a 5 kHz sine driven hard. Fold back would land on these frequencies, none a harmonic of 5 kHz.
     {
@@ -536,20 +538,21 @@ static void testSpread()
         double z1 = 0, z2 = 0;
         for (int i = 0; i < n; ++i) { z1 += a * (white[(size_t) i] - z1); z2 += a * (z1 - z2); in[(size_t) i] = (float) z2; }
     }
-    // Clean off, as up to 0.4.0. Clean on (the default since 0.5.0) keeps the voices' DC filter at 1 Hz in place of 6 Hz so that low notes
-    // are on time, and the 1 to 6 Hz part of this noise then reaches both sides alike, where no Spread can take it apart: the correlation
-    // with Clean on is written below each line.
+    // Clean off, as up to 0.4.0, and Clean on (the default since 0.5.0), each with the same limits. In 0.4.0 Clean kept the voices' DC
+    // filter at 1 Hz in place of 6 Hz so that low notes are on time, and the 1 to 6 Hz part of this noise then reached both sides alike,
+    // where no Spread can take it apart: 0.304, 0.301 and 0.331 at 4, 5 and 7 voices. Fixed in 0.5.0, see the DC filter in the engine.
     const auto cleanCorrelation = [&] (int voices, float spread)
     {
         PluginProcessor p;
         plain (p, voices);
         set (p, "depth", 1.5f);
         set (p, "spread", spread);
+        set (p, "clean", 1.0f);
         prepare (p, 2, sr, 512);
         auto out = render (p, in, 512);
         return correlation (out.getReadPointer (0) + 9600, out.getReadPointer (1) + 9600, n - 9600);
     };
-    double last = 2.0;
+    double last = 2.0, lastClean = 2.0;
     for (float s : { 0.0f, 25.0f, 50.0f, 75.0f, 100.0f })
     {
         PluginProcessor p;
@@ -564,7 +567,14 @@ static void testSpread()
         if (s == 0.0f) check (c > 0.999, tag, c);
         else if (s == 100.0f) check (c < 0.3 && c < last, tag, c);
         else check (c < last, tag, c);
-        info (std::string ("  the same with Clean on"), cleanCorrelation (2, s));
+        {
+            const double cc = cleanCorrelation (2, s);
+            const auto ctag = "Clean on, " + tag;
+            if (s == 0.0f) check (cc > 0.999, ctag, cc);
+            else if (s == 100.0f) check (cc < 0.3 && cc < lastClean, ctag, cc);
+            else check (cc < lastClean, ctag, cc);
+            lastClean = cc;
+        }
         last = c;
     }
     for (int voices : { 3, 4, 5, 6, 7, 8 })
@@ -578,7 +588,8 @@ static void testSpread()
         auto out = render (p, in, 512);
         const double c = correlation (out.getReadPointer (0) + 9600, out.getReadPointer (1) + 9600, n - 9600);
         check (c < 0.3, "Spread 100, " + std::to_string (voices) + " voices: correlation, dark noise", c);
-        info ("  the same with Clean on", cleanCorrelation (voices, 100.0f));
+        const double cc = cleanCorrelation (voices, 100.0f);
+        check (cc < 0.3, "Clean on, Spread 100, " + std::to_string (voices) + " voices: correlation, dark noise", cc);
         const double bal = rmsDb (out, 0, 9600) - rmsDb (out, 1, 9600);
         check (std::abs (bal) < 1.0, "Spread 100, " + std::to_string (voices) + " voices: left against right level", bal, "dB");
     }
@@ -673,7 +684,14 @@ static void testMix()
     check (std::abs ((wet - wetRef) + 8.343) < 0.05, "Mix 25: wet against Mix 100", wet - wetRef, "dB");
 
     // Noise level holds as Mix moves. White noise, Clean off as up to 0.4.0. With Clean on (the default since 0.5.0) the voices lose
-    // everything above about 20 kHz, which is a sixth of white noise's power (0.8 dB on its own): the reading is written below it.
+    // everything above about 20 kHz by design, which is a sixth of white noise's power: full-band white noise reads 1.1 dB under at Mix 100
+    // (written as a reading). So the Clean on twin holds the same 1 dB limit on the same white noise low-passed at 20 kHz before it goes in.
+    std::vector<float> in20 (in);
+    {
+        juce::IIRFilter lp[8];
+        for (auto& f : lp) f.setCoefficients (juce::IIRCoefficients::makeLowPass (sr, 20000.0, 0.7071));
+        for (auto& x : in20) for (auto& f : lp) x = f.processSingleSampleRaw (x);
+    }
     for (bool cleanOn : { false, true })
         for (float m : { 25.0f, 50.0f, 75.0f, 100.0f })
         {
@@ -686,7 +704,19 @@ static void testMix()
             auto out = render (p, in, 512);
             const double change = rmsDb (out, 0, 9600) - toDb (rms (in.data() + 9600, n - 9600));
             if (! cleanOn) check (std::abs (change) < 1.0, "Mix " + std::to_string ((int) m) + ": noise level against the input", change, "dB");
-            else info ("Clean on, Mix " + std::to_string ((int) m) + ": white noise level against the input (Clean stops 20 to 24 kHz)", change, "dB");
+            else
+            {
+                info ("Clean on, Mix " + std::to_string ((int) m) + ": full-band white noise level against the input (Clean removes everything above 20 kHz)", change, "dB");
+                PluginProcessor q;
+                plain (q, 2);
+                set (q, "depth", 1.5f);
+                set (q, "mix", m);
+                set (q, "clean", 1.0f);
+                prepare (q, 2, sr, 512);
+                auto o20 = render (q, in20, 512);
+                const double c20 = rmsDb (o20, 0, 9600) - toDb (rms (in20.data() + 9600, n - 9600));
+                check (std::abs (c20) < 1.0, "Clean on, Mix " + std::to_string ((int) m) + ": noise level against the input, white noise low-passed at 20 kHz", c20, "dB");
+            }
         }
 }
 

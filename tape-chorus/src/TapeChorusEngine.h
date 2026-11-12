@@ -632,6 +632,16 @@ private:
     }
     // Clean: the slope at silence is exactly 1 at every drive, so quiet sounds keep their level and only the peaks are rounded off.
     // (The standard curve holds a -12 dBFS sine level instead, which lifts anything quieter: 4.4 dB at Saturation 100.)
+    // Clean's drive. Up to Saturation 60 it is the control's own drive; above, it bends over smoothly (no corner at 60) to cleanTopDrive
+    // at 100, so that at Saturation 100 a -12 dBFS tone comes down under 3 dB as the README says of Saturation (0.4.0's Clean: 3.53 dB).
+    static constexpr float cleanBendDrive = 0.6f * maxSatDrive, cleanTopDrive = 5.0f;
+    static float cleanDrive (float g)
+    {
+        if (g <= cleanBendDrive) return g;
+        const float span = maxSatDrive - cleanBendDrive, t = std::min (g, maxSatDrive) - cleanBendDrive;
+        const float a = (maxSatDrive - cleanTopDrive) / (span * span);
+        return cleanBendDrive + t - a * t * t;
+    }
     static float saturateClean (float x, float g)
     {
         constexpr float bias = 0.05f;
@@ -721,7 +731,7 @@ private:
                     float g = g0;
                     for (int i = 0; i < upN; ++i, g += gStep)
                         if (g > 1.0e-4f)
-                            d[i] = saturateClean (d[i], g);
+                            d[i] = saturateClean (d[i], cleanDrive (g));
                 }
                 cleanOs.down (ch, cleanWork[ch], n);
                 if (! standardRunning)

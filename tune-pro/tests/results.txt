@@ -145,43 +145,43 @@ PASS  [LL] a saved Input Type restores its latency
 PASS  [LL] output pitch error at instant speed, steady notes 82 Hz to 1 kHz, worst 95th percentile = 0.865 cents
 INFO  [LL]   worst case is at = 987.767 Hz
 PASS  [LL] output pitch error at instant speed, vibrato +/-30 cents with breath, worst 95th percentile = 2.049 cents
-PASS  [LL] output pitch error at instant speed, voice with wander, jitter and breath, 95th percentile = 1.219 cents
+PASS  [LL] output pitch error at instant speed, voice with wander, jitter and breath, 95th percentile = 1.194 cents
 INFO  [LL]   non-harmonic energy on that voice, in then out = -20.507 dB
-INFO  [LL]   non-harmonic energy on that voice, out = -30.612 dB
+INFO  [LL]   non-harmonic energy on that voice, out = -29.675 dB
 PASS  [LL] output pitch error on a voice at -45 dBFS, 95th percentile = 0.054 cents
 PASS  [LL] output pitch error on a voice at -6 dBFS, 95th percentile = 0.054 cents
 PASS  [LL] output pitch error at 44100 Hz, 95th percentile = 0.047 cents
 PASS  [LL] output pitch error at 96000 Hz, 95th percentile = 0.020 cents
-PASS  [LL] Retune Speed 25 ms, measured time constant = 29.000 ms
+PASS  [LL] Retune Speed 25 ms, measured time constant = 28.000 ms
 PASS  [LL] Retune Speed 50 ms, measured time constant = 54.000 ms
 PASS  [LL] Retune Speed 100 ms, measured time constant = 104.000 ms
 PASS  [LL] Retune Speed 200 ms, measured time constant = 203.000 ms
 PASS  [LL] Retune Speed 400 ms, measured time constant = 404.000 ms
-PASS  [LL] Retune Speed 0 after a 40 cent step, frames from 50 ms on, 95th percentile = 0.056 cents
+PASS  [LL] Retune Speed 0 after a 40 cent step, frames from 50 ms on, 95th percentile = 0.064 cents
 PASS  [LL] formant positions at +/-1 and +/-3 semitones, output against input, worst move = 3.317 %
 PASS  [LL] formant positions on other vowels and pitches, worst move = 2.905 %
 INFO  [LL]   the same output against a real voice at the new pitch, worst = 2.499 %
 INFO  [LL]   and the tool's floor: the input against that same real voice, which share a vocal tract, worst = 1.913 %
-PASS  [LL] first formant peak flatter than a real voice at that pitch, worst case = 5.139 dB
-INFO  [LL] first formant against its surroundings, flatter than a real voice, worst = 3.128 dB
-INFO  [LL] colour, distance from a real voice's spectrum shape, worst = 2.007 dB
+PASS  [LL] first formant peak flatter than a real voice at that pitch, worst case = 5.135 dB
+INFO  [LL] first formant against its surroundings, flatter than a real voice, worst = 3.114 dB
+INFO  [LL] colour, distance from a real voice's spectrum shape, worst = 2.068 dB
 INFO  [LL]   and the input against that real voice, worst = 1.697 dB
-PASS  [LL] level stays put at +/-1, +/-2 and +/-3 semitones, worst change = 0.883 dB
+PASS  [LL] level stays put at +/-1, +/-2 and +/-3 semitones, worst change = 0.880 dB
 INFO  [LL]   high notes against a real voice, worst, not a usable reading = 40.000 %
 INFO  [LL]   and the tool's floor there: the input against a real voice with the same vocal tract = 14.886 %
 PASS  [LL] high notes around 440 and 660 Hz, +/-3 semitones, worst formant move against the input = 19.194 %
 PASS  [LL] high notes, first formant against its surroundings, flatter than a real voice, worst case = 12.907 dB
-PASS  [LL] high notes, first formant sharper than a real voice, worst case = -5.185 dB
+PASS  [LL] high notes, first formant sharper than a real voice, worst case = -5.343 dB
 INFO  [LL]   high notes, the same reading only where a harmonic crosses the formant, worst = 12.389 dB
-INFO  [LL]   high notes, level change, worst = 0.589 dB
+INFO  [LL]   high notes, level change, worst = 0.590 dB
 INFO  [LL] colour on high notes, worst = 6.137 dB
 INFO  [LL]   and the input against that real voice, worst = 3.391 dB
 INFO  [LL]   big shifts against the input, worst = 2.304 %
 INFO  [LL]   and the tool's floor there: the input against a real voice with the same vocal tract = 10.526 %
 PASS  [LL] big shifts of +/-7 semitones, worst formant move against a real voice = 16.403 %
-PASS  [LL] big shifts, first formant against its surroundings, flatter than a real voice, worst case = 2.832 dB
-INFO  [LL]   big shifts, level change, worst = 0.963 dB
-INFO  [LL] colour on big shifts, worst = 2.879 dB
+PASS  [LL] big shifts, first formant against its surroundings, flatter than a real voice, worst case = 2.840 dB
+INFO  [LL]   big shifts, level change, worst = 0.989 dB
+INFO  [LL] colour on big shifts, worst = 2.878 dB
 INFO  [LL]   and the input against that real voice, worst = 2.591 dB
 PASS  [LL] hard settings flatten vibrato, kept = 5.783 %
 PASS  [LL] Flex Tune 60 cents keeps a +/-40 cent vibrato, kept = 99.082 %
@@ -190,7 +190,7 @@ PASS  [LL] Retune Speed 400 ms keeps vibrato, kept = 99.152 %
 PASS  [LL] Natural Vibrato -100 takes vibrato down, left = 15.339 %
 PASS  [LL] Natural Vibrato +100 takes vibrato up, now = 192.396 %
 PASS  [LL] hard tune step between two notes a tone apart, 10% to 90% = 6.500 ms
-PASS  [LL] after the step the new note is on pitch, 95th percentile = 1.744 cents
+PASS  [LL] after the step the new note is on pitch, 95th percentile = 1.743 cents
 PASS  [LL] a slow glide comes out as steps, frames within 10 cents of a note = 98.827 %
 PASS  [LL] Flex Tune 50: a note 30 cents sharp is left where it was sung, output offset = 30.002 cents
 PASS  [LL] Flex Tune 50: a note 80 cents sharp is brought to the edge, output offset = 49.997 cents
@@ -218,7 +218,7 @@ PASS  [LL] non-harmonic energy, 220 Hz tone corrected by 150 cents = -40.088 dB
 PASS  [LL] non-harmonic energy, MIDI note 69 corrected by 30 cents = -47.136 dB
 PASS  [LL] non-harmonic energy, MIDI note 76 corrected by 30 cents = -56.721 dB
 PASS  [LL] output pitch steadiness on a corrected sustained note, standard deviation = 0.029 cents
-PASS  [LL] output level steadiness on a corrected sustained note, peak to peak = 0.063 dB
+PASS  [LL] output level steadiness on a corrected sustained note, peak to peak = 0.065 dB
 PASS  [LL] output pitch steadiness at everyday settings (Retune 20, Humanize 30), standard deviation = 0.029 cents
 PASS  [LL] and the note settles on pitch, offset = 0.000 cents
 PASS  [LL] non-harmonic energy at everyday settings = -46.107 dB
@@ -241,7 +241,7 @@ INFO  [LL] held_fred.wav: 5.3 s voiced in both, 0 octave disagreements, 0.0 per 
 INFO  [LL] held_fred.wav: distance from a note, median, before 23.1 cents, after 2.5 cents, 1055 voiced frames
 PASS  [LL]   held_fred.wav gives finite output
 INFO  [LL] held_kathy.wav: 5.0 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  [LL] held_kathy.wav: distance from a note, median, before 26.4 cents, after 3.7 cents, 1013 voiced frames
+INFO  [LL] held_kathy.wav: distance from a note, median, before 26.4 cents, after 3.9 cents, 1013 voiced frames
 PASS  [LL]   held_kathy.wav gives finite output
 INFO  [LL] sung_cellos.wav: 7.9 s voiced in both, 1 octave disagreements, 7.6 per minute
 INFO  [LL] sung_cellos.wav: distance from a note, median, before 17.0 cents, after 1.9 cents, 1551 voiced frames
@@ -250,13 +250,13 @@ INFO  [LL] sung_goodnews.wav: 12.9 s voiced in both, 3 octave disagreements, 13.
 INFO  [LL] sung_goodnews.wav: distance from a note, median, before 6.4 cents, after 0.4 cents, 2645 voiced frames
 PASS  [LL]   sung_goodnews.wav gives finite output
 INFO  [LL] sung_organ.wav: 4.5 s voiced in both, 10 octave disagreements, 133.3 per minute
-INFO  [LL] sung_organ.wav: distance from a note, median, before 31.7 cents, after 2.0 cents, 847 voiced frames
+INFO  [LL] sung_organ.wav: distance from a note, median, before 31.7 cents, after 2.0 cents, 845 voiced frames
 PASS  [LL]   sung_organ.wav gives finite output
-PASS  [LL] real material at instant speed: 99th percentile change in 20 ms frame level, worst file = 2.416 dB
+PASS  [LL] real material at instant speed: 99th percentile change in 20 ms frame level, worst file = 2.418 dB
 PASS  [LL] real material at instant speed: biggest sample step against the input's, worst file = 1.000 times
 PASS  [LL] real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth = 17.258 per minute
-PASS  [LL] real speech at instant speed: worst file's median distance from a note = 10.734 cents
-PASS  [LL] say singing and held vowels at instant speed: worst file's median distance from a note = 3.750 cents
+PASS  [LL] real speech at instant speed: worst file's median distance from a note = 10.745 cents
+PASS  [LL] say singing and held vowels at instant speed: worst file's median distance from a note = 3.874 cents
 PASS  [LL] Transpose +7 on A3 gives E4, offset = -0.004 cents
 PASS  [LL] Transpose -12 on A4 gives A3, offset = 0.001 cents
 PASS  [LL] Reference A4 432 Hz puts A3 at 216 Hz, offset = 0.008 cents
@@ -264,7 +264,7 @@ PASS  [LL] Formant Preserve off: formants follow +3 semitones up, scale (19% wou
 PASS  [LL]   and the formant tool reads that known move within 5%
 PASS  [LL] Throat 130%: formants move down, scale (0.77 would be exact) = 0.786 times
 PASS  [LL]   and the formant tool reads that known move within 5%
-PASS  [LL] Throat 75%: formants move up, scale (1.33 would be exact) = 1.345 times
+PASS  [LL] Throat 75%: formants move up, scale (1.33 would be exact) = 1.342 times
 PASS  [LL]   and the formant tool reads that known move within 5%
 PASS  [LL] Tracking 0 calls a noisy voice pitched this share of the time = 0.000 %
 PASS  [LL] Tracking 100 calls the same voice pitched this share of the time = 100.000 %
@@ -285,11 +285,11 @@ PASS  [LL] hard and natural presets are both there, presets = 12.000
 PASS  [LL] preset Hard Tune flattens vibrato, kept = 5.783 %
 PASS  [LL] preset Natural Pop keeps more vibrato, kept = 98.569 %
 PASS  [LL] presets leave Key, Scale and Input Type alone
-PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 2.527 %
-INFO  [LL]   the quickest whole render = 2.531 %
-INFO  [LL]   the slowest whole render = 3.279 %
-INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 2.565 %
-INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 5.709 %
+PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 2.644 %
+INFO  [LL]   the quickest whole render = 2.649 %
+INFO  [LL]   the slowest whole render = 2.872 %
+INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 2.696 %
+INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 5.965 %
 PASS  [LL] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.539 cents
 PASS  [LL] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.139 cents
 PASS  [LL] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.204 cents
@@ -316,7 +316,7 @@ PASS  [LL] Classic step against the same step at Retune Speed 20 = 0.157 times
 INFO  [LL]   that step at Retune Speed 20 = 35.000 ms
 PASS  [LL] Classic flattens vibrato with Flex Tune and Humanize at full, kept = 0.894 %
 PASS  [LL] Transpose -24 to +24 on a corrected A3, ten settings, worst 95th percentile = 1.013 cents
-INFO  [LL]   level change across those settings, worst = 7.279 dB
+INFO  [LL]   level change across those settings, worst = 7.303 dB
 PASS  [LL] Throat 75 to 130%: formants move by the setting, worst error = 2.150 %
 PASS  [LL] Throat 75 to 130%: pitch stays on the note, worst 95th percentile = 0.535 cents
 PASS  [LL] Throat 130% leaves an S unchanged, difference = -325.669 dB
@@ -343,9 +343,9 @@ PASS  [LL] a tick in a corrected note at 81 to 185 Hz, Low Male: above 9 kHz the
 PASS  [LL]   the 10 ms after a tick against the input, deepest = -3.384 dB
 PASS  [LL] a session saved by 1.6.1: every parameter it stored is a parameter now, parameters found = 34.000 
 PASS  [LL] a session saved by 1.6.1: every parameter loads as stored, largest difference as a share of its range (x 1e6) = 0.019 
-PASS  [LL] a session saved by 1.6.1 at its defaults: largest sample difference against the 1.8.0 pin (x 1e6) = 0.000 
-INFO  [LL]   the same against 1.6.1's own output, which 1.6.1 to 1.7.2 met (x 1e6) = 56620.248 
-PASS  [LL] every factory preset comes out bit for bit as pinned for 1.8.0, cases = 12.000 
+PASS  [LL] a session saved by 1.6.1 at its defaults: largest sample difference against the 1.8.1 pin (x 1e6) = 0.000 
+INFO  [LL]   the same against 1.6.1's own output, which 1.6.1 to 1.7.2 met (x 1e6) = 56657.098 
+PASS  [LL] every factory preset comes out bit for bit as pinned for 1.8.1, cases = 12.000 
 INFO  [LL]   of those, bit for bit as 1.6.1 to 1.7.2 gave them = 2.000 
 PASS  [LL] entries that hold their pitch from the start (72: clean, soft, breathy; 104 to 233 Hz; 22 to 45 cents off), time until the output is on the note, median = 20.000 ms
 PASS  [LL]   90th percentile = 25.000 ms
@@ -356,20 +356,20 @@ INFO  [LL]   the same from the moment the voice itself is within 50 cents of whe
 INFO  [LL]   the slowest = 0.000 ms
 INFO  [LL] entries out of 70 ms of fry near half the pitch (6), not judged: time from the first true period until the output is on the note, median = 20.000 ms
 INFO  [LL]   the slowest = 25.000 ms
-INFO  [LL]   pitch movement against the sound, Alto/Tenor at 147 Hz = -0.472 ms
-INFO  [LL]   pitch movement against the sound, Alto/Tenor at 196 Hz = -0.056 ms
+INFO  [LL]   pitch movement against the sound, Alto/Tenor at 147 Hz = -0.228 ms
+INFO  [LL]   pitch movement against the sound, Alto/Tenor at 196 Hz = -0.021 ms
 INFO  [LL]   pitch movement against the sound, Alto/Tenor at 262 Hz = -0.054 ms
-INFO  [LL]   pitch movement against the sound, Low Male at 147 Hz = -0.471 ms
-INFO  [LL]   pitch movement against the sound, Low Male at 196 Hz = -0.081 ms
+INFO  [LL]   pitch movement against the sound, Low Male at 147 Hz = -0.220 ms
+INFO  [LL]   pitch movement against the sound, Low Male at 196 Hz = -0.049 ms
 INFO  [LL]   pitch movement against the sound, Low Male at 262 Hz = -0.040 ms
-INFO  [LL]   pitch movement against the sound, Wide Range at 147 Hz = -0.471 ms
-INFO  [LL]   pitch movement against the sound, Wide Range at 196 Hz = -0.081 ms
+INFO  [LL]   pitch movement against the sound, Wide Range at 147 Hz = -0.220 ms
+INFO  [LL]   pitch movement against the sound, Wide Range at 196 Hz = -0.049 ms
 INFO  [LL]   pitch movement against the sound, Wide Range at 262 Hz = -0.040 ms
-PASS  [LL] pitch movement arrives with the sound it belongs to, 147 to 262 Hz, three Input Types, worst (negative is early), Alto/Tenor at 147 Hz = -0.472 ms
+PASS  [LL] pitch movement arrives with the sound it belongs to, 147 to 262 Hz, three Input Types, worst (negative is early), Alto/Tenor at 147 Hz = -0.228 ms
 INFO  [LL]   pitch movement against the sound, Alto/Tenor at 101 Hz = 0.545 ms
 INFO  [LL]   pitch movement against the sound, Alto/Tenor at 112 Hz = 0.672 ms
 INFO  [LL]   pitch movement against the sound, Alto/Tenor at 124 Hz = -0.511 ms
-INFO  [LL]   pitch movement against the sound, Alto/Tenor at 138 Hz = 0.129 ms
+INFO  [LL]   pitch movement against the sound, Alto/Tenor at 138 Hz = 0.513 ms
 INFO  [LL]   pitch movement against the sound, Low Male at 71 Hz = 0.294 ms
 INFO  [LL]   pitch movement against the sound, Low Male at 84 Hz = -0.652 ms
 INFO  [LL]   pitch movement against the sound, Low Male at 95 Hz = -0.806 ms
@@ -550,11 +550,11 @@ PASS  [HQ] hard and natural presets are both there, presets = 12.000
 PASS  [HQ] preset Hard Tune flattens vibrato, kept = 1.143 %
 PASS  [HQ] preset Natural Pop keeps more vibrato, kept = 97.712 %
 PASS  [HQ] presets leave Key, Scale and Input Type alone
-PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 6.198 %
-INFO  [HQ]   the quickest whole render = 6.233 %
-INFO  [HQ]   the slowest whole render = 7.613 %
-INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.966 %
-INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 7.252 %
+PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 6.563 %
+INFO  [HQ]   the quickest whole render = 6.741 %
+INFO  [HQ]   the slowest whole render = 7.648 %
+INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 4.028 %
+INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 7.284 %
 PASS  [HQ] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.040 cents
 PASS  [HQ] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.010 cents
 PASS  [HQ] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.010 cents
@@ -600,9 +600,9 @@ INFO  [HQ]   the same voice in Low Male = -45.702 dB
 PASS  [HQ] Alto/Tenor, a phrase A2 E2 A2 F#2 sung 30 cents sharp, each note's output pitch error, worst 95th percentile = 1.470 cents
 PASS  [HQ] voices at 99 to 440 Hz in Alto/Tenor: output samples that differ with the reach under the range switched on = 0.000 
 INFO  [HQ]   samples compared = 696000.000 
-PASS  [HQ] a session saved by 1.6.1 at its defaults: largest sample difference against the 1.8.0 pin (x 1e6) = 0.000 
+PASS  [HQ] a session saved by 1.6.1 at its defaults: largest sample difference against the 1.8.1 pin (x 1e6) = 0.000 
 INFO  [HQ]   the same against 1.6.1's own output, which 1.6.1 to 1.7.2 met (x 1e6) = 0.209 
-PASS  [HQ] every factory preset comes out bit for bit as pinned for 1.8.0, cases = 12.000 
+PASS  [HQ] every factory preset comes out bit for bit as pinned for 1.8.1, cases = 12.000 
 INFO  [HQ]   of those, bit for bit as 1.6.1 to 1.7.2 gave them = 11.000 
 PASS  [HQ] entries that hold their pitch from the start (72: clean, soft, breathy; 104 to 233 Hz; 22 to 45 cents off), time until the output is on the note, median = 10.000 ms
 PASS  [HQ]   90th percentile = 20.000 ms
@@ -641,25 +641,25 @@ INFO  High Quality against Low Latency at 48 kHz, input type 2, High Quality = 6
 INFO  High Quality against Low Latency at 48 kHz, input type 3, Low Latency = 20.625 ms
 INFO  High Quality against Low Latency at 48 kHz, input type 3, High Quality = 65.625 ms
 PASS  switching engine on a voice, both ways, 7 pitches: biggest sample step against the voice's own = 1.318 times
-PASS  switching engine, deepest fall in 5 ms level = 6.461 dB
+PASS  switching engine, deepest fall in 5 ms level = 6.559 dB
 PASS  switching to High Quality reports the new latency = 2819.000 samples
 PASS  and the real delay matches it
 PASS  flipping engines every 27 ms ends on the right delay
 INFO  Low Latency: share of 10 to 40 ms after a note starts that is within 10 cents = 86.667 %
 PASS  High Quality: share of 10 to 40 ms after a note starts that is within 10 cents = 96.667 %
-INFO  Low Latency: first 10 ms of an S after a corrected vowel, difference = -183.253 dB
+INFO  Low Latency: first 10 ms of an S after a corrected vowel, difference = -181.717 dB
 PASS  High Quality: first 10 ms of an S after a corrected vowel, difference = -304.633 dB
-INFO  Low Latency, first formant flatter than a real voice = 5.139 dB
+INFO  Low Latency, first formant flatter than a real voice = 5.135 dB
 INFO  High Quality, first formant flatter than a real voice = 4.281 dB
 INFO  Low Latency, formant move = 3.317 %
 INFO  High Quality, formant move = 2.304 %
-INFO  Low Latency, first formant against its surroundings, flatter = 3.128 dB
+INFO  Low Latency, first formant against its surroundings, flatter = 3.114 dB
 INFO  High Quality, first formant against its surroundings, flatter = 2.474 dB
-INFO  Low Latency, colour = 2.007 dB
+INFO  Low Latency, colour = 2.068 dB
 INFO  High Quality, colour = 1.740 dB
 INFO  Low Latency, high notes, colour = 6.137 dB
 INFO  High Quality, high notes, colour = 1.775 dB
-INFO  Low Latency, big shifts, colour = 2.879 dB
+INFO  Low Latency, big shifts, colour = 2.878 dB
 INFO  High Quality, big shifts, colour = 1.924 dB
 INFO  Low Latency, high notes, formant move against the input = 19.194 %
 INFO  High Quality, high notes, formant move against the input = 11.945 %
@@ -667,7 +667,7 @@ INFO  Low Latency, high notes, first formant against its surroundings, flatter =
 INFO  High Quality, high notes, first formant against its surroundings, flatter = 3.943 dB
 INFO  Low Latency, big shifts, formant move against a real voice = 16.403 %
 INFO  High Quality, big shifts, formant move against a real voice = 1.476 %
-INFO  Low Latency, big shifts, first formant against its surroundings, flatter = 2.832 dB
+INFO  Low Latency, big shifts, first formant against its surroundings, flatter = 2.840 dB
 INFO  High Quality, big shifts, first formant against its surroundings, flatter = 2.634 dB
 PASS  [HQ] held out vowels and pitches, 98 to 220 Hz, worst formant move against the input = 2.290 %
 INFO  [HQ]   and the tool's floor there = 2.700 %
@@ -814,28 +814,28 @@ PASS  [LL]   worst formant move against the input = 2.694 %
 INFO  [LL]   what a perfect shifter reads on that line: the real voice at the new pitch itself against the input, worst = 2.495 %
 INFO  [LL]   and the tool's floor there = 2.304 %
 PASS  [LL]   formant move against the input, worst, against the floor plus 2% = 2.694 %
-PASS  [LL]   level change, worst = 1.102 dB
-INFO  [LL]   first formant against its surroundings, flatter than a real voice, worst = 3.170 dB
-INFO  [LL]   colour, worst = 2.025 dB
+PASS  [LL]   level change, worst = 1.110 dB
+INFO  [LL]   first formant against its surroundings, flatter than a real voice, worst = 3.140 dB
+INFO  [LL]   colour, worst = 2.085 dB
 PASS  [LL] tenth held out set, French men 96 to 143 Hz in Low Male, worst formant move against a real voice at the new pitch = 2.888 %
 PASS  [LL]   worst formant move against the input = 2.888 %
 INFO  [LL]   what a perfect shifter reads on that line: the real voice at the new pitch itself against the input, worst = 2.495 %
 INFO  [LL]   and the tool's floor there = 2.304 %
 PASS  [LL]   formant move against the input, worst, against the floor plus 2% = 2.888 %
-PASS  [LL]   level change, worst = 0.747 dB
-INFO  [LL]   first formant against its surroundings, flatter than a real voice, worst = 3.320 dB
-INFO  [LL]   colour, worst = 2.041 dB
+PASS  [LL]   level change, worst = 0.688 dB
+INFO  [LL]   first formant against its surroundings, flatter than a real voice, worst = 3.277 dB
+INFO  [LL]   colour, worst = 2.103 dB
 PASS  [LL] tenth held out set, French women 178 to 228 Hz in Wide Range, worst formant move against a real voice at the new pitch = 1.273 %
 PASS  [LL]   worst formant move against the input = 1.882 %
 INFO  [LL]   what a perfect shifter reads on that line: the real voice at the new pitch itself against the input, worst = 2.495 %
 INFO  [LL]   and the tool's floor there = 2.499 %
 PASS  [LL]   formant move against the input, worst, against the floor plus 2% = 1.882 %
-PASS  [LL]   level change, worst = 1.097 dB
-INFO  [LL]   first formant against its surroundings, flatter than a real voice, worst = 2.575 dB
+PASS  [LL]   level change, worst = 0.897 dB
+INFO  [LL]   first formant against its surroundings, flatter than a real voice, worst = 2.652 dB
 INFO  [LL]   colour, worst = 1.615 dB
 PASS  [HQ] vowel change in a glide, 150 ms to 1.15 s after it, formants against a real voice with the new vowel, worst move = 2.304 %
 INFO  [HQ]   and the tool's floor: the new vowel as sung against that real voice, worst = 1.717 %
-PASS  [LL] null test against 1.8.0: output, parameters and latency bit for bit the same, cases = 24.000 
+PASS  [LL] null test against 1.8.1: output, parameters and latency bit for bit the same, cases = 24.000 
 INFO  [LL]   of those, bit for bit as 1.6.1 to 1.7.2 gave them, cases = 6.000 
 PASS  the window is the custom one
 PASS  controls in the window, knobs, choices and switches = 22.000 
@@ -846,7 +846,7 @@ PASS  the keyboard's target reads A3 = 57.000
 PASS  the pitch window's newest point: input A3 +30 cents, corrected A3 = 57.000 
 PASS  the reading strip: Active Key C Chromatic  |  In 223.8 Hz  |  Out 220.0 Hz  |  Target A3  |  Correction -30 cents
 PASS  the window paints
-PASS  audio keeps running while the window repaints, blocks = 95.000 
+PASS  audio keeps running while the window repaints, blocks = 73.000 
 PASS  every control in the window is found by its parameter ID
 PASS  Flex Tune is a slider in the window
 PASS  automation moves the window's slider = 42.000 
@@ -870,6 +870,6 @@ PASS  it paints at the smallest, largest and in between sizes
 PASS  with no audio arriving the display asks for no frames
 PASS  null test, window open against no window, largest sample difference = 0.000 
 PASS  25 opens and closes with no audio
-PASS  25 opens and closes with audio running, blocks = 2782.000 
+PASS  25 opens and closes with audio running, blocks = 1162.000 
 PASS  closing the window leaves audio running
 RESULT PASS  0 failures

@@ -40,17 +40,17 @@ PASS  no click when Bypass jumps, biggest step = 0.004
 PASS  no click when Peak Guard jumps, biggest step = 0.004 
 PASS  latency at 44100 Hz = 25.465 ms
 INFO    in samples = 1123.000 
-PASS  default settings null against the input delayed by the reported latency, 44100 Hz = -141.991 dB
+PASS  default settings null against the input delayed by the reported latency, 44100 Hz = -142.167 dB
 PASS  delay measured by correlation against the reported one, samples off = 0.000 
 PASS  latency reports the same with a fresh prepare
 PASS  latency at 48000 Hz = 24.271 ms
 INFO    in samples = 1165.000 
-PASS  default settings null against the input delayed by the reported latency, 48000 Hz = -142.055 dB
+PASS  default settings null against the input delayed by the reported latency, 48000 Hz = -142.153 dB
 PASS  delay measured by correlation against the reported one, samples off = 0.000 
 PASS  latency reports the same with a fresh prepare
 PASS  latency at 96000 Hz = 24.188 ms
 INFO    in samples = 2322.000 
-PASS  default settings null against the input delayed by the reported latency, 96000 Hz = -141.684 dB
+PASS  default settings null against the input delayed by the reported latency, 96000 Hz = -141.887 dB
 PASS  delay measured by correlation against the reported one, samples off = 0.000 
 PASS  latency reports the same with a fresh prepare
 PASS  Mix 0 with Pitch +7 is the input delayed, on noise = -141.121 dB
@@ -94,10 +94,10 @@ PASS  Monster: cycle to cycle level change = 4.787 dB
 INFO    without growl: period change = 0.205 %
 INFO    without growl: level change = 0.139 dB
 PASS  Monster: formants move as stated, off by = 1.717 %
-PASS  Natural is unchanged at any Character Amount = -142.014 dB
+PASS  Natural is unchanged at any Character Amount = -141.998 dB
 PASS  Vibrato Rate 2 to 9 Hz, worst error = 0.500 %
 PASS  Vibrato Depth 20 to 100 cents, worst error = 7.430 %
-PASS  Vibrato Depth 0 changes nothing = -142.014 dB
+PASS  Vibrato Depth 0 changes nothing = -141.998 dB
 PASS  the test voice has harmonics going in, on against between them = 24.100 dB
 PASS  Whisper 100: harmonics to noise, on against between them, worst (0 is none left) = 1.291 dB
 INFO    going in, the whitened voice's periodicity at the pitch lag, least = 0.271 
@@ -108,7 +108,7 @@ PASS  Whisper 100: envelope shape against the voice, RMS difference 200 Hz to 5 
 PASS  Whisper 50 sits between: on against between the harmonics = 4.809 dB
 PASS  Whisper 100 switched on at 0.5 s: from 1.5 s on, against Whisper 100 from the start = -330.420 dB
 PASS  Mix 0 is the delayed input, with everything else turned up = -141.782 dB
-PASS  Mix 50 with nothing else changed is still the delayed input: no comb from the two paths = -142.470 dB
+PASS  Mix 50 with nothing else changed is still the delayed input: no comb from the two paths = -142.525 dB
 PASS  Mix 50: dry part of a shifted voice = -6.024 dB
 PASS  Mix 50: wet part of a shifted voice = -6.026 dB
 PASS  no click changing Character: biggest step against steady = 1.372 times
@@ -163,13 +163,14 @@ INFO    frames counted = 76.000
 PASS  say speech through every Character, level against the input, worst change = 0.274 dB
 PASS  Peak Guard is off by default
 PASS  no preset changes Peak Guard
-PASS  Peak Guard on at the default settings: output against the delayed input = -142.232 dB
+PASS  Peak Guard on at the default settings: output against the delayed input = -142.302 dB
   Giant on a voice that peaks at -0.09 dBFS: peak +8.95 dBFS with the guard off, -0.09 on, level down 1.77 dB
   Monster Growl on a voice that peaks at -0.09 dBFS: peak +7.68 dBFS with the guard off, -0.09 on, level down 3.35 dB
   Robot Announcer on a voice that peaks at -0.09 dBFS: peak +1.97 dBFS with the guard off, -0.09 on, level down 0.51 dB
   Deep Voice on a voice that peaks at -0.09 dBFS: peak +7.69 dBFS with the guard off, -0.09 on, level down 0.99 dB
 INFO    with Peak Guard off the output's peak passes the input's by, worst preset = 9.041 dB
 PASS  Peak Guard on, four presets on a voice just under full scale: samples over the input's highest peak = 0.000 
+PASS  Peak Guard on, every preset, Output included, on a voice just under full scale: samples over the input's highest peak = 0.000 
 PASS  Peak Guard on: the level falls by no more than the peak it took off plus, worst = -1.545 dB
 PASS  Peak Guard switched off again: from 1.5 s later the output is the same samples as if it had never been on = 0.000 
   soft note with two strong harmonics, Pitch +7: loudest 10 ms frame +3.06 dB over the input's, at 0.14 s
@@ -195,8 +196,14 @@ PASS  phrase starts, first 30 ms against the input, 5th percentile, worst settin
   Range Match from 392 Hz: output off by 0.00 st, offset reading -10 st
   Range Match from 440 Hz: output off by 0.00 st, offset reading -12 st
 PASS  Range Match: a voice anywhere over two octaves lands on A3, worst = 0.050 st
-PASS  Range Match switched off at +12 st: 0.5 to 1.5 s later, against the delayed input = -107.351 dB
-PASS  Range Centre does nothing while Range Match is off = -142.014 dB
+PASS  Range Match switched off at +12 st: 0.5 to 1.5 s later, against the delayed input = -141.907 dB
+PASS  found the three speech files for the move back test
+  Giant, then Clean Slate: from 3 s after, -142.0 dB against the delayed input
+  Monster Growl, then Clean Slate: from 3 s after, -142.0 dB against the delayed input
+  Ghost Whisper, then Clean Slate: from 3 s after, -142.0 dB against the delayed input
+  Chipmunk, then Clean Slate: from 3 s after, -142.0 dB against the delayed input
+PASS  a preset and back to Clean Slate: from 3 s after, against the delayed input, worst = -142.008 dB
+PASS  Range Centre does nothing while Range Match is off = -141.998 dB
 PASS  Output -6 dB measures = -6.001 dB
   preset Clean Slate: level -0.0 dB
 PASS  preset Clean Slate sits near the input level = -0.001 dB
@@ -329,10 +336,10 @@ PASS  60 windows opened, painted and closed, 30 of them with audio running = 60.
 PASS  and the read is off again after the last one
 PASS  a window opens and paints before the host has prepared the plug-in
 PASS  the mirror follows a sample rate change under an open window
-PASS  after a double-click on the pad the voice nulls against the delayed input, dB = -142.032 
+PASS  after a double-click on the pad the voice nulls against the delayed input, dB = -142.091 
 PASS  audio with the window open and painting nulls to exact zero against closed, Natural = 0.000 
 PASS  audio with the window open and painting nulls to exact zero against closed, Child with Whisper = 0.000 
 PASS  audio with the window open and painting nulls to exact zero against closed, Monster with Vibrato = 0.000 
-PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 6.637 %
-PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 24.255 %
+PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 6.674 %
+PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 24.656 %
 RESULT PASS  0 failures

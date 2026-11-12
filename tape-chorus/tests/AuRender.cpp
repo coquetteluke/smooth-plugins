@@ -4,6 +4,9 @@
 // Usage: AuRender <left.wav> <right.wav> <out.raw> [rate=48000] [block=128] [channels=2] [preset=N] [Parameter Name=normalised value]...
 //        [component=<path to a .component>]  loads that bundle in this process only, in place of the installed plug-in (an older build kept aside)
 //        [settle=1]  starts the plug-in again once the preset and the settings are in, so the render begins AT the settings.
+//        [savestate=<file>]  after the preset and the settings, writes the plug-in's saved state (kAudioUnitProperty_ClassInfo, what a
+//                            host keeps in a session) to that file. [loadstate=<file>] gives the plug-in that state first, as a host
+//                            does when it opens a session; a preset and settings given as well are applied after it.
 // Without settle=1 the plug-in starts at its defaults and every control then glides to its setting during the first second of the render.
 // Up to 0.3.1 a control that glided never quite arrived (0.4.0 fixed that), so a render made without settle=1 is not the same in 0.4.0.
 #include <AudioToolbox/AudioToolbox.h>
@@ -67,7 +70,7 @@ int main (int argc, char** argv)
     UInt32 block = 128, channels = 2;
     int preset = -1;
     bool settle = false;
-    std::string componentPath;
+    std::string componentPath, saveState, loadState;
     std::vector<std::string> settings;
     for (int a = 4; a < argc; ++a)
     {
@@ -78,6 +81,8 @@ int main (int argc, char** argv)
         else if (arg.rfind ("preset=", 0) == 0) preset = std::stoi (arg.substr (7));
         else if (arg.rfind ("settle=", 0) == 0) settle = arg.substr (7) == "1";
         else if (arg.rfind ("component=", 0) == 0) componentPath = arg.substr (10);
+        else if (arg.rfind ("savestate=", 0) == 0) saveState = arg.substr (10);
+        else if (arg.rfind ("loadstate=", 0) == 0) loadState = arg.substr (10);
         else settings.push_back (arg);
     }
 
@@ -113,6 +118,17 @@ int main (int argc, char** argv)
     AudioUnitSetProperty (u, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &cb, sizeof cb);
     if (AudioUnitInitialize (u) != noErr) { puts ("init failed"); return 1; }
 
+    if (! loadState.empty())
+    {
+        std::ifstream f (loadState, std::ios::binary);
+        std::vector<char> bytes ((std::istreambuf_iterator<char> (f)), std::istreambuf_iterator<char>());
+        CFDataRef data = CFDataCreate (nullptr, (const UInt8*) bytes.data(), (CFIndex) bytes.size());
+        CFPropertyListRef plist = data != nullptr ? CFPropertyListCreateWithData (nullptr, data, kCFPropertyListImmutable, nullptr, nullptr) : nullptr;
+        if (data != nullptr) CFRelease (data);
+        if (plist == nullptr || AudioUnitSetProperty (u, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &plist, sizeof plist) != noErr) { puts ("cannot load the saved state"); return 1; }
+        CFRelease (plist);
+    }
+
     if (preset >= 0)
     {
         AUPreset p { preset, nullptr };
@@ -143,6 +159,18 @@ int main (int argc, char** argv)
             }
         }
         if (! found) { printf ("no parameter for %s\n", arg.c_str()); return 1; }
+    }
+
+    if (! saveState.empty())
+    {
+        CFPropertyListRef plist = nullptr;
+        UInt32 sz = sizeof plist;
+        if (AudioUnitGetProperty (u, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &plist, &sz) != noErr || plist == nullptr) { puts ("cannot read the saved state"); return 1; }
+        CFDataRef data = CFPropertyListCreateData (nullptr, plist, kCFPropertyListBinaryFormat_v1_0, 0, nullptr);
+        std::ofstream f (saveState, std::ios::binary);
+        f.write ((const char*) CFDataGetBytePtr (data), CFDataGetLength (data));
+        CFRelease (data);
+        CFRelease (plist);
     }
 
     if (settle) { AudioUnitUninitialize (u); if (AudioUnitInitialize (u) != noErr) { puts ("init failed"); return 1; } }

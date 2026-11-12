@@ -173,12 +173,11 @@ public:
         phase = { 0.0, 0.31, 0.67 };
         inc = 0.005;
         gain = 8.0f;
-        gainNoise = 8.0f;
-        learntVoiced = learntNoise = false;
-        voicedRun = noiseRun = 0;
+        learntVoiced = false;
+        voicedRun = 0;
         entryStep = (float) (1.0 / (0.01 * sr));
         shareCoef = (float) (1.0 - std::exp (-1.0 / (0.003 * sr)));
-        shareVoiced = shareNoise = 0.0f;
+        shareVoiced = 0.0f;
         gainPhase = 0;
         voicePower = tonePower = voicedTarget = 0.0f;
         noise = {};
@@ -226,17 +225,16 @@ public:
 
         // Level match, feed forward: the gain is worked out from the tone before gain, so it cannot chase itself and overshoot.
         // It moves by ratio rather than by amount, so the start of a note, when the tone lags the voice for a moment, cannot make a burst.
-        // Two gains, one learnt on voiced sound (the oscillator) and one on the rest (the noise carrier, consonants and the room), blended
-        // as the carrier is. Up to 1.1.1 one gain learnt on both, so after an S or a pause over a room it was set for the noise and the
-        // next note came in up to 7.8 dB over its own level for its first 100 ms (PluginTest vocoder; on Luke's takes the tone peaked up to
-        // 11.7 dB over the voice). Each gain only learns while its own carrier is playing.
+        // It learns only on voiced sound and the same gain carries the consonants. Up to 1.1.1 it learnt on everything, so after an S or a
+        // pause over a room it was set for the noise and the next note came in up to 7.8 dB over its own level (on Luke's takes the tone
+        // peaked up to 11.7 dB over the voice). A second gain learnt on the noise (1.2.0 to 1.2.2) was far bigger than the voiced one, and
+        // where a note died away into the room it took over: take 06 with Robot Stack reached 0 dBFS where the voice was at -42.
         const float tone = 0.5f * (l + r);
         voicePower += levelCoef * (voice * voice - voicePower);
         tonePower += levelCoef * (tone * tone - tonePower);
         // A gain that has never learnt starts where its first reading puts it, not from a guess: up to 1.1.1 it started at 8 whatever the
-        // voice, and on Luke's take 06 the tone came in about 13 dB over its own level for its first 20 ms. Until a gain has a reading its
-        // share of the tone stays silent: in 1.2.1 the other gain stood in, and one learnt on a room's noise put the first note of take 06
-        // (Robot Stack) at +2.6 dBFS. After the filters have rung up (settle) the tone comes in over 10 ms.
+        // voice, and on Luke's take 06 the tone came in about 13 dB over its own level for its first 20 ms. Until then the tone is silent.
+        // After the filters have rung up (settle) the tone comes in over 10 ms.
         if (settle > 0)
         {
             --settle;
@@ -245,28 +243,24 @@ public:
         if (++gainPhase >= 32)
         {
             gainPhase = 0;
-            // A first reading waits until its carrier has played for 20 ms over sound, read from 10 ms in, as the filters ring up
-            // (the tone lags the voice there, and a reading taken then put a first note up to 30 dB high).
+            // A first reading waits until the voice has been voiced for 20 ms, read from 10 ms in, as the filters ring up (the tone lags
+            // the voice there, and a reading taken then put a first note up to 30 dB high).
             const bool sound = voicePower > 1.0e-7f;
             voicedRun = voicedNow > 0.9f && sound ? voicedRun + 32 : 0;
-            noiseRun = voicedNow < 0.1f && sound ? noiseRun + 32 : 0;
             const int half = (int) (0.01 * sr);
-            if ((! learntVoiced && voicedRun >= half && voicedRun < half + 32) || (! learntNoise && noiseRun >= half && noiseRun < half + 32))
+            if (! learntVoiced && voicedRun >= half && voicedRun < half + 32)
                 voicePower = tonePower = 0.0f;
-            if (settle == 0 && sound && tonePower > 1.0e-12f)
+            if (settle == 0 && sound && tonePower > 1.0e-12f && voicedNow > 0.9f && (learntVoiced || voicedRun >= 2 * half))
             {
                 const float want = std::clamp (std::sqrt (voicePower / tonePower), 0.5f, 400.0f);
-                if (voicedNow > 0.9f && (learntVoiced || voicedRun >= 2 * half)) { gain = learntVoiced ? gain * std::pow (want / gain, gainCoef) : want; learntVoiced = true; }
-                else if (voicedNow < 0.1f && (learntNoise || noiseRun >= 2 * half)) { gainNoise = learntNoise ? gainNoise * std::pow (want / gainNoise, gainCoef) : want; learntNoise = true; }
+                gain = learntVoiced ? gain * std::pow (want / gain, gainCoef) : want;
+                learntVoiced = true;
             }
         }
-        // each share comes in over a few ms once it has its first reading, so a share that starts does not step
+        // the tone comes in over a few ms once the gain has its first reading, so it does not step
         shareVoiced += shareCoef * ((learntVoiced ? gain : 0.0f) - shareVoiced);
-        shareNoise += shareCoef * ((learntNoise ? gainNoise : 0.0f) - shareNoise);
-        const float gv = shareVoiced, gn = shareNoise;
-        const bool ready = settle == 0 && (learntVoiced || learntNoise);
-        entry = ready ? std::min (1.0f, entry + entryStep) : std::max (0.0f, entry - entryStep);
-        const float g = entry * (voicedNow * gv + (1.0f - voicedNow) * gn);
+        entry = settle == 0 && learntVoiced ? std::min (1.0f, entry + entryStep) : std::max (0.0f, entry - entryStep);
+        const float g = entry * shareVoiced;
         outL = l * g;
         outR = r * g;
     }
@@ -305,10 +299,10 @@ private:
     double sr = 48000.0, inc = 0.005;
     std::array<double, 3> phase { 0.0, 0.31, 0.67 };
     std::array<Band, numBands> bands {};
-    float attack = 0, release = 0, levelCoef = 0, gainCoef = 0, voicedCoef = 0, voicePower = 0, tonePower = 0, gain = 8, gainNoise = 8, voicedNow = 0, voicedTarget = 0;
-    float entry = 0.0f, entryStep = 0.002f, shareVoiced = 0.0f, shareNoise = 0.0f, shareCoef = 0.007f;
-    bool learntVoiced = false, learntNoise = false;
-    int voicedRun = 0, noiseRun = 0;
+    float attack = 0, release = 0, levelCoef = 0, gainCoef = 0, voicedCoef = 0, voicePower = 0, tonePower = 0, gain = 8, voicedNow = 0, voicedTarget = 0;
+    float entry = 0.0f, entryStep = 0.002f, shareVoiced = 0.0f, shareCoef = 0.007f;
+    bool learntVoiced = false;
+    int voicedRun = 0;
     int wave = saw, gainPhase = 0, settle = 0;
     Random noise;
 };

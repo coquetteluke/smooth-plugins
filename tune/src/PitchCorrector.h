@@ -32,7 +32,7 @@ public:
     void reset() noexcept
     {
         correction = 0.0; target = -1; pendingTarget = -1; pastFor = 0.0; farFor = 0.0; recentCount = 0; recentAt = 0; recent.fill (0.0);
-        haveAverage = false; steadyFor = 0.0; holdAverage = 0.0; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
+        haveAverage = false; freshSlow = true; steadyFor = 0.0; holdAverage = 0.0; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
         offCents = 0.0; identity = true; hasPitch = false; silentFor = 0.0;
     }
 
@@ -88,16 +88,21 @@ public:
         else
             correction += (1.0 - std::exp (-tickSeconds / tau)) * (wanted - correction);
 
-        // Natural Vibrato works on what is left once the note centre is taken out.
+        // Natural Vibrato works on the vibrato that is left after correction, once the note centre is taken out. Up to 1.2.0 it worked on
+        // the voice as sung, so where the correction had already taken the vibrato out, -100 put it back upside down: Robot Flat (Retune 0,
+        // Natural Vibrato -100) kept 94% of a +/-40 cent vibrato, inverted, and on Luke's takes its held notes sat 15 to 18 cents off where
+        // Hard Tune's sit 3 to 4.
+        const double corrected = p + correction;
+        if (freshSlow) { slowPitch = corrected; freshSlow = false; }   // a new note starts its average where it comes out
         double vibrato = 0.0;
         if (s.naturalVibrato != 0.0)
         {
-            slowPitch += (1.0 - std::exp (-tickSeconds / 0.1)) * (p - slowPitch);
-            vibrato = s.naturalVibrato * (p - slowPitch) * smoothstep (0.08, 0.25, age);
+            slowPitch += (1.0 - std::exp (-tickSeconds / 0.1)) * (corrected - slowPitch);
+            vibrato = s.naturalVibrato * (corrected - slowPitch) * smoothstep (0.08, 0.25, age);
         }
         else
         {
-            slowPitch = p;
+            slowPitch = corrected;
         }
 
         output = p + correction + vibrato + s.transpose;
@@ -209,6 +214,7 @@ private:
         farFor = 0.0;
         age = 0.0;
         slowPitch = p;
+        freshSlow = true;
     }
 
     void finishWithout (double p, const Settings& s) noexcept
@@ -233,7 +239,7 @@ private:
     // line still spends less than that (about 82 ms) on the far side (PluginTest hold).
     static constexpr double holdSeconds = 0.08, steadySeconds = 0.15, slideSeconds = 0.10;
     double holdAverage = 0.0, steadyFor = 0.0;
-    bool haveAverage = false;
+    bool haveAverage = false, freshSlow = true;
     bool identity = true, hasPitch = false;
 };
 } // namespace smoothtune

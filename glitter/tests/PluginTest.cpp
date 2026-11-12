@@ -2903,6 +2903,65 @@ void testRealFormants()
     }
 }
 
+// ------------------------------------------------------------------------------------------------------------- tracker octave guard
+
+// The tracker's guard against a strong second harmonic ("a multiple of the chosen period much deeper still is the true period") moved
+// to twice the period on a clean voice whose every other period differs a little, where both periods fit almost perfectly (2026-11-12,
+// Luke's take 01 at 200 to 226 Hz: the difference function read 0.014 to 0.02 at the period and 0.001 at twice it). The lead hides
+// it (its grains pass the marks), but Pitch, Harmony and the Vocoder took the reading and came out an octave off: on the real vocal check
+// Pitch +1 octave read the take's own pitch there and Pitch -1 octave a twelfth under it. Written before the change. Readings every 1 ms
+// against the reference track of the same audio (within 20 ms either side); an octave off is 1200 +/- 250 cents from all of them.
+long trackerOctaveOff (const std::vector<float>& x, double fromSec, double toSec, double& firstAt)
+{
+    smoothtune::PitchTracker t;
+    t.prepare (SR);
+    t.setRange (98.0, 1000.0, 70.0);
+    t.setVoicingLimit (0.10f + 0.004f * 50.0f);
+    const auto ref = referenceTrack (x, SR);
+    long off = 0;
+    firstAt = 0.0;
+    for (size_t i = 0; i < x.size(); ++i)
+    {
+        t.push (x[i]);
+        const double sec = i / SR;
+        if (i % 48 != 0 || sec < fromSec || sec > toSec || t.period() <= 0.0) continue;
+        const double hz = SR / t.period();
+        int near = 0, octave = 0;
+        for (int f = 0; f < (int) ref.size(); ++f)
+        {
+            const double rt = referenceTime (f, SR);
+            if (rt < sec - 0.020 || rt > sec + 0.020 || ref[(size_t) f] <= 0.0) continue;
+            ++near;
+            if (std::abs (std::abs (cents (hz, ref[(size_t) f])) - 1200.0) < 250.0) ++octave;
+        }
+        if (near >= 3 && octave == near) { if (off == 0) firstAt = sec; ++off; }
+    }
+    return off;
+}
+
+void testOctaveGuard()
+{
+    {
+        // A held A3 at 220 Hz whose every other period is up to 8% weaker (a gain swinging at half the pitch): 1.2.3 read all of it at 110 Hz
+        auto x = voice::synth (voice::steady (220.0, 1.5, SR), voice::vowelA, SR);
+        for (size_t i = 0; i < x.size(); ++i) x[i] *= (float) (0.96 + 0.04 * std::cos (juce::MathConstants<double>::pi * 220.0 * (double) i / SR));
+        double at = 0.0;
+        const long n = trackerOctaveOff (x, 0.3, 1.4, at);
+        check (n == 0, "tracker on a held 220 Hz voice whose every other period is weaker: readings an octave off, 1 ms each (first at " + juce::String (at, 3).toStdString() + " s)", (double) n, "");
+    }
+    struct Spot { const char* take; double from, to; };
+    const Spot spots[] = { { "01", 8.30, 8.60 }, { "01", 12.40, 12.70 }, { "01", 71.60, 71.90 } };
+    for (const auto& sp : spots)
+    {
+        const auto x = lukeTake (sp.take, sp.from - 2.0, sp.to - sp.from + 2.5);
+        if (x.empty()) { info (std::string ("tracker on Luke's take ") + sp.take + ": take not found, skipped", 0.0); continue; }
+        double at = 0.0;
+        const long n = trackerOctaveOff (x, 2.0, 2.0 + (sp.to - sp.from), at);
+        check (n == 0, std::string ("tracker on Luke's take ") + sp.take + " from " + juce::String (sp.from, 2).toStdString() + " to " + juce::String (sp.to, 2).toStdString()
+                       + " s (held notes at 200 to 215 Hz): readings an octave off, 1 ms each (first at " + juce::String (sp.from - 2.0 + at, 3).toStdString() + " s)", (double) n, "");
+    }
+}
+
 // Nothing comes out before a note starts out of silence (Tune Pro, real take 06 at 5.58 s)
 void testNothingBeforeOnset()
 {
@@ -3098,5 +3157,6 @@ int main (int argc, char** argv)
     if (want ("onset") || only == "rode") testNothingBeforeOnset();
     if (want ("entry") || only == "rode") testEntries();
     if (want ("formant") || only == "rode") testRealFormants();
+    if (want ("octave") || only == "rode") testOctaveGuard();
     return finish();
 }

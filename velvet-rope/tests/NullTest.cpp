@@ -11,6 +11,9 @@
 // (preset 5) and Eight Dot Vocal Sculpt (preset 9). Loading preset 5 fresh is now compared with a render saved from 0.7.1
 // (preset-5-v0.7.1.f32, written by --save-repinned). Its session saved by 0.4.1 is still compared with the 0.4.1 render: a
 // session keeps the values it was saved with. No limit changed.
+//
+// 0.8.0: a new instance starts with Held Notes on. The configs that start from a new instance switch it off first (see
+// heldNotesOff), because what they pin is the old sound. No limit changed, and the old sessions are loaded as they were.
 #include "TestKit.h"
 #include "PluginProcessor.h"
 #include "legacy/LegacyEngine.h"
@@ -201,8 +204,19 @@ static std::vector<Config> configs()
     return list;
 }
 
+// Since 0.8.0 a new instance starts with Held Notes on (Luke said yes on 2026-11-11). Held Notes did not exist in 0.4.1, and off is
+// that sound, so "default" and "every-old-control" here are the old default with Held Notes switched off: what 0.7.1 started with.
+// The presets turn it off themselves. The old saved sessions below are loaded as they are, into a new instance.
+static void heldNotesOff (Proc& p)
+{
+    auto* prm = p.parameters.getParameter ("heldNotes");
+    prm->setValueNotifyingHost (0.0f);
+}
+
 static void applyConfig (Proc& p, const Config& c)
 {
+    heldNotesOff (p);
+
     if (c.everything)
         moveEveryOldControl (p);
     else if (c.program >= 0)
@@ -417,6 +431,7 @@ static int compare()
         for (int config = -2; config < 7; ++config)   // the side chain preset is covered above, with its key
         {
             Proc p;
+            heldNotesOff (p);
             if (config == -1)      moveEveryOldControl (p);
             else if (config >= 0)  p.setCurrentProgram (config);
             prepare (p, k.rate, k.channels, false);

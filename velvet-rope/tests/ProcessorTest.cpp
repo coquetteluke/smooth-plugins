@@ -108,8 +108,9 @@ static void testParameters()
         { "band6Freq", "Band 6 Frequency", 20, 20000, 1500 }, { "band6Sens", "Band 6 Sensitivity", -12, 12, 0 }, { "band6Width", "Band 6 Width", 0.1f, 4, 1 }, { "band6On", "Band 6 On", 0, 1, 0 },
         { "band7Freq", "Band 7 Frequency", 20, 20000, 5000 }, { "band7Sens", "Band 7 Sensitivity", -12, 12, 0 }, { "band7Width", "Band 7 Width", 0.1f, 4, 1 }, { "band7On", "Band 7 On", 0, 1, 0 },
         { "band8Freq", "Band 8 Frequency", 20, 20000, 11000 }, { "band8Sens", "Band 8 Sensitivity", -12, 12, 0 }, { "band8Width", "Band 8 Width", 0.1f, 4, 1 }, { "band8On", "Band 8 On", 0, 1, 0 },
-        // Added in 0.6.0, last.
-        { "heldNotes", "Held Notes", 0, 1, 0 },
+        // Added in 0.6.0, last. Its default was 0 (off) up to 0.7.1. Luke said yes on 2026-11-11 to the Held Notes switch being ON
+        // by default, so from 0.8.0 it is 1. ID, name and range are unchanged.
+        { "heldNotes", "Held Notes", 0, 1, 1 },
     };
 
     bool allOk = true;
@@ -772,17 +773,23 @@ static void testPresets()
     check ((int) seen.size() == p.getNumPrograms(), "preset names are all different");
 
     // Preset 0 is the default sound, so loading the plug-in and picking the first preset are the same.
+    // Up to 0.7.1 this held for every control. Luke said yes on 2026-11-11 to the Held Notes switch being ON by default, and
+    // preset 0 keeps its sound with Held Notes off (0.6.0: every older preset turns it off), so from 0.8.0 Held Notes is left out
+    // of this comparison and checked on its own: on in a new instance, off in preset 0. Every other control is compared as before.
     {
         Proc fresh;
         juce::MemoryBlock a, b;
+        const bool heldOnFresh = fresh.parameters.getParameter ("heldNotes")->getValue() > 0.5f;
         fresh.getStateInformation (a);
         fresh.setCurrentProgram (0);
         fresh.getStateInformation (b);
         bool same = true;
         for (auto* prm : fresh.getParameters())
-            if (std::abs (prm->getValue() - prm->getDefaultValue()) > 1.0e-3f && dynamic_cast<ReadingParameter*> (prm) == nullptr)
+            if (std::abs (prm->getValue() - prm->getDefaultValue()) > 1.0e-3f && dynamic_cast<ReadingParameter*> (prm) == nullptr
+                && prm != fresh.parameters.getParameter ("heldNotes"))
                 same = false;
-        check (same, "first preset is the default settings");
+        check (same, "first preset is the default settings, Held Notes aside");
+        check (heldOnFresh && fresh.parameters.getParameter ("heldNotes")->getValue() < 0.5f, "Held Notes: on in a new instance, off in the first preset, which keeps its sound");
     }
 
     // Each preset does something sensible on a voice-like tone mix: no NaN, not silent, cut never past its own Depth.

@@ -218,7 +218,9 @@ int main()
 
     check (unit.latencySamples == 2048.0, "reported latency", unit.latencySamples, "samples");
     check (unit.ids.size() == 60, "parameters found by name", (double) unit.ids.size(), "");   // 59 until 0.6.0 added Held Notes
-    check (unit.ids.count ("Held Notes") == 1 && unit.get ("Held Notes") == 0.0f, "Held Notes is one of them, and is off when the plug-in loads", (double) unit.get ("Held Notes"), "");
+    // Up to 0.7.1 this read "and is off when the plug-in loads" (0.0). Luke said yes on 2026-11-11 to the Held Notes switch being
+    // ON by default, so from 0.8.0 a new instance has it on (1.0).
+    check (unit.ids.count ("Held Notes") == 1 && unit.get ("Held Notes") == 1.0f, "Held Notes is one of them, and is on when the plug-in loads", (double) unit.get ("Held Notes"), "");
 
     const auto input = toneOverNoise (4.0, 2500.0, 0.25, 0.003, 1);
     unit.source.main = input;

@@ -62,7 +62,7 @@ The window's font is Inter, under the SIL Open Font License. See `assets/fonts/O
 - **Bypass**: keeps the delay, crossfades over 20 ms.
 - **Mode**: Soft judges a peak against the bands around it, so it works the same at any level. Hard uses a fixed level, so loud parts get treated and quiet ones don't. Hard is what you want for side chain carving.
 - **Hard Threshold** (-80 to 0 dB, default -36): Hard mode only. A bin over this level is held down toward it, up to Depth. Compared after a 3 dB per octave lift above 1 kHz, so one number suits a voice's falling highs.
-- **Held Notes** (Off or On, default Off): also takes down a single harmonic that rings on a held note. Off is the sound of 0.5.1 to the sample, so nothing saved before it existed changes. It only works in Soft mode, and an S, a breath or noise has no harmonics, so it leaves them alone. The graph shows its part of the reduction in rose gold. On costs about 1.3 times the CPU: 0.80% of one core off, 1.05% on, mono at 48 kHz, the mean over Luke's 11 working takes on the MacBook with other work running (0.7.0 in the same half hour: 1.80% and 2.09%). Numbers on real takes are under What was measured.
+- **Held Notes** (Off or On, default On since 0.8.0, Off before): also takes down a single harmonic that rings on a held note. Off is the sound of 0.5.1 to the sample. A new instance starts with it on; a saved session keeps the value it was saved with, and a session saved before 0.6.0, which has no Held Notes value, loads with it off, so nothing saved before it existed changes. The factory presets up to High Detail With Ceiling turn it off, as they always have. It only works in Soft mode, and an S, a breath or noise has no harmonics, so it leaves them alone. The graph shows its part of the reduction in rose gold. On costs about 1.3 times the CPU: 0.80% of one core off, 1.05% on, mono at 48 kHz, the mean over Luke's 11 working takes on the MacBook with other work running (0.7.0 in the same half hour: 1.80% and 2.09%). Numbers on real takes are under What was measured.
 - **Stereo Mode**: Stereo or Mid/Side. Switches with no click. Does nothing over two channels.
 - **Stereo Link** (0 to 100%, default 100): 100 means one gain curve for all channels, so the image can't wander. 0 means each channel on its own. Mid and side are always treated apart. In surround it joins every channel except the LFE.
 - **Stereo Focus** (-100 to +100%, default 0): -100 puts all the treatment on left or mid, +100 on right or side. In surround it goes by left and right side channels, and center channels keep theirs.
@@ -81,7 +81,7 @@ Parameter IDs are saved in sessions and automation. Never rename them.
 
 ## Presets
 
-- **Gentle Vocal Polish**: the default settings.
+- **Gentle Vocal Polish**: the default settings with Held Notes off, which was the default up to 0.7.1. It keeps that sound.
 - **Harsh Lead Vocal**: Depth 12, a little more sensitive around 3.2 kHz.
 - **Vocal Stack Smoother**: wide and slower, Depth 9, for a group of voices.
 - **Wide Stack Mid Side**: the same idea with mid and side apart.
@@ -92,7 +92,7 @@ Parameter IDs are saved in sessions and automation. Never rename them.
 - **Tracking Low Latency**: Low Latency, Depth 8, fast. For singing through it while recording.
 - **Eight Dot Vocal Sculpt**: all 8 dots in use, protecting the body of the voice and the air, and looking harder where a vocal gets harsh. In 0.7.1 the three dots under 1 kHz hold the body harder (-12 dB at 300 Hz, -8 dB at 500 Hz, -6 dB at 900 Hz).
 - **High Detail With Ceiling**: High, Depth 24, Max Cut 6. Strong and detailed, and never more than 6 dB anywhere.
-- **Gentle Polish With Held Notes**: the default settings with Held Notes on.
+- **Gentle Polish With Held Notes**: the default settings with Held Notes on, so since 0.8.0 the same as a new instance.
 
 ## Surround
 
@@ -117,6 +117,8 @@ With Held Notes on, in Soft mode, when the voice has clear harmonics (at least 4
 ## What was measured
 
 Everything is in `tests/results.txt`. Rerun with `zsh tests/run_all.sh` after `cmake --build build --target InstallAU -j 1`. Build each test first with `cmake --build build --target ProcessorTest NullTest FeatureTest DspTest SpeechTest HostCheck LayoutCheck -j 1`.
+
+Since 0.8.0 the default has Held Notes on, and on the 11 working takes its renders equal 0.7.1's Gentle Polish With Held Notes sample for sample, so the "on in 0.7.0" numbers below are the default's numbers (0.7.1 and 0.8.0 change no sample of it). Default off then on, measured again in 0.8.0: rings cut by 3 dB or more 58% then 94%, median 4.74 then 5.92 dB, S -1.27 then -1.28 dB, swing between 1 and 10 kHz 2.60 then 2.92 dB (limit 3.0), CPU 0.73 then 1.23% of one core (mono, 48 kHz, busy Mac).
 
 Held Notes on Luke's real takes (11 whole songs on a Rode NT1, 23.9 minutes of voiced sound, default settings; off, then on in 0.6.0, then on in 0.7.0). A ring here is one harmonic 10 dB or more over the two harmonics either side of it that stays put for a quarter of a second or more; there are 48, most at 1.8 to 1.9 kHz and 2.4 to 4.0 kHz.
 

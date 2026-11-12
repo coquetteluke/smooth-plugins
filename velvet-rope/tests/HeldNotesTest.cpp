@@ -1,4 +1,5 @@
-// Held Notes: the control added in 0.6.0. Off, which is the default, is the 0.5.1 sound to the sample. On, Soft mode also takes
+// Held Notes: the control added in 0.6.0. Off, which was the default until 0.8.0, is the 0.5.1 sound to the sample. On, the
+// default of a new instance since 0.8.0 (Luke said yes on 2026-11-11), Soft mode also takes
 // down a single harmonic that rings on a held note. Everything here goes through the real processor and its real parameters,
 // looked up by ID, so this file builds against a version that has no such control and fails there for that reason.
 //
@@ -363,13 +364,15 @@ static double largestStep (const std::vector<float>& x, int from)
 
 static void testControl()
 {
-    std::puts ("\n== The control: a real parameter, off by default");
+    std::puts ("\n== The control: a real parameter, on by default since 0.8.0");
     Proc p;
     auto* c = control (p);
     check (c != nullptr, "a parameter with the ID heldNotes exists");
     check (c != nullptr && c->getName (64) == "Held Notes", "it is named Held Notes");
     check (c != nullptr && c->isAutomatable() && c->getNumSteps() == 2, "it is an on or off control that can be automated");
-    check (c != nullptr && c->getDefaultValue() < 0.5f && ! isHeld (p), "it is off by default");
+    // This line read "it is off by default" up to 0.7.1. Luke said yes on 2026-11-11 to the Held Notes switch being ON by default,
+    // so from 0.8.0 the assertion is the other way round. Nothing else in this test changed for it.
+    check (c != nullptr && c->getDefaultValue() > 0.5f && isHeld (p), "it is on by default (since 0.8.0)");
     check (c != nullptr && c->getAllValueStrings().size() == 2 && ! hasEmDash (c->getName (64)), "its two values have names and nothing has an em dash");
 
     if (c != nullptr)
@@ -396,12 +399,15 @@ static void testOffIsTheOldSound()
 
     for (const auto& c : cases)
     {
+        // Up to 0.7.1 this processor was left untouched, which was off. Since 0.8.0 a new instance starts with it on, so it is
+        // switched off before anything else, and it is still the off case that has to null against the old engine.
         Proc untouched;
+        setHeld (untouched, false);
         c.setUp (untouched);
         prepare (untouched);
         const auto old = renderOldEngine (untouched, x);
         const double a = nullDb (render (untouched, x), old);
-        check (a <= -90.0, std::string (c.name) + ", control never touched: against the old engine (limit -90)", a, "dBFS");
+        check (a <= -90.0, std::string (c.name) + ", switched off and never on: against the old engine (limit -90)", a, "dBFS");
 
         Proc off;
         c.setUp (off);
@@ -712,6 +718,7 @@ static void testState()
         juce::MemoryBlock saved;
         a.getStateInformation (saved);
         Proc b;
+        setHeld (b, false);   // a new instance starts with it on since 0.8.0, so load into one that has it off
         b.setStateInformation (saved.getData(), (int) saved.getSize());
         check (has && isHeld (b), "a session saved with it on reloads with it on");
 
@@ -722,6 +729,93 @@ static void testState()
         setHeld (c, true);
         c.setStateInformation (savedOff.getData(), (int) savedOff.getSize());
         check (has && ! isHeld (c), "a session saved with it off reloads with it off");
+    }
+}
+
+// 0.8.0: a new instance starts with Held Notes on. Luke said yes to this on 2026-11-11. A session keeps the value it was saved
+// with, and a state with no Held Notes value at all was saved before 0.6.0, when there was no Held Notes, so it loads with it off
+// and sounds as it was saved. A damaged value counts as no value.
+static void testDefaultOnSince080()
+{
+    std::puts ("\n== 0.8.0: on in a new instance, and every saved state loads as it was saved");
+
+    {
+        Proc p;
+        auto* c = control (p);
+        check (c != nullptr && c->getDefaultValue() > 0.5f && isHeld (p), "a new instance starts with it on, and its default value is on");
+    }
+
+    const auto folder = juce::File (BASELINE_DIR);
+    const auto load = [] (Proc& p, const juce::MemoryBlock& state) { p.setStateInformation (state.getData(), (int) state.getSize()); };
+
+    // Read out of the installed 0.7.1 Audio Unit through the host API (kAudioUnitProperty_ClassInfo) before 0.8.0 replaced it.
+    {
+        juce::MemoryBlock off, on;
+        const bool found = folder.getChildFile ("v0.7.1-default.state").loadFileAsData (off) && folder.getChildFile ("v0.7.1-held-on-depth-9.state").loadFileAsData (on);
+
+        Proc a;
+        load (a, off);
+        check (found && ! isHeld (a) && std::abs (real (a, "depth") - 6.0f) < 0.01f, "the default session saved by 0.7.1, Held Notes off, loads with it off and Depth 6 into a new instance");
+
+        Proc b;
+        setHeld (b, false);
+        load (b, on);
+        check (found && isHeld (b) && std::abs (real (b, "depth") - 9.0f) < 0.01f, "a session saved by 0.7.1 with it on and Depth 9 loads with it on and Depth 9, into a plug-in that had it off");
+
+        Proc c;
+        juce::MemoryBlock old;
+        const bool found6 = folder.getChildFile ("v0.6.0-default.state").loadFileAsData (old);
+        load (c, old);
+        check (found6 && ! isHeld (c), "the default session saved by 0.6.0, Held Notes off, loads with it off into a new instance");
+    }
+
+    // No Held Notes value at all: what 0.5.1 and earlier saved.
+    {
+        juce::MemoryBlock state;
+        const bool found = folder.getChildFile ("default.state").loadFileAsData (state);
+        const bool none = found && ! juce::String::fromUTF8 ((const char*) state.getData(), (int) state.getSize()).contains (kId);
+        Proc p;
+        load (p, state);
+        check (none && ! isHeld (p), "the default session saved by 0.4.1, with no Held Notes value, loads with it off into a new instance");
+
+        juce::MemoryBlock every;
+        const bool foundEvery = folder.getChildFile ("every-old-control.state").loadFileAsData (every);
+        Proc q;
+        load (q, every);
+        check (foundEvery && ! isHeld (q), "the 0.4.1 session with every old control moved, no Held Notes value, loads with it off");
+
+        Proc saver;
+        setParam (saver, "depth", 9.0f);
+        juce::MemoryBlock saved;
+        saver.getStateInformation (saved);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+
+        // The same state with its Held Notes value taken out, and with it damaged.
+        juce::MemoryBlock without, damaged;
+        {
+            auto copy = std::make_unique<juce::XmlElement> (*xml);
+            for (auto* child = copy->getFirstChildElement(); child != nullptr;)
+            {
+                auto* next = child->getNextElement();
+                if (child->getStringAttribute ("id") == kId) copy->removeChildElement (child, true);
+                child = next;
+            }
+            juce::AudioProcessor::copyXmlToBinary (*copy, without);
+        }
+        {
+            auto copy = std::make_unique<juce::XmlElement> (*xml);
+            for (auto* child : copy->getChildIterator())
+                if (child->getStringAttribute ("id") == kId) child->setAttribute ("value", "nan");
+            juce::AudioProcessor::copyXmlToBinary (*copy, damaged);
+        }
+
+        Proc r;
+        load (r, without);
+        check (! isHeld (r) && std::abs (real (r, "depth") - 9.0f) < 0.01f, "a state with no Held Notes value loads with it off and keeps its Depth 9, into a new instance");
+
+        Proc s;
+        load (s, damaged);
+        check (! isHeld (s) && std::abs (real (s, "depth") - 9.0f) < 0.01f, "a state whose Held Notes value is damaged (nan) loads with it off");
     }
 }
 
@@ -852,6 +946,7 @@ int main()
     testGraphMarksIt();
     testConsonants();
     testState();
+    testDefaultOnSince080();
     testAutomation();
     testPresets();
     testWindow();

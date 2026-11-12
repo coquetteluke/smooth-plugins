@@ -28,6 +28,20 @@ inline void applySafeState (juce::AudioProcessorValueTreeState& apvts, const juc
     apvts.replaceState (state);
 }
 
+// True when the saved state holds a value for this parameter that applySafeState keeps: present and finite.
+inline bool hasUsableValue (const juce::XmlElement& xml, const juce::String& id)
+{
+    for (auto* child : xml.getChildIterator())
+    {
+        if (child->getStringAttribute ("id") != id || ! child->hasAttribute ("value"))
+            continue;
+        const auto text = child->getStringAttribute ("value").trim().toLowerCase();
+        if (std::isfinite (text.getDoubleValue()) && ! text.contains ("nan") && ! text.contains ("inf"))
+            return true;
+    }
+    return false;
+}
+
 // Call first in processBlock. One bad sample from upstream must never stick in a filter, envelope or delay line.
 inline void sanitiseInput (juce::AudioBuffer<float>& buffer) noexcept
 {

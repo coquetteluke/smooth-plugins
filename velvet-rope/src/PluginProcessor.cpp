@@ -86,8 +86,10 @@ namespace
             layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "band" + number + "On", 1 }, "Band " + number + " On", defaults.bands[b].on));
         }
 
-        // Added in 0.6.0, last in the list. Off is the sound of 0.5.1, so a session saved before it existed plays as it did.
-        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "heldNotes", 1 }, "Held Notes", defaults.heldNotes));
+        // Added in 0.6.0, last in the list. Off is the sound of 0.5.1. On in a new instance since 0.8.0: Luke said yes to this on
+        // 2026-11-11. The engine's own default stays off (smoothres::Params), and a state saved before 0.6.0, which has no Held
+        // Notes value, loads with it off (setStateInformation), so a session saved before it existed plays as it did.
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "heldNotes", 1 }, "Held Notes", true));
 
         return layout;
     }
@@ -481,6 +483,25 @@ void SmoothResonanceProcessor::setStateInformation (const void* data, int size)
 
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (advancedOpenAttribute);
+
+            // Held Notes is on in a new instance since 0.8.0. A state with no Held Notes value was saved before 0.6.0 and played
+            // without it, so it loads with it off and sounds as it was saved. A damaged value counts as none, since otherwise
+            // applySafeState would drop it and leave the new default.
+            if (! hasUsableValue (*xml, "heldNotes"))
+            {
+                for (auto* child = xml->getFirstChildElement(); child != nullptr;)
+                {
+                    auto* next = child->getNextElement();
+                    if (child->getStringAttribute ("id") == "heldNotes")
+                        xml->removeChildElement (child, true);
+                    child = next;
+                }
+
+                auto* off = xml->createNewChildElement ("PARAM");   // the tag the value tree gives every parameter
+                off->setAttribute ("id", "heldNotes");
+                off->setAttribute ("value", 0.0);
+            }
+
             applySafeState (parameters, *xml);
             syncLatencyToQuality();
         }

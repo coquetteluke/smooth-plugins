@@ -1205,6 +1205,35 @@ void testVocoder()
             }
         check (worstBurst <= limits::vocoderLevelDb, "Vocoder on, notes starting out of a pause with a room under it and an S before: 10 ms level in a note's first 100 ms against its steady level, worst (" + burstAt + ")", worstBurst, "dB");
     }
+    // Switched on during say speech and singing at its loudest voiced moments, the real vocal check's own rule (2026-11-12: on Luke's
+    // take 06 the step in the 30 ms after the switch was 1.83 times the biggest step in the half second either side). Written before any
+    // change: biggest step in the 30 ms after the switch over the biggest in the 0.5 s before and the 0.5 s after that, at most
+    // limits::switchStepRatio.
+    {
+        double worst = 0.0;
+        std::string worstName;
+        for (const char* file : { "speech_samantha.wav", "speech_daniel.wav", "sung_goodnews.wav", "held_fred.wav", "sung_cellos.wav" })
+        {
+            const auto x = loadWav (file);
+            for (double at : { 0.3, 0.5, 0.7 })
+            {
+                // the loudest 10 ms frame between at - 0.1 and at + 0.1 of the file, on a block boundary
+                const int n = (int) x.size(), frame = 480;
+                int best = (int) (at * n); double loud = 0.0;
+                for (int a = (int) ((at - 0.1) * n); a + frame < (int) ((at + 0.1) * n); a += frame)
+                    if (rms (x.data() + a, frame) > loud) { loud = rms (x.data() + a, frame); best = a; }
+                auto p = with ({ { "vocoderOn", 0 }, { "vocoderMix", 40 } });
+                const int lat = p->getLatencySamples(), onBlock = (best + lat + 255) / 256, t1 = onBlock * 256;
+                if (t1 + (int) (0.6 * SR) >= n || t1 < (int) (0.6 * SR)) continue;
+                const auto out = left (render (*p, x, 256, nullptr, [&p, onBlock] (int idx) { if (idx == onBlock) setParam (*p, "vocoderOn", 1.0f); }));
+                const int w = (int) (0.03 * SR), half = (int) (0.5 * SR);
+                const double around = std::max (maxJump (out.data() + t1 - half, half), maxJump (out.data() + t1 + w, half));
+                const double r = maxJump (out.data() + t1, w) / std::max (around, 1.0e-9);
+                if (r > worst) { worst = r; worstName = std::string (file) + " at " + juce::String (t1 / SR, 2).toStdString() + " s"; }
+            }
+        }
+        check (worst <= limits::switchStepRatio, "Vocoder switched on at the loudest moments of say speech and singing: step in the 30 ms after against the second either side, worst (" + worstName + ")", worst);
+    }
     // Stays quiet in silence
     {
         auto p = with ({ { "vocoderOn", 1 }, { "vocoderMix", 100 } });

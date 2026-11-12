@@ -67,3 +67,25 @@ namespace limits
     // CPU, percent of one core, 48 kHz stereo, voiced material, all modules on (machine busy with other builds)
     constexpr double cpuAllOnPercent = 25.0;
 }
+
+// Added 2026-11-12, for the faults Tune Pro found on Luke's real takes (Rode NT1, 2026-11-10), in the tuner Glitter shares with it. The
+// same values as Tune Pro's prolimits (and Tune's rodelimits), set before any of these tests was run on Glitter.
+namespace rodelimits
+{
+    constexpr double pitchInLineMs = 1.0;             // pitch movement against the sound it belongs to, either way
+    constexpr double uncorrectedNullDb = -90.0;       // an uncorrected voice against the input at the reported delay, once settled
+    constexpr double lineWaverCents = 20.0;           // the output's waver may not be bigger than the +/-20 cents that were sung
+    constexpr double lineSettleCents = 15.0;          // the output's median from the nearer note: it has settled on one
+    constexpr double flatStepMs = 20.0;               // a semitone step landing 25 cents flat reaches the new note within this
+    constexpr double flatGlideStepMs = 14.0;          // the same step as a 60 ms glide, from the end of the glide
+    constexpr double slowSlideMs = 150.0;             // a held note sliding slowly across the line (13 cents per 100 ms) is on the new note within 150 ms of the line
+    constexpr double beforeOnsetDb = -40.0;           // the output in the 10 ms before a note starts in the input, against the held note
+    constexpr double nonHarmonicDb = -35.0;           // non-harmonic energy against total in a corrected voice (Tune's limits::nonHarmonicDb)
+}
+
+// Entries into a note that hold their pitch from the start (Tune Pro's testEntries), judged by the real vocal check's own start lag rule
+// for Glitter (time until the output is within 10 cents of the note for 15 ms) and its limits, at Retune 0, Glitter's default.
+namespace entrylimits
+{
+    constexpr double instantMedianMs = 20.0, instantP90Ms = 40.0;
+}

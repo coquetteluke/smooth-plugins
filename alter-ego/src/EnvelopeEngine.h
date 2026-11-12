@@ -49,6 +49,8 @@ public:
         power.assign (n / 2 + 1, 0.0);
         warped.assign (n / 2 + 1, 0.0);
         held.assign (n / 2 + 1, 0.0);
+        fitCos.assign ((size_t) maxFitLines * rowStride, 0.0);
+        fitSin.assign ((size_t) maxFitLines * rowStride, 0.0);
         lagWindow.resize ((size_t) order + 1);
         for (int l = 0; l <= order; ++l)
         {
@@ -141,10 +143,23 @@ private:
             lags[l] = (l & 1) == 0 ? real[(size_t) (l / 2)] : imag[(size_t) (l / 2)];
     }
 
+    // One step up of the Levinson recursion, in place: a[j] = a[j] + k a[i - j] for 0 < j < i, every one from the old values. The same
+    // sums as working from a copy of a, without the copy (1.2.4).
+    static void stepUp (double* a, int i, double k) noexcept
+    {
+        for (int j = 1; j + j <= i; ++j)
+        {
+            const double low = a[j], high = a[i - j];
+            a[j] = low + k * high;
+            if (j + j < i)
+                a[i - j] = high + k * low;
+        }
+    }
+
     // Levinson recursion to reflection coefficients. Returns the prediction error, in the units of the lags.
     double levinson (double* lags, double* k) const noexcept
     {
-        std::array<double, maxOrder + 1> a {}, previous {};
+        std::array<double, maxOrder + 1> a {};
         std::fill (k, k + order, 0.0);
         if (! (lags[0] > 0.0) || ! std::isfinite (lags[0]))
             return 0.0;
@@ -162,9 +177,7 @@ private:
             if (! std::isfinite (r) || std::abs (r) >= 1.0)
                 break; // numerically done, the rest stay 0
             r = std::clamp (r, -0.9995, 0.9995);
-            previous = a;
-            for (int j = 1; j < i; ++j)
-                a[(size_t) j] = previous[(size_t) j] + r * previous[(size_t) (i - j)];
+            stepUp (a.data(), i, r);
             a[(size_t) i] = r;
             k[i - 1] = r;
             error *= 1.0 - r * r;
@@ -305,6 +318,8 @@ private:
     // Replaces lags with those of the all-pole curve fitted through the lines, whose frequencies are scaled by ratio.
     // Cosines come from a rotating pair rather than a call each, and the matrix is Toeplitz, so its recursion runs once and every
     // round only needs its stored steps. Measured at 20% of a core before that, on the same fit.
+    // Each line's rotating pair is walked once per fit and kept in a table (fitCos, fitSin), and every round reads it from there:
+    // the same numbers in the same order as walking it again in each round. That alone took the engine from 24.9% to 10.2% of a core at 96 kHz (1.2.4).
     // findPlaces: this is the frame's first fit (the whitening filter), which looks for places where the fit stands too tall between
     // two harmonics and holds them down. The second fit of the frame (the filter that goes back on) is handed the same places.
     void fitToLines (double ratio, double* lags, double sharpen, bool findPlaces) noexcept
@@ -324,15 +339,6 @@ private:
             lineFitPower[(size_t) used] = power;
             lineFitCos[(size_t) used] = std::cos (w);
             lineFitSin[(size_t) used] = std::sin (w);
-            const double cw = lineFitCos[(size_t) used], sw = lineFitSin[(size_t) used];
-            double c = 1.0, s = 0.0;
-            for (int l = 0; l <= p; ++l)
-            {
-                r[(size_t) l] += power * c;
-                const double next = c * cw - s * sw;
-                s = s * cw + c * sw;
-                c = next;
-            }
             ++used;
         };
 
@@ -360,11 +366,13 @@ private:
                 w += spacing;
             }
         }
+        walkLines (0, used);
+        addLines (r.data(), 0, used);
         if (used <= p + 2 || ! (r[0] > 0.0))
             return; // too few harmonics, or the top of the voice would go over the top of the band: keep the ordinary fit
         const int voiceLines = used;
         const std::array<double, maxOrder + 1> sums = r;
-        std::array<double, maxOrder + 1> a {}, target {}, startLags {}, startK {}, startA {};
+        std::array<double, maxOrder + 1> a {}, target {}, startLags {}, startK {};
         if (! findPlaces)
             for (int k = 0; k < numHeld && used < maxFitLines; ++k)
             {
@@ -376,23 +384,19 @@ private:
                 lineFitSin[(size_t) used] = std::sin (w);
                 ++used;
             }
+        int walked = used;
+        walkLines (voiceLines, used);
         // Twice at most, and only for the first fit of a frame: the fit, then, if it stands too tall between two harmonics, the fit
         // again with those places held down.
         for (int pass = 0; pass < 2; ++pass)
         {
         r = sums;
-        for (int k = voiceLines; k < used; ++k)
+        if (walked < used)
         {
-            const double cw = lineFitCos[(size_t) k], sw = lineFitSin[(size_t) k];
-            double c = 1.0, sn = 0.0;
-            for (int l = 0; l <= p; ++l)
-            {
-                r[(size_t) l] += lineFitPower[(size_t) k] * c;
-                const double next = c * cw - sn * sw;
-                sn = sn * cw + c * sw;
-                c = next;
-            }
+            walkLines (walked, used);
+            walked = used;
         }
+        addLines (r.data(), voiceLines, used);
         for (double& v : r) v /= used;
         r[0] *= 1.0 + 1.0e-4;
 
@@ -428,9 +432,7 @@ private:
             a[0] = 1.0;
             for (int i = 1; i <= p; ++i)
             {
-                startA = a;
-                for (int j = 1; j < i; ++j)
-                    a[(size_t) j] = startA[(size_t) j] + startK[(size_t) i - 1] * startA[(size_t) (i - j)];
+                stepUp (a.data(), i, startK[(size_t) i - 1]);
                 a[(size_t) i] = startK[(size_t) i - 1];
             }
             const double gain = 1.0 / std::sqrt (startError);
@@ -442,29 +444,7 @@ private:
         {
             // Right hand side: the model's own response read at the lines.
             target.fill (0.0);
-            for (int k = 0; k < used; ++k)
-            {
-                const double cw = lineFitCos[(size_t) k], sw = lineFitSin[(size_t) k];
-                double c = 1.0, s = 0.0, re = 0.0, im = 0.0;
-                for (int i = 0; i <= p; ++i)
-                {
-                    re += a[(size_t) i] * c;
-                    im -= a[(size_t) i] * s;
-                    const double next = c * cw - s * sw;
-                    s = s * cw + c * sw;
-                    c = next;
-                }
-                const double d = re * re + im * im + 1.0e-30;
-                const double hr = re / d, hi = -im / d;
-                c = 1.0; s = 0.0;
-                for (int i = 0; i <= p; ++i)
-                {
-                    target[(size_t) i] += hr * c + hi * s;
-                    const double next = c * cw - s * sw;
-                    s = s * cw + c * sw;
-                    c = next;
-                }
-            }
+            modelAtLines (a.data(), target.data(), used);
             for (int i = 0; i <= p; ++i) target[(size_t) i] /= used;
 
             // Solve with the stored steps.
@@ -541,7 +521,7 @@ private:
         }
 
         // Back to lags: walk down to reflection coefficients and refuse anything unstable, then walk up to the curve's autocorrelation.
-        std::array<double, maxOrder + 1> mono {}, previous {}, ks {};
+        std::array<double, maxOrder + 1> mono {}, ks {};
         const double g = 1.0 / a[0];
         for (int i = 0; i <= p; ++i) mono[(size_t) i] = a[(size_t) i] * g;
         for (int m = p; m >= 1; --m)
@@ -551,9 +531,13 @@ private:
                 return;
             ks[(size_t) m] = kk;
             const double den = 1.0 - kk * kk;
-            previous = mono;
-            for (int j = 1; j < m; ++j)
-                mono[(size_t) j] = (previous[(size_t) j] - kk * previous[(size_t) (m - j)]) / den;
+            for (int j = 1; j + j <= m; ++j)
+            {
+                const double low = mono[(size_t) j], high = mono[(size_t) (m - j)];
+                mono[(size_t) j] = (low - kk * high) / den;
+                if (j + j < m)
+                    mono[(size_t) (m - j)] = (high - kk * low) / den;
+            }
         }
         std::array<double, maxOrder + 1> out {}, up {};
         out[0] = lags[0];
@@ -564,12 +548,167 @@ private:
             double acc = 0.0;
             for (int j = 1; j < m; ++j) acc += up[(size_t) j] * out[(size_t) (m - j)];
             out[(size_t) m] = -ks[(size_t) m] * e - acc;
-            previous = up;
-            for (int j = 1; j < m; ++j) up[(size_t) j] = previous[(size_t) j] + ks[(size_t) m] * previous[(size_t) (m - j)];
+            stepUp (up.data(), m, ks[(size_t) m]);
             up[(size_t) m] = ks[(size_t) m];
             e *= 1.0 - ks[(size_t) m] * ks[(size_t) m];
         }
         for (int l = 0; l <= p; ++l) lags[l] = out[(size_t) l];
+    }
+
+    // Each line's rotating pair, cos and sin of l times its frequency for l = 0 to order, as the fit has always walked it. Eight lines
+    // at a time, so the walks overlap; each walk is the same steps in the same order as one on its own.
+    void walkLines (int from, int to) noexcept
+    {
+        const int p = order;
+        int k = from;
+        for (; k + 8 <= to; k += 8)
+        {
+            double* c0 = fitCos.data() + (size_t) k * rowStride;
+            double* s0 = fitSin.data() + (size_t) k * rowStride;
+            double* c1 = c0 + rowStride;
+            double* s1 = s0 + rowStride;
+            double* c2 = c1 + rowStride;
+            double* s2 = s1 + rowStride;
+            double* c3 = c2 + rowStride;
+            double* s3 = s2 + rowStride;
+            double* c4 = c3 + rowStride;
+            double* s4 = s3 + rowStride;
+            double* c5 = c4 + rowStride;
+            double* s5 = s4 + rowStride;
+            double* c6 = c5 + rowStride;
+            double* s6 = s5 + rowStride;
+            double* c7 = c6 + rowStride;
+            double* s7 = s6 + rowStride;
+            const double cw0 = lineFitCos[(size_t) (k + 0)], sw0 = lineFitSin[(size_t) (k + 0)];
+            const double cw1 = lineFitCos[(size_t) (k + 1)], sw1 = lineFitSin[(size_t) (k + 1)];
+            const double cw2 = lineFitCos[(size_t) (k + 2)], sw2 = lineFitSin[(size_t) (k + 2)];
+            const double cw3 = lineFitCos[(size_t) (k + 3)], sw3 = lineFitSin[(size_t) (k + 3)];
+            const double cw4 = lineFitCos[(size_t) (k + 4)], sw4 = lineFitSin[(size_t) (k + 4)];
+            const double cw5 = lineFitCos[(size_t) (k + 5)], sw5 = lineFitSin[(size_t) (k + 5)];
+            const double cw6 = lineFitCos[(size_t) (k + 6)], sw6 = lineFitSin[(size_t) (k + 6)];
+            const double cw7 = lineFitCos[(size_t) (k + 7)], sw7 = lineFitSin[(size_t) (k + 7)];
+            double x0 = 1.0, y0 = 0.0, x1 = 1.0, y1 = 0.0, x2 = 1.0, y2 = 0.0, x3 = 1.0, y3 = 0.0, x4 = 1.0, y4 = 0.0, x5 = 1.0, y5 = 0.0, x6 = 1.0, y6 = 0.0, x7 = 1.0, y7 = 0.0;
+            for (int l = 0; l <= p; ++l)
+            {
+                c0[l] = x0; s0[l] = y0; c1[l] = x1; s1[l] = y1; c2[l] = x2; s2[l] = y2; c3[l] = x3; s3[l] = y3; c4[l] = x4; s4[l] = y4; c5[l] = x5; s5[l] = y5; c6[l] = x6; s6[l] = y6; c7[l] = x7; s7[l] = y7;
+                { const double next = x0 * cw0 - y0 * sw0; y0 = y0 * cw0 + x0 * sw0; x0 = next; }
+                { const double next = x1 * cw1 - y1 * sw1; y1 = y1 * cw1 + x1 * sw1; x1 = next; }
+                { const double next = x2 * cw2 - y2 * sw2; y2 = y2 * cw2 + x2 * sw2; x2 = next; }
+                { const double next = x3 * cw3 - y3 * sw3; y3 = y3 * cw3 + x3 * sw3; x3 = next; }
+                { const double next = x4 * cw4 - y4 * sw4; y4 = y4 * cw4 + x4 * sw4; x4 = next; }
+                { const double next = x5 * cw5 - y5 * sw5; y5 = y5 * cw5 + x5 * sw5; x5 = next; }
+                { const double next = x6 * cw6 - y6 * sw6; y6 = y6 * cw6 + x6 * sw6; x6 = next; }
+                { const double next = x7 * cw7 - y7 * sw7; y7 = y7 * cw7 + x7 * sw7; x7 = next; }
+            }
+        }
+        for (; k < to; ++k)
+        {
+            double* cr = fitCos.data() + (size_t) k * rowStride;
+            double* sr0 = fitSin.data() + (size_t) k * rowStride;
+            const double cw = lineFitCos[(size_t) k], sw = lineFitSin[(size_t) k];
+            double c = 1.0, s = 0.0;
+            for (int l = 0; l <= p; ++l)
+            {
+                cr[l] = c; sr0[l] = s;
+                const double next = c * cw - s * sw;
+                s = s * cw + c * sw;
+                c = next;
+            }
+        }
+    }
+
+    // r[l] += power * cos (l w) for the lines from, up to but not including, to, in line order.
+    void addLines (double* r, int from, int to) const noexcept
+    {
+        const int p = order;
+        for (int k = from; k < to; ++k)
+        {
+            const double power = lineFitPower[(size_t) k];
+            const double* c = fitCos.data() + (size_t) k * rowStride;
+            for (int l = 0; l <= p; ++l)
+                r[l] += power * c[l];
+        }
+    }
+
+    // One round's right hand side: for each line in order, the model's response there, added back over the lags. Eight lines at a
+    // time, so their sums overlap; each line's sum is still taken in lag order, and the lags get the lines' parts in line order.
+    void modelAtLines (const double* a, double* target, int used) const noexcept
+    {
+        const int p = order;
+        int k = 0;
+        for (; k + 8 <= used; k += 8)
+        {
+            const double* c0 = fitCos.data() + (size_t) k * rowStride;
+            const double* s0 = fitSin.data() + (size_t) k * rowStride;
+            const double* c1 = c0 + rowStride;
+            const double* s1 = s0 + rowStride;
+            const double* c2 = c1 + rowStride;
+            const double* s2 = s1 + rowStride;
+            const double* c3 = c2 + rowStride;
+            const double* s3 = s2 + rowStride;
+            const double* c4 = c3 + rowStride;
+            const double* s4 = s3 + rowStride;
+            const double* c5 = c4 + rowStride;
+            const double* s5 = s4 + rowStride;
+            const double* c6 = c5 + rowStride;
+            const double* s6 = s5 + rowStride;
+            const double* c7 = c6 + rowStride;
+            const double* s7 = s6 + rowStride;
+            double re0 = 0.0, im0 = 0.0, re1 = 0.0, im1 = 0.0, re2 = 0.0, im2 = 0.0, re3 = 0.0, im3 = 0.0, re4 = 0.0, im4 = 0.0, re5 = 0.0, im5 = 0.0, re6 = 0.0, im6 = 0.0, re7 = 0.0, im7 = 0.0;
+            for (int i = 0; i <= p; ++i)
+            {
+                re0 += a[i] * c0[i]; im0 -= a[i] * s0[i];
+                re1 += a[i] * c1[i]; im1 -= a[i] * s1[i];
+                re2 += a[i] * c2[i]; im2 -= a[i] * s2[i];
+                re3 += a[i] * c3[i]; im3 -= a[i] * s3[i];
+                re4 += a[i] * c4[i]; im4 -= a[i] * s4[i];
+                re5 += a[i] * c5[i]; im5 -= a[i] * s5[i];
+                re6 += a[i] * c6[i]; im6 -= a[i] * s6[i];
+                re7 += a[i] * c7[i]; im7 -= a[i] * s7[i];
+            }
+            const double d0 = re0 * re0 + im0 * im0 + 1.0e-30;
+            const double hr0 = re0 / d0, hi0 = -im0 / d0;
+            const double d1 = re1 * re1 + im1 * im1 + 1.0e-30;
+            const double hr1 = re1 / d1, hi1 = -im1 / d1;
+            const double d2 = re2 * re2 + im2 * im2 + 1.0e-30;
+            const double hr2 = re2 / d2, hi2 = -im2 / d2;
+            const double d3 = re3 * re3 + im3 * im3 + 1.0e-30;
+            const double hr3 = re3 / d3, hi3 = -im3 / d3;
+            const double d4 = re4 * re4 + im4 * im4 + 1.0e-30;
+            const double hr4 = re4 / d4, hi4 = -im4 / d4;
+            const double d5 = re5 * re5 + im5 * im5 + 1.0e-30;
+            const double hr5 = re5 / d5, hi5 = -im5 / d5;
+            const double d6 = re6 * re6 + im6 * im6 + 1.0e-30;
+            const double hr6 = re6 / d6, hi6 = -im6 / d6;
+            const double d7 = re7 * re7 + im7 * im7 + 1.0e-30;
+            const double hr7 = re7 / d7, hi7 = -im7 / d7;
+            for (int i = 0; i <= p; ++i)
+            {
+                target[i] += hr0 * c0[i] + hi0 * s0[i];
+                target[i] += hr1 * c1[i] + hi1 * s1[i];
+                target[i] += hr2 * c2[i] + hi2 * s2[i];
+                target[i] += hr3 * c3[i] + hi3 * s3[i];
+                target[i] += hr4 * c4[i] + hi4 * s4[i];
+                target[i] += hr5 * c5[i] + hi5 * s5[i];
+                target[i] += hr6 * c6[i] + hi6 * s6[i];
+                target[i] += hr7 * c7[i] + hi7 * s7[i];
+            }
+        }
+        for (; k < used; ++k)
+        {
+            const double* c = fitCos.data() + (size_t) k * rowStride;
+            const double* s = fitSin.data() + (size_t) k * rowStride;
+            double re = 0.0, im = 0.0;
+            for (int i = 0; i <= p; ++i)
+            {
+                re += a[i] * c[i];
+                im -= a[i] * s[i];
+            }
+            const double d = re * re + im * im + 1.0e-30;
+            const double hr = re / d, hi = -im / d;
+            for (int i = 0; i <= p; ++i)
+                target[i] += hr * c[i] + hi * s[i];
+        }
     }
 
     // How far this frame's spectrum is from the remembered one: RMS difference in dB over bands, with overall level taken out.
@@ -668,6 +807,8 @@ private:
     static constexpr int maxFitLines = 2 * maxLines;
     std::array<double, maxLines> lineFrequency {}, linePower {};
     std::array<double, maxFitLines> lineFitFrequency {}, lineFitCos {}, lineFitSin {}, lineFitPower {};
+    static constexpr int rowStride = maxOrder + 1;
+    std::vector<double> fitCos, fitSin; // per line, its rotating pair: maxFitLines rows of rowStride
     static constexpr double peakAllowed = 4.0; // 6 dB, as power
     static constexpr double holdTopHz = 4000.0;
     static constexpr int maxHeld = 32;
@@ -717,5 +858,48 @@ inline double latticeSynth (double e, const double* k, double* state, int order)
     }
     state[0] = f;
     return f;
+}
+
+// Both filters for two channels at once: each channel's chain is exactly the one-channel filter's, and the two run side by side
+// (1.2.4: at 96 kHz each sample waits on 80 steps in a row, so two at a time take about as long as one).
+inline void latticeAnalyse2 (double x0, double x1, const double* k, double* state0, double* state1, int order, double& out0, double& out1) noexcept
+{
+    double f0 = x0, previous0 = x0, f1 = x1, previous1 = x1;
+    for (int m = 0; m < order; ++m)
+    {
+        const double old0 = state0[m], old1 = state1[m];
+        const double b0 = k[m] * f0 + old0;
+        const double b1 = k[m] * f1 + old1;
+        f0 += k[m] * old0;
+        f1 += k[m] * old1;
+        state0[m] = previous0;
+        state1[m] = previous1;
+        previous0 = b0;
+        previous1 = b1;
+    }
+    out0 = f0;
+    out1 = f1;
+}
+
+inline void latticeSynth2 (double e0, double e1, const double* k, double* state0, double* state1, int order, double& out0, double& out1) noexcept
+{
+    double f0 = e0, f1 = e1;
+    for (int m = order - 1; m >= 0; --m)
+    {
+        const double old0 = state0[m], old1 = state1[m];
+        f0 -= k[m] * old0;
+        f1 -= k[m] * old1;
+        const double b0 = k[m] * f0 + old0;
+        const double b1 = k[m] * f1 + old1;
+        if (m + 1 < order)
+        {
+            state0[m + 1] = b0;
+            state1[m + 1] = b1;
+        }
+    }
+    state0[0] = f0;
+    state1[0] = f1;
+    out0 = f0;
+    out1 = f1;
 }
 } // namespace smoothmorph

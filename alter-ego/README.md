@@ -85,7 +85,8 @@ Measured on Luke's own takes with `~/smooth-plugins/_shared/realvox` (the check 
 - 1.2.1: switching Range Match off brought the voice back over 1.4 s; it now goes at Pitch's speed. Whisper's breath and Monster's shake are noise that belongs to the moment of the input, so a setting reached by moving a control ends up as exactly the sound of that setting from the start. And the plug-in no longer depends on how loud the voice was recorded: three fixed thresholds (the tracker's -60 dBFS gate, the envelope's silence test, the level match's guard) made the same take 12 dB louder come out differently (-2.9 dB against the plain render at Pitch +7); it now nulls to -166 dB.
 - 1.2.2: phrase starts. The level match lets go on every consonant and breath; a voiced start now begins half way to the gain the notes before it needed and follows fast for 30 ms, the match comes down fast so a start cannot leave a note too loud, and Robot's sharpened envelope keeps its power. Deep Double's Output is +2.5 dB, because its Mix 50 adds two voices not in step as power.
 - 1.2.3: going back to the default after any setting passes the voice straight through again (-142 dB 3 s after the move back; 1.2.2 read -108 to -118 dB on real takes), and Peak Guard holds every preset, Deep Double's Output +2.5 dB included, under the input's highest peak.
-- The CPU lines of the suite use process time. With other builds filling this Mac's four fast cores they read about double (43 to 46% at 96 kHz for 1.1.1 and 1.2.0 alike, against 24% on a quiet Mac), so they only mean something when the Mac is quiet.
+- 1.2.4: the engine costs about a third of what it did at 96 kHz (half at 48 kHz) and sounds exactly the same, sample for sample. The envelope fit walks each harmonic's cosines once per fit instead of again in every round, Levinson's steps work in place, both channels go through the two filters side by side, and Whisper's balance is worked out per control tick. 96 kHz on the suite's CPU line: 24.9% > 9.2% of one core on a quiet Mac, 100% > 34% on the efficiency cores alone.
+- The CPU lines of the suite use process time. With other builds filling this Mac's four fast cores they read more than on a quiet Mac (1.1.1 to 1.2.3: 34 to 46% at 96 kHz, against 24% quiet, over the 30% limit). Since 1.2.4 they read 9.8 to 21.7% at 96 kHz under that load (10 whole suite runs in a row: 9.8 to 17.2%, 0 failures; with two other suites running flat out, up to 21.7%).
 
 ## Latency
 
@@ -112,7 +113,7 @@ All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before
 - Consonants: the middle of an S between shifted vowels is -142 dB from the delayed input. Flatness at least 0.97 of the input through every Character, Formant Shift and Whisper.
 - `say` speech at Pitch +/-7: long term spectrum shape 0.7%, median pitch 13.2 cents against a slow reference that isn't ground truth, hiss level in consonant frames 2.0 dB at the 95th percentile, 0 dB median, 4.3 dB worst frame.
 - Range Match: lands within 0.05 st of A3 from anywhere across two octaves.
-- CPU: 6.4% of one core at 48 kHz stereo, 24% at 96 kHz, with other builds running.
+- CPU: 3.4% of one core at 48 kHz stereo, 9.2% at 96 kHz on a quiet Mac (1.2.3: 7.3% and 24.9%). Same sound: 1.2.3 and 1.2.4 nulled to the bit on 221 engine renders (every preset, three real takes, 44.1 to 192 kHz, block sizes 1 to 4096, moving controls) and through the installed AU at 42 settings (every factory preset and the default on two real takes at 48 kHz, the CPU test's settings at 48 and 96 kHz, four presets at 96 kHz block 64), every file identical.
 
 ## What was hard to measure, and what the numbers do not say
 

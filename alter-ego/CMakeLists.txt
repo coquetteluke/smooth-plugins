@@ -8,7 +8,7 @@ set(SP_NAME    "Alter Ego")
 set(SP_CODE    SMet)
 set(SP_BUNDLE  "com.lukegarito.smoothmorph")
 set(SP_DESC    "Real time voice changer with independent pitch and formants, characters, vibrato and whisper")
-set(SP_VERSION 1.2.3)
+set(SP_VERSION 1.2.4)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice

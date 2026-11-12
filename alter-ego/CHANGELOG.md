@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.4, 2026-11-12
+
+The engine costs about a third of what it did at 96 kHz and half at 48 kHz, and every setting sounds exactly as in 1.2.3: the same samples.
+
+- Changed: the envelope fit no longer works out each harmonic's cosines again in every round. Each line's rotating pair is walked once per fit, eight lines at a time, and kept in a table the rounds read. Levinson's steps work in place instead of copying the whole array at each step. Both channels go through the whitening filter and the filter that goes back on side by side. Whisper's balance is worked out at each control tick instead of at every sample. None of this changes a sum's order or a single rounding.
+- CPU, the suite's own line (5 s of a vowel at Pitch -5, Formant +3, Whisper 20, Vibrato 30, stereo, block 256), engine alone, same hour, four rounds each: 96 kHz 24.9% > 9.2% of one core, 48 kHz 7.3% > 3.4%. Steps at 96 kHz: the fit's table 24.9 > 10.2, Levinson in place > 10.0, two channels side by side > 9.27, Whisper per tick 9.23. On the efficiency cores alone (`taskpolicy -b`) 96 kHz reads 100 to 103% on 1.2.3 and 33 to 35% now. The whole suite 10 times in a row with the other agents' work running (load 3.7 to 4.8): 10 of 10 passed, 255 pass and 0 failures each, 96 kHz 9.8 to 17.2%, 48 kHz 3.6 to 6.3%. Later, with two other agents' test suites running flat out, 16.3 to 21.7% at 96 kHz (`tests/results.txt` was written then: 21.7% and 8.3%). 1.2.3 read 34 to 44% at 96 kHz under that kind of load and failed its 30% limit.
+- Same sound, checked: the engine of 1.2.3 and of 1.2.4 side by side on 221 renders (the CPU test's signal and every preset at 44.1 to 192 kHz; three real takes, mono and stereo, the default and every preset, Robot, Range Match, Peak Guard, Monster at Mix 35, block sizes 1 to 4096, a different preset every 0.7 s with Bypass and a Pitch -17.5 / Formant +9.3 step, silence, a burst and NaN): 1.32 GB of output samples and readings, identical to the bit. The same with the filters' runaway reset forced on. Through the installed AU, 1.2.3 against 1.2.4: 42 renders (every factory preset and the default on two real takes at 48 kHz, the CPU test's settings at 48 and 96 kHz, four presets at 96 kHz block 64), every file identical. Every reading of the suite other than the CPU lines is the same as 1.2.3's to the last digit.
+
 ## 1.2.3, 2026-11-12
 
 Fourth pass of the real vocal re-test. Every setting that changes the voice sounds exactly as in 1.2.2 (Giant on a real take, 60 s: the same samples). The default and Clean Slate are still the delayed input.

@@ -136,6 +136,8 @@ public:
         current = {};
         started = false;
         formantRatio = sharpen = 1.0;
+        whisperKeep = 1.0;
+        whisperBreath = 0.0;
         control = {};
         jitterHeld = 0.0;
         breathPower.fill (0.0);
@@ -201,13 +203,24 @@ public:
                 if ((whitenIndex & (EnvelopeEngine::updateEvery - 1)) == 0)
                     envelope.analysisAt (whitenIndex, analysisK.data());
                 const int readAt = (int) (whitenIndex & (long long) (delaySize - 1));
-                for (int ch = 0; ch < channels; ++ch)
+                if (channels == 2)
                 {
-                    const double raw = (double) dryLine[(size_t) ch][(size_t) readAt];
-                    const double e = latticeAnalyse (raw - tilt * tiltIn[(size_t) ch], analysisK.data(), analysisState[(size_t) ch].data(), order);
-                    tiltIn[(size_t) ch] = raw;
-                    shifter.write (ch, (float) e);
+                    const double raw0 = (double) dryLine[0][(size_t) readAt], raw1 = (double) dryLine[1][(size_t) readAt];
+                    double e0, e1;
+                    latticeAnalyse2 (raw0 - tilt * tiltIn[0], raw1 - tilt * tiltIn[1], analysisK.data(), analysisState[0].data(), analysisState[1].data(), order, e0, e1);
+                    tiltIn[0] = raw0;
+                    tiltIn[1] = raw1;
+                    shifter.write (0, (float) e0);
+                    shifter.write (1, (float) e1);
                 }
+                else
+                    for (int ch = 0; ch < channels; ++ch)
+                    {
+                        const double raw = (double) dryLine[(size_t) ch][(size_t) readAt];
+                        const double e = latticeAnalyse (raw - tilt * tiltIn[(size_t) ch], analysisK.data(), analysisState[(size_t) ch].data(), order);
+                        tiltIn[(size_t) ch] = raw;
+                        shifter.write (ch, (float) e);
+                    }
                 shifter.advance();
             }
 
@@ -222,16 +235,16 @@ public:
 
             const double pulse = current.robot > 0.0 ? nextPulse() : 0.0;
             const double noise = current.whisper > 0.0 ? gaussianAt (input) : 0.0;
-            const double keep = std::cos (0.5 * M_PI * current.whisper), breath = std::sin (0.5 * M_PI * current.whisper);
+            const double keep = whisperKeep, breath = whisperBreath;
 
             const int dryAt = (int) ((input - total) & (long long) (delaySize - 1));
             double wet[2] = { 0.0, 0.0 };
             double powerIn = 0.0, powerOut = 0.0;
             const bool hasDry = input >= total;
             float dry[2] = { 0.0f, 0.0f };
-            for (int ch = 0; ch < channels; ++ch)
+            // One channel's excitation with the breath, Robot's pulses and Whisper's noise mixed in, ready for the filter.
+            const auto excite = [&] (int ch) noexcept
             {
-                dry[ch] = hasDry ? dryLine[(size_t) ch][(size_t) dryAt] : 0.0f;
                 double e = (double) excitation[ch];
                 // A voice that is part noise (a Z, a breathy note) has a top that is mostly hiss, which grains spread thin or pile up. So on
                 // those sounds the top of the excitation stays as it was at the output's own moment. A clean voice's top is harmonics and
@@ -250,16 +263,53 @@ public:
                 }
                 if (current.whisper > 0.0)
                     e = keep * e + breath * noise * std::sqrt (std::max (breathPower[(size_t) ch], 0.0));
-                double y = latticeSynth (synthesisGain * e, synthesisK.data(), synthesisState[(size_t) ch].data(), order) + tilt * tiltOut[(size_t) ch];
+                return e;
+            };
+            // The filter's output for one channel: a value that is not finite or runs away clears every filter, and that sample is 0.
+            bool cleared = false;
+            const auto land = [&] (int ch, double filtered) noexcept
+            {
+                double y = filtered + tilt * tiltOut[(size_t) ch];
                 tiltOut[(size_t) ch] = y;
                 if (! std::isfinite (y) || std::abs (y) > 64.0)
                 {
                     clearFilters();
+                    cleared = true;
                     y = 0.0;
                 }
-                wet[ch] = y;
+                return y;
+            };
+            for (int ch = 0; ch < channels; ++ch)
+                dry[ch] = hasDry ? dryLine[(size_t) ch][(size_t) dryAt] : 0.0f;
+            if (channels == 2)
+            {
+                // Both channels through the filter side by side. The second channel's excitation is worked out before the first channel's
+                // filter has run, which is the same unless the first one goes bad: that clears every filter (the second channel's breath
+                // filter among them) before the second channel is worked out, so then the second channel is done again from there.
+                const double e0 = excite (0);
+                const double breathBefore = breathPower[1];
+                const double e1 = excite (1);
+                double f0, f1;
+                latticeSynth2 (synthesisGain * e0, synthesisGain * e1, synthesisK.data(), synthesisState[0].data(), synthesisState[1].data(), order, f0, f1);
+                const double y0 = land (0, f0);
+                double y1;
+                if (! cleared)
+                    y1 = land (1, f1);
+                else
+                {
+                    breathPower[1] = breathBefore;
+                    const double again = excite (1);
+                    y1 = land (1, latticeSynth (synthesisGain * again, synthesisK.data(), synthesisState[1].data(), order));
+                }
+                wet[0] = y0;
+                wet[1] = y1;
+            }
+            else
+                wet[0] = land (0, latticeSynth (synthesisGain * excite (0), synthesisK.data(), synthesisState[0].data(), order));
+            for (int ch = 0; ch < channels; ++ch)
+            {
                 powerIn += (double) dry[ch] * dry[ch];
-                powerOut += y * y;
+                powerOut += wet[ch] * wet[ch];
             }
 
             // Level match, shared by both sides so the stereo image stays
@@ -582,6 +632,12 @@ private:
         control.jitter = 0.04 * current.monster * jitterHeld;
         formantRatio = std::pow (2.0, current.formant / 12.0);
         sharpen = 1.0 + 0.5 * current.robot;
+        // Whisper's balance moves only here, so it is worked out here rather than at every sample (1.2.4). The cosine and the sine stay
+        // two calls, as they were: one combined call can differ in the last bit, and then the output would not be the same samples.
+        const double angle = 0.5 * M_PI * current.whisper;
+        whisperKeep = std::cos (angle);
+        volatile double sameAngle = angle;
+        whisperBreath = std::sin (sameAngle);
     }
 
     double sr = 48000.0;
@@ -604,6 +660,7 @@ private:
     Settings wanted;
     Smoothed current;
     double pitchSmooth = 0.1, formantSmooth = 0.1, blendSmooth = 0.1, fadeSmooth = 0.1, rangeSmooth = 0.01, learnRate = 0.001;
+    double whisperKeep = 1.0, whisperBreath = 0.0;
     double readingOutHz = 0.0, wantedOutputPeriod = 0.0, pulseNext = 0.0, pulsePeriod = 100.0, pulseGate = 0.0;
     static constexpr int pulseTaps = 6, pulseRingSize = 32;
     std::array<double, pulseRingSize> pulseRing {};

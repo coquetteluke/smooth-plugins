@@ -22,21 +22,25 @@ namespace
     constexpr float lowOff = TapeChorusEngine::lowCutOffHz, highOff = TapeChorusEngine::highCutOffHz;
     constexpr float wowDef = TapeChorusEngine::defaultWowHz, flutterDef = TapeChorusEngine::defaultFlutterHz;
 
+    // Since 0.5.0 (Luke left this call to the lead on 2026-11-11) every preset has Clean on, and four old presets moved by the smallest
+    // step that keeps them inside the real vocal limits on all 11 of Luke's working takes: Worn Cassette Spread 50 to 27 and Cassette
+    // Backing Spread 100 to 71 (mono, worst voiced quarter second at most 6 dB under), Fast Shimmer Spread 80 to 69 (left against right
+    // level within 1 dB), Resonant Tape Swirl Mix 40 to 39 (peak at most 3 dB over the dry). Wide Four Voices met its limit with Clean on.
     constexpr Preset presets[] = {
         { "Default Tape Chorus", 2, 0.8f,  1.5f, 15.0f, 15.0f, 10.0f, 20.0f, -2.0f,  70.0f, 35.0f },
         { "Soft Vocal Double",   2, 0.6f,  1.2f, 14.0f, 10.0f,  5.0f, 15.0f, -2.0f,  60.0f, 30.0f },
         { "Wide Four Voices",    4, 0.45f, 2.0f, 18.0f, 15.0f,  8.0f, 25.0f, -3.0f, 100.0f, 45.0f },
-        { "Worn Cassette",       2, 0.35f, 1.0f, 12.0f, 60.0f, 45.0f, 55.0f, -7.0f,  50.0f, 50.0f },
+        { "Worn Cassette",       2, 0.35f, 1.0f, 12.0f, 60.0f, 45.0f, 55.0f, -7.0f,  27.0f, 50.0f },   // Spread 50 up to 0.4.0
         { "Slow Drift",          3, 0.15f, 3.5f, 25.0f, 35.0f,  5.0f, 15.0f, -4.0f,  85.0f, 40.0f },
-        { "Fast Shimmer",        2, 4.5f,  0.5f,  7.0f,  0.0f, 15.0f, 10.0f,  1.5f,  80.0f, 35.0f },
+        { "Fast Shimmer",        2, 4.5f,  0.5f,  7.0f,  0.0f, 15.0f, 10.0f,  1.5f,  69.0f, 35.0f },   // Spread 80 up to 0.4.0
         { "Mono Thickener",      3, 1.1f,  1.0f, 20.0f, 10.0f,  5.0f, 20.0f, -2.0f,   0.0f, 35.0f },
         //                        v  rate   depth delay  wow    flut   sat    tone   spread mix    fb     lowcut  highcut  wowHz   flutHz    rand   randHz unsync degr  degrHz noise
         { "Eight Voice Stack",   8, 0.3f,  1.2f, 18.0f, 12.0f,  5.0f, 15.0f, -2.0f, 100.0f, 35.0f,  0.0f, 180.0f,  highOff, wowDef, flutterDef, 15.0f, 0.5f, true,  0.0f, 2.0f,  0.0f },
         { "Clean Reel Lift",     4, 0.5f,  1.0f, 16.0f,  8.0f,  3.0f, 10.0f,  0.0f,  90.0f, 28.0f,  0.0f, 300.0f,  highOff, wowDef, flutterDef,  0.0f, 1.0f, false, 0.0f, 2.0f,  0.0f },
-        { "Cassette Backing",    6, 0.25f, 1.5f, 20.0f, 30.0f, 20.0f, 40.0f, -3.0f, 100.0f, 45.0f, 10.0f, 150.0f,  7000.0f, 0.4f,   6.0f,       20.0f, 0.7f, true,  20.0f, 1.5f, 15.0f },
+        { "Cassette Backing",    6, 0.25f, 1.5f, 20.0f, 30.0f, 20.0f, 40.0f, -3.0f,  71.0f, 45.0f, 10.0f, 150.0f,  7000.0f, 0.4f,   6.0f,       20.0f, 0.7f, true,  20.0f, 1.5f, 15.0f },
         { "Lo-Fi Tape Double",   2, 0.4f,  0.8f, 22.0f, 40.0f, 35.0f, 50.0f, -4.0f,  70.0f, 40.0f,  0.0f, 250.0f,  5000.0f, 0.7f,   9.0f,       10.0f, 1.0f, true,  35.0f, 3.0f, 30.0f },
         { "Random Drift Double", 2, 0.2f,  0.3f, 16.0f,  5.0f,  3.0f, 10.0f, -2.0f,  80.0f, 32.0f,  0.0f, 150.0f,  highOff, wowDef, flutterDef, 45.0f, 0.8f, true,  0.0f, 2.0f,  0.0f },
-        { "Resonant Tape Swirl", 3, 0.35f, 2.0f,  9.0f, 15.0f,  8.0f, 20.0f, -2.0f, 100.0f, 40.0f, 55.0f, 220.0f,  9000.0f, wowDef, flutterDef, 10.0f, 0.5f, true,  0.0f, 2.0f,  0.0f },
+        { "Resonant Tape Swirl", 3, 0.35f, 2.0f,  9.0f, 15.0f,  8.0f, 20.0f, -2.0f, 100.0f, 39.0f, 55.0f, 220.0f,  9000.0f, wowDef, flutterDef, 10.0f, 0.5f, true,  0.0f, 2.0f,  0.0f },
         // New in 0.4.0, after the 13 above so their numbers do not move. All three have Clean on.
         { "Clean Vocal Double",  2, 0.5f,  1.0f, 16.0f,  8.0f,  3.0f, 15.0f, -1.0f,  70.0f, 30.0f,  0.0f, 120.0f,  highOff, wowDef, flutterDef, 10.0f, 0.6f, true,  0.0f, 2.0f,  0.0f, true },
         { "Clean Wide Stack",    6, 0.3f,  1.2f, 18.0f, 10.0f,  4.0f, 12.0f, -2.0f, 100.0f, 35.0f,  0.0f, 180.0f,  highOff, wowDef, flutterDef, 15.0f, 0.5f, true,  0.0f, 2.0f,  0.0f, true },

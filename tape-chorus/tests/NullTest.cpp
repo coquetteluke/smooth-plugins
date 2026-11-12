@@ -68,11 +68,39 @@ static void moveEverything (PluginProcessor& p)
 static juce::File stateFile() { return juce::File (juce::String (BASELINE_DIR)).getChildFile ("session.state"); }
 static juce::File hashFile()  { return juce::File (juce::String (BASELINE_DIR)).getChildFile ("renders-0.2.1.txt"); }
 
+// The presets as 0.3.1 held them. Since 0.5.0 the factory presets switch Clean on and four of them moved (Luke left that call to the lead
+// on 2026-11-11), so each preset case is now the 0.3.1 preset's values with Clean off: what a session saved with that preset in 0.3.1
+// opens with (a session with no Clean in it opens with Clean off; tests/PluginTest.cpp, testCleanDefault, holds that to the sample).
+// They are put in the way 0.3.1's preset put them, so they must still match the 0.2.1 render to the last bit. tests/au_session_null.sh
+// makes the same proof through the real AU with states saved by the old builds themselves.
+struct OldPreset { int number; std::vector<std::pair<const char*, float>> values; };
+static const std::vector<OldPreset>& oldPresets()
+{
+    static const std::vector<OldPreset> table = {
+        { 0, { { "voices", 2 }, { "rate", 0.8f }, { "depth", 1.5f }, { "delay", 15 }, { "wow", 15 }, { "flutter", 10 }, { "saturation", 20 }, { "tone", -2 }, { "spread", 70 }, { "mix", 35 } } },
+        { 3, { { "voices", 2 }, { "rate", 0.35f }, { "depth", 1.0f }, { "delay", 12 }, { "wow", 60 }, { "flutter", 45 }, { "saturation", 55 }, { "tone", -7 }, { "spread", 50 }, { "mix", 50 } } },
+        { 7, { { "voices", 8 }, { "rate", 0.3f }, { "depth", 1.2f }, { "delay", 18 }, { "wow", 12 }, { "flutter", 5 }, { "saturation", 15 }, { "tone", -2 }, { "spread", 100 }, { "mix", 35 },
+               { "lowCut", 180 }, { "random", 15 }, { "randomRate", 0.5f }, { "unsync", 1 } } },
+        { 9, { { "voices", 6 }, { "rate", 0.25f }, { "depth", 1.5f }, { "delay", 20 }, { "wow", 30 }, { "flutter", 20 }, { "saturation", 40 }, { "tone", -3 }, { "spread", 100 }, { "mix", 45 },
+               { "feedback", 10 }, { "lowCut", 150 }, { "highCut", 7000 }, { "wowRate", 0.4f }, { "flutterRate", 6.0f }, { "random", 20 }, { "randomRate", 0.7f }, { "unsync", 1 },
+               { "degrade", 20 }, { "degradeRate", 1.5f }, { "noise", 15 } } },
+        { 12, { { "voices", 3 }, { "rate", 0.35f }, { "depth", 2.0f }, { "delay", 9 }, { "wow", 15 }, { "flutter", 8 }, { "saturation", 20 }, { "tone", -2 }, { "spread", 100 }, { "mix", 40 },
+                { "feedback", 55 }, { "lowCut", 220 }, { "highCut", 9000 }, { "random", 10 }, { "randomRate", 0.5f }, { "unsync", 1 } } } };
+    return table;
+}
+
 static void configure (PluginProcessor& p, const Case& c)
 {
     if (c.preset >= 0)
     {
-        p.setCurrentProgram (c.preset);
+        for (const auto& o : oldPresets())
+            if (o.number == c.preset)
+                for (const auto& [id, v] : o.values)
+                {
+                    auto* prm = p.apvts.getParameter (id);
+                    prm->setValueNotifyingHost (prm->convertTo0to1 (v));
+                }
+        p.apvts.getParameter ("clean")->setValueNotifyingHost (0.0f);
         return;
     }
     juce::MemoryBlock saved;

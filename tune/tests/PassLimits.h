@@ -78,3 +78,11 @@ namespace rodelimits
     constexpr double slowSlideMs = 150.0;             // a held note sliding slowly across the line (13 cents per 100 ms) is on the new note within 150 ms of the line
     constexpr double beforeOnsetDb = -40.0;           // the output in the 10 ms before a note starts in the input, against the held note
 }
+
+// Added 2026-11-12, before the test was run: entries into a note that hold their pitch from the start (Tune Pro's testEntries), judged by
+// the real vocal check's own start lag rule for Tune (time until the output is within 10 cents of the note for 15 ms) and its limits.
+namespace entrylimits
+{
+    constexpr double instantMedianMs = 20.0, instantP90Ms = 40.0;   // Retune Speed 0
+    constexpr double defaultMedianMs = 60.0, defaultP90Ms = 100.0;  // the default, Retune 20 and Humanize 30
+}

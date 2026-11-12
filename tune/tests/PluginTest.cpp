@@ -2065,6 +2065,95 @@ void testNothingBeforeOnset()
     check (worst <= rodelimits::beforeOnsetDb, "nothing before a note starts: the 10 ms before the input's onset against the held note, worst (" + worstName + ")", worst, "dB");
 }
 
+// Entries into a note (Tune Pro's testEntries), judged by the real vocal check's start lag rule for Tune: time from the first voiced
+// sample until the output stays within 10 cents of the note for 15 ms, at Retune 0 and at the default. Luke's real entries mostly slide up
+// into the note (Tune Pro measured them: 70 cents under where they settle at 50 ms, 35 at 100 ms); those are given here, not judged.
+double entryLagMs (double hz, int style, double slideCents, double slideSeconds, bool instant)
+{
+    const double onset = 0.3;
+    const size_t lead = (size_t) (onset * SR);
+    std::vector<double> f0 (lead, 0.0);
+    std::mt19937 gen (11);
+    for (size_t i = 0; i < (size_t) (1.2 * SR); ++i)
+    {
+        const double t = (double) i / SR;
+        const double under = slideSeconds > 0.0 && t < slideSeconds ? slideCents * (1.0 - t / slideSeconds) : 0.0;
+        f0.push_back (hz * std::pow (2.0, -under / 1200.0));
+    }
+    auto x = voice::synth (f0, voice::vowelA, SR, style == 2 ? -22.0 : -50.0);
+    const size_t rise = (size_t) ((style == 0 ? 0.005 : style == 1 ? 0.06 : 0.04) * SR);
+    if (style == 2)
+    {
+        std::normal_distribution<double> gauss (0.0, 1.0);
+        const size_t before = (size_t) (0.08 * SR);
+        double state = 0.0;
+        for (size_t i = 0; i < lead; ++i)
+        {
+            state += 0.3 * (0.012 * gauss (gen) - state);
+            x[i] = i + before >= lead ? (float) (state * (double) (i + before - lead) / (double) before) : 0.0f;
+        }
+    }
+    else
+        for (size_t i = 0; i < lead; ++i) x[i] = 0.0f;
+    for (size_t i = 0; i < rise && lead + i < x.size(); ++i) x[lead + i] *= (float) i / (float) rise;
+    auto p = make();
+    if (instant) { setParam (*p, "retune", 0.0f); setParam (*p, "humanize", 0.0f); }
+    prepare (*p, 1, SR, 256);
+    const auto out = mono (render (*p, x, 256));
+    const long delay = p->getLatencySamples();
+    const auto offNote = [] (double f) { const double st = 12.0 * std::log2 (f / 440.0); return std::abs (st - std::round (st)) * 100.0; };
+    for (int f = 0; f <= 80; ++f)
+    {
+        bool ok = true;
+        for (int k = 0; k < 4 && ok; ++k)
+        {
+            const double t = onset + 0.005 * (f + k);
+            const double want = f0[std::min (f0.size() - 1, (size_t) (t * SR))];
+            const double got = pitchNear (out.data(), (long) out.size(), (long) (t * SR) + delay, want, SR, 0.15, 2.5);
+            ok = got > 0.0 && offNote (got) <= 10.0;
+        }
+        if (ok) return f * 5.0;
+    }
+    return 400.0;
+}
+
+void testEntries()
+{
+    const char* styles[] = { "clean", "soft", "breathy" };
+    for (bool instant : { true, false })
+    {
+        std::vector<double> held;
+        double worst = 0.0;
+        std::string worstName;
+        for (double hz : { 104.0, 131.0, 147.0, 175.0, 196.0, 233.0 })
+            for (double off : { 35.0, -30.0, 45.0, -22.0 })
+                for (int style : { 0, 1, 2 })
+                {
+                    const double nt = 440.0 * std::pow (2.0, std::round (12.0 * std::log2 (hz / 440.0)) / 12.0);
+                    const double ms = entryLagMs (nt * std::pow (2.0, off / 1200.0), style, 0.0, 0.0, instant);
+                    held.push_back (ms);
+                    if (ms > worst) { worst = ms; worstName = std::string (styles[style]) + ", " + std::to_string ((int) hz) + " Hz, " + std::to_string ((int) off) + " cents off"; }
+                }
+        std::sort (held.begin(), held.end());
+        const double median = held[held.size() / 2], p90 = held[(size_t) (0.9 * (double) (held.size() - 1) + 0.5)];
+        const std::string what = instant ? "Retune 0" : "the default (Retune 20, Humanize 30)";
+        check (median <= (instant ? entrylimits::instantMedianMs : entrylimits::defaultMedianMs), "entries that hold their pitch from the start, " + what + " (72: clean, soft, breathy; 104 to 233 Hz; 22 to 45 cents off): time until the output is within 10 cents for 15 ms, median", median, "ms");
+        check (p90 <= (instant ? entrylimits::instantP90Ms : entrylimits::defaultP90Ms), "  90th percentile", p90, "ms");
+        info ("  the slowest, " + worstName, worst, "ms");
+        std::vector<double> slides;
+        for (double hz : { 104.0, 147.0, 196.0 })
+            for (double off : { 35.0, -30.0 })
+                for (auto shape : { std::pair<double, double> { 105.0, 0.15 }, std::pair<double, double> { 250.0, 0.2 }, std::pair<double, double> { 60.0, 0.1 } })
+                {
+                    const double nt = 440.0 * std::pow (2.0, std::round (12.0 * std::log2 (hz / 440.0)) / 12.0);
+                    slides.push_back (entryLagMs (nt * std::pow (2.0, off / 1200.0), 0, shape.first, shape.second, instant));
+                }
+        std::sort (slides.begin(), slides.end());
+        info ("  entries that slide up into the note as his do (18: 60, 105 and 250 cents under, over 100 to 200 ms), not judged: median", slides[slides.size() / 2], "ms");
+        info ("  the slowest", slides.back(), "ms");
+    }
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -2126,5 +2215,6 @@ int main (int argc, char** argv)
     if (want ("timing") || only == "rode") testTiming();
     if (want ("hold") || only == "rode") testTargetHold();
     if (want ("onset") || only == "rode") testNothingBeforeOnset();
+    if (want ("entry") || only == "rode") testEntries();
     return finish();
 }

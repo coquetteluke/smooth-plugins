@@ -24,14 +24,14 @@ PASS  no NaN after silence
 PASS  no denormals decaying into silence = 0.000 samples
 PASS  recovers after NaN, inf and huge input, peak in the last second = 0.250 
 INFO  click test baseline step = 0.004 
-PASS  no click when Pitch jumps, biggest step = 0.014 
-PASS  no click when Formant Shift jumps, biggest step = 0.010 
-PASS  no click when Character jumps, biggest step = 0.005 
+PASS  no click when Pitch jumps, biggest step = 0.013 
+PASS  no click when Formant Shift jumps, biggest step = 0.009 
+PASS  no click when Character jumps, biggest step = 0.004 
 PASS  no click when Character Amount jumps, biggest step = 0.004 
 PASS  no click when Robot Note jumps, biggest step = 0.004 
 PASS  no click when Vibrato Rate jumps, biggest step = 0.004 
 PASS  no click when Vibrato Depth jumps, biggest step = 0.004 
-PASS  no click when Whisper jumps, biggest step = 0.014 
+PASS  no click when Whisper jumps, biggest step = 0.013 
 PASS  no click when Range Match jumps, biggest step = 0.004 
 PASS  no click when Range Centre jumps, biggest step = 0.004 
 PASS  no click when Mix jumps, biggest step = 0.004 
@@ -40,26 +40,26 @@ PASS  no click when Bypass jumps, biggest step = 0.004
 PASS  no click when Peak Guard jumps, biggest step = 0.004 
 PASS  latency at 44100 Hz = 25.465 ms
 INFO    in samples = 1123.000 
-PASS  default settings null against the input delayed by the reported latency, 44100 Hz = -142.133 dB
+PASS  default settings null against the input delayed by the reported latency, 44100 Hz = -141.991 dB
 PASS  delay measured by correlation against the reported one, samples off = 0.000 
 PASS  latency reports the same with a fresh prepare
 PASS  latency at 48000 Hz = 24.271 ms
 INFO    in samples = 1165.000 
-PASS  default settings null against the input delayed by the reported latency, 48000 Hz = -142.180 dB
+PASS  default settings null against the input delayed by the reported latency, 48000 Hz = -142.055 dB
 PASS  delay measured by correlation against the reported one, samples off = 0.000 
 PASS  latency reports the same with a fresh prepare
 PASS  latency at 96000 Hz = 24.188 ms
 INFO    in samples = 2322.000 
-PASS  default settings null against the input delayed by the reported latency, 96000 Hz = -141.823 dB
+PASS  default settings null against the input delayed by the reported latency, 96000 Hz = -141.684 dB
 PASS  delay measured by correlation against the reported one, samples off = 0.000 
 PASS  latency reports the same with a fresh prepare
 PASS  Mix 0 with Pitch +7 is the input delayed, on noise = -141.121 dB
 PASS  processBlockBypassed is the input at the same delay = -327.235 dB
-PASS  Pitch +/-1 to +/-12, notes 98 to 349 Hz, worst 95th percentile = 4.422 cents
-PASS  level stays put over those, worst change = 0.281 dB
-PASS  a voice's own vibrato of 40 cents at Pitch -7 reads = 40.620 cents
-PASS  Pitch at 44100 Hz, worst = 2.748 cents
-PASS  Pitch at 96000 Hz, worst = 4.150 cents
+PASS  Pitch +/-1 to +/-12, notes 98 to 349 Hz, worst 95th percentile = 4.425 cents
+PASS  level stays put over those, worst change = 0.203 dB
+PASS  a voice's own vibrato of 40 cents at Pitch -7 reads = 40.608 cents
+PASS  Pitch at 44100 Hz, worst = 2.749 cents
+PASS  Pitch at 96000 Hz, worst = 4.144 cents
 PASS  formants across Pitch +/-3 to +/-12, better reading, worst move = 4.563 %
 INFO    output against input on its own, worst = 30.265 %
 INFO    output against a real voice at the new pitch on its own, worst = 16.569 %
@@ -72,56 +72,56 @@ INFO    worst ratio reading on its own = 16.942 %
 INFO    worst reading against a real voice with moved formants on its own = 4.563 %
 PASS  Formant Shift +/-4 at 44100 Hz, ratio reading, worst = 2.499 %
 PASS  Formant Shift +/-4 at 96000 Hz, ratio reading, worst = 2.304 %
-PASS  pitch while Formant Shift goes to +/-12, worst 95th percentile = 1.414 cents
-PASS  Deep: pitch moves as stated, worst = 0.443 cents
+PASS  pitch while Formant Shift goes to +/-12, worst 95th percentile = 1.417 cents
+PASS  Deep: pitch moves as stated, worst = 0.442 cents
 PASS  Deep: formants move as stated, worst = 4.146 %
-PASS  Deep at Character Amount 50: half the pitch move = 0.386 cents
-PASS  Child: pitch moves as stated, worst = 0.844 cents
-PASS  Child: formants move as stated, worst = 1.913 %
-PASS  Child at Character Amount 50: half the pitch move = 0.442 cents
-  Robot Note at 110.0 Hz: 1.42 cents
-  Robot Note at 164.8 Hz: 0.76 cents
-  Robot Note at 261.6 Hz: 1.90 cents
-PASS  Robot: a voice gliding a fifth with vibrato stays on the note, worst 95th percentile = 1.901 cents
-PASS  Robot at Character Amount 50 on a 220 Hz voice lands half way to 110 Hz = 0.144 cents
+PASS  Deep at Character Amount 50: half the pitch move = 0.389 cents
+PASS  Child: pitch moves as stated, worst = 0.845 cents
+PASS  Child: formants move as stated, worst = 1.717 %
+PASS  Child at Character Amount 50: half the pitch move = 0.443 cents
+  Robot Note at 110.0 Hz: 1.41 cents
+  Robot Note at 164.8 Hz: 0.75 cents
+  Robot Note at 261.6 Hz: 1.87 cents
+PASS  Robot: a voice gliding a fifth with vibrato stays on the note, worst 95th percentile = 1.874 cents
+PASS  Robot at Character Amount 50 on a 220 Hz voice lands half way to 110 Hz = 0.145 cents
 PASS  Robot: formants stay in place = 1.913 %
-PASS  Robot: second formant stands taller over the valley, by = 2.847 dB
-PASS  Monster: median pitch is 8 semitones down, off by = 0.320 cents
-PASS  Monster: energy at half the pitch, rise against the same move without growl = 36.232 dB
-INFO    that subharmonic against the fundamental = -15.150 dB
-PASS  Monster: cycle to cycle period change = 18.364 %
-PASS  Monster: cycle to cycle level change = 4.360 dB
+PASS  Robot: second formant stands taller over the valley, by = 2.870 dB
+PASS  Monster: median pitch is 8 semitones down, off by = 0.324 cents
+PASS  Monster: energy at half the pitch, rise against the same move without growl = 36.386 dB
+INFO    that subharmonic against the fundamental = -14.865 dB
+PASS  Monster: cycle to cycle period change = 19.070 %
+PASS  Monster: cycle to cycle level change = 4.787 dB
 INFO    without growl: period change = 0.205 %
-INFO    without growl: level change = 0.125 dB
+INFO    without growl: level change = 0.139 dB
 PASS  Monster: formants move as stated, off by = 1.717 %
-PASS  Natural is unchanged at any Character Amount = -142.154 dB
+PASS  Natural is unchanged at any Character Amount = -142.014 dB
 PASS  Vibrato Rate 2 to 9 Hz, worst error = 0.500 %
-PASS  Vibrato Depth 20 to 100 cents, worst error = 7.366 %
-PASS  Vibrato Depth 0 changes nothing = -142.154 dB
+PASS  Vibrato Depth 20 to 100 cents, worst error = 7.430 %
+PASS  Vibrato Depth 0 changes nothing = -142.014 dB
 PASS  the test voice has harmonics going in, on against between them = 24.100 dB
-PASS  Whisper 100: harmonics to noise, on against between them, worst (0 is none left) = 1.280 dB
+PASS  Whisper 100: harmonics to noise, on against between them, worst (0 is none left) = 1.291 dB
 INFO    going in, the whitened voice's periodicity at the pitch lag, least = 0.271 
-PASS  Whisper 100: whitened output's periodicity at the pitch lag, worst = 0.008 
-PASS  Whisper 100: level against the input, worst change = 0.235 dB
+PASS  Whisper 100: whitened output's periodicity at the pitch lag, worst = 0.007 
+PASS  Whisper 100: level against the input, worst change = 0.156 dB
 PASS  Whisper 100: formants against the voice, worst move = 4.982 %
-PASS  Whisper 100: envelope shape against the voice, RMS difference 200 Hz to 5 kHz, worst = 2.573 dB
+PASS  Whisper 100: envelope shape against the voice, RMS difference 200 Hz to 5 kHz, worst = 2.576 dB
 PASS  Whisper 50 sits between: on against between the harmonics = 4.809 dB
-PASS  Whisper 100 switched on at 0.5 s: from 1.5 s on, against Whisper 100 from the start = -330.759 dB
+PASS  Whisper 100 switched on at 0.5 s: from 1.5 s on, against Whisper 100 from the start = -330.420 dB
 PASS  Mix 0 is the delayed input, with everything else turned up = -141.782 dB
-PASS  Mix 50 with nothing else changed is still the delayed input: no comb from the two paths = -142.522 dB
-PASS  Mix 50: dry part of a shifted voice = -6.020 dB
+PASS  Mix 50 with nothing else changed is still the delayed input: no comb from the two paths = -142.470 dB
+PASS  Mix 50: dry part of a shifted voice = -6.024 dB
 PASS  Mix 50: wet part of a shifted voice = -6.026 dB
-PASS  no click changing Character: biggest step against steady = 1.456 times
-PASS  no click changing Character: above 8 kHz, loudest 5 ms against steady = 4.845 dB
-PASS  no click changing Pitch: biggest step against steady = 1.180 times
-PASS  no click changing Pitch: above 8 kHz, loudest 5 ms against steady = 0.384 dB
-PASS  no click changing Formant Shift: biggest step against steady = 1.078 times
-PASS  no click changing Formant Shift: above 8 kHz, loudest 5 ms against steady = -0.222 dB
-PASS  no click changing Whisper: biggest step against steady = 0.848 times
-PASS  no click changing Whisper: above 8 kHz, loudest 5 ms against steady = -0.520 dB
+PASS  no click changing Character: biggest step against steady = 1.372 times
+PASS  no click changing Character: above 8 kHz, loudest 5 ms against steady = 4.979 dB
+PASS  no click changing Pitch: biggest step against steady = 1.158 times
+PASS  no click changing Pitch: above 8 kHz, loudest 5 ms against steady = 0.416 dB
+PASS  no click changing Formant Shift: biggest step against steady = 1.071 times
+PASS  no click changing Formant Shift: above 8 kHz, loudest 5 ms against steady = -0.329 dB
+PASS  no click changing Whisper: biggest step against steady = 0.877 times
+PASS  no click changing Whisper: above 8 kHz, loudest 5 ms against steady = -0.552 dB
 PASS  no click changing Mix: biggest step against steady = 1.000 times
 PASS  no click changing Mix: above 8 kHz, loudest 5 ms against steady = -0.000 dB
-PASS  middle of an S between shifted vowels, Pitch +/-7 and +/-12, against the delayed input, worst = -68.087 dB
+PASS  middle of an S between shifted vowels, Pitch +/-7 and +/-12, against the delayed input, worst = -76.708 dB
 INFO    spectral flatness of the S going in = 0.913 
   S through Deep: flatness 0.908
   S through Child: flatness 0.885
@@ -132,55 +132,62 @@ INFO    spectral flatness of the S going in = 0.913
   S through Whisper 100: flatness 0.904
 PASS  S stays noise through every Character, Formant Shift and Whisper, worst flatness against the input = 0.970 times
 PASS  found speech_samantha.wav
-  speech_samantha.wav Pitch -7: formant shape 0.3%, pitch median 8.5 cents
+  speech_samantha.wav Pitch -7: formant shape 0.5%, pitch median 8.7 cents
     hiss frames 7, median change 0.15 dB, 90th 1.44, worst 1.44
-    as first written: unvoiced frames 39, median change 0.00 dB, 95th 1.52, worst 1.72; with the frames next to a vowel left out, 95th 1.44
-  speech_samantha.wav Pitch +7: formant shape 0.3%, pitch median 8.5 cents
+    as first written: unvoiced frames 39, median change 0.00 dB, 95th 1.50, worst 1.72; with the frames next to a vowel left out, 95th 1.44
+  speech_samantha.wav Pitch +7: formant shape 0.3%, pitch median 8.6 cents
     hiss frames 7, median change 0.16 dB, 90th 1.43, worst 1.43
     as first written: unvoiced frames 39, median change 0.00 dB, 95th 1.73, worst 1.78; with the frames next to a vowel left out, 95th 1.43
 PASS  found speech_daniel.wav
-  speech_daniel.wav Pitch -7: formant shape 0.1%, pitch median 12.9 cents
+  speech_daniel.wav Pitch -7: formant shape 0.1%, pitch median 13.3 cents
     hiss frames 16, median change 0.00 dB, 90th 0.76, worst 1.01
-    as first written: unvoiced frames 42, median change 0.00 dB, 95th 1.01, worst 1.92; with the frames next to a vowel left out, 95th 1.01
-  speech_daniel.wav Pitch +7: formant shape 0.3%, pitch median 11.2 cents
+    as first written: unvoiced frames 42, median change 0.00 dB, 95th 1.01, worst 1.94; with the frames next to a vowel left out, 95th 1.01
+  speech_daniel.wav Pitch +7: formant shape 0.1%, pitch median 11.2 cents
     hiss frames 16, median change 0.00 dB, 90th 0.35, worst 1.96
     as first written: unvoiced frames 42, median change 0.00 dB, 95th 0.94, worst 1.96; with the frames next to a vowel left out, 95th 1.96
 PASS  found speech_kathy.wav
-  speech_kathy.wav Pitch -7: formant shape 0.3%, pitch median 5.7 cents
+  speech_kathy.wav Pitch -7: formant shape 0.3%, pitch median 5.8 cents
     hiss frames 15, median change 0.00 dB, 90th 0.33, worst 0.35
-    as first written: unvoiced frames 40, median change 0.00 dB, 95th 0.81, worst 2.27; with the frames next to a vowel left out, 95th 0.35
+    as first written: unvoiced frames 40, median change 0.00 dB, 95th 0.81, worst 2.25; with the frames next to a vowel left out, 95th 0.35
   speech_kathy.wav Pitch +7: formant shape 0.1%, pitch median 3.6 cents
     hiss frames 15, median change 0.00 dB, 90th 0.39, worst 0.48
-    as first written: unvoiced frames 40, median change 0.00 dB, 95th 1.22, worst 1.61; with the frames next to a vowel left out, 95th 0.48
-PASS  say speech, Pitch +/-7: long term spectrum shape against the input, worst move = 0.333 %
-PASS  say speech, Pitch +/-7: median pitch error against a slow reference, worst = 12.895 cents
-PASS  say speech, Pitch +/-7: hiss level in unvoiced frames, 95th percentile change, worst = 1.955 dB
-PASS  say speech, Pitch +/-7: the same with the frames next to a vowel counted, worst = 1.732 dB
-PASS  say speech, Pitch +/-7: hiss level in consonant frames, all voices, 95th percentile change = 1.146 dB
+    as first written: unvoiced frames 40, median change 0.00 dB, 95th 1.21, worst 1.56; with the frames next to a vowel left out, 95th 0.48
+PASS  say speech, Pitch +/-7: long term spectrum shape against the input, worst move = 0.467 %
+PASS  say speech, Pitch +/-7: median pitch error against a slow reference, worst = 13.327 cents
+PASS  say speech, Pitch +/-7: hiss level in unvoiced frames, 95th percentile change, worst = 1.957 dB
+PASS  say speech, Pitch +/-7: the same with the frames next to a vowel counted, worst = 1.731 dB
+PASS  say speech, Pitch +/-7: hiss level in consonant frames, all voices, 95th percentile change = 1.145 dB
 INFO    median change in those frames = 0.000 dB
-INFO    worst single frame = 1.955 dB
+INFO    worst single frame = 1.957 dB
 INFO    frames counted = 76.000 
-PASS  say speech through every Character, level against the input, worst change = 0.343 dB
+PASS  say speech through every Character, level against the input, worst change = 0.274 dB
 PASS  Peak Guard is off by default
 PASS  no preset changes Peak Guard
-PASS  Peak Guard on at the default settings: output against the delayed input = -142.340 dB
-  Giant on a voice that peaks at -0.09 dBFS: peak +9.16 dBFS with the guard off, -0.09 on, level down 1.97 dB
-  Monster Growl on a voice that peaks at -0.09 dBFS: peak +7.83 dBFS with the guard off, -0.09 on, level down 3.56 dB
-  Robot Announcer on a voice that peaks at -0.09 dBFS: peak +2.02 dBFS with the guard off, -0.09 on, level down 0.58 dB
-  Deep Voice on a voice that peaks at -0.09 dBFS: peak +8.19 dBFS with the guard off, -0.09 on, level down 1.16 dB
-INFO    with Peak Guard off the output's peak passes the input's by, worst preset = 9.249 dB
+PASS  Peak Guard on at the default settings: output against the delayed input = -142.232 dB
+  Giant on a voice that peaks at -0.09 dBFS: peak +8.95 dBFS with the guard off, -0.09 on, level down 1.77 dB
+  Monster Growl on a voice that peaks at -0.09 dBFS: peak +7.68 dBFS with the guard off, -0.09 on, level down 3.35 dB
+  Robot Announcer on a voice that peaks at -0.09 dBFS: peak +1.97 dBFS with the guard off, -0.09 on, level down 0.51 dB
+  Deep Voice on a voice that peaks at -0.09 dBFS: peak +7.69 dBFS with the guard off, -0.09 on, level down 0.99 dB
+INFO    with Peak Guard off the output's peak passes the input's by, worst preset = 9.041 dB
 PASS  Peak Guard on, four presets on a voice just under full scale: samples over the input's highest peak = 0.000 
-PASS  Peak Guard on: the level falls by no more than the peak it took off plus, worst = -1.522 dB
+PASS  Peak Guard on: the level falls by no more than the peak it took off plus, worst = -1.545 dB
 PASS  Peak Guard switched off again: from 1.5 s later the output is the same samples as if it had never been on = 0.000 
-  soft note with two strong harmonics, Pitch +7: loudest 10 ms frame +3.35 dB over the input's, at 0.14 s
-  soft note with two strong harmonics, Pitch +5: loudest 10 ms frame +1.64 dB over the input's, at 0.14 s
-  soft note with two strong harmonics, Pitch -7: loudest 10 ms frame +5.25 dB over the input's, at 0.14 s
-PASS  a soft note with two strong harmonics, Pitch +7, +5 and -7: loudest 10 ms frame over the input's, worst = 5.252 dB
-  input times 4.00, loud phrase: -186.9 dB against the plain level
-  input times 4.00, quiet phrase: -312.2 dB against the plain level
-  input times 0.25, loud phrase: -170.9 dB against the plain level
-  input times 0.25, quiet phrase: -166.3 dB against the plain level
-PASS  Pitch +7 with the input times 4 and times 0.25, scaled back, against the plain level, worst phrase = -166.279 dB
+  soft note with two strong harmonics, Pitch +7: loudest 10 ms frame +3.06 dB over the input's, at 0.14 s
+  soft note with two strong harmonics, Pitch +5: loudest 10 ms frame +1.42 dB over the input's, at 0.14 s
+  soft note with two strong harmonics, Pitch -7: loudest 10 ms frame +4.73 dB over the input's, at 0.14 s
+PASS  a soft note with two strong harmonics, Pitch +7, +5 and -7: loudest 10 ms frame over the input's, worst = 4.726 dB
+  input times 4.00, loud phrase: -178.4 dB against the plain level
+  input times 4.00, quiet phrase: -312.1 dB against the plain level
+  input times 0.25, loud phrase: -171.9 dB against the plain level
+  input times 0.25, quiet phrase: -168.1 dB against the plain level
+PASS  Pitch +7 with the input times 4 and times 0.25, scaled back, against the plain level, worst phrase = -168.114 dB
+  Robot    first 30 ms of a phrase against the input: median -0.56 dB, 5th percentile -1.91 dB
+  Giant    first 30 ms of a phrase against the input: median +1.27 dB, 5th percentile +0.22 dB
+  Chipmunk first 30 ms of a phrase against the input: median -0.99 dB, 5th percentile -1.11 dB
+  Monster  first 30 ms of a phrase against the input: median +0.69 dB, 5th percentile -1.47 dB
+  Child    first 30 ms of a phrase against the input: median -0.73 dB, 5th percentile -1.16 dB
+PASS  phrase starts, first 30 ms against the input, median, worst setting = -0.993 dB
+PASS  phrase starts, first 30 ms against the input, 5th percentile, worst setting = -1.914 dB
   Range Match from 110 Hz: output off by 0.00 st, offset reading 12 st
   Range Match from 156 Hz: output off by 0.05 st, offset reading 6 st
   Range Match from 196 Hz: output off by 0.00 st, offset reading 2 st
@@ -188,37 +195,51 @@ PASS  Pitch +7 with the input times 4 and times 0.25, scaled back, against the p
   Range Match from 392 Hz: output off by 0.00 st, offset reading -10 st
   Range Match from 440 Hz: output off by 0.00 st, offset reading -12 st
 PASS  Range Match: a voice anywhere over two octaves lands on A3, worst = 0.050 st
-PASS  Range Match switched off at +12 st: 0.5 to 1.5 s later, against the delayed input = -107.357 dB
-PASS  Range Centre does nothing while Range Match is off = -142.154 dB
+PASS  Range Match switched off at +12 st: 0.5 to 1.5 s later, against the delayed input = -107.351 dB
+PASS  Range Centre does nothing while Range Match is off = -142.014 dB
 PASS  Output -6 dB measures = -6.001 dB
   preset Clean Slate: level -0.0 dB
 PASS  preset Clean Slate sits near the input level = -0.001 dB
-  preset Deep Voice: level +0.0 dB
-PASS  preset Deep Voice sits near the input level = 0.003 dB
-  preset Little Kid: level -0.0 dB
-PASS  preset Little Kid sits near the input level = -0.003 dB
-  preset Robot Announcer: level -0.0 dB
-PASS  preset Robot Announcer sits near the input level = -0.007 dB
-  preset Half Robot: level +0.0 dB
-PASS  preset Half Robot sits near the input level = 0.020 dB
-  preset Monster Growl: level +0.1 dB
-PASS  preset Monster Growl sits near the input level = 0.102 dB
-  preset Ghost Whisper: level +0.2 dB
-PASS  preset Ghost Whisper sits near the input level = 0.164 dB
-  preset Breathy Layer: level +0.1 dB
-PASS  preset Breathy Layer sits near the input level = 0.129 dB
-  preset Male To Female: level +0.0 dB
-PASS  preset Male To Female sits near the input level = 0.008 dB
-  preset Female To Male: level +0.0 dB
-PASS  preset Female To Male sits near the input level = 0.002 dB
-  preset Chipmunk: level -0.0 dB
-PASS  preset Chipmunk sits near the input level = -0.003 dB
-  preset Giant: level +0.0 dB
-PASS  preset Giant sits near the input level = 0.042 dB
-  preset Old Singer: level +0.0 dB
-PASS  preset Old Singer sits near the input level = 0.021 dB
-  preset Deep Double: level -3.0 dB
-PASS  preset Deep Double sits near the input level = -3.017 dB
+PASS  preset Clean Slate level within the real vocal check's limit = -0.001 dB
+  preset Deep Voice: level -0.1 dB
+PASS  preset Deep Voice sits near the input level = -0.110 dB
+PASS  preset Deep Voice level within the real vocal check's limit = -0.110 dB
+  preset Little Kid: level -0.1 dB
+PASS  preset Little Kid sits near the input level = -0.099 dB
+PASS  preset Little Kid level within the real vocal check's limit = -0.099 dB
+  preset Robot Announcer: level -0.1 dB
+PASS  preset Robot Announcer sits near the input level = -0.111 dB
+PASS  preset Robot Announcer level within the real vocal check's limit = -0.111 dB
+  preset Half Robot: level -0.1 dB
+PASS  preset Half Robot sits near the input level = -0.070 dB
+PASS  preset Half Robot level within the real vocal check's limit = -0.070 dB
+  preset Monster Growl: level -0.1 dB
+PASS  preset Monster Growl sits near the input level = -0.141 dB
+PASS  preset Monster Growl level within the real vocal check's limit = -0.141 dB
+  preset Ghost Whisper: level -0.1 dB
+PASS  preset Ghost Whisper sits near the input level = -0.113 dB
+PASS  preset Ghost Whisper level within the real vocal check's limit = -0.113 dB
+  preset Breathy Layer: level -0.1 dB
+PASS  preset Breathy Layer sits near the input level = -0.130 dB
+PASS  preset Breathy Layer level within the real vocal check's limit = -0.130 dB
+  preset Male To Female: level -0.1 dB
+PASS  preset Male To Female sits near the input level = -0.084 dB
+PASS  preset Male To Female level within the real vocal check's limit = -0.084 dB
+  preset Female To Male: level -0.1 dB
+PASS  preset Female To Male sits near the input level = -0.106 dB
+PASS  preset Female To Male level within the real vocal check's limit = -0.106 dB
+  preset Chipmunk: level -0.1 dB
+PASS  preset Chipmunk sits near the input level = -0.100 dB
+PASS  preset Chipmunk level within the real vocal check's limit = -0.100 dB
+  preset Giant: level -0.2 dB
+PASS  preset Giant sits near the input level = -0.188 dB
+PASS  preset Giant level within the real vocal check's limit = -0.188 dB
+  preset Old Singer: level -0.2 dB
+PASS  preset Old Singer sits near the input level = -0.182 dB
+PASS  preset Old Singer level within the real vocal check's limit = -0.182 dB
+  preset Deep Double: level -0.6 dB
+PASS  preset Deep Double sits near the input level = -0.575 dB
+PASS  preset Deep Double level within the real vocal check's limit = -0.575 dB
 PASS  every preset sounds different from every other
 PASS  any block size gives the same output, biggest difference = 0.000 
 PASS  preparing again starts clean, biggest difference = 0.000 
@@ -295,11 +316,11 @@ PASS  Natural: the two sides of the mirror match = 0.000
 PASS  and they are really showing a voice = 1.000 
 PASS  Pitch +12: the lowest tooth moves up, semitones = 11.386 
 PASS  Formant Shift +7: the humps move up, semitones = 7.591 
-PASS  Whisper 100: the teeth melt, what is left against your side = 0.141 
+PASS  Whisper 100: the teeth melt, what is left against your side = 0.143 
 PASS  Robot: the note shown is the note set, Hz = 220.000 
 PASS  and the window names both: You 196 Hz  |  Alter Ego 220 Hz
 PASS  Vibrato: the disc on the pad swings with the voice, semitones end to end = 1.797 
-PASS  and it has a size while the voice sounds = 45.235 
+PASS  and it has a size while the voice sounds = 45.021 
 PASS  with a voice going through, the display reports it is moving
 PASS  the window reading and painting writes no parameter and no automation = 0.000 
 PASS  with the host stopped, the display stops moving
@@ -308,10 +329,10 @@ PASS  60 windows opened, painted and closed, 30 of them with audio running = 60.
 PASS  and the read is off again after the last one
 PASS  a window opens and paints before the host has prepared the plug-in
 PASS  the mirror follows a sample rate change under an open window
-PASS  after a double-click on the pad the voice nulls against the delayed input, dB = -142.131 
+PASS  after a double-click on the pad the voice nulls against the delayed input, dB = -142.032 
 PASS  audio with the window open and painting nulls to exact zero against closed, Natural = 0.000 
 PASS  audio with the window open and painting nulls to exact zero against closed, Child with Whisper = 0.000 
 PASS  audio with the window open and painting nulls to exact zero against closed, Monster with Vibrato = 0.000 
-PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 7.730 %
-PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 28.538 %
+PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 6.637 %
+PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 24.255 %
 RESULT PASS  0 failures

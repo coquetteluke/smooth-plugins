@@ -262,13 +262,16 @@ PASS  Vocoder Mix 100 sits on the voice's pitch, 95th percentile = 0.030 cents
 PASS    level against the voice = 0.024 dB
 PASS  With E4 held, the tone follows to E4, 95th percentile = 0.032 cents
 PASS  Vocoder Octave -1, Mix 40: tone at 110 Hz rises over off by = 88.873 dB
-INFO    voice's own 220 Hz at Mix 40 against off = 0.016 dB
+INFO    voice's own 220 Hz at Mix 40 against off = 0.017 dB
 PASS  Vocoder Mix 10 to 50 raises the tone by about 14 dB, measured = 13.980 dB
 PASS  Vocoder Wave changes the sound: 440 Hz against 660 Hz differs between Saw and Square by = 35.479 dB
 PASS  Vocoder switched on mid-note: biggest step in the 30 ms after, against the steady step, worst (e 147 Hz, loud) = 0.693 
 PASS    10 ms level in the first 300 ms against the steady level with the tone, worst (o 220 Hz, quiet) = 1.424 dB
-PASS  Vocoder on, notes starting out of a pause with a room under it and an S before: 10 ms level in a note's first 100 ms against its steady level, worst (110 Hz after 80 ms) = 2.206 dB
+PASS  Vocoder on, notes starting out of a pause with a room under it and an S before: 10 ms level in a note's first 100 ms against its steady level, worst (110 Hz after 1500 ms) = 1.975 dB
 PASS  Vocoder on from the start: the first note's 10 ms level in its first 100 ms against its steady level, worst (110 Hz, silence, Wave 0) = 1.341 dB
+PASS  Vocoder on, notes stopping into a room: 10 ms level in the 100 ms after a note's end against the note's steady level, worst (294 Hz, Wave 0, note 2) = 0.230 dB
+PASS  Vocoder on, a breath between notes over a room with a rumble: 10 ms level through the breath against the notes' steady level, worst (196 Hz, Wave 0, breath 1) = -1.068 dB
+PASS  Vocoder (Mix 60, Super) on Luke's take 06, first 3 s: output over the voice's loudest 10 ms within 50 ms, worst (at 1.43 s) = 4.833 dB
 PASS  Vocoder switched on mid-note on bright sources: the tone's 10 ms level in its first 100 ms against its steady level, worst (saw 110 Hz quiet) = 0.937 dB
 PASS  Vocoder switched on at the loudest moments of say speech and singing: step in the 30 ms after against the second either side, worst (held_fred.wav at 6.07 s) = 0.766 
 PASS  Vocoder tone stops when the voice stops, level = -240.000 dBFS
@@ -391,7 +394,7 @@ PASS  Throat on, on a say voice: difference from off = -13.156 dB
 PASS  Motion on, on a say voice: difference from off = 2.895 dB
 PASS  Harmony on, on a say voice: difference from off = -5.713 dB
 PASS  Doubler on, on a say voice: difference from off = -9.099 dB
-PASS  Vocoder on, on a say voice: difference from off = 0.368 dB
+PASS  Vocoder on, on a say voice: difference from off = 0.349 dB
 PASS  Distortion on, on a say voice: difference from off = -15.861 dB
 PASS  Filter on, on a say voice: difference from off = 2.245 dB
 PASS  Ring on, on a say voice: difference from off = -4.376 dB
@@ -427,8 +430,8 @@ PASS  factory presets = 12.000
 INFO  preset Hard Tune: level 0.0 dB against plain, peak 0.21, latency 659
 PASS  preset Hard Tune: finite, level near the plain voice, not overloading, level change = 0.000 dB
 PASS    latency unchanged = 659.000 samples
-INFO  preset Robot Stack: level 4.5 dB against plain, peak 0.42, latency 659
-PASS  preset Robot Stack: finite, level near the plain voice, not overloading, level change = 4.486 dB
+INFO  preset Robot Stack: level 4.5 dB against plain, peak 0.41, latency 659
+PASS  preset Robot Stack: finite, level near the plain voice, not overloading, level change = 4.480 dB
 PASS    latency unchanged = 659.000 samples
 INFO  preset Octave Monster: level 2.2 dB against plain, peak 0.33, latency 659
 PASS  preset Octave Monster: finite, level near the plain voice, not overloading, level change = 2.214 dB
@@ -458,7 +461,7 @@ INFO  preset Alien Ring: level -2.9 dB against plain, peak 0.30, latency 659
 PASS  preset Alien Ring: finite, level near the plain voice, not overloading, level change = -2.895 dB
 PASS    latency unchanged = 659.000 samples
 INFO  preset Synth Voice: level 1.2 dB against plain, peak 0.25, latency 659
-PASS  preset Synth Voice: finite, level near the plain voice, not overloading, level change = 1.228 dB
+PASS  preset Synth Voice: finite, level near the plain voice, not overloading, level change = 1.216 dB
 PASS    latency unchanged = 659.000 samples
 PASS  presets leave Key and Scale alone
 PASS  first preset is exactly the default sound, difference = -240.000 dB
@@ -498,9 +501,9 @@ PASS  the smallest saved size lays out = 481.000
 PASS  Advanced saved open stays open
 PASS  window open and drawing against no window, must be exact zero, difference = -240.000 dB
 PASS  20 windows opened and closed with no audio
-PASS  40 windows opened, drawn and closed with audio running, blocks processed = 585.000 
-INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 2.403 %
-PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 4.125 %
+PASS  40 windows opened, drawn and closed with audio running, blocks processed = 441.000 
+INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 2.082 %
+PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 3.629 %
 PASS  Alto/Tenor, held notes under its range, 78 to 92 Hz, output pitch error at instant speed, worst 95th percentile = 0.004 cents
 INFO    worst case is at = 92.499 Hz
 PASS  Alto/Tenor, 87 Hz with vibrato +/-30 cents and breath, output pitch error at instant speed, 95th percentile = 1.328 cents

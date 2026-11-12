@@ -618,16 +618,21 @@ static void testFeedback()
                 previous = r.peak;
             }
 
-            // At Mix 50 the dry path joins in. Wet before dry, the first echo lands on the dry path, which raises the median as well
-            // as the peaks, so the rise at 30% is small there: 0.7 dB from the formula for this structure.
-            // First limit was 1.5 dB per step on both sides. It is wrong for that case, so here: every step must still rise,
-            // by at least 0.3 dB, and 90% must stand 9 dB clear (unchanged).
+            // At Mix 50 the dry path joins in. The limit written first was 1.5 dB per step on both sides, and it is back for 10 of the
+            // 12 steps (2026-11-12; it had been lowered to 0.3 dB for all 12 before the first commit).
+            // The two left at 0.3 dB: 0 to 30% with the wet before the dry, either sign (measured 0.58 and 0.45 dB). Not a fault in the
+            // code: a model of this structure gives 0.74 and 0.43 dB there, and the other ten steps within 0.8 dB of what it gives. With
+            // the wet ahead the comb peaks are as high as on the late side but its lobes are broad, so the median rises with them. The
+            // mirror of the late side would need echoes that run ahead of the wet, audio not yet in. Taking the first echo off the dry
+            // path does not do it (0.91 dB in the model). What reaches 1.5 dB changes the default (Feedback 30, Mix 50) on the early half
+            // of the sweep, which the 1.0.0 render below holds to -110 dB. 90% must stand 9 dB clear (unchanged).
             previous = -100.0;
             for (float amount : { 0.0f, 30.0f, 60.0f, 90.0f })
             {
                 const auto r = read (sign * amount, when, 50.0f);
+                const double rise = (when > 10.0 && amount == 30.0f) ? 0.3 : 1.5;
                 if (amount > 0.0f)
-                    check (r.peak >= previous + 0.3, name + std::to_string ((int) amount) + "% lifts the comb peaks, Mix 50, " + side, r.peak, "dB above median");
+                    check (r.peak >= previous + rise, name + std::to_string ((int) amount) + "% lifts the comb peaks, Mix 50, " + side, r.peak, "dB above median");
                 if (amount == 90.0f)
                     check (r.peak >= 9.0, name + "90% peak height, Mix 50, " + side, r.peak, "dB");
                 previous = r.peak;
@@ -1708,6 +1713,46 @@ static void testBypassIsTheDelayedInput()
     }
 }
 
+// A control moved while audio plays must land where it was set. Each control is moved half a second in; a second after that the output
+// must be what it is when the control was there from the start. Found 2026-11-12: the smoothing works in 32 bit floats and stops short
+// of a value near 1 (Bypass had the same fault, fixed in 1.2.2), so Invert Phase switched while playing cancelled about 80 dB where
+// the README says more than 160, and Mix moved to 100 left the dry in about 80 dB down. Limit: 120 dB null, as Bypass off again.
+// Written before the first run.
+static void testMovedControlsLand()
+{
+    const double sr = 48000.0;
+    const auto in = noiseSignal ((int) sr * 3, 0.25, 47);
+    struct Move { const char* id; float from, to; int channel; };
+    const Move moves[] = { { "mix", 50.0f, 100.0f, 0 }, { "invert", 0.0f, 1.0f, 0 }, { "outputgain", 0.0f, 6.0f, 0 }, { "inputgain", 0.0f, -6.0f, 0 },
+                           { "feedback", 0.0f, 60.0f, 0 }, { "depth", 2.5f, 1.0f, 0 }, { "saturation", 0.0f, 50.0f, 0 }, { "spread", 0.0f, 90.0f, 1 } };
+    for (const auto& mv : moves)
+    {
+        const bool invertCase = std::string (mv.id) == "invert";
+        Settings s; s.mix = 50.0f;
+        if (invertCase) s.depth = 0.0f;
+        auto moved = makeProc (s, sr, 2, 128);
+        setParam (*moved, mv.id, mv.from);
+        moved->prepareToPlay (sr, 128);
+        auto still = makeProc (s, sr, 2, 128);
+        setParam (*still, mv.id, mv.to);
+        still->prepareToPlay (sr, 128);
+        const int at = (int) (0.5 * sr) / 128;
+        const auto a = render (*moved, in, 128, nullptr, [&] (int idx) { if (idx == at) setParam (*moved, mv.id, mv.to); });
+        const auto b = render (*still, in, 128);
+        const int from = (int) (1.5 * sr), len = (int) sr;
+        if (invertCase)
+        {
+            // Inverted at Depth 0 and Mix 50 the output is all but silent, so this one is read against the input: the README's claim,
+            // more than 160 dB of cancelling.
+            const double left = toDb (rms (a.getReadPointer (0) + from, len)) - toDb (rms (in.data() + from, len));
+            check (left <= -160.0, "moved while playing, lands where it was set: invert 0.0 to 1.0, Depth 0, Mix 50, level left", left, "dB");
+            continue;
+        }
+        const double db = nullDb (a.getReadPointer (mv.channel) + from, b.getReadPointer (mv.channel) + from, len, rms (b.getReadPointer (mv.channel) + from, len));
+        check (db <= -120.0, std::string ("moved while playing, lands where it was set: ") + mv.id + " " + juce::String (mv.from, 1).toStdString() + " to " + juce::String (mv.to, 1).toStdString(), db, "dB");
+    }
+}
+
 // Switching Bypass while audio plays must not click. Bypass goes on and off every 0.31 s under a steady tone, with small host
 // blocks so the switches land all over the wave.
 // Limits: the biggest sample to sample step is no more than 1.5 times the biggest step of the steady effect and of the input
@@ -1796,5 +1841,6 @@ int main()
     testNewControlsRepeat();
     testBypassIsTheDelayedInput();
     testBypassSwitchClicks();
+    testMovedControlsLand();
     return finish();
 }

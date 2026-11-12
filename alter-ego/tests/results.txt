@@ -340,6 +340,6 @@ PASS  after a double-click on the pad the voice nulls against the delayed input,
 PASS  audio with the window open and painting nulls to exact zero against closed, Natural = 0.000 
 PASS  audio with the window open and painting nulls to exact zero against closed, Child with Whisper = 0.000 
 PASS  audio with the window open and painting nulls to exact zero against closed, Monster with Vibrato = 0.000 
-PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 6.674 %
-PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 24.656 %
+PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 8.310 %
+PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 21.712 %
 RESULT PASS  0 failures

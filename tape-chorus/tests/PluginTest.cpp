@@ -538,9 +538,16 @@ static void testSpread()
         double z1 = 0, z2 = 0;
         for (int i = 0; i < n; ++i) { z1 += a * (white[(size_t) i] - z1); z2 += a * (z1 - z2); in[(size_t) i] = (float) z2; }
     }
-    // Clean off, as up to 0.4.0, and Clean on (the default since 0.5.0), each with the same limits. In 0.4.0 Clean kept the voices' DC
-    // filter at 1 Hz in place of 6 Hz so that low notes are on time, and the 1 to 6 Hz part of this noise then reached both sides alike,
-    // where no Spread can take it apart: 0.304, 0.301 and 0.331 at 4, 5 and 7 voices. Fixed in 0.5.0, see the DC filter in the engine.
+    // Clean off, as up to 0.4.0, holds the README's claim: under 0.3 at Spread 100 with 3 to 8 voices. Clean on (the default since 0.5.0)
+    // keeps the voices' DC filter at 1 Hz in place of 6 Hz so that low notes are on time, and the 1 to 6 Hz part of this noise then reaches
+    // both sides alike, where no Spread can take it apart: 0.304, 0.301 and 0.331 at 4, 5 and 7 voices, written as readings. Measured on
+    // 2026-11-11, correlation at 7 voices against the worst low-note timing of one still voice on Luke's takes (take 10, limit 0.1 sample):
+    //   DC filter 1 Hz (Clean): 0.331, 0.071   2 Hz: 0.323, 0.142   2 Hz two stages: 0.314, 0.285   3 Hz two stages: 0.298, more than 0.285
+    //   6 Hz (standard): 0.282, 0.427
+    // Timing grows with the cutoff (0.071 sample per Hz on take 10). Any high pass that takes 1 to 6 Hz out puts low notes early, an all-pass
+    // can only add delay, and a linear-phase cut needs hundreds of ms of look-ahead where the shortest Delay Time is 3 ms. Pans: 4 voices at
+    // +-0.85 reads 0.283, but 5 and 7 voices have a voice in the centre, and moving it off centre breaks left against right (-1.34 dB at
+    // pan 0.5, limit 1). So with Clean on the 0.3 cannot hold together with the timing limit; the lead chose the timing (2026-11-11).
     const auto cleanCorrelation = [&] (int voices, float spread)
     {
         PluginProcessor p;
@@ -588,8 +595,9 @@ static void testSpread()
         auto out = render (p, in, 512);
         const double c = correlation (out.getReadPointer (0) + 9600, out.getReadPointer (1) + 9600, n - 9600);
         check (c < 0.3, "Spread 100, " + std::to_string (voices) + " voices: correlation, dark noise", c);
-        const double cc = cleanCorrelation (voices, 100.0f);
-        check (cc < 0.3, "Clean on, Spread 100, " + std::to_string (voices) + " voices: correlation, dark noise", cc);
+        // Clean on reads 0.30 to 0.33 at 4, 5 and 7 voices: Clean keeps everything down to 1 Hz so low notes stay on time, and that 1 to 6 Hz
+        // band reaches both sides alike. No filter or pan meets both this 0.3 and the 0.1 sample timing of low notes: see the comment above.
+        info ("Clean on, Spread 100, " + std::to_string (voices) + " voices: correlation, dark noise (0.3 holds with Clean off, see above)", cleanCorrelation (voices, 100.0f));
         const double bal = rmsDb (out, 0, 9600) - rmsDb (out, 1, 9600);
         check (std::abs (bal) < 1.0, "Spread 100, " + std::to_string (voices) + " voices: left against right level", bal, "dB");
     }

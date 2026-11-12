@@ -16,7 +16,7 @@ Audio Units > Luke Garito > Tape Chorus. AU code: `aufx STch Luke`. Works mono i
 | Rate | 0.05 to 10 Hz | Speed of the sweep. |
 | Depth | 0 to 8 ms | How far each copy's delay swings either way from its centre. More depth, more pitch movement. Pitch Swing shows the result in cents. |
 | Delay Time | 3 to 40 ms | Centre delay. With several voices, the copies sit around it. |
-| Feedback | 0 to 90 % | Sends the voices back onto the tape. Each pass falls by this amount. Level is held steady as it rises, and the loop cannot run away. |
+| Feedback | 0 to 90 % | Sends the voices back onto the tape. Each pass falls by this amount. Level is held steady as it rises, and the loop cannot run away. From 70 up, what goes onto the tape comes down smoothly in the band under 1 kHz (2 dB at 90, and 0.3 dB up above 1 kHz), so a voice's peaks stay within 3 dB of the dry at 90. 70 and below is exactly as before. |
 | Wow | 0 to 100 % | Slow, irregular tape drift. Up to 2.5 ms swing. |
 | Wow Rate | 0.1 to 4 Hz | Speed of Wow. 0.53 Hz is the 0.1.0 speed. |
 | Flutter | 0 to 100 % | Fast, irregular tape shake. Up to 0.25 ms swing. |
@@ -24,8 +24,8 @@ Audio Units > Luke Garito > Tape Chorus. AU code: `aufx STch Luke`. Works mono i
 | Random | 0 to 100 % | Wandering delay with no pattern, separate for each voice. Up to 2 ms swing. Takes away the regular sound of a chorus. |
 | Random Rate | 0.1 to 20 Hz | How fast Random wanders. The swing does not change with speed. |
 | Unsync | off, on | Off: left and right wander together. On: each side wanders on its own, which widens the sound without Spread. |
-| Saturation | 0 to 100 % | Soft tape clipping on the chorus voices only. A -12 dBFS signal stays at about the same level. The dry signal is never saturated. |
-| Clean | off, on | Off: the sound of every version up to 0.3.1. On: nothing folds back from Saturation, Saturation never lifts quiet sound or S sounds, Wow and Flutter lose their hash, and low notes are on time. See Clean below. |
+| Saturation | 0 to 100 % | Soft tape clipping on the chorus voices only. A -12 dBFS signal stays within 3 dB of its level (with Clean off it keeps it; with Clean on, quiet sound keeps its level exactly and a -12 dBFS tone comes down 0.2 dB at 20, 1.3 dB at 50, 2.8 dB at 100). The dry signal is never saturated. |
+| Clean | off, on | On by default and in every preset since 0.5.0. On: nothing folds back from Saturation, Saturation never lifts quiet sound or S sounds, Wow and Flutter lose their hash, and low notes are on time. Off: the sound of every version up to 0.3.1. A session saved before 0.4.0 opens with it off. See Clean below. |
 | Degrade | 0 to 100 % | Random level dips in each voice, like worn tape. Dips reach -20 dB at most, and only at 100. |
 | Degrade Rate | 0.2 to 20 Hz | How fast the dips come and go. |
 | Noise | 0 to 100 % | Tape hiss on the chorus voices. 100 is -40 dBFS, 50 is -52, 25 is -64. 0 adds nothing. |
@@ -34,7 +34,7 @@ Audio Units > Luke Garito > Tape Chorus. AU code: `aufx STch Luke`. Works mono i
 | High Cut | 1 to 20 kHz, Off | 12 dB per octave on the chorus voices, and inside the feedback loop, so repeats get darker. |
 | Tone | -12 to +6 dB | Top end of the chorus voices. A gentle shelf from about 2.5 kHz up. 0 is flat. Outside the feedback loop. |
 | Spread | 0 to 100 % | 0 keeps left and right identical. Higher moves the two sides apart in time and sweep, and places the copies left and right. |
-| Mix | 0 to 100 % | Equal power blend of dry and chorus. 0 gives back the input exactly. |
+| Mix | 0 to 100 % | Equal power blend of dry and chorus. 0 gives back the input exactly. A move glides in about 20 ms and starts and ends gently, with no tick even on a steady tone. |
 | Input Gain | -24 to +24 dB | Before everything, dry included. Not made up afterwards, so it hits Saturation harder and comes out louder. |
 | Output Gain | -24 to +24 dB | After everything. |
 | Bypass | on or off | Fades to the exact dry signal in 20 ms, ignoring both gains, with no tick even on a steady tone. Latency stays 0. |
@@ -47,12 +47,17 @@ If Delay Time is too short to hold the modulation you asked for, Depth, Wow, Flu
 
 ## Clean
 
-Clean is a switch in Advanced, under Saturation. It is off by default, and with it off every preset and setting sounds as it did in 0.3.1, sample for sample. It exists because four things could not be put right without changing that sound, so they are yours to switch on:
+Clean is a switch in Advanced, under Saturation. Since 0.5.0 it is on in a new instance and in every factory preset (Luke left this call to the lead on 2026-11-11). With it off, every setting sounds as it did in 0.3.1, sample for sample, and a session saved before 0.4.0 (which has no Clean in it) opens with it off, so it sounds as it was saved. A session saved in 0.4.0 opens with the Clean it was saved with. It does four things that could not be done without changing the 0.3.1 sound:
 
 - **Fold back.** The standard filters around Saturation leave a little of what the clipper makes just above half the sample rate, and it folds back to just under it: a 5 kHz tone at Saturation 100 leaves a line at 23 kHz, 52 dB under the tone. Nobody hears 23 kHz, but it is there. Clean has its own filters that stop at half the sample rate: 119 dB under. They give up the band above about 20 kHz to do it (18.6 kHz at 44.1 kHz).
-- **Saturation and level.** The standard curve keeps a -12 dBFS tone at its level. A voice is mostly quieter than that, so Saturation makes the voices louder: about 3.5 dB at 100, 1.2 dB at 50, 0.2 dB at the default 20, and S sounds and consonants come up by the same amount. With Clean, quiet sound keeps its level exactly and only the peaks are rounded off, so Saturation can only take level away.
+- **Saturation and level.** The standard curve keeps a -12 dBFS tone at its level. A voice is mostly quieter than that, so Saturation makes the voices louder: about 3.5 dB at 100, 1.2 dB at 50, 0.2 dB at the default 20, and S sounds and consonants come up by the same amount. With Clean, quiet sound keeps its level exactly and only the peaks are rounded off, so Saturation can only take level away: a -12 dBFS tone comes down 0.2 dB at 20, 1.3 dB at 50 and 2.8 dB at 100. Above Saturation 60 Clean's drive bends over (since 0.5.0; in 0.4.0 it went on rising and took 3.5 dB at 100).
 - **Hash from Wow and Flutter.** Their irregular part leaves a fine noise around a held note: 42 dB under a 3 kHz tone at the default Wow 15 and Flutter 10, 30 dB under at Flutter 50, 23 dB under with both at 100. With Clean it is 69 dB under at the default and 49 dB under with both at 100, and they swing as far as before.
 - **Low notes.** The filter that keeps DC out of the voices sits at 6 Hz, which brings a 100 Hz note in 4.6 samples early. With Clean it sits at 1 Hz.
+
+What Clean costs, measured:
+
+- **Above 20 kHz.** Clean removes everything above about 20 kHz from the voices. Full-band white noise, a sixth of whose power sits there, reads about 1.1 dB lower at Mix 100 (the same white noise low-passed at 20 kHz reads within 0.3 dB). A voice has nothing up there.
+- **Spread on dark noise.** With Clean on, Spread 100's correlation on dark noise reads 0.30 to 0.33 at 4, 5 and 7 voices instead of under 0.3, because Clean keeps everything down to 1 Hz so low notes stay on time, and the 1 to 6 Hz band reaches both sides alike. Switch Clean off for the old figure. The two cannot hold at once: measured at 7 voices against the worst low-note timing of one still voice on Luke's takes (limit 0.1 sample), the DC filter at 1 Hz gives 0.331 and 0.071 sample, at 2 Hz 0.323 and 0.142, at 2 Hz in two stages 0.314 and 0.285, at 3 Hz in two stages 0.298 and more than that, and at 6 Hz (the standard path) 0.282 and 0.427. Any filter that takes 1 to 6 Hz out puts low notes early, an all-pass can only add delay, and a cut with no delay needs hundreds of ms of look-ahead where the shortest Delay Time is 3 ms. Pans do not help: the 5 and 7 voice layouts have a voice in the centre, and moving it off centre breaks left against right balance (1.34 dB at pan 0.5, limit 1). The band from 1 to 6 Hz is not in a voice.
 
 Switching it fades from one to the other in 30 ms. The delay and the latency do not change.
 
@@ -68,7 +73,9 @@ Pictures are in `docs/window/`. To make them again: `build/RenderWindow_artefact
 
 ## Presets
 
-Same as 0.1.0, sample for sample:
+Since 0.5.0 every preset has Clean on (Luke left this call to the lead on 2026-11-11), and four of the old ones moved by the smallest step that keeps them inside the real vocal limits on all 11 of Luke's working takes: Worn Cassette Spread 50 to 27, Cassette Backing Spread 100 to 71, Fast Shimmer Spread 80 to 69, Resonant Tape Swirl Mix 40 to 39 (numbers in the CHANGELOG). A session saved in 0.3.1 with any preset still opens with its own values and Clean off, and sounds exactly as it did.
+
+The first seven, from 0.1.0:
 
 - **Default Tape Chorus**: 2 voices, a general starting point.
 - **Soft Vocal Double**: 2 voices, slow and subtle.
@@ -87,11 +94,11 @@ New in 0.2.0:
 - **Random Drift Double**: almost no regular sweep, mostly Random and Unsync, so it sounds like a second take.
 - **Resonant Tape Swirl**: 3 voices, short delay, 55 % Feedback, darkening repeats.
 
-New in 0.4.0, all with Clean on:
+New in 0.4.0:
 
 - **Clean Vocal Double**: 2 voices, a little Random and Unsync, Low Cut at 120 Hz. A double for a lead with nothing added that is not the voice.
 - **Clean Wide Stack**: 6 voices, full Spread, Low Cut at 180 Hz.
-- **Worn Cassette Clean**: Worn Cassette with Clean on and Spread at 20 in place of 50. The same wobble and drive without the hash and without the lifted S sounds, and it holds up in mono (at Spread 50 it lost 9.5 dB in its worst quarter second on Luke's takes, as Worn Cassette does).
+- **Worn Cassette Clean**: Worn Cassette with Clean on and Spread at 20. The same wobble and drive without the hash and without the lifted S sounds. Since 0.5.0 Worn Cassette itself has Clean on and Spread 27, so the two differ only in Spread.
 
 ## Signal flow
 
@@ -113,7 +120,7 @@ Same sound after the CPU work: `tests/null_results.txt` holds the null of 0.2.1 
 
 Window CPU, on the real window at Retina size with speech running, 30 frames a second, percent of one core, with other builds running on the Mac: default 2.5 to 4.1 over 5 runs, Eight Voice Stack 3.8 to 4.8 over 5 runs. That is 3.1 and 4.0 percent of a fast core in work. Stopped with nothing moving: 0.7. On the slow cores, when the Mac was busy with several builds, the same work read 6.9 to 11 percent. `docs/window/cpu-runs.txt` has the runs. Through `NullTest --cost` the audio thread takes 0.5 percent more instructions than 0.2.1 (96.1 to 96.6 million a second at default), to fill the window's picture.
 
-Same sound after the window: `tests/au_null.sh` renders speech through the real installed AU at 19 settings, and `tests/au_baseline.sha256` holds the checksums from installed 0.2.1. All 19 were bit for bit identical up to 0.3.1. In 0.4.0, with Clean off and the settings in place before the plug-in starts (`SETTLE=1 tests/au_null.sh`), all 19 are still identical to 0.3.1 (`tests/au_baseline_settled.sha256`). Made the old way, where every control glides from its default to its setting as the render starts, 17 of the 19 now differ by 61 to 73 dB under the sound: in 0.3.1 a control that glided never quite arrived, and now it does. `tests/NullTest.cpp` also checks 6 settings against 0.2.1 with no window, with the window drawing while audio runs on another thread, and with the window opening and closing over and over during audio. All exact. `tests/au_null_results.txt` and `tests/window_results.txt` have those results, and the window's own checks: every parameter has a place on screen, automation moves the controls, drags have one begin and one end, and the saved state holds only the two new values.
+Same sound after the window: `tests/au_null.sh` renders speech through the real installed AU at 19 settings, and `tests/au_baseline.sha256` holds the checksums from installed 0.2.1. All 19 were bit for bit identical up to 0.3.1. In 0.4.0, with Clean off and the settings in place before the plug-in starts (`SETTLE=1 tests/au_null.sh`), all 19 are still identical to 0.3.1 (`tests/au_baseline_settled.sha256`). Made the old way, where every control glides from its default to its setting as the render starts, 17 of the 19 now differ by 61 to 73 dB under the sound: in 0.3.1 a control that glided never quite arrived, and now it does. Since 0.5.0 the factory presets have Clean on and four of them moved, so a render of a factory preset is no longer the 0.3.1 sound; what must not change is a saved session. `tests/au_session_null.sh` saves the state of 21 cases with the kept 0.3.1 build and 27 with the kept 0.4.0 build (default, every factory preset, a session with every control moved at three rates and in mono, Bypass, and in 0.4.0 its Clean presets and sessions with Clean on), renders each with its own build from that state, then opens the same state in 0.5.0 through the real AU: 20 of 21 and 25 of 27 are identical to the last bit. The rest differ on purpose: Feedback 90 (it comes down in 0.5.0) and Clean at Saturation 100 (its drive bends over). The preset cases of `tests/NullTest.cpp` are the 0.3.1 preset values with Clean off. `tests/NullTest.cpp` also checks 6 settings against 0.2.1 with no window, with the window drawing while audio runs on another thread, and with the window opening and closing over and over during audio. All exact. `tests/au_null_results.txt` and `tests/window_results.txt` have those results, and the window's own checks: every parameter has a place on screen, automation moves the controls, drags have one begin and one end, and the saved state holds only the two new values.
 
 Offline, in `tests/PluginTest.cpp`. Full numbers are in `tests/results.txt`.
 
@@ -134,13 +141,13 @@ Offline, in `tests/PluginTest.cpp`. Full numbers are in `tests/results.txt`.
 - Saturation: THD at 1 kHz, -12 dBFS rises with the control, with 0 under 0.01 percent. `tests/results.txt` has each step.
 - Fold back with a 5 kHz sine at Saturation 100 is below -96 dB from 2 to 22 kHz. One line at 23 kHz, above hearing, sits at -53.8 dB. It is the 25 kHz harmonic inside the output filter's transition band.
 - Tone: -12 gives about -10.6 dB at 12 kHz, +6 gives about +5.9 dB, and 200 Hz moves under 0.1 dB.
-- Spread: correlation of left and right falls steadily from 1.0 at Spread 0 to under 0.3 at Spread 100, with under 0.3 at every voice count from 3 to 8. This uses noise darkened below about 400 Hz, because white noise reads near 0 from Spread 25 up.
+- Spread: correlation of left and right falls steadily from 1.0 at Spread 0 to under 0.3 at Spread 100, with under 0.3 at every voice count from 3 to 8. This uses noise darkened below about 400 Hz, because white noise reads near 0 from Spread 25 up. That is with Clean off; with Clean on it reads 0.30 to 0.33 at 4, 5 and 7 voices (see Clean).
 - Mix: Mix 0 and Bypass match the input exactly. Mix 50 gives dry and wet each at -3.01 dB, with the dry on time.
 - Mono to stereo: Spread 0 keeps both sides identical, Spread 100 wet correlation is near 0, and left and right match within 0.1 dB. A hard left stereo source stays on the left.
 - Output is identical at block sizes 512, 37 and 1, and after preparing again, at default settings and with everything on. With everything on there are also no allocations, no denormals, and it recovers from NaN and infinite input.
 - Damaged saved state and NaN, infinite or huge input cannot stick in the audio path.
 
-Those are synthetic test signals. New in 0.4.0 in the same file: a control that is moved arrives exactly (a few seconds after a move the output is the output of that setting held from the start, at 44.1, 48 and 96 kHz), one still voice sits within 0.01 sample of Delay Time at 44.1, 48, 88.2 and 96 kHz and the dry signal has no delay at all, Bypass and Mix 0 give back every sample unchanged, Bypass switched under a 1 kHz tone leaves nothing above 8 kHz louder than 105 dB under the tone, Low Cut and High Cut glide with no staircase, and Clean does what the Clean section says.
+Those are synthetic test signals. New in 0.5.0: Clean is on in a new instance and in every preset and a 0.3.1 session opens with it off and renders exactly as before; a Mix move adds nothing above 8 kHz louder than 91 dB under a 1 kHz tone (70 to 77 dB in 0.4.0); Feedback 70 and below renders 0.4.0's samples exactly and dark noise at Feedback 90 is 0.85 dB lower than in 0.4.0; with Clean on a -12 dBFS tone loses 2.8 dB at Saturation 100. New in 0.4.0 in the same file: a control that is moved arrives exactly (a few seconds after a move the output is the output of that setting held from the start, at 44.1, 48 and 96 kHz), one still voice sits within 0.01 sample of Delay Time at 44.1, 48, 88.2 and 96 kHz and the dry signal has no delay at all, Bypass and Mix 0 give back every sample unchanged, Bypass switched under a 1 kHz tone leaves nothing above 8 kHz louder than 105 dB under the tone, Low Cut and High Cut glide with no staircase, and Clean does what the Clean section says.
 
 ## On a real voice
 

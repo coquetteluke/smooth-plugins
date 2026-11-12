@@ -2630,7 +2630,7 @@ void testNothingBeforeOnset()
                 const long delay = p->getLatencySamples(), onset = (long) (0.3 * SR), before = (long) (0.010 * SR);
                 const double pre = toDb (rms (out.data() + delay + onset - before, (int) before) + 1.0e-12f);
                 const double held = toDb (rms (out.data() + delay + onset + (long) (0.5 * SR), (int) (0.5 * SR)) + 1.0e-12f);
-                if (std::getenv ("TUNE_DUMP") != nullptr && hz > 300.0 && v == &voice::vowelE)
+                if (std::getenv ("TUNE_DUMP") != nullptr && v == &voice::vowelE)
                 {
                     std::printf ("  %s %.0f Hz shift %d delay %ld:", v->name, hz, shift, delay);
                     for (int k = -12; k <= 3; ++k) std::printf (" %+d:%.0f", k, toDb (rms (out.data() + delay + onset + k * 48, 48) + 1.0e-12f));

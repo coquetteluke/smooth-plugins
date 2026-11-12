@@ -107,9 +107,11 @@ public:
         wetLevel = dryLevel = levelSeen = 0.0;
         passMix = 1.0;
         passStep = 1.0 / (0.003 * sr);
-        inPeak = wetPeak = 0.0;
-        peakFall = std::exp (-1.0 / (0.010 * sr));
-        onsetLookSamples = 0;
+        inPeak = aheadPeak = wetPeak = 0.0;
+        inFall = std::exp (-1.0 / (0.010 * sr));
+        onsetAheadSamples = std::min ((long long) latency, (long long) std::llround (0.012 * sr));
+        aheadFall = std::exp (-1.0 / (double) std::max (1LL, onsetAheadSamples));
+        wetFall = std::exp (-1.0 / (0.001 * sr));
         correctingFor = 0;
         levelMemory = (mode == highQuality ? highQualityLevelMemorySeconds : lowLatencyLevelMemorySeconds) * sr;
         matchEase = 1.0 / levelMemory;
@@ -292,19 +294,22 @@ public:
                 }
                 // Nothing comes out before the input begins (real take 06 at 5.58 s, High Quality: -34 dBFS for 6 ms over a dry take at -62
                 // to -73 dBFS, just before a sound began). Voicing is decided ahead of the output and the shifters read ahead of it, so where
-                // a sound starts out of silence the corrected sound could be heard before it. The tuned voice may not stand more than
-                // onsetGateDb above the input's own level around that moment (a peak follower on the input at the output's moment, falling
-                // over 10 ms). On a voice the two followers sit within a few dB of each other, so this only ever acts where the input is
-                // near silence; elsewhere the gain is exactly 1 and the output is bit for bit as before.
+                // a sound starts out of silence the corrected sound could be heard before it. The input is known a little ahead of the output,
+                // so a sound about to start is seen coming: where the input's peak over the next 12 ms (or the whole delay, if shorter) stands onsetRiseDb or more over its
+                // peak of the last 10 ms, the tuned voice (its peak over about 1 ms) may not stand more than onsetGateDb over that last one.
+                // On a voice the peaks of the last 10 ms and the next 5 ms are never that far apart, and at any start the tuned voice is the
+                // input itself until a voiced stretch takes over, so the gain is exactly 1 everywhere but just before a sound.
                 if (onsetGate)
                 {
-                    const long long aheadAt = at + onsetLookSamples;
-                    const float a0 = std::abs (dry[0][(size_t) (aheadAt & last)]), a1 = channels > 1 ? std::abs (dry[1][(size_t) (aheadAt & last)]) : a0;
-                    inPeak = std::max ((double) std::max (a0, a1), inPeak * peakFall);
+                    const long long aheadAt = at + onsetAheadSamples;
+                    const double d = std::max (std::abs ((double) dryOut[0]), channels > 1 ? std::abs ((double) dryOut[1]) : 0.0);
+                    const double a0 = std::abs ((double) dry[0][(size_t) (aheadAt & last)]), a1 = channels > 1 ? std::abs ((double) dry[1][(size_t) (aheadAt & last)]) : a0;
                     const double w = std::max (std::abs ((double) wet[0]), channels > 1 ? std::abs ((double) wet[1]) : 0.0);
-                    wetPeak = std::max (w, wetPeak * peakFall);
+                    inPeak = std::max (d, inPeak * inFall);
+                    aheadPeak = std::max (std::max (a0, a1), aheadPeak * aheadFall);
+                    wetPeak = std::max (w, wetPeak * wetFall);
                     const double allowed = inPeak * onsetGateRatio;
-                    if (wetPeak > allowed)
+                    if (aheadPeak > inPeak * onsetRiseRatio && wetPeak > allowed)
                     {
                         const double g = allowed / wetPeak;
                         wet[0] = (float) (wet[0] * g);
@@ -609,10 +614,10 @@ private:
     std::array<ControlPoint, 128> ring {};
     int ringAt = 0, controlDelayTicks = 0, leadTicks = 0, ahead = 0;
     static constexpr bool onsetGate = true;
-    static constexpr double onsetGateDb = 12.0;
-    const double onsetGateRatio = std::pow (10.0, onsetGateDb / 20.0);
-    double inPeak = 0.0, wetPeak = 0.0, peakFall = 0.999;
-    long long onsetLookSamples = 48;
+    static constexpr double onsetGateDb = 6.0, onsetRiseDb = 20.0;
+    const double onsetGateRatio = std::pow (10.0, onsetGateDb / 20.0), onsetRiseRatio = std::pow (10.0, onsetRiseDb / 20.0);
+    double inPeak = 0.0, aheadPeak = 0.0, wetPeak = 0.0, inFall = 0.999, aheadFall = 0.999, wetFall = 0.98;
+    long long onsetAheadSamples = 240;
     float lastVoicingLimit = -1.0f;
     int correctingFor = 0, voicedHold = 0;
     static constexpr int harmonicHoldTicks = 6;

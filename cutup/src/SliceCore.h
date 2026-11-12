@@ -180,6 +180,98 @@ namespace slicecore
         for (int k = 0; k < numHops; ++k) loudest = std::max (loudest, mean (sumBroad, k, k + afterHops));
         const double floorE = loudest * 1.0e-4; // -40 dB re the loudest 10 ms
 
+        // Energy in short blocks (0.25 ms), summed, so the level of any window on that grid is two lookups. The high band is the
+        // sample to sample difference, scaled to the broad level over the file, as above.
+        const int blk = std::max (1, (int) std::lround (rate * 0.00025));
+        const int numBlocks = frames / blk;
+        std::vector<double> cumE ((size_t) numBlocks + 1, 0.0), cumD ((size_t) numBlocks + 1, 0.0);
+        for (int q = 0; q < numBlocks; ++q)
+        {
+            double e = 0.0, h = 0.0;
+            for (int i = q * blk; i < (q + 1) * blk; ++i)
+            {
+                e += (double) x[i] * x[i];
+                const double diff = (double) x[i] - (i > 0 ? (double) x[i - 1] : 0.0);
+                h += diff * diff;
+            }
+            cumE[(size_t) q + 1] = cumE[(size_t) q] + e;
+            cumD[(size_t) q + 1] = cumD[(size_t) q] + h;
+        }
+        const auto inBlocks = [rate, blk] (double m) { return std::max (1, (int) std::lround (m * 0.001 * rate / blk)); };
+        const int b1 = inBlocks (1.0), b2 = inBlocks (2.0), b10 = inBlocks (10.0);
+        const double dScale = std::sqrt (highScale);
+        // RMS over blocks [a, a + n), the part inside the file
+        const auto lvl = [&] (const std::vector<double>& cum, int a, int n)
+        {
+            const int from = std::max (0, a), to = std::min (numBlocks, a + n);
+            return to > from ? std::sqrt (std::max (0.0, cum[(size_t) to] - cum[(size_t) from]) / (double) ((to - from) * blk)) : 0.0;
+        };
+
+        // The room: the 10th percentile of the 10 ms levels. Zero for a file with digital silence in it. A real recording never goes
+        // under its room, so sound has to stand out of it to count.
+        double room = 0.0;
+        {
+            std::vector<double> levels;
+            for (int q = 0; q + b10 <= numBlocks; q += b10) levels.push_back (lvl (cumE, q, b10));
+            if (! levels.empty())
+            {
+                // In 20 s of dense singing the 10th percentile is the quietest singing, not the room, so it is held to 9 dB over the
+                // 2nd percentile.
+                const auto tenth = levels.begin() + (long) (levels.size() / 10);
+                std::nth_element (levels.begin(), tenth, levels.end());
+                room = *tenth;
+                const auto second = levels.begin() + (long) (levels.size() / 50);
+                std::nth_element (levels.begin(), second, levels.end());
+                room = std::min (room, 2.8 * *second);
+            }
+        }
+
+        // S frames, 10 ms each: 60% or more of the energy above 4 kHz, and that part 15 dB or more over its own floor and above -60 dBFS.
+        // A run of two or more is an S. A cut inside one would start a slice in the middle of a hiss.
+        const int w10 = std::max (1, ms (10.0));
+        std::vector<unsigned char> sFrame ((size_t) (frames / w10 + 1), 0);
+        {
+            const double w = 2.0 * 3.14159265358979323846 * std::min (4000.0, 0.45 * rate) / rate, cw = std::cos (w), alpha = std::sin (w) / (2.0 * 0.707), a0 = 1.0 + alpha;
+            const double b0 = (1.0 + cw) * 0.5 / a0, b1 = -(1.0 + cw) / a0, b2 = b0, a1 = -2.0 * cw / a0, a2 = (1.0 - alpha) / a0;
+            double z1 = 0.0, z2 = 0.0;
+            std::vector<double> hfE, allE;
+            double eh = 0.0, et = 0.0;
+            for (int i = 0; i < frames; ++i)
+            {
+                const double v = x[i], y = b0 * v + z1;
+                z1 = b1 * v - a1 * y + z2;
+                z2 = b2 * v - a2 * y;
+                eh += y * y; et += v * v;
+                if ((i + 1) % w10 == 0) { hfE.push_back (eh); allE.push_back (et); eh = et = 0.0; }
+            }
+            if (! hfE.empty())
+            {
+                std::vector<double> sorted (hfE);
+                // The floor of the part above 4 kHz: its 10th percentile, held to 6 dB over its 2nd percentile, as for the room below,
+                // so dense singing does not lift it over the start of a soft S.
+                const auto tenth = sorted.begin() + (long) (sorted.size() / 10);
+                std::nth_element (sorted.begin(), tenth, sorted.end());
+                double hfFloor = *tenth;
+                const auto second = sorted.begin() + (long) (sorted.size() / 50);
+                std::nth_element (sorted.begin(), second, sorted.end());
+                hfFloor = std::min (hfFloor, 4.0 * *second);
+                const double sMinE = std::max (hfFloor * 31.6227766, 1.0e-6 * (double) w10);
+                for (size_t f = 0; f < hfE.size() && f < sFrame.size(); ++f)
+                    sFrame[f] = hfE[f] >= sMinE && allE[f] > 0.0 && hfE[f] >= 0.6 * allE[f] ? 1 : 0;
+            }
+        }
+        // Where the S that holds position p starts, or -1 when p is not more than 10 ms inside a run of two or more S frames (frames are on a 10 ms grid)
+        const auto sStartAround = [&] (int p)
+        {
+            const int f = p / w10;
+            if (f < 0 || f >= (int) sFrame.size() || ! sFrame[(size_t) f]) return -1;
+            int a = f, b = f;
+            while (a > 0 && sFrame[(size_t) a - 1]) --a;
+            while (b + 1 < (int) sFrame.size() && sFrame[(size_t) b + 1]) ++b;
+            if (b - a + 1 < 2 || p <= a * w10 + ms (10.0)) return -1;
+            return a * w10;
+        };
+
         std::vector<float> rise ((size_t) numHops, 0.0f);
         for (int k = 0; k < numHops; ++k)
         {
@@ -232,6 +324,80 @@ namespace slicecore
                     i = j;
                 }
                 pos = std::min (i, ahead);
+            }
+            // Then the cut is held against the sound of its own slice, the way it is heard. ref is the loudest 10 ms of the 200 ms
+            // after the cut; 30 dB under it is quiet, 20 dB under it is sound. A clean cut:
+            // - rises: the loudest 10 ms of the next 50 ms is 3.5 dB or more over the 30 ms before, broad or high band;
+            // - leaves nothing off: where the level was quiet in the 160 ms before the cut and then came up to sound, the cut is no
+            //   more than 3 ms after that (a soft S, F, H or breath before the vowel belongs to the slice);
+            // - starts on sound: within 12 ms the level passes 40 dB under ref and 6 dB over the room;
+            // - is not more than 10 ms inside an S.
+            // A cut that is not clean moves to the nearest clean place around where its sound begins. Where there is none, it is
+            // not an onset that can be cut cleanly, and it is left out. Positions on the block grid, 0.25 ms.
+            const auto refAt = [&] (int t)
+            {
+                double r = 0.0;
+                for (int q = 0; q < 20; ++q) r = std::max (r, lvl (cumE, t + q * b10, b10));
+                return r;
+            };
+            const auto riseAt = [&] (int t)
+            {
+                double after = 0.0, afterH = 0.0;
+                for (int q = 0; q < 5; ++q) { after = std::max (after, lvl (cumE, t + q * b10, b10)); afterH = std::max (afterH, dScale * lvl (cumD, t + q * b10, b10)); }
+                const double fl = std::max (2.0 * room, 1.0e-7); // the room counted 6 dB high, so a rise is never read from noise
+                const double bb = lvl (cumE, t - 3 * b10, 3 * b10), bh = dScale * lvl (cumD, t - 3 * b10, 3 * b10);
+                return 20.0 * std::log10 (std::max ((after + fl) / (bb + fl), (afterH + fl) / (bh + fl)));
+            };
+            // Where the sound this cut leaves off came up (-1 when nothing is left off), against the cut's own ref
+            const auto leftOffFrom = [&] (int t, double r)
+            {
+                int quiet = -1;
+                for (int u = t - inBlocks (160.0); u < t; u += b1)
+                    if (u >= 0 && lvl (cumE, u, b2) < 0.0316 * r) quiet = u;
+                if (quiet < 0) return -1;
+                for (int u = quiet; u < t; u += b1)
+                    if (lvl (cumE, u, b2) >= 0.1 * r) return t - u > inBlocks (3.0) ? u : -1;
+                return -1;
+            };
+            const auto deadLead = [&] (int t, double r)
+            {
+                const double audible = std::max (0.01 * r, 2.0 * room);
+                for (int u = t; u < t + inBlocks (200.0); u += b1)
+                    if (lvl (cumE, u, b2) >= audible) return u - t;
+                return 1 << 30;
+            };
+            const auto clean = [&] (int t)
+            {
+                if (t < 0 || t >= numBlocks) return false;
+                const double r = refAt (t);
+                return r > 0.0 && riseAt (t) >= 3.5 && leftOffFrom (t, r) < 0 && deadLead (t, r) <= inBlocks (12.0) && sStartAround (t * blk) < 0;
+            };
+            // The cut goes onto the block grid (at most 0.25 ms earlier), so it is exactly where it was judged.
+            const int t0 = pos / blk;
+            if (pos >= ms (2.0)) pos = t0 * blk;
+            if (pos >= ms (2.0) && ! clean (t0))
+            {
+                const double r = refAt (t0);
+                int ideal = t0;
+                const int from = leftOffFrom (t0, r), sAt = sStartAround (t0 * blk), lead = deadLead (t0, r);
+                if (from >= 0) ideal = from - b1;
+                else if (sAt >= 0)
+                {
+                    // the S frame starts on the 10 ms grid; the S itself starts where it comes up to 30 dB under the slice
+                    ideal = sAt / blk;
+                    while (ideal < t0 && lvl (cumE, ideal, b2) < std::max (0.0316 * r, 2.0 * room)) ideal += b1;
+                    ideal -= b1;
+                }
+                else if (lead < (1 << 30)) ideal = t0 + lead - b1;
+                const int lo = std::min (ideal, t0) - inBlocks (20.0), hi = std::max (ideal, t0) + inBlocks (20.0);
+                int best = -1;
+                for (int dist = 0; best < 0 && (ideal - dist >= lo || ideal + dist <= hi); ++dist)
+                {
+                    if (ideal - dist >= lo && clean (ideal - dist)) best = ideal - dist;
+                    else if (dist > 0 && ideal + dist <= hi && clean (ideal + dist)) best = ideal + dist;
+                }
+                if (best < 0) continue;
+                pos = best * blk;
             }
             if (pos < ms (2.0)) pos = 0;
 

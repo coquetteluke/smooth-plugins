@@ -50,6 +50,8 @@ Every control is a real AU parameter with a value string. The sample and hand-mo
 | Grid Note | 1/2 to 1/32, triplets and dotted, for Note Length |
 | Grid Tempo | 40 to 300 BPM, for Note Length. Set by hand, so a bounce never depends on the host's tempo |
 
+Transient cuts start where the sound starts: a soft S, F, H or breath that leads into a vowel stays on the slice, a cut never lands in the middle of an S or on dead air, and a place where nothing rises is not cut. In a real recording "quiet" means the room, not zero.
+
 There are 32 slots. If a sample has more onsets than that, the 32 strongest stay. If a Note Length grid would need more, the last slice runs to the end of the sample.
 
 ### Each slice (32 slots, 192 parameters)
@@ -116,8 +118,9 @@ A saved session is outside input, so everything is checked on load: sizes, sampl
 All numbers are in `tests/results.txt` and `tests/au-check.txt`. Limits were written before the first run. Where one was changed, the test says why.
 
 - Transient slicing on a generated file with 14 known onsets: worst 2.0 ms across 44.1, 48 and 96 kHz (limit 5 ms)
-- Transient slicing on macOS `say`, 26 words joined with known gaps: worst 2.1 ms, mean 0.3 ms, and no cut after the word starts (limit 5 ms). 6 of the words were not run until the limit was set
-- With noise 60 dB under the speech: worst 5.3 ms early on one soft F, 0.05 ms at the latest (limits 10 ms early, 5 ms late, see the test)
+- Transient slicing on macOS `say`, 26 words joined with known gaps: worst 4.8 ms (early, on the soft S of a word, which the cut keeps), mean 0.8 ms, and no cut after the word starts (limit 5 ms). 6 of the words were not run until the limit was set
+- With noise 60 dB under the speech: worst 5.4 ms early, 0.05 ms at the latest (limits 10 ms early, 5 ms late, see the test)
+- Sung phrases in a room (60 made up phrases, room noise at -62 dBFS, soft lead-ins, breaths, S sounds), every cut judged the way the real vocal check judges one: 0 cuts that leave a weaker lead-in off, 0 on more than 20 ms of dead air, 0 more than 10 ms inside an S, 0 where nothing rises 3 dB, of 846; 277 of 278 word starts after a gap have a slice (limit 95%). 1.1.1 had 86, 2, 26 and 5
 - Grid slicing exact on a prime length for all 9 grids, and exact for 11 note lengths at 3 tempos
 - MIDI: each of 8 notes plays its own slice, and notes outside are silent. Notes start on their own sample
 - Pitch: within 5 cents from -24 to +24 semitones, also for a 44.1 kHz file at each host rate

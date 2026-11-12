@@ -200,6 +200,174 @@ static void testTransientGenerated()
     }
 }
 
+// Sung phrases in a real room, made up so that every sound's start is known: room noise at -62 dBFS, syllables from -20 to -45 dBFS,
+// some with a soft lead-in (an S, an F, an H, a slow vowel rise), some after a breath a few dB over the room and a gap, some after an S
+// that swells halfway, legato, close and after gaps. Every cut at the default Sensitivity and Min Slice is judged the way the real
+// vocal check (realvox, src/extra/slice.cpp) judges a cut on Luke's takes:
+// - rise: the loudest 10 ms of the next 50 ms against the 30 ms before, broad or differenced, 3 dB or more;
+// - late: where the level was 30 dB under the slice (its loudest 10 ms of the next 200 ms) in the 160 ms before the cut and then came up
+//   to 20 dB under it, no more than 5 ms from there to the cut;
+// - dead lead: no more than 20 ms from the cut to where 2 ms pass 40 dB under the slice and 6 dB over the room;
+// - not more than 10 ms inside an S (an S here is an S the real check's detector sees: well over the room, mostly above 4 kHz).
+// And so that leaving cuts out cannot pass it: each word after a gap has a slice start from 10 ms before its lead-in (or the breath
+// before it) to 5 ms after its vowel's attack.
+namespace vocalroom
+{
+    struct Region { long from, to; };
+    struct Phrase { std::vector<float> x; std::vector<Region> s; std::vector<Region> wordStarts; double floorRms = 0.0; };
+
+    double rmsOf (const std::vector<float>& x, long a, long n)
+    {
+        double e = 0.0; long c = 0;
+        for (long i = std::max (0L, a); i < std::min ((long) x.size(), a + n); ++i) { e += (double) x[(size_t) i] * x[(size_t) i]; ++c; }
+        return c > 0 ? std::sqrt (e / (double) c) : 0.0;
+    }
+    double dbOf (double v) { return 20.0 * std::log10 (std::max (v, 1.0e-30)); }
+
+    Phrase make (unsigned seed, double seconds)
+    {
+        Phrase ph;
+        std::mt19937 g (seed);
+        std::uniform_real_distribution<double> u (0.0, 1.0);
+        std::normal_distribution<double> nd (0.0, 1.0);
+        const double sr = 48000.0;
+        auto& x = ph.x;
+        x.assign ((size_t) (seconds * sr), 0.0f);
+        for (auto& v : x) v = (float) (nd (g) * std::pow (10.0, -62.0 / 20.0));
+        long t = (long) (0.4 * sr);
+        double prevN = 0.0;
+        bool afterGap = true;
+        while (t < (long) x.size() - (long) sr)
+        {
+            const double level = std::pow (10.0, (-20.0 - 25.0 * u (g)) / 20.0);
+            const double f0 = 110.0 + 220.0 * u (g);
+            const int lead = (int) (u (g) * 7); // 0 none, 1 S, 2 F, 3 H, 4 slow vowel rise, 5 soft breath then a gap, 6 an S that swells
+            long leadLen = lead == 0 ? 0 : (long) ((0.04 + 0.14 * u (g)) * sr);
+            double leadLevel = level * std::pow (10.0, (-6.0 - 14.0 * u (g)) / 20.0);
+            if (lead == 1 || lead == 6) leadLevel = std::max (leadLevel, std::pow (10.0, (-28.0 - 6.0 * u (g)) / 20.0));
+            const long wordFrom = t;
+            if (lead == 5)
+            {
+                const double bl = std::pow (10.0, (-60.0 + 6.0 * u (g)) / 20.0);
+                for (long i = 0; i < leadLen && t + i < (long) x.size(); ++i) x[(size_t) (t + i)] += (float) (bl * nd (g) * std::min (1.0, i / 480.0));
+                t += leadLen + (long) ((0.015 + 0.05 * u (g)) * sr);
+                leadLen = 0;
+            }
+            else if (lead == 6)
+            {
+                const double sl = leadLevel * std::pow (10.0, -(4.0 + 3.0 * u (g)) / 20.0);
+                for (long i = 0; i < leadLen && t + i < (long) x.size(); ++i)
+                {
+                    const double n = nd (g);
+                    x[(size_t) (t + i)] += (float) ((i < leadLen / 2 ? sl : leadLevel) * (n - prevN) * 0.7 * std::min (1.0, i / 480.0));
+                    prevN = n;
+                }
+                ph.s.push_back ({ t, t + leadLen });
+            }
+            else
+            {
+                for (long i = 0; i < leadLen && t + i < (long) x.size(); ++i)
+                {
+                    const double ramp = std::min (1.0, i / (0.01 * sr)), n = nd (g);
+                    double v;
+                    if (lead == 1) v = (n - prevN) * 0.7;
+                    else if (lead == 2) v = (n - prevN) * 0.5 + 0.3 * n;
+                    else if (lead == 3) v = n * 0.8;
+                    else v = std::sin (kTwoPi * f0 * i / sr) * (double) i / (double) leadLen;
+                    prevN = n;
+                    x[(size_t) (t + i)] += (float) (leadLevel * ramp * v);
+                }
+                if (lead == 1 && leadLen > 1000) ph.s.push_back ({ t, t + leadLen });
+            }
+            t += leadLen;
+            // after a gap the word starts somewhere from its lead-in (or the breath before it) to the end of its vowel's attack
+            const long len = (long) ((0.15 + 0.5 * u (g)) * sr);
+            const double att = 0.003 + 0.03 * u (g);
+            if (afterGap) ph.wordStarts.push_back ({ wordFrom, t + (long) (att * sr) });
+            for (long i = 0; i < len && t + i < (long) x.size(); ++i)
+            {
+                const double tt = i / sr;
+                const double env = std::min (1.0, tt / att) * std::min (1.0, (double) (len - i) / (0.04 * sr));
+                const double v = std::sin (kTwoPi * f0 * tt) + 0.5 * std::sin (2.0 * kTwoPi * f0 * tt + 0.3) + 0.25 * std::sin (3.0 * kTwoPi * f0 * tt + 1.1);
+                x[(size_t) (t + i)] += (float) (level * 1.2 * env * v);
+            }
+            t += len;
+            const double r = u (g);
+            afterGap = r >= 0.6;
+            if (r < 0.3) t -= (long) (0.03 * sr);
+            else if (r < 0.6) t += (long) (0.02 * sr * u (g));
+            else t += (long) ((0.1 + 0.5 * u (g)) * sr);
+        }
+        std::vector<double> lv;
+        for (long i = 0; i + 480 < (long) x.size(); i += 480) lv.push_back (rmsOf (x, i, 480));
+        std::sort (lv.begin(), lv.end());
+        ph.floorRms = lv[lv.size() / 10];
+        return ph;
+    }
+
+    struct Faults { int slices = 0, judged = 0, noRise = 0, late = 0, dead = 0, insideS = 0, words = 0, wordsFound = 0; };
+
+    Faults judge (int phrases)
+    {
+        Faults f;
+        for (int k = 0; k < phrases; ++k)
+        {
+            const auto ph = make (1000u + (unsigned) k, 8.0);
+            const auto& x = ph.x;
+            const double fl = ph.floorRms;
+            const auto a = slicecore::analyse (x.data(), (int) x.size(), 48000.0);
+            const auto tb = slicecore::pickTransients (a.onsets.data(), (int) a.onsets.size(), a.firstAudible, (int) x.size(), 50.0f, 2400);
+            std::vector<float> d (x.size(), 0.0f);
+            for (size_t i = 1; i < x.size(); ++i) d[i] = x[i] - x[i - 1];
+            const double hs = rmsOf (x, 0, (long) x.size()) / rmsOf (d, 0, (long) d.size());
+            for (int c = 0; c < tb.count; ++c)
+            {
+                const long p = tb.start[c];
+                ++f.slices;
+                if (p < 96) continue;
+                double ref = 0.0;
+                for (int q = 0; q < 20; ++q) ref = std::max (ref, rmsOf (x, p + q * 480L, 480));
+                if (ref < 2.0 * fl) continue;
+                ++f.judged;
+                double af = 0.0, afH = 0.0;
+                for (int q = 0; q < 5; ++q) { af = std::max (af, rmsOf (x, p + q * 480L, 480)); afH = std::max (afH, hs * rmsOf (d, p + q * 480L, 480)); }
+                const double rise = std::max (dbOf ((af + fl) / (rmsOf (x, p - 1440, 1440) + fl)), dbOf ((afH + fl) / (hs * rmsOf (d, p - 1440, 1440) + fl)));
+                if (rise < 3.0) ++f.noRise;
+                long quiet = -1;
+                for (long t = p - 7680; t < p; t += 48) if (t >= 0 && rmsOf (x, t, 96) < ref * 0.0316) quiet = t;
+                double lateMs = 0.0;
+                if (quiet >= 0) for (long t = quiet; t < p; t += 48) if (rmsOf (x, t, 96) >= ref * 0.1) { lateMs = (double) (p - t) / 48.0; break; }
+                if (lateMs > 5.0) ++f.late;
+                const double audible = std::max (ref * 0.01, 2.0 * fl);
+                double lead = 200.0;
+                for (long t = p; t < p + 9600; t += 48) if (rmsOf (x, t, 96) >= audible) { lead = (double) (t - p) / 48.0; break; }
+                if (lead > 20.0) ++f.dead;
+                for (const auto& r : ph.s) if (p > r.from + 480 && p < r.to - 480) { ++f.insideS; break; }
+            }
+            for (const auto& w : ph.wordStarts)
+            {
+                ++f.words;
+                for (int c = 0; c < tb.count; ++c)
+                    if (tb.start[c] >= w.from - 480 && tb.start[c] <= w.to + 240) { ++f.wordsFound; break; }
+            }
+        }
+        return f;
+    }
+}
+
+static void testVocalCutsInARoom()
+{
+    const auto f = vocalroom::judge (60);
+    info ("sung phrases in a room: slices", f.slices);
+    info ("sung phrases in a room: cuts judged", f.judged);
+    check (f.judged >= 600, "sung phrases in a room: enough cuts to judge", f.judged, "cuts");
+    check (f.late == 0, "sung phrases in a room: cuts that leave a weaker lead-in off the slice (late by more than 5 ms)", f.late, "cuts");
+    check (f.dead == 0, "sung phrases in a room: cuts that start on more than 20 ms of dead air", f.dead, "cuts");
+    check (f.insideS == 0, "sung phrases in a room: cuts more than 10 ms inside an S", f.insideS, "cuts");
+    check (f.noRise == 0, "sung phrases in a room: cuts where nothing rises 3 dB", f.noRise, "cuts");
+    check (f.wordsFound * 100 >= f.words * 95, "sung phrases in a room: word starts after a gap with a slice there, of " + std::to_string (f.words), f.wordsFound, "found");
+}
+
 static bool sayWord (const juce::String& text, const juce::File& out)
 {
     juce::ChildProcess proc;
@@ -1887,6 +2055,13 @@ int main (int argc, char** argv)
     juce::ScopedJuceInitialiser_GUI gui;
 
     // Prints the sound of each preset as one number each. The numbers in WindowTests.h came from this, at the commit before the custom window.
+    // Only the sung phrase cuts, for quick runs while the slicer is worked on
+    if (argc > 1 && juce::String (argv[1]) == "vocalcuts")
+    {
+        testVocalCutsInARoom();
+        return finish();
+    }
+
     if (argc > 1 && juce::String (argv[1]) == "fingerprints")
     {
         const auto file = writeWav ("fingerprint.wav", { windowtests::fingerprintAudio() }, 48000.0);
@@ -1925,6 +2100,7 @@ int main (int argc, char** argv)
     testNoSample();
     testTransientGenerated();
     testTransientSpeech();
+    testVocalCutsInARoom();
     testGridExact();
     testSensitivityAndMinSlice();
     testMidiMapping();

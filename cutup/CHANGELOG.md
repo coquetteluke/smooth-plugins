@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0, 2026-11-11
+
+Transient cuts start where the sound starts, on real sung takes. Measured on Luke's Rode takes (11 songs, 61 phrases of 20 s, 1883 cuts at the default settings), 1.1.1 cut 363 slices late, after the S, F, H or breath that leads into the vowel (worst 156 ms), put 2 cuts in the middle of an S, and 5 where nothing rises. The slicer now holds every cut against its own slice: a cut that leaves a weaker lead-in off moves back to where the lead-in comes up, a cut inside an S moves to where the S starts, a cut on dead air moves up to the sound, and a cut where nothing rises is left out. In a real room "quiet" is the room, not zero. Saved sessions keep the cuts they were saved with; only a newly loaded sample is cut the new way. A new test in the suite, sung phrases in a room, judges every cut the way the real vocal check does, and failed on 1.1.1 (86 late, 2 on dead air, 26 inside an S, 5 without a rise).
+
 ## 1.1.1, 2026-11-07
 
 Renamed to Cutup, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.

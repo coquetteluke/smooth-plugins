@@ -2941,7 +2941,7 @@ long trackerOctaveOff (const std::vector<float>& x, double fromSec, double toSec
         }
         if (near >= 3 && octave == near)
         {
-            if (off == 0) { firstAt = sec; if (std::getenv ("OCTAVE_DEBUG")) std::printf ("  first at %.3f s: tracker %.1f Hz\n", sec, hz); }
+            if (off == 0) firstAt = sec;
             ++off;
         }
     }
@@ -2954,11 +2954,11 @@ void testOctaveGuard()
         // A held A3 at 220 Hz whose every other period is up to 20% weaker (a gain swinging at half the pitch), against its known pitch:
         // 1.2.3 read all of it at 110 Hz (from a 16% swing up; at 40% the reference track reads 110 Hz too, and so does 1.2.4)
         auto x = voice::synth (voice::steady (220.0, 1.5, SR), voice::vowelA, SR);
-        const double depth = std::getenv ("DEPTH") ? std::atof (std::getenv ("DEPTH")) : 0.10;
+        const double depth = 0.10;
         for (size_t i = 0; i < x.size(); ++i) x[i] *= (float) (1.0 - depth + depth * std::cos (juce::MathConstants<double>::pi * 220.0 * (double) i / SR));
         double at = 0.0;
         const long n = trackerOctaveOff (x, 0.3, 1.4, at, 220.0);
-        check (n == 0, "tracker on a held 220 Hz voice whose every other period is weaker: readings an octave off, 1 ms each (first at " + juce::String (at, 3).toStdString() + " s)", (double) n, "");
+        check (n == 0, "tracker on a held 220 Hz voice whose every other period is weaker: readings an octave off, 1 ms each" + (n > 0 ? " (first at " + juce::String (at, 3).toStdString() + " s)" : std::string()), (double) n, "");
     }
     struct Spot { const char* take; double from, to; };
     const Spot spots[] = { { "01", 8.30, 8.60 }, { "01", 12.40, 12.70 }, { "01", 71.60, 71.90 } };
@@ -2969,7 +2969,7 @@ void testOctaveGuard()
         double at = 0.0;
         const long n = trackerOctaveOff (x, 2.0, 2.0 + (sp.to - sp.from), at);
         check (n == 0, std::string ("tracker on Luke's take ") + sp.take + " from " + juce::String (sp.from, 2).toStdString() + " to " + juce::String (sp.to, 2).toStdString()
-                       + " s (held notes at 200 to 215 Hz): readings an octave off, 1 ms each (first at " + juce::String (sp.from - 2.0 + at, 3).toStdString() + " s)", (double) n, "");
+                       + " s (held notes at 200 to 215 Hz): readings an octave off, 1 ms each" + (n > 0 ? " (first at " + juce::String (sp.from - 2.0 + at, 3).toStdString() + " s)" : std::string()), (double) n, "");
     }
 }
 

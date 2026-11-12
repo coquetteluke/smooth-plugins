@@ -269,13 +269,17 @@ private:
 
         // A strong second harmonic, say on a low vowel whose first formant sits right on it, can make half the period look deep.
         // If a multiple of the chosen period is much deeper still, that multiple is the true period.
+        // Since Glitter 1.2.4 only where the chosen period also fits clearly worse, by octaveGuardGap: a clean voice whose every other
+        // period differs a little fits both almost perfectly (Luke's take 01 at 200 to 226 Hz: 0.014 to 0.02 against 0.001), and up to
+        // 1.2.3 it was read an octave low there for 20 ms at a time. The lead passed it unheard; Pitch, Harmony and the Vocoder did not.
         if (dipValue[(size_t) chosen] < 0.08f)
             for (int i = chosen + 1; i < numDips; ++i)
             {
                 const double multiple = dipTau[(size_t) i] / dipTau[(size_t) chosen];
                 const double nearestWhole = std::round (multiple);
                 if (nearestWhole >= 2.0 && nearestWhole <= 3.0 && std::abs (multiple / nearestWhole - 1.0) < 0.04
-                    && clearlyDeeper (dipTau[(size_t) i], dipTau[(size_t) chosen]))
+                    && clearlyDeeper (dipTau[(size_t) i], dipTau[(size_t) chosen])
+                    && fineDip (dipTau[(size_t) chosen] * decimation) - fineDip (dipTau[(size_t) i] * decimation) > octaveGuardGap)
                 {
                     chosen = i;
                     break;
@@ -749,6 +753,7 @@ private:
     long long count = 0, slowCount = 0;
     int decimationPhase = 0, hopPhase = 0;
 
+    static constexpr float octaveGuardGap = 0.03f; // see analyse(): the strong second harmonic guard
     static constexpr float gateEnergy = 1.0e-6f; // -60 dBFS: quieter sounds pass through untouched
     float voicedOn = 0.30f, voicedOff = 0.38f;
     std::array<double, 64> dipTau {};

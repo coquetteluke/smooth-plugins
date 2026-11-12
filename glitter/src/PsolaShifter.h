@@ -386,10 +386,13 @@ private:
                 // Tuned on the test voices: see the formant test and README.
                 // Copied from Smooth Tune, where shifts stay small. Smooth Tune FX shifts by octaves, and left to grow the correction overshoots
                 // to 16% at +12 semitones, so it stops growing past +3 semitones, where it was tuned.
+                // Downwards the same since 1.2.4: left to grow, it moved the formants of Luke's real takes down by 6.5% an octave down (the real
+                // vocal check, every working take, limit 4.43%), where the grains' harmonics barely drag them at all. So it stops growing past
+                // -3 semitones too.
                 if (planned != Plan::locked && ratio > 1.0 + 1.0e-4)
-                    next.rate *= std::max (std::pow (ratio, -0.25), 0.958);
+                    next.rate *= std::max (std::pow (ratio, -0.25), upCorrectionMost);
                 else if (planned != Plan::locked && ratio < 1.0 - 1.0e-4)
-                    next.rate *= std::pow (ratio, 0.1);
+                    next.rate *= std::pow (std::max (ratio, downCorrectionFrom), 0.1);
             }
         }
 
@@ -476,6 +479,9 @@ private:
     // take 04 at 60.91 s (Hard Tune, song key) that 10 ms does not have.
     static constexpr double entrySeconds = 0.010;
     static constexpr double lockedWalkShare = 0.001;
+    // The grain reading speed's formant correction stops growing past 3 semitones either way (see decide()).
+    static constexpr double upCorrectionMost = 0.958;
+    static constexpr double downCorrectionFrom = 0.8408964152537145;   // 2^(-3/12)
     long long lastMarkUsed = -1;
 };
 } // namespace smoothtune

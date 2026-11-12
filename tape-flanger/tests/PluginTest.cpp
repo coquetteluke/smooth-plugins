@@ -1753,6 +1753,30 @@ static void testMovedControlsLand()
     }
 }
 
+// A factory preset picked while playing (as a host does, after the plug-in is prepared) must sound like the preset: one second later,
+// against the same preset set before prepare. Same limit, 120 dB null, either side. Added 2026-11-12 after the null renders of 1.2.5
+// against 1.2.4 differed on every preset (picked after initialise there): in 1.2.4 the controls that glide stopped short of the preset's
+// values, Off Zero Double's Delay 0.0003 ms short.
+static void testPresetPickedWhilePlaying()
+{
+    const double sr = 48000.0;
+    const auto in = noiseSignal ((int) sr * 2, 0.25, 53);
+    for (int i = 0; i < PluginProcessor().getNumPrograms(); ++i)
+    {
+        PluginProcessor picked, ready;
+        prepare (picked, 2, sr, 128);
+        ready.setCurrentProgram (i);
+        prepare (ready, 2, sr, 128);
+        const auto a = render (picked, in, 128, nullptr, [&] (int idx) { if (idx == 0) picked.setCurrentProgram (i); });
+        const auto b = render (ready, in, 128);
+        const int from = (int) (1.0 * sr), len = (int) sr;
+        double worst = -400.0;
+        for (int ch = 0; ch < 2; ++ch)
+            worst = std::max (worst, nullDb (a.getReadPointer (ch) + from, b.getReadPointer (ch) + from, len, rms (b.getReadPointer (ch) + from, len)));
+        check (worst <= -120.0, "preset '" + picked.getProgramName (i).toStdString() + "' picked while playing, against set before prepare", worst, "dB");
+    }
+}
+
 // Switching Bypass while audio plays must not click. Bypass goes on and off every 0.31 s under a steady tone, with small host
 // blocks so the switches land all over the wave.
 // Limits: the biggest sample to sample step is no more than 1.5 times the biggest step of the steady effect and of the input
@@ -1842,5 +1866,6 @@ int main()
     testBypassIsTheDelayedInput();
     testBypassSwitchClicks();
     testMovedControlsLand();
+    testPresetPickedWhilePlaying();
     return finish();
 }

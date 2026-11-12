@@ -224,6 +224,7 @@ PASS  [LL] and the note settles on pitch, offset = 0.001 cents
 PASS  [LL] non-harmonic energy at everyday settings = -47.192 dB
 PASS  [LL] a voice with nothing to correct passes as a plain delay, difference = -167.783 dB
 PASS  [LL] note starting hard after silence, a burst in output against input over the first 0.6 s, worst (e at 110 Hz, shift 3, attack 20 ms) = 1.875 dB
+PASS  [LL] nothing before a note starts: the 10 ms before the input's onset against the held note, worst (e 560 Hz, transpose 3) = -83.210 dB
 INFO  [LL] speech_samantha.wav: 3.8 s voiced in both, 0 octave disagreements, 0.0 per minute
 INFO  [LL] speech_samantha.wav: distance from a note, median, before 20.9 cents, after 6.0 cents, 828 voiced frames
 PASS  [LL]   speech_samantha.wav gives finite output
@@ -284,11 +285,11 @@ PASS  [LL] hard and natural presets are both there, presets = 12.000
 PASS  [LL] preset Hard Tune flattens vibrato, kept = 3.812 %
 PASS  [LL] preset Natural Pop keeps more vibrato, kept = 98.307 %
 PASS  [LL] presets leave Key, Scale and Input Type alone
-PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 3.784 %
-INFO  [LL]   the quickest whole render = 3.883 %
-INFO  [LL]   the slowest whole render = 4.424 %
-INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.987 %
-INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 9.719 %
+PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 3.999 %
+INFO  [LL]   the quickest whole render = 4.281 %
+INFO  [LL]   the slowest whole render = 4.566 %
+INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 4.542 %
+INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 10.959 %
 PASS  [LL] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.788 cents
 PASS  [LL] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.334 cents
 PASS  [LL] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.079 cents
@@ -484,6 +485,7 @@ PASS  [HQ] and the note settles on pitch, offset = 0.000 cents
 PASS  [HQ] non-harmonic energy at everyday settings = -48.105 dB
 PASS  [HQ] a voice with nothing to correct passes as a plain delay, difference = -261.485 dB
 PASS  [HQ] note starting hard after silence, a burst in output against input over the first 0.6 s, worst (o at 223 Hz, shift 0, attack 20 ms) = 0.808 dB
+PASS  [HQ] nothing before a note starts: the 10 ms before the input's onset against the held note, worst (e 330 Hz, transpose 0) = -92.340 dB
 INFO  [HQ] speech_samantha.wav: 3.8 s voiced in both, 0 octave disagreements, 0.0 per minute
 INFO  [HQ] speech_samantha.wav: distance from a note, median, before 20.9 cents, after 6.3 cents, 835 voiced frames
 PASS  [HQ]   speech_samantha.wav gives finite output
@@ -500,7 +502,7 @@ INFO  [HQ] held_fred.wav: 5.3 s voiced in both, 0 octave disagreements, 0.0 per 
 INFO  [HQ] held_fred.wav: distance from a note, median, before 23.1 cents, after 2.8 cents, 1040 voiced frames
 PASS  [HQ]   held_fred.wav gives finite output
 INFO  [HQ] held_kathy.wav: 5.0 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  [HQ] held_kathy.wav: distance from a note, median, before 26.4 cents, after 3.9 cents, 1000 voiced frames
+INFO  [HQ] held_kathy.wav: distance from a note, median, before 26.4 cents, after 4.0 cents, 1000 voiced frames
 PASS  [HQ]   held_kathy.wav gives finite output
 INFO  [HQ] sung_cellos.wav: 7.9 s voiced in both, 1 octave disagreements, 7.6 per minute
 INFO  [HQ] sung_cellos.wav: distance from a note, median, before 17.0 cents, after 2.0 cents, 1507 voiced frames
@@ -515,7 +517,7 @@ PASS  [HQ] real material at instant speed: 99th percentile change in 20 ms frame
 PASS  [HQ] real material at instant speed: biggest sample step against the input's, worst file = 1.256 times
 PASS  [HQ] real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth = 17.258 per minute
 PASS  [HQ] real speech at instant speed: worst file's median distance from a note = 10.610 cents
-PASS  [HQ] say singing and held vowels at instant speed: worst file's median distance from a note = 3.863 cents
+PASS  [HQ] say singing and held vowels at instant speed: worst file's median distance from a note = 4.011 cents
 PASS  [HQ] Transpose +7 on A3 gives E4, offset = -0.004 cents
 PASS  [HQ] Transpose -12 on A4 gives A3, offset = 0.006 cents
 PASS  [HQ] Reference A4 432 Hz puts A3 at 216 Hz, offset = 0.000 cents
@@ -544,11 +546,11 @@ PASS  [HQ] hard and natural presets are both there, presets = 12.000
 PASS  [HQ] preset Hard Tune flattens vibrato, kept = 1.143 %
 PASS  [HQ] preset Natural Pop keeps more vibrato, kept = 97.712 %
 PASS  [HQ] presets leave Key, Scale and Input Type alone
-PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 5.815 %
-INFO  [HQ]   the quickest whole render = 6.032 %
-INFO  [HQ]   the slowest whole render = 7.276 %
-INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.679 %
-INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 6.874 %
+PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 5.547 %
+INFO  [HQ]   the quickest whole render = 5.608 %
+INFO  [HQ]   the slowest whole render = 6.164 %
+INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.365 %
+INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 6.230 %
 PASS  [HQ] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.040 cents
 PASS  [HQ] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.010 cents
 PASS  [HQ] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.010 cents
@@ -837,7 +839,7 @@ PASS  the keyboard's target reads A3 = 57.000
 PASS  the pitch window's newest point: input A3 +30 cents, corrected A3 = 57.000 
 PASS  the reading strip: Active Key C Chromatic  |  In 223.8 Hz  |  Out 220.0 Hz  |  Target A3  |  Correction -30 cents
 PASS  the window paints
-PASS  audio keeps running while the window repaints, blocks = 66.000 
+PASS  audio keeps running while the window repaints, blocks = 65.000 
 PASS  every control in the window is found by its parameter ID
 PASS  Flex Tune is a slider in the window
 PASS  automation moves the window's slider = 42.000 
@@ -861,6 +863,6 @@ PASS  it paints at the smallest, largest and in between sizes
 PASS  with no audio arriving the display asks for no frames
 PASS  null test, window open against no window, largest sample difference = 0.000 
 PASS  25 opens and closes with no audio
-PASS  25 opens and closes with audio running, blocks = 422.000 
+PASS  25 opens and closes with audio running, blocks = 461.000 
 PASS  closing the window leaves audio running
 RESULT PASS  0 failures

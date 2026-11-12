@@ -2366,6 +2366,56 @@ static void testFeedbackTop()
     check ((l90 - l0) - was90 < -0.7 && (l90 - l0) - was90 > -1.3, "Feedback 90, dark noise: level against 0.4.0's, about 1 dB down", (l90 - l0) - was90, "dB");
 }
 
+// Found in the final real vocal run of 0.5.0 (2026-11-12): with Clean on, the automation twin picked out one point at 97.08 s on 10 of 11
+// takes, 1 sample after a move. Holding Output Gain or Delay Time still at that move made it go. Output Gain (and Input Gain) glide with
+// one smoothing stage, which starts at full speed: a corner at the start of every move, as Mix had until this version. Measured as for Mix
+// and Bypass: what a move adds above 8 kHz on a steady 1 kHz tone, and the twin's own rule on a 100 Hz tone.
+static void testGainGlide()
+{
+    for (const char* id : { "outputGain", "inputGain" })
+    {
+        for (double rate : { 44100.0, 48000.0, 96000.0 })
+        {
+            const auto above8k = [&] (bool moving)
+            {
+                PluginProcessor p;
+                set (p, "saturation", 0.0f); set (p, "wow", 0.0f); set (p, "flutter", 0.0f);
+                prepare (p, 2, rate, 128);
+                const int n = (int) (4.0 * rate), every = (int) (rate / 128.0 / 4.0);
+                std::vector<float> in ((size_t) n);
+                sine (in.data(), n, 1000.0, rate, 0.25);
+                auto out = render (p, in, 128, nullptr, [&] (int idx) { if (moving && idx % every == 0) set (p, id, (idx / every) % 2 == 1 ? 6.0f : -6.0f); });
+                juce::IIRFilter hp[6];
+                for (auto& f : hp) f.setCoefficients (juce::IIRCoefficients::makeHighPass (rate, 8000.0));
+                double most = 0;
+                for (int i = 0; i < n; ++i)
+                {
+                    float v = out.getSample (0, i);
+                    for (auto& f : hp) v = f.processSingleSampleRaw (v);
+                    if (i > n / 8) most = std::max (most, (double) std::abs (v));
+                }
+                return toDb (most / 0.25);
+            };
+            const double quiet = above8k (false), moved = above8k (true);
+            check (moved < std::max (-90.0, quiet + 3.0), std::string (id) + " moved between -6 and +6 dB 4 times a second under a 1 kHz tone at " + std::to_string ((int) rate)
+                                                           + " Hz: loudest moment above 8 kHz, below the tone (never moved: " + juce::String (quiet, 1).toStdString() + " dB)", moved, "dB");
+        }
+        for (const auto& m : { std::pair<float, float> { -12.0f, 9.0f }, std::pair<float, float> { 6.0f, -6.0f } })
+        {
+            PluginProcessor p;
+            set (p, id, m.first);
+            prepare (p, 2, 48000.0, 128);
+            const int n = 72000, moveBlock = 187, at = moveBlock * 128;
+            std::vector<float> in ((size_t) n);
+            sine (in.data(), n, 100.0, 48000.0, 0.25);
+            auto out = render (p, in, 128, nullptr, [&] (int idx) { if (idx == moveBlock) set (p, id, m.second); });
+            const auto found = twinStandsOut (out.getReadPointer (0), n, at - 1440);
+            check (found.empty(), std::string (id) + " moved from " + juce::String (m.first, 0).toStdString() + " to " + juce::String (m.second, 0).toStdString()
+                                  + " dB under a steady 100 Hz tone: samples the tone twin's rule picks out from the move on", (double) found.size());
+        }
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -2415,5 +2465,6 @@ int main()
     if (wanted ("testCleanDefault")) testCleanDefault();
     if (wanted ("testMixGlide")) testMixGlide();
     if (wanted ("testFeedbackTop")) testFeedbackTop();
+    if (wanted ("testGainGlide")) testGainGlide();
     return finish();
 }

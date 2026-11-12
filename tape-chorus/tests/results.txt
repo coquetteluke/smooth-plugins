@@ -36,8 +36,8 @@ PASS  no click when Spread jumps, biggest step = 0.005
 PASS  no click when Mix jumps, biggest step = 0.005 
 PASS  no click when Bypass jumps, biggest step = 0.005 
 PASS  no click when Feedback jumps, biggest step = 0.005 
-PASS  no click when Input Gain jumps, biggest step = 0.053 
-PASS  no click when Output Gain jumps, biggest step = 0.081 
+PASS  no click when Input Gain jumps, biggest step = 0.052 
+PASS  no click when Output Gain jumps, biggest step = 0.080 
 PASS  no click when Low Cut jumps, biggest step = 0.004 
 PASS  no click when High Cut jumps, biggest step = 0.005 
 PASS  no click when Wow Rate jumps, biggest step = 0.005 
@@ -555,4 +555,14 @@ PASS  Feedback 60.0, Clean off: the render is 0.4.0's to the last bit (checksum 
 PASS  Feedback 69.9, Clean off: the render is 0.4.0's to the last bit (checksum 173b4a222754d019)
 PASS  Feedback 70.0, Clean off: the render is 0.4.0's to the last bit (checksum 4344599ad9408c9)
 PASS  Feedback 90, dark noise: level against 0.4.0's, about 1 dB down = -0.852 dB
+PASS  outputGain moved between -6 and +6 dB 4 times a second under a 1 kHz tone at 44100 Hz: loudest moment above 8 kHz, below the tone (never moved: -130.7 dB) = -94.066 dB
+PASS  outputGain moved between -6 and +6 dB 4 times a second under a 1 kHz tone at 48000 Hz: loudest moment above 8 kHz, below the tone (never moved: -131.6 dB) = -96.384 dB
+PASS  outputGain moved between -6 and +6 dB 4 times a second under a 1 kHz tone at 96000 Hz: loudest moment above 8 kHz, below the tone (never moved: -132.3 dB) = -102.766 dB
+PASS  outputGain moved from -12 to 9 dB under a steady 100 Hz tone: samples the tone twin's rule picks out from the move on = 0.000 
+PASS  outputGain moved from 6 to -6 dB under a steady 100 Hz tone: samples the tone twin's rule picks out from the move on = 0.000 
+PASS  inputGain moved between -6 and +6 dB 4 times a second under a 1 kHz tone at 44100 Hz: loudest moment above 8 kHz, below the tone (never moved: -130.7 dB) = -98.755 dB
+PASS  inputGain moved between -6 and +6 dB 4 times a second under a 1 kHz tone at 48000 Hz: loudest moment above 8 kHz, below the tone (never moved: -131.6 dB) = -101.456 dB
+PASS  inputGain moved between -6 and +6 dB 4 times a second under a 1 kHz tone at 96000 Hz: loudest moment above 8 kHz, below the tone (never moved: -132.3 dB) = -107.953 dB
+PASS  inputGain moved from -12 to 9 dB under a steady 100 Hz tone: samples the tone twin's rule picks out from the move on = 0.000 
+PASS  inputGain moved from 6 to -6 dB under a steady 100 Hz tone: samples the tone twin's rule picks out from the move on = 0.000 
 RESULT PASS  0 failures

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1, 2026-11-12
+
+Fixed: Input Gain and Output Gain started every move at full speed, a corner that left a tick above 8 kHz 73 to 86 dB under a steady 1 kHz tone (Output Gain moved between -6 and +6 dB four times a second; Input Gain 78 to 99 dB). They now glide in two stages, as Mix does since 0.5.0: 94 to 108 dB under (limit 90). Found by the final real vocal run of 0.5.0: with Clean on, the realvox tone twin picked out one point at 97.08 s of its automation schedule on 10 of 11 takes, one sample after a move; holding Output Gain or Delay Time still at that move made it go. On 0.5.1 the twin finds no jump on takes 01, 02, 07 and 10 and its corners fall from 225 to 10 on take 01. The test was written first and failed (5 failures). Nothing else changes: a render with the gains held still is sample for sample 0.5.0's.
+
 ## 0.5.0, 2026-11-11
 
 Second real vocal pass, on Luke's Rode takes. Clean becomes the default, four old presets come inside the limits, Feedback near the top comes down, and a corner at the end of a Mix move is gone. Every saved session sounds as it did, except at Feedback 90 and with Clean on at Saturation over 60.

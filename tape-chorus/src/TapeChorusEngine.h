@@ -93,6 +93,7 @@ public:
         cSlow = coef (0.12); cMid = coef (0.06); cFast = coef (0.03); cVoice = coef (0.25); cVoiceSoft = coef (0.08); cVoiceFade = coef (0.008);
         gainSlew = (float) (tickSec / 0.03);   // a voice fades in or out in 30 ms
         cMixSoft = coef (0.008);
+        cGainSoft = coef (0.008);
         mixSlew = (float) (tickSec / 0.02);
 
         // Fixed filters
@@ -128,7 +129,7 @@ public:
         random = p.randomPct * 0.01f * maxRandomMs; randomHz = p.randomHz; degradeAmt = p.degradePct * 0.01f; degradeHz = p.degradeHz;
         setRandomFilter(); setDegradeFilter();
         unsyncAmt = p.unsync ? 1.0f : 0.0f;
-        inRaw = gainFromDb (p.inputDb); outRaw = gainFromDb (p.outputDb);
+        inRaw = inAim = gainFromDb (p.inputDb); outRaw = outAim = gainFromDb (p.outputDb);
         fb = fbNext = feedbackFrom (p);
         hiss = hissNext = noiseGain (p);
         gate = gateNext = p.noiseGate ? 0.0f : 1.0f;
@@ -549,8 +550,12 @@ private:
         setBlendGains (dryGainNext, wetGainNext);
 
         inRawPrev = inRaw; outRawPrev = outRaw;
-        smooth (inRaw, gainFromDb (target.inputDb), cFast);
-        smooth (outRaw, gainFromDb (target.outputDb), cFast);
+        // Two stages, as Mix: up to 0.5.0's first build one stage started each move at full speed, a corner that ticked 73 to 86 dB under a
+        // 1 kHz tone, and with a Delay Time move in the same tick it read as a jump on the realvox tone twin (97.08 s of its schedule).
+        smooth (inAim, gainFromDb (target.inputDb), cFast);
+        smooth (outAim, gainFromDb (target.outputDb), cFast);
+        smooth (inRaw, inAim, cGainSoft);
+        smooth (outRaw, outAim, cGainSoft);
         inGain = inGainNext; inGainNext = 1.0f + shapeOn (on) * (inRaw - 1.0f);
         outGain = outGainNext; outGainNext = 1.0f + shapeOn (on) * (outRaw - 1.0f);
 
@@ -959,7 +964,7 @@ private:
     std::array<std::vector<float>, 2> line;
     std::array<ChannelState, 2> chan;
     double preB0 = 1, preB1 = 0, preA1 = 0, dcR = 0.999, dcRClean = 0.9999, toneA = 0.1, topLowA = 0.1;
-    double cSlow = 0.1, cMid = 0.1, cFast = 0.1, cVoice = 0.1, cVoiceSoft = 0.1, cVoiceFade = 0.1, cMixSoft = 0.1;
+    double cSlow = 0.1, cMid = 0.1, cFast = 0.1, cVoice = 0.1, cVoiceSoft = 0.1, cVoiceFade = 0.1, cMixSoft = 0.1, cGainSoft = 0.1;
     float gainSlew = 0.1f, mixSlew = 0.1f;
     double wowNoiseC = 0, flutNoiseLoC = 0, flutNoiseHiC = 0;
     double lfo = 0, wowA = 0, wowB = 0, flutA = 0, flutB = 0, wowNoise = 0, flutLo = 0, flutHi = 0;
@@ -978,7 +983,7 @@ private:
     double loopLpA = 0.5, loopHpA = 0.01, meterDecay = 0.999, gateAttack = 0.01, gateRelease = 0.001, cGateUp = 0.1, cGateDown = 0.01;
     double gateEnv = 0.0, inPeak = 0.0, outPeak = 0.0;
     bool gateOpen = false;
-    float inRaw = 1, outRaw = 1, inGain = 1, inGainNext = 1, outGain = 1, outGainNext = 1, fb = 0, fbNext = 0;
+    float inAim = 1, outAim = 1, inRaw = 1, outRaw = 1, inGain = 1, inGainNext = 1, outGain = 1, outGainNext = 1, fb = 0, fbNext = 0;
     float hiss = 0, hissNext = 0, gate = 1, gateNext = 1, hissCos = 1, hissSin = 0;
     float lowLog = 3, highLog = 10, lowAmt = 0, lowAmtNext = 0, highAmt = 0, highAmtNext = 0;
     CutCoefs lowCoef, highCoef, lowCoefPrev, highCoefPrev;

@@ -118,27 +118,28 @@ PASS  steady 100 Hz, Attack and Sustain at maximum: difference from input = -224
 PASS  steady 1000 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
 PASS  steady 9000 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
 PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, soft start: largest change while it is held = 0.000 dB
-PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, soft start: change of its tail = 8.249 dB
+PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, soft start: change of its tail = 5.765 dB
 PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, soft start: largest change while it is held = 0.000 dB
-PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, soft start: change of its tail = -7.932 dB
+PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, soft start: change of its tail = -4.171 dB
 PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, soft start: largest change while it is held = 0.000 dB
-PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, soft start: change of its tail = 5.470 dB
+PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, soft start: change of its tail = 3.703 dB
 PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, soft start: largest change while it is held = 0.000 dB
-PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, soft start: change of its tail = -6.201 dB
+PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, soft start: change of its tail = -3.401 dB
 PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, hard start: largest change while it is held = 0.000 dB
-PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, hard start: change of its tail = 8.249 dB
+PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, hard start: change of its tail = 5.765 dB
 PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, hard start: largest change while it is held = 0.000 dB
-PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, hard start: change of its tail = -7.932 dB
+PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, hard start: change of its tail = -4.171 dB
 PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, hard start: largest change while it is held = 0.000 dB
-PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, hard start: change of its tail = 5.470 dB
+PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, hard start: change of its tail = 3.703 dB
 PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, hard start: largest change while it is held = 0.000 dB
-PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, hard start: change of its tail = -6.201 dB
+PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, hard start: change of its tail = -3.401 dB
 PASS  Steady Notes, Sustain 9: first 15 ms of a quieter note after a louder one = 0.000 dB
 INFO  Steady Notes off, Sustain 9: first 15 ms of a quieter note after a louder one = 1.097 dB
 PASS  Steady Notes, Sustain 6: a hiss after a note = 0.000 dB
-PASS  Steady Notes, Sustain 6: a dull sound of the same kind after the same note still gets its tail = 5.821 dB
+PASS  Steady Notes, Sustain 6: a dull sound of the same kind after the same note still gets its tail = 3.271 dB
 PASS  Steady Notes is off by default
 PASS  Steady Notes is off in all 14 presets that were there before 0.5.0 = 20.000 
+PASS  Steady Notes is on in every preset added after them = 6.000 
 PASS  turning it on shows the preset as edited
 PASS  Steady Notes comes back with the session
 PASS  a session from before 0.4.0 loads with Steady Notes off
@@ -305,6 +306,24 @@ PASS  preset Parallel Impact: level change on a -30 dBFS tone = 14.034 dB
 PASS  preset Ceiling Only: Ceiling On
 PASS  preset Ceiling Only: peak over its ceiling on hot material = -7.063 dB
 PASS  preset Ceiling Only: level change on a -30 dBFS tone = 0.000 dB
+PASS  preset Lead Gentle: Ceiling On
+PASS  preset Lead Gentle: peak over its ceiling on hot material = -7.318 dB
+PASS  preset Lead Gentle: level change on a -30 dBFS tone = -0.022 dB
+PASS  preset Lead Upfront: Ceiling On
+PASS  preset Lead Upfront: peak over its ceiling on hot material = -3.353 dB
+PASS  preset Lead Upfront: level change on a -30 dBFS tone = 8.372 dB
+PASS  preset Lead Rap: Ceiling On
+PASS  preset Lead Rap: peak over its ceiling on hot material = -3.614 dB
+PASS  preset Lead Rap: level change on a -30 dBFS tone = 11.977 dB
+PASS  preset Lead Soft Consonants: Ceiling On
+PASS  preset Lead Soft Consonants: peak over its ceiling on hot material = -7.272 dB
+PASS  preset Lead Soft Consonants: level change on a -30 dBFS tone = -0.022 dB
+PASS  preset Lead Long Tails: Ceiling On
+PASS  preset Lead Long Tails: peak over its ceiling on hot material = -7.272 dB
+PASS  preset Lead Long Tails: level change on a -30 dBFS tone = -0.022 dB
+PASS  preset Lead Dry And Close: Ceiling On
+PASS  preset Lead Dry And Close: peak over its ceiling on hot material = -7.272 dB
+PASS  preset Lead Dry And Close: level change on a -30 dBFS tone = -0.022 dB
 PASS  pitch sense, 82 Hz: found after = 29.979 ms
 PASS  pitch sense, 82 Hz: lost after the end = 24.979 ms
 PASS  pitch sense, 110 Hz: found after = 24.979 ms
@@ -316,7 +335,7 @@ PASS  pitch sense, 880 Hz: lost after the end = 29.979 ms
 PASS  pitch sense, white noise: share of the time it finds a pitch = 0.000 %
 PASS  pitch sense, silence: no pitch = 0.000 
 PASS  Steady Notes, Sustain 9 on a sung line: largest change of the held note = 0.000 dB
-PASS  Steady Notes, Sustain 9 on a sung line: the 20 to 150 ms after the voice stops = 7.842 dB
+PASS  Steady Notes, Sustain 9 on a sung line: the 20 to 150 ms after the voice stops = 7.743 dB
 PASS  Steady Notes, Sustain 9 on a sung line: first 15 ms of the next, quieter note = 0.000 dB
 PASS  Steady Notes, Sustain 9 on a sung line: a breath a quarter of a second after the note = 0.000 dB
 PASS  Steady Notes, Sustain 9 on a sung line: the room and its hum on their own = 0.000 dB
@@ -324,7 +343,7 @@ INFO    without Steady Notes, the same: held note = 7.388 dB
 INFO    without Steady Notes, the same: after the voice stops = 9.000 dB
 INFO    without Steady Notes, the same: the breath = 9.000 dB
 PASS  Steady Notes, Sustain -9 on a sung line: largest change of the held note = 0.000 dB
-PASS  Steady Notes, Sustain -9 on a sung line: the 20 to 150 ms after the voice stops = -5.628 dB
+PASS  Steady Notes, Sustain -9 on a sung line: the 20 to 150 ms after the voice stops = -5.303 dB
 PASS  Steady Notes, Sustain -9 on a sung line: first 15 ms of the next, quieter note = 0.000 dB
 PASS  Steady Notes, Sustain -9 on a sung line: a breath a quarter of a second after the note = 0.000 dB
 PASS  Steady Notes, Sustain -9 on a sung line: the room and its hum on their own = 0.000 dB
@@ -337,18 +356,18 @@ PASS  Steady Notes, Sustain 6 on a sung line: a breath straight after the note, 
 PASS  Steady Notes, Sustain 6 on a sung line: a mouth sound between phrases = 0.000 dB
 PASS  Steady Notes, Sustain -6 on a sung line: largest change of a syllable that is 5 dB quieter than the one before, on the same breath = 0.000 dB
 PASS  Steady Notes, Sustain 9 at 44100 Hz: largest change of the held note = 0.000 dB
-PASS  Steady Notes, Sustain 9 at 44100 Hz: the 20 to 150 ms after the voice stops = 7.592 dB
+PASS  Steady Notes, Sustain 9 at 44100 Hz: the 20 to 150 ms after the voice stops = 7.453 dB
 PASS  Steady Notes, Sustain 9 at 44100 Hz: a breath a quarter of a second after the note = 0.000 dB
 PASS  Steady Notes, Sustain 9 at 96000 Hz: largest change of the held note = 0.000 dB
-PASS  Steady Notes, Sustain 9 at 96000 Hz: the 20 to 150 ms after the voice stops = 4.833 dB
+PASS  Steady Notes, Sustain 9 at 96000 Hz: the 20 to 150 ms after the voice stops = 4.639 dB
 PASS  Steady Notes, Sustain 9 at 96000 Hz: a breath a quarter of a second after the note = 0.000 dB
 PASS  Steady Notes on with every other control at its default: difference from the input = -219.350 dB
-PASS  Punch 50 with Steady Notes, a held note whose peaks move: level swing added = 0.239 dB
-PASS  Punch 50 with Steady Notes, a held note whose peaks move: level against the input = -0.348 dB
+PASS  Punch 50 with Steady Notes, a held note whose peaks move: level swing added = 0.121 dB
+PASS  Punch 50 with Steady Notes, a held note whose peaks move: level against the input = -0.150 dB
 INFO  Punch 50 without Steady Notes, a held note whose peaks move: level swing added = 1.331 dB
 INFO  Punch 50 without Steady Notes, a held note whose peaks move: level against the input = 0.064 dB
-PASS  Punch 100 with Steady Notes, a held note whose peaks move: level swing added = 0.290 dB
-PASS  Punch 100 with Steady Notes, a held note whose peaks move: level against the input = -0.386 dB
+PASS  Punch 100 with Steady Notes, a held note whose peaks move: level swing added = 0.140 dB
+PASS  Punch 100 with Steady Notes, a held note whose peaks move: level against the input = -0.184 dB
 INFO  Punch 100 without Steady Notes, a held note whose peaks move: level swing added = 1.518 dB
 INFO  Punch 100 without Steady Notes, a held note whose peaks move: level against the input = 0.059 dB
 INFO  a held note whose peaks jump: the jump of the peak = 2.751 dB
@@ -363,26 +382,36 @@ INFO  Attack -9 without Steady Notes, a held note whose peaks jump: largest chan
 INFO  Attack -9 without Steady Notes, a held note whose peaks jump: first 3 ms of the note = -8.982 dB
 PASS  Steady Notes off: the detector's gain is 0.4.0's, sample for sample, at all 14 older presets and both extremes; samples that differ = 0.000 
 PASS  Steady Notes switched on and off again: 2.5 s later the gain is within 0.01 dB of a detector that never had it on; samples further off = 0.000 
+PASS  Steady Notes, Sustain 9 at 48000 Hz, a note that starts loud and settles 10 dB lower: largest change of the settled note, 10 ms at a time = 0.015 dB
+PASS  Steady Notes, Sustain 9 at 48000 Hz, a note that starts loud and settles 10 dB lower: level of the settled note = 0.000 dB
+PASS  Steady Notes, Sustain -9 at 48000 Hz, a note that starts loud and settles 10 dB lower: largest change of the settled note, 10 ms at a time = 0.014 dB
+PASS  Steady Notes, Sustain -9 at 48000 Hz, a note that starts loud and settles 10 dB lower: level of the settled note = -0.000 dB
+PASS  Steady Notes, Sustain 6 at 48000 Hz, a note that starts loud and settles 10 dB lower: largest change of the settled note, 10 ms at a time = 0.010 dB
+PASS  Steady Notes, Sustain 6 at 48000 Hz, a note that starts loud and settles 10 dB lower: level of the settled note = 0.000 dB
+PASS  Steady Notes, Sustain 9 at 44100 Hz, a note that starts loud and settles 10 dB lower: largest change of the settled note, 10 ms at a time = 0.017 dB
+PASS  Steady Notes, Sustain 9 at 44100 Hz, a note that starts loud and settles 10 dB lower: level of the settled note = 0.000 dB
+PASS  Steady Notes, Sustain 9 at 96000 Hz, a note that starts loud and settles 10 dB lower: largest change of the settled note, 10 ms at a time = 0.017 dB
+PASS  Steady Notes, Sustain 9 at 96000 Hz, a note that starts loud and settles 10 dB lower: level of the settled note = 0.000 dB
 PASS  there are 20 presets: the 14 from before and six for a lead vocal = 20.000 
 PASS  the 14 older presets keep their numbers and names
 PASS  preset 14 is Lead Gentle, with its values and Steady Notes on
-PASS  preset Lead Gentle: level swing added to the held note of the sung line = -0.678 dB
-PASS  preset Lead Gentle: peak of the sung line = -8.617 dBFS
+PASS  preset Lead Gentle: level swing added to the held note of the sung line = -0.682 dB
+PASS  preset Lead Gentle: peak of the sung line = -8.492 dBFS
 PASS  preset 15 is Lead Upfront, with its values and Steady Notes on
 PASS  preset Lead Upfront: level swing added to the held note of the sung line = -0.969 dB
-PASS  preset Lead Upfront: peak of the sung line = -3.277 dBFS
+PASS  preset Lead Upfront: peak of the sung line = -3.276 dBFS
 PASS  preset 16 is Lead Rap, with its values and Steady Notes on
-PASS  preset Lead Rap: level swing added to the held note of the sung line = -0.882 dB
-PASS  preset Lead Rap: peak of the sung line = -2.695 dBFS
+PASS  preset Lead Rap: level swing added to the held note of the sung line = -0.904 dB
+PASS  preset Lead Rap: peak of the sung line = -2.531 dBFS
 PASS  preset 17 is Lead Soft Consonants, with its values and Steady Notes on
-PASS  preset Lead Soft Consonants: level swing added to the held note of the sung line = -0.521 dB
-PASS  preset Lead Soft Consonants: peak of the sung line = -8.577 dBFS
+PASS  preset Lead Soft Consonants: level swing added to the held note of the sung line = -0.524 dB
+PASS  preset Lead Soft Consonants: peak of the sung line = -8.492 dBFS
 PASS  preset 18 is Lead Long Tails, with its values and Steady Notes on
-PASS  preset Lead Long Tails: level swing added to the held note of the sung line = -0.521 dB
-PASS  preset Lead Long Tails: peak of the sung line = -8.577 dBFS
+PASS  preset Lead Long Tails: level swing added to the held note of the sung line = -0.524 dB
+PASS  preset Lead Long Tails: peak of the sung line = -8.492 dBFS
 PASS  preset 19 is Lead Dry And Close, with its values and Steady Notes on
-PASS  preset Lead Dry And Close: level swing added to the held note of the sung line = -0.521 dB
-PASS  preset Lead Dry And Close: peak of the sung line = -8.577 dBFS
+PASS  preset Lead Dry And Close: level swing added to the held note of the sung line = -0.524 dB
+PASS  preset Lead Dry And Close: peak of the sung line = -8.492 dBFS
 PASS  the display's before and after match exactly at neutral, so they line up in time = 0.000 
 PASS  Gain +6: after sits 6 dB over before in every bin, worst error = 0.000 dB
 PASS  about 2000 bins a second at 44100 Hz = 2004.000 

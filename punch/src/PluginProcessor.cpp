@@ -21,13 +21,13 @@ namespace
         { "Full Level Hook", 15.0f,   2.0f,  0.0f, 100.0f,  0.0f, 70.0f, -0.5f, true },
         { "Parallel Impact",  0.0f,   0.0f,  0.0f,  50.0f,  0.0f, 90.0f, -1.0f, true },
         { "Ceiling Only",     0.0f,   0.0f,  0.0f, 100.0f,  0.0f,  0.0f, -1.0f, true },
-        // Added in 0.5.0, for a lead vocal, tuned on Luke's real takes. All have Steady Notes on. The 14 above are untouched.
-        { "Lead Gentle",          12.0f,  1.5f,  0.0f, 100.0f, 0.0f,  0.0f, -1.0f, false, true },
+        // Added in 0.5.0, for a lead vocal, tuned on Luke's real takes. All have Steady Notes on, and since 0.5.1 Ceiling On at -1 dBFS. The 14 above are untouched.
+        { "Lead Gentle",          12.0f,  1.5f,  0.0f, 100.0f, 0.0f,  0.0f, -1.0f, true,  true },
         { "Lead Upfront",         20.0f,  2.5f,  0.0f, 100.0f, 0.0f, 35.0f, -1.0f, true,  true },
         { "Lead Rap",             15.0f,  2.5f, -2.0f, 100.0f, 0.0f, 50.0f, -1.0f, true,  true },
-        { "Lead Soft Consonants", 10.0f, -5.0f,  1.5f, 100.0f, 0.0f,  0.0f, -1.0f, false, true },
-        { "Lead Long Tails",      10.0f,  0.0f,  6.0f, 100.0f, 0.0f,  0.0f, -1.0f, false, true },
-        { "Lead Dry And Close",   10.0f,  1.5f, -6.0f, 100.0f, 0.0f,  0.0f, -1.0f, false, true },
+        { "Lead Soft Consonants", 10.0f, -5.0f,  1.5f, 100.0f, 0.0f,  0.0f, -1.0f, true,  true },
+        { "Lead Long Tails",      10.0f,  0.0f,  6.0f, 100.0f, 0.0f,  0.0f, -1.0f, true,  true },
+        { "Lead Dry And Close",   10.0f,  1.5f, -6.0f, 100.0f, 0.0f,  0.0f, -1.0f, true,  true },
     };
 
     constexpr float smoothSeconds = 0.02f;

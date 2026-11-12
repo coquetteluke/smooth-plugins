@@ -221,6 +221,7 @@ public:
     static constexpr double tailCutEnd = 0.130;    // and nothing is made louder by it.
     static constexpr double noteFall = 1.0;        // How slowly the level a note is remembered at comes down while it is sung.
     static constexpr double sunkGrace = 0.040;     // How long a note that has sunk right down may go on before it is over.
+    static constexpr double sagWindow = 0.100;     // A held note's sag is measured from the highest it stood in this long (0.5.1).
     static constexpr double gateRamp = 0.005;      // How fast Sustain comes in when a note begins, so the gain never steps.
     static constexpr double restartTime = 0.002;   // How fast a sharp start pulls the tail's reference down to the new sound.
     static constexpr double brightRise = 0.001;
@@ -280,6 +281,7 @@ public:
         pitch.prepare (sampleRate);
 
         shaperHold.prepare (std::max (1, (int) std::lround (holdTime * sampleRate)));
+        noteRecent.prepare (std::max (1, (int) std::lround (sagWindow * sampleRate)));
         compHold.prepare (std::max (1, (int) std::lround (compHoldTime * sampleRate)));
     }
 
@@ -294,6 +296,7 @@ public:
         makeupDb = restingMakeupDb (punch);
         impactFast = impactSlow = impactNowDb = quietGuard = 0.0f;
         pitch.reset();
+        noteRecent.reset();
         notedFor = 0;
         noteOn = false;
         sinceNote = farFromANote;
@@ -402,6 +405,7 @@ private:
     static constexpr float guardKneeDb = 3.0f;        // Steady Notes: Punch's level match is given in full from this far under its threshold
     static constexpr float guardSpanDb = 15.0f;       // and not at all this much further down.
     static constexpr float trimReachDb = 18.0f;
+    static constexpr float matchedWithinDb = 0.05f;   // Steady Notes: the level match counts as right this close (0.5.0 took 0.5 dB, and a steady tone stayed 0.19 dB low).
     static constexpr float afterNoteDb = 1.0f;        // Steady Notes: after the note a sound has to be this much further under it to be its tail:
                                                       // a quieter word that starts right after is not.
     static constexpr float heldStartDb = 4.0f;        // Steady Notes: inside a sounding note a start has to rise this far before Attack acts.
@@ -446,6 +450,7 @@ private:
         if (! steadyWasOn)
         {
             pitch.reset();
+            noteRecent.reset();
             notedFor = 0;
             noteOn = false;
             sinceNote = farFromANote;
@@ -496,7 +501,11 @@ private:
             noteLevel = sustainSlow > noteLevel ? sustainSlow : noteLevel + cNoteFall * (sustainSlow - noteLevel);
         else if (! inTail || sustainSlow > noteLevel)
             noteLevel = sustainSlow;
-        const float tailDb = noteOn ? toDb (sustainSlow) - toDb (sustainFast) : toDb (noteLevel) - toDb (sustainFast) - afterNoteDb;
+        // Inside a note the sag is also measured from the highest the note stood in the last sagWindow, not only from the slow envelope:
+        // after a loud start the slow envelope is still coming down when the note has settled, and a small dip of the settled note
+        // read as a note dying away (0.5.0 gave such a held vowel up to 7.6 dB for 30 ms on Luke's take 04 at 149.86 s).
+        const float recentDb = toDb (noteRecent.push (sustainFast));
+        const float tailDb = noteOn ? std::min (toDb (sustainSlow), recentDb) - toDb (sustainFast) : toDb (noteLevel) - toDb (sustainFast) - afterNoteDb;
 
         const float step = std::abs (clean - lastSample), size = std::abs (clean);
         lastSample = clean;
@@ -570,7 +579,7 @@ private:
             const bool measurable = inPower > gateFloorPower && outPower > 0.0f;
             const float target = measurable ? std::min (maxMakeupDb, std::max (0.0f, 10.0f * std::log10 (inPower / outPower))) : restingMakeupDb (punch);
             makeupDb += cMakeup * (target - makeupDb);
-            if (noteOn && measurable && std::abs (target - makeupDb) < 0.5f)
+            if (noteOn && measurable && std::abs (target - makeupDb) < matchedWithinDb)
             {
                 matched = true;
                 outPower *= std::exp (2.0f * givenDb * dbToLn); // From here on the level after the match is what is measured.
@@ -636,5 +645,5 @@ private:
     bool steadyWasOn = false, noteOn = false, matched = false, levelsOnly = false;
     PitchSense pitch;
 
-    SlidingMax shaperHold, compHold;
+    SlidingMax shaperHold, compHold, noteRecent;
 };

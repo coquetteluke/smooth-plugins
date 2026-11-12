@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1, 2026-11-11
+
+Two fixes to Steady Notes and a ceiling for every lead preset, from the third real vocal pass. With Steady Notes off nothing changes: every older preset and every saved session that does not use it sounds exactly as before.
+
+- Steady Notes, Sustain: a held note that starts loud and settles lower is now left still. Inside a note the sag is also measured from the highest the note stood in the last 100 ms, not only from the slow envelope, which after a loud start was still coming down, so a small dip of the settled note read as a note dying away. This was the one Steady Notes miss of the blind set (take 15, Sustain +9, held vowels +0.25 dB on average, limit 0.2). The same thing on working take 04 at 149.86 s (7.6 dB for 30 ms) and take 02 at 223.13 s; on the working set the held vowel average went from at most 0.01 to 0.00 dB. On a made-up note that does this, 5.8 dB to at most 0.02 dB at Sustain +9 and -9.
+- Steady Notes, Punch: the level match now counts as right within 0.05 dB before it is held, instead of 0.5 dB. A steady tone through Lead Gentle came out 0.19 dB low (now 0.02); on the first session's take 01, Punch 50 settled 1.75 dB low (limit 1.0, now 0.20).
+- Lead Gentle, Lead Soft Consonants, Lead Long Tails and Lead Dry And Close now have Ceiling On at -1 dBFS, like Lead Upfront and Lead Rap. On the first session's hot takes 06, 08 and 10, Lead Gentle and Lead Dry And Close went up to 0.8 and 1.0 dB over 0 dBFS; now they peak at -1.5 to -1.8 dBFS. On Luke's Rode takes they peak 6 dB or more under the ceiling, so nothing there changes. A session saved with one of these presets keeps the values it was saved with. Luke left this call to the lead on 2026-11-11.
+
+On the 11 working set takes every Steady Notes limit and every limit of the six lead presets is met, and every group with Steady Notes off gives 0.5.0's number exactly. Latency, AU codes and parameters are unchanged.
+
+Tests: 439 pass, 0 fail (0.5.0 had 410). New: a held note that starts loud and settles 10 dB lower, at three rates. The presets test that 0.5.0 had narrowed to the seven presets of 0.2.0 covers every preset again (Ceiling On, under the ceiling on hot material, a -30 dBFS tone not taken down), and the Steady Notes preset test looks at every preset again.
+
 ## 0.5.0, 2026-11-11
 
 Steady Notes now follows the note, Punch keeps a held note still, and there are six presets for a lead vocal. Off, nothing changes.

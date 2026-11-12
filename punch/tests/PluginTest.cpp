@@ -315,8 +315,18 @@ static void testSteadyNotes()
         check (p.apvts.getRawParameterValue ("steadyNotes")->load() < 0.5f, "Steady Notes is off by default");
         bool olderOff = true;
         // 0.5.0 appended six presets for a lead vocal that have it on. The 14 that were there before keep it off, as this test has always asked.
-        for (int i = 0; i < 14; ++i) { p.setCurrentProgram (i); olderOff = olderOff && p.apvts.getRawParameterValue ("steadyNotes")->load() < 0.5f; }
+        // Every preset is looked at again (0.5.1): the 14 older ones must have it off, the ones after them must have it on, because with it off
+        // four of the six lead presets fail 45 real vocal preset limits on the working set (they add 3.0 to 5.8 dB of swing to held vowels).
+        bool newerOn = true;
+        for (int i = 0; i < p.getNumPrograms(); ++i)
+        {
+            p.setCurrentProgram (i);
+            const bool on = p.apvts.getRawParameterValue ("steadyNotes")->load() > 0.5f;
+            if (i < 14) olderOff = olderOff && ! on;
+            else newerOn = newerOn && on;
+        }
         check (olderOff && p.getNumPrograms() >= 14, "Steady Notes is off in all 14 presets that were there before 0.5.0", (double) p.getNumPrograms());
+        check (newerOn, "Steady Notes is on in every preset added after them", (double) (p.getNumPrograms() - 14));
         p.setCurrentProgram (0);
         setParam (p, "steadyNotes", 1.0f);
         check (p.isCurrentProgramEdited(), "turning it on shows the preset as edited");
@@ -1249,7 +1259,7 @@ static void testNewPresets()
 {
     const double sr = 48000.0;
     const auto hot = speechShaped (sr, 5.0);
-    for (int preset = 7; preset < 14; ++preset) // the seven that 0.2.0 added; the ones 0.5.0 added have their own test
+    for (int preset = 7; preset < PluginProcessor().getNumPrograms(); ++preset) // every preset from 0.2.0 on, the six lead presets of 0.5.0 too
     {
         PluginProcessor p;
         p.setCurrentProgram (preset);
@@ -1686,16 +1696,65 @@ static void testOffStaysOff()
 }
 
 // The six presets 0.5.0 added for a lead vocal: at the end of the list, Steady Notes on, the values written here, names that are new.
+// 0.5.1. A held note that starts loud and settles 10 dB lower. Found on Luke's takes (blind take 15 missed the held vowel limit, Sustain 9:
+// mean gain 0.25 dB, limit 0.2; the same thing on working take 04 at 149.86 s, 7.6 dB for 30 ms, and take 02 at 223.13 s). Inside a note,
+// Sustain judged a sag against its slow envelope, which was still coming down from the loud start, so a small dip of the settled note read
+// as a note dying away. Limits are the real vocal check's held vowel limits, written before the first run: on the settled part, every
+// 10 ms no more than 1.0 dB from the input and the whole within 0.2 dB.
+static void testHeldAfterLoudStart()
+{
+    for (double sr : { 48000.0, 44100.0, 96000.0 })
+    {
+        const double twoPi = juce::MathConstants<double>::twoPi;
+        const int n = (int) (sr * 1.8);
+        std::vector<float> x ((size_t) n, 0.0f);
+        std::mt19937 g (5); std::uniform_real_distribution<float> d (-1.0f, 1.0f);
+        double phase = 0.0;
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = i / sr;
+            x[(size_t) i] = 0.0003f * d (g);
+            if (t < 0.3 || t > 1.5) continue;
+            const double u = t - 0.3;
+            // 0.3 to 0.4 s loud, then 10 dB down over 0.1 s, then held, its level swinging 3 dB at 5 Hz. The voice stops at 1.5 s.
+            double ampDb = u < 0.1 ? 0.0 : (u < 0.2 ? -10.0 * (u - 0.1) / 0.1 : -10.0);
+            if (u >= 0.2) ampDb += 1.5 * std::sin (twoPi * 5.0 * (u - 0.2));
+            double env = std::pow (10.0, ampDb / 20.0) * (u < 0.02 ? u / 0.02 : 1.0) * (t > 1.496 ? (1.5 - t) / 0.004 : 1.0);
+            phase += twoPi * 196.0 * std::pow (2.0, 0.4 / 12.0 * std::sin (twoPi * 5.5 * u)) / sr;
+            double v = 0.0;
+            for (int h = 1; h <= 6; ++h) v += std::sin (h * phase) / h;
+            x[(size_t) i] += (float) (0.3 * env * v);
+        }
+        for (float sustain : { 9.0f, -9.0f, 6.0f })
+        {
+            if (sr != 48000.0 && sustain != 9.0f) continue;
+            Settings s; s.sustain = sustain; s.steadyNotes = 1.0f;
+            int lat = 0;
+            const auto out = process (x, s, sr, 512, &lat);
+            const int w = (int) (sr * 0.01);
+            double worst = 0.0, ein = 0.0, eout = 0.0;
+            for (int k = (int) (0.55 * sr); k + w <= (int) (1.45 * sr); k += w)
+            {
+                worst = std::max (worst, std::abs (windowRmsDb (out, k + lat, w) - windowRmsDb (x, k, w)));
+                for (int j = 0; j < w; ++j) { ein += (double) x[(size_t) (k + j)] * x[(size_t) (k + j)]; eout += (double) out[(size_t) (k + j + lat)] * out[(size_t) (k + j + lat)]; }
+            }
+            const std::string tag = "Steady Notes, Sustain " + std::to_string ((int) sustain) + " at " + std::to_string ((int) sr) + " Hz, a note that starts loud and settles 10 dB lower: ";
+            check (worst <= 1.0, tag + "largest change of the settled note, 10 ms at a time", worst, "dB");
+            check (std::abs (10.0 * std::log10 (eout / ein)) <= 0.2, tag + "level of the settled note", 10.0 * std::log10 (eout / ein), "dB");
+        }
+    }
+}
+
 static void testLeadPresets()
 {
     struct Want { const char* name; float punch, attack, sustain, mix, gain, impact, ceiling; bool ceilingOn; };
     const Want wants[] = {
-        { "Lead Gentle",          12.0f,  1.5f,  0.0f, 100.0f, 0.0f,  0.0f, -1.0f, false },
+        { "Lead Gentle",          12.0f,  1.5f,  0.0f, 100.0f, 0.0f,  0.0f, -1.0f, true },
         { "Lead Upfront",         20.0f,  2.5f,  0.0f, 100.0f, 0.0f, 35.0f, -1.0f, true },
         { "Lead Rap",             15.0f,  2.5f, -2.0f, 100.0f, 0.0f, 50.0f, -1.0f, true },
-        { "Lead Soft Consonants", 10.0f, -5.0f,  1.5f, 100.0f, 0.0f,  0.0f, -1.0f, false },
-        { "Lead Long Tails",      10.0f,  0.0f,  6.0f, 100.0f, 0.0f,  0.0f, -1.0f, false },
-        { "Lead Dry And Close",   10.0f,  1.5f, -6.0f, 100.0f, 0.0f,  0.0f, -1.0f, false },
+        { "Lead Soft Consonants", 10.0f, -5.0f,  1.5f, 100.0f, 0.0f,  0.0f, -1.0f, true },
+        { "Lead Long Tails",      10.0f,  0.0f,  6.0f, 100.0f, 0.0f,  0.0f, -1.0f, true },
+        { "Lead Dry And Close",   10.0f,  1.5f, -6.0f, 100.0f, 0.0f,  0.0f, -1.0f, true },
     };
     PluginProcessor p;
     check (p.getNumPrograms() == 20, "there are 20 presets: the 14 from before and six for a lead vocal", (double) p.getNumPrograms());
@@ -2381,6 +2440,7 @@ int main()
     testSteadyPunch();
     testSteadyAttack();
     testOffStaysOff();
+    testHeldAfterLoudStart();
     testLeadPresets();
     testEnvelopeTap();
     testHitDisplayNumbers();

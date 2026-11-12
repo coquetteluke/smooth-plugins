@@ -153,7 +153,7 @@ Those are synthetic test signals. New in 0.5.0: Clean is on in a new instance an
 
 Measured on 2026-11-11 on 11 of Luke's takes (Rode NT1, sung and rap, 39 s to 227 s each), through the real AU, with `~/smooth-plugins/_shared/realvox` and the checks in its `src/extra/tape-chorus.cpp`. Every limit there was written before the first run. The full report is `~/smooth-plugins/_vox/rode/work/tape-chorus/REPORT.md`.
 
-What holds, at the default (Clean on, since 0.5.0), on every take, measured again on 0.5.0:
+What holds, at the default (Clean on, since 0.5.0), on every take, measured again on 0.5.0 and 0.5.1:
 
 - Bypass and Mix 0 give back the take sample for sample. Latency reported 0, measured 0. With Spread at 0, left and right are identical to the last bit.
 - Level against the dry on voiced sound: within 0.14 dB. Peak: up to 2.2 dB over the dry's peak, nothing over 0 dBFS.

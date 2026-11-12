@@ -221,6 +221,8 @@ public:
     static constexpr double tailCutEnd = 0.130;    // and nothing is made louder by it.
     static constexpr double noteFall = 1.0;        // How slowly the level a note is remembered at comes down while it is sung.
     static constexpr double sunkGrace = 0.040;     // How long a note that has sunk right down may go on before it is over.
+    static constexpr double voiceGone = 1.0;       // With no note for this long there is no voice to care for, and Sustain works as with
+    static constexpr double voiceGoneRamp = 0.5;   // Steady Notes off, coming in over this long (0.6.1: it did nothing at all to drums).
     static constexpr double sagWindow = 0.100;     // A held note's sag is measured from the highest it stood in this long (0.5.1).
     static constexpr double gateRamp = 0.005;      // How fast Sustain comes in when a note begins, so the gain never steps.
     static constexpr double restartTime = 0.002;   // How fast a sharp start pulls the tail's reference down to the new sound.
@@ -266,6 +268,8 @@ public:
         startDeadDownStep = (heldStartDb - deadZoneDb) / (float) (0.005 * sampleRate);
         cNoteFall = coef (noteFall);
         graceSamples = std::max (1, (int) std::lround (sunkGrace * sampleRate));
+        voiceGoneSamples = std::max (1, (int) std::lround (voiceGone * sampleRate));
+        voiceGoneRampSamples = std::max (1, (int) std::lround (voiceGoneRamp * sampleRate));
         cRestart = coef (restartTime);
         cBrightRise = coef (brightRise);
         cBrightFall = coef (brightFall);
@@ -335,7 +339,7 @@ public:
         float tailAmount = clamp01 ((tailDb - deadZoneDb) / tailRangeDb);
         if (steadyNotes)
         {
-            tailAmount = steadyTailAmount (startDb, sample, sustainDb);
+            tailAmount = steadyTailAmount (startDb, sample, sustainDb, tailAmount);
             startAmount = steadyStartAmount (startDb);
         }
 
@@ -444,7 +448,7 @@ private:
     // 4. A sound with no note before it gets nothing: a sharp start pulls the reference down to it, so the next note is read on its own.
     // 5. A bright sound (an S) is spared: its sample to sample step is nearly as large as the sample itself.
     // Everything is a ratio or a time, so level still does not matter.
-    float steadyTailAmount (float startDb, float sample, float sustainDb)
+    float steadyTailAmount (float startDb, float sample, float sustainDb, float plainAmount)
     {
         const float clean = sample > -1.0e6f && sample < 1.0e6f ? sample : 0.0f; // Also catches NaN.
         if (! steadyWasOn)
@@ -518,7 +522,14 @@ private:
         const float bright = clamp01 ((stepEnv / (sizeEnv + 1.0e-9f) - brightLow) / (brightHigh - brightLow));
 
         // Only a boost spares a bright sound: a cut that shortens the end of a word shortens its S with it and makes nothing louder.
-        return clamp01 ((tailDb - heldDepthDb) / tailRangeDb) * tailGate * (sustainDb > 0.0f ? 1.0f - bright : 1.0f);
+        const float voiced = clamp01 ((tailDb - heldDepthDb) / tailRangeDb) * tailGate * (sustainDb > 0.0f ? 1.0f - bright : 1.0f);
+        // 6. No voice: with no note for voiceGone (or none since Steady Notes came on, as on a drum track) Sustain is what it is with
+        //    Steady Notes off, the plain reading of the level, faded in over voiceGoneRamp. Breaths and mouth sounds between phrases come
+        //    well within voiceGone of a note and are still left alone.
+        if (levelsOnly || sinceNote < voiceGoneSamples)
+            return voiced;
+        const float plain = sinceNote >= farFromANote ? 1.0f : std::min (1.0f, (float) (sinceNote - voiceGoneSamples) / (float) voiceGoneRampSamples);
+        return voiced + plain * (plainAmount - voiced);
     }
 
     // Attack for a voice (Steady Notes). Inside a held vowel the peaks jump by a few dB now and then while the level stays where it is
@@ -643,7 +654,7 @@ private:
     float stepEnv = 0, sizeEnv = 0, lastSample = 0, tailGate = 0, gateStep = 1, levelPower = 0, crestDb = 0;
     int notedFor = 0, noteSamples = 1, sinceNote = farFromANote, boostFull = 0, boostEnd = 1, cutFull = 0, cutEnd = 1;
     float noteLevel = 0, cNoteFall = 1, startDeadDb = 0.25f, startDeadUpStep = 0, startDeadDownStep = 0;
-    int sunkFor = 0, graceSamples = 1;
+    int sunkFor = 0, graceSamples = 1, voiceGoneSamples = 1, voiceGoneRampSamples = 1;
     float overDb = 0, makeupGuard = 1, matchedPunch = 0, cMakeupHeld = 1, givenDb = 0;
     int quietFor = 0, pauseHoldSamples = 1, pauseFadeSamples = 1;
     bool steadyWasOn = false, noteOn = false, matched = false, levelsOnly = false;

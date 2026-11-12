@@ -312,8 +312,8 @@ static void testSteadyNotes()
     }
     {
         PluginProcessor p;
-        // 0.6.0: a new instance has Steady Notes on (it said off by default from 0.4.0 to 0.5.1). Older sessions are tested in testSteadyDefault.
-        check (p.apvts.getRawParameterValue ("steadyNotes")->load() > 0.5f, "Steady Notes is on by default");
+        // Off by default, as from 0.4.0 to 0.5.1 (0.6.0 had it on; 0.6.1 put it back). Older sessions are tested in testSteadyDefault.
+        check (p.apvts.getRawParameterValue ("steadyNotes")->load() < 0.5f, "Steady Notes is off by default");
         bool olderOff = true;
         // 0.5.0 appended six presets for a lead vocal that have it on. The 14 that were there before keep it off, as this test has always asked.
         // Every preset is looked at again (0.5.1): the 14 older ones must have it off, the ones after them must have it on, because with it off
@@ -1746,16 +1746,16 @@ static void testHeldAfterLoudStart()
     }
 }
 
-// 0.6.0. Steady Notes is on in a new instance. Written before the change, limits fixed then:
-// a new instance has it on; a session saved before Steady Notes existed loads with it off, into a new instance and into one that had it on;
-// a session saved by 0.5.1 with it off loads off, and one saved with it on loads on; a damaged value goes back to the default;
-// and the default's own sound does not change: with every other control at its default, on and off give the same output sample for sample.
+// Steady Notes and saved state. Written for 0.6.0 (default on); 0.6.1 put the default back to off and these follow it:
+// a new instance has it off; a session saved before Steady Notes existed loads with it off, into a new instance and into one that had it on;
+// sessions saved with it off and on (0.5.1, 0.6.0) load off and on; a damaged value goes back to the default, off;
+// and with every other control at its default, Steady Notes on and off give the same output sample for sample.
 static void testSteadyDefault()
 {
     const auto steady = [] (PluginProcessor& p) { return p.apvts.getRawParameterValue ("steadyNotes")->load() > 0.5f; };
     {
         PluginProcessor p;
-        check (steady (p), "a new instance has Steady Notes on");
+        check (! steady (p), "a new instance has Steady Notes off");
     }
     // A session from before 0.4.0: every parameter of 0.3.x, no Steady Notes.
     juce::MemoryBlock before040;
@@ -1803,15 +1803,16 @@ static void testSteadyDefault()
         juce::MemoryBlock bad;
         juce::AudioProcessor::copyXmlToBinary (xml, bad);
         PluginProcessor q;
-        setParam (q, "steadyNotes", 0.0f);
+        setParam (q, "steadyNotes", 1.0f);
         q.setStateInformation (bad.getData(), (int) bad.getSize());
-        check (steady (q), "a damaged Steady Notes value goes back to the default, on");
+        check (! steady (q), "a damaged Steady Notes value goes back to the default, off");
     }
     // The default's sound: a new instance against one with Steady Notes off, every other control at its default. Real speech and the sung line.
     for (const char* name : { "speech_daniel.wav", "speech_samantha.wav", "sung line" })
     {
         const auto x = std::string (name) == "sung line" ? sungLine (48000.0) : loadSpeech (name);
         PluginProcessor a, b;
+        setParam (a, "steadyNotes", 1.0f);
         setParam (b, "steadyNotes", 0.0f);
         prepare (a, 2, 48000.0, 512);
         prepare (b, 2, 48000.0, 512);
@@ -1821,6 +1822,65 @@ static void testSteadyDefault()
             for (int i = 0; i < ya.getNumSamples(); ++i)
                 differ += ya.getSample (ch, i) != yb.getSample (ch, i) ? 1 : 0;
         check (! x.empty() && differ == 0, std::string ("the default's sound with Steady Notes on against off, ") + name + ": samples that differ", (double) differ);
+    }
+}
+
+// 0.6.1. With Steady Notes on, Sustain did nothing at all to a sound with no pitch, such as drums: no note, so no tail. Steady Notes is
+// meant to keep held notes still, not to switch Sustain off where there is no voice. Limits written before the first run: on every burst
+// of a train of noise bursts (no pitch), the change of its tail (80 to 300 ms after it starts) with Steady Notes on is within 1.0 dB of the
+// change with it off, at Sustain +9 and -9, from the very first burst; and the same after a sung note, for every burst that starts
+// 2 s or more after the note ended. With it off, the tails must move at least 3 dB (so the comparison means something).
+static void testSteadyNoPitch()
+{
+    const double sr = 48000.0, twoPi = juce::MathConstants<double>::twoPi;
+    for (const bool afterNote : { false, true })
+    {
+        const double first = afterNote ? 3.5 : 0.2, spacing = 0.45;
+        const int count = 10;
+        const int n = (int) (sr * (first + spacing * count + 0.5));
+        std::vector<float> x ((size_t) n, 0.0f);
+        std::mt19937 g (11); std::uniform_real_distribution<float> d (-1.0f, 1.0f);
+        for (int i = 0; i < n; ++i) x[(size_t) i] = 0.0003f * d (g);
+        if (afterNote) // a sung note, 0.3 to 1.3 s, then the room
+            for (int i = (int) (0.3 * sr); i < (int) (1.3 * sr); ++i)
+            {
+                const double t = i / sr - 0.3;
+                double v = 0.0;
+                for (int h = 1; h <= 6; ++h) v += std::sin (twoPi * 196.0 * h * t) / h;
+                x[(size_t) i] += (float) (0.2 * std::min (1.0, t / 0.03) * std::min (1.0, (1.3 - i / sr) / 0.004) * v);
+            }
+        std::vector<int> onsets;
+        for (int k = 0; k < count; ++k)
+        {
+            const int at = (int) ((first + spacing * k) * sr);
+            onsets.push_back (at);
+            const double amp = k % 2 == 0 ? 0.5 : 0.3; // two drums, louder and softer
+            for (int i = at; i < at + (int) (0.4 * sr) && i < n; ++i)
+            {
+                const double t = (i - at) / sr;
+                x[(size_t) i] += (float) (amp * std::min (1.0, t / 0.001) * std::exp (-t / 0.06) * d (g));
+            }
+        }
+        for (float sustain : { 9.0f, -9.0f })
+        {
+            Settings on; on.sustain = sustain; on.steadyNotes = 1.0f;
+            Settings off = on; off.steadyNotes = 0.0f;
+            int lat = 0;
+            const auto yOn = process (x, on, sr, 512, &lat), yOff = process (x, off, sr, 512, &lat);
+            double worst = 0.0, smallestOff = 100.0;
+            for (const int at : onsets)
+            {
+                const int a = at + (int) (0.08 * sr), len = (int) (0.22 * sr);
+                const double cOn = windowRmsDb (yOn, a + lat, len) - windowRmsDb (x, a, len);
+                const double cOff = windowRmsDb (yOff, a + lat, len) - windowRmsDb (x, a, len);
+                worst = std::max (worst, std::abs (cOn - cOff));
+                smallestOff = std::min (smallestOff, std::abs (cOff));
+            }
+            const std::string tag = std::string ("Steady Notes on, Sustain ") + std::to_string ((int) sustain) + ", noise bursts with no pitch"
+                                  + (afterNote ? " 2 s and more after a sung note" : "") + ": ";
+            check (smallestOff >= 3.0, tag + "with Steady Notes off the tails move at least", smallestOff, "dB");
+            check (worst <= 1.0, tag + "largest difference of a tail from Steady Notes off", worst, "dB");
+        }
     }
 }
 
@@ -2081,7 +2141,7 @@ void testWindow()
             { "punch", "Punch", 0, 100, 0 }, { "attack", "Attack", -15, 15, 0 }, { "sustain", "Sustain", -15, 15, 0 }, { "mix", "Mix", 0, 100, 100 },
             { "bypass", "Bypass", 0, 1, 0 }, { "gain", "Gain", -12, 24, 0 }, { "impact", "Impact", 0, 100, 0 }, { "ceiling", "Ceiling", -24, 0, -1 },
             { "ceilingOn", "Ceiling On", 0, 1, 0 },
-            { "steadyNotes", "Steady Notes", 0, 1, 1 }, // on in a new instance since 0.6.0 (was 0)
+            { "steadyNotes", "Steady Notes", 0, 1, 0 }, // off in a new instance (0.6.0 had it on, 0.6.1 put it back)
         };
         int missing = 0, wrong = 0;
         for (const auto& e : expected)
@@ -2397,8 +2457,7 @@ void testWindow()
         te->tick (1.0 / 30.0);
         check (at (6) > 6.0, "Attack moves its start", at (6), "dB");
         setParam (*q, "attack", 0.0f);
-        // This check was written when Steady Notes was off by default; since 0.6.0 it is on in a new instance, so it is turned off here
-        // to keep checking the same drawing. With it on, the drawing is checked after it: the tail right after the hit's body is cut, and
+        // This check is for the drawing with Steady Notes off (the default again since 0.6.1; 0.6.0 had it on, hence the explicit off). With it on, the drawing is checked after it: the tail right after the hit's body is cut, and
         // 0.3 s on the cut is over, as on a voice. (0.5.1 drew no Sustain at all with Steady Notes on.)
         setParam (*q, "steadyNotes", 0.0f);
         setParam (*q, "sustain", -12.0f);
@@ -2529,6 +2588,7 @@ int main()
     testOffStaysOff();
     testHeldAfterLoudStart();
     testSteadyDefault();
+    testSteadyNoPitch();
     testLeadPresets();
     testEnvelopeTap();
     testHitDisplayNumbers();

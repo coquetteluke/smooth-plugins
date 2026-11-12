@@ -137,7 +137,7 @@ PASS  Steady Notes, Sustain 9: first 15 ms of a quieter note after a louder one 
 INFO  Steady Notes off, Sustain 9: first 15 ms of a quieter note after a louder one = 1.097 dB
 PASS  Steady Notes, Sustain 6: a hiss after a note = 0.000 dB
 PASS  Steady Notes, Sustain 6: a dull sound of the same kind after the same note still gets its tail = 3.271 dB
-PASS  Steady Notes is on by default
+PASS  Steady Notes is off by default
 PASS  Steady Notes is off in all 14 presets that were there before 0.5.0 = 20.000 
 PASS  Steady Notes is on in every preset added after them = 6.000 
 PASS  turning it on shows the preset as edited
@@ -336,7 +336,7 @@ PASS  pitch sense, white noise: share of the time it finds a pitch = 0.000 %
 PASS  pitch sense, silence: no pitch = 0.000 
 PASS  Steady Notes, Sustain 9 on a sung line: largest change of the held note = 0.000 dB
 PASS  Steady Notes, Sustain 9 on a sung line: the 20 to 150 ms after the voice stops = 7.743 dB
-PASS  Steady Notes, Sustain 9 on a sung line: first 15 ms of the next, quieter note = 0.000 dB
+PASS  Steady Notes, Sustain 9 on a sung line: first 15 ms of the next, quieter note = 0.001 dB
 PASS  Steady Notes, Sustain 9 on a sung line: a breath a quarter of a second after the note = 0.000 dB
 PASS  Steady Notes, Sustain 9 on a sung line: the room and its hum on their own = 0.000 dB
 INFO    without Steady Notes, the same: held note = 7.388 dB
@@ -344,7 +344,7 @@ INFO    without Steady Notes, the same: after the voice stops = 9.000 dB
 INFO    without Steady Notes, the same: the breath = 9.000 dB
 PASS  Steady Notes, Sustain -9 on a sung line: largest change of the held note = 0.000 dB
 PASS  Steady Notes, Sustain -9 on a sung line: the 20 to 150 ms after the voice stops = -5.303 dB
-PASS  Steady Notes, Sustain -9 on a sung line: first 15 ms of the next, quieter note = 0.000 dB
+PASS  Steady Notes, Sustain -9 on a sung line: first 15 ms of the next, quieter note = -0.001 dB
 PASS  Steady Notes, Sustain -9 on a sung line: a breath a quarter of a second after the note = 0.000 dB
 PASS  Steady Notes, Sustain -9 on a sung line: the room and its hum on their own = 0.000 dB
 INFO    without Steady Notes, the same: held note = 7.388 dB
@@ -392,15 +392,23 @@ PASS  Steady Notes, Sustain 9 at 44100 Hz, a note that starts loud and settles 1
 PASS  Steady Notes, Sustain 9 at 44100 Hz, a note that starts loud and settles 10 dB lower: level of the settled note = 0.000 dB
 PASS  Steady Notes, Sustain 9 at 96000 Hz, a note that starts loud and settles 10 dB lower: largest change of the settled note, 10 ms at a time = 0.017 dB
 PASS  Steady Notes, Sustain 9 at 96000 Hz, a note that starts loud and settles 10 dB lower: level of the settled note = 0.000 dB
-PASS  a new instance has Steady Notes on
+PASS  a new instance has Steady Notes off
 PASS  a session saved before Steady Notes existed loads into a new instance with it off, and its other values
 PASS  the same session loaded into an instance that had it on: off
 PASS  a session saved with Steady Notes off loads with it off
 PASS  a session saved with Steady Notes on loads with it on
-PASS  a damaged Steady Notes value goes back to the default, on
+PASS  a damaged Steady Notes value goes back to the default, off
 PASS  the default's sound with Steady Notes on against off, speech_daniel.wav: samples that differ = 0.000 
 PASS  the default's sound with Steady Notes on against off, speech_samantha.wav: samples that differ = 0.000 
 PASS  the default's sound with Steady Notes on against off, sung line: samples that differ = 0.000 
+PASS  Steady Notes on, Sustain 9, noise bursts with no pitch: with Steady Notes off the tails move at least = 9.000 dB
+PASS  Steady Notes on, Sustain 9, noise bursts with no pitch: largest difference of a tail from Steady Notes off = 0.000 dB
+PASS  Steady Notes on, Sustain -9, noise bursts with no pitch: with Steady Notes off the tails move at least = 9.000 dB
+PASS  Steady Notes on, Sustain -9, noise bursts with no pitch: largest difference of a tail from Steady Notes off = 0.000 dB
+PASS  Steady Notes on, Sustain 9, noise bursts with no pitch 2 s and more after a sung note: with Steady Notes off the tails move at least = 9.000 dB
+PASS  Steady Notes on, Sustain 9, noise bursts with no pitch 2 s and more after a sung note: largest difference of a tail from Steady Notes off = 0.000 dB
+PASS  Steady Notes on, Sustain -9, noise bursts with no pitch 2 s and more after a sung note: with Steady Notes off the tails move at least = 9.000 dB
+PASS  Steady Notes on, Sustain -9, noise bursts with no pitch 2 s and more after a sung note: largest difference of a tail from Steady Notes off = 0.000 dB
 PASS  there are 20 presets: the 14 from before and six for a lead vocal = 20.000 
 PASS  the 14 older presets keep their numbers and names
 PASS  preset 14 is Lead Gentle, with its values and Steady Notes on
@@ -432,9 +440,9 @@ PASS  3 bursts make 3 hits
 PASS  Attack +9: the drawn start rises = 8.973 dB
 PASS  Attack +9: the drawn tail stays where it was = 0.000 dB
 PASS  Attack -9: the drawn start falls = -6.370 dB
-PASS  Sustain -9: the drawn tail falls = -7.591 dB
-PASS  Sustain -9: the drawn start stays where it was = 0.000 dB
-PASS  Sustain +9: the drawn tail rises = 7.788 dB
+PASS  Sustain -9: the drawn tail falls = -9.000 dB
+PASS  Sustain -9: the drawn start stays where it was = -0.039 dB
+PASS  Sustain +9: the drawn tail rises = 9.000 dB
 PASS  5 bursts at -30 dBFS make 5 hits, so level does not matter
 PASS  a steady tone is one hit, when it starts
 PASS  silence makes no hits

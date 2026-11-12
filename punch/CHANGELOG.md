@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1, 2026-11-12
+
+0.6.0's default change is undone: Steady Notes is off in a new instance again, as in 0.5.1. With it on, Sustain did nothing to drums or anything else without a pitch, so every new instance lost Sustain there, and the change fixed none of the real vocal check's failing lines, because the check turns Steady Notes off itself for those. A new instance also showed "Neutral, edited". The lead's call, 2026-11-12.
+
+- Kept from 0.6.0: a session saved before Steady Notes existed loads with it off; a session saved with it on (0.6.0 or earlier) loads with it on, and one saved with it off loads off. The window draws Sustain's tail with Steady Notes on.
+- Fixed: with Steady Notes on, Sustain did nothing to a sound with no pitch. Steady Notes is there to keep held notes still, not to switch Sustain off where there is no voice. Now, where there is no voice, Sustain is what it is with Steady Notes off: on a track with no pitch at all, such as drums, from the start, and after a voice once no note has been heard for 1 s, coming in fully by 1.5 s. Breaths and mouth sounds between phrases come well within that and are still left alone. On a train of noise bursts at Sustain +9 and -9 every tail now moves exactly as with Steady Notes off (0.000 dB apart; 0.6.0 left them 9.0 dB apart). Before the first note of a vocal take there has been no note either, so breaths and mouth sounds there get Sustain as with Steady Notes off: on the working set at Sustain +6, breaths at most 1.3 dB and mouth sounds at most 0.8 dB against the voice (limit 3).
+- With every other control at its default, the output is the same as 0.5.1's and 0.6.0's sample for sample.
+
+Tests: 458 pass, 0 fail (0.6.0 had 450). New: noise bursts with no pitch, from the start and 2 s after a sung note, at Sustain +9 and -9. The checks that 0.6.0 turned to "on by default" are back to off.
+
 ## 0.6.0, 2026-11-12
 
 Steady Notes is on in a new instance. Luke left this call to the lead on 2026-11-11.

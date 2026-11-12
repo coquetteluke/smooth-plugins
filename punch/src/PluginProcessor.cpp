@@ -62,8 +62,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
                                                        AudioParameterFloatAttributes().withLabel ("dBFS")));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "ceilingOn", 1 }, "Ceiling On", false));
     // Added in 0.4.0. Off leaves Sustain and Punch exactly as they were, so every older session and preset sounds the same.
-    // On in a new instance since 0.6.0. A session saved before 0.4.0 has no value for it and loads with it off (setStateInformation).
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "steadyNotes", 1 }, "Steady Notes", true));
+    // Off in a new instance. (0.6.0 had it on; 0.6.1 put it back, as with it on Sustain did nothing to drums.) A session saved before 0.4.0
+    // has no value for it and loads with it off (setStateInformation).
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "steadyNotes", 1 }, "Steady Notes", false));
     return layout;
 }
 
@@ -305,8 +306,8 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (windowHeightAttribute);
             xml->removeAttribute (advancedOpenAttribute);
-            // Steady Notes is on in a new instance since 0.6.0. A session saved before it existed (0.3.x and older) has no value for it,
-            // and must sound as it did when it was saved: with it off.
+            // A session saved before Steady Notes existed (0.3.x and older) has no value for it, and must sound as it did when it was
+            // saved: with it off, whatever the default. (Added in 0.6.0, when the default was on; kept since.)
             bool hasSteady = false;
             for (auto* e : xml->getChildWithTagNameIterator ("PARAM"))
                 hasSteady = hasSteady || e->getStringAttribute ("id") == "steadyNotes";

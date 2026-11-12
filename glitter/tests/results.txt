@@ -148,7 +148,7 @@ PASS  tuning accuracy at 96000 Hz, 95th percentile = 0.003 cents
 PASS  Key C, Scale Major: F#4 +20 goes to G4, offset = -0.001 cents
 PASS  Key D, Scale Major: F#4 +20 stays on F#4, offset = -0.003 cents
 INFO  speech_samantha.wav: median distance from a note, before 20.9 cents, after 5.3 cents
-INFO  speech_kathy.wav: median distance from a note, before 26.8 cents, after 1.6 cents
+INFO  speech_kathy.wav: median distance from a note, before 26.8 cents, after 1.5 cents
 INFO  speech_daniel.wav: median distance from a note, before 27.9 cents, after 9.6 cents
 INFO  speech_fred.wav: median distance from a note, before 23.7 cents, after 2.4 cents
 INFO  held_fred.wav: median distance from a note, before 23.1 cents, after 2.3 cents
@@ -203,10 +203,10 @@ PASS  the background thread picks up the file by itself within 0.7 s
 PASS  a large junk file changes nothing
 PASS  a folder at that path changes nothing
 PASS  a held note wins over a followed key, offset = 0.000 cents
-PASS  sweep, A2 to E5, five vowels, default settings: worst 95th percentile = 1.044 cents
-PASS  sweep: Pitch +7, -5 and +12, worst 95th percentile = 1.270 cents
-PASS  sweep: Harmony +7, the voice alone, worst 95th percentile = 1.241 cents
-PASS  sweep: held MIDI note, worst 95th percentile = 1.090 cents
+PASS  sweep, A2 to E5, five vowels, default settings: worst 95th percentile = 1.060 cents
+PASS  sweep: Pitch +7, -5 and +12, worst 95th percentile = 1.287 cents
+PASS  sweep: Harmony +7, the voice alone, worst 95th percentile = 1.233 cents
+PASS  sweep: held MIDI note, worst 95th percentile = 1.230 cents
 PASS  Pitch 1 octaves 0 semitones on A3, 95th percentile against the wanted note = 0.016 cents
 PASS  Pitch -1 octaves 0 semitones on A3, 95th percentile against the wanted note = 0.002 cents
 PASS  Pitch 0 octaves 5 semitones on A3, 95th percentile against the wanted note = 0.009 cents
@@ -218,15 +218,15 @@ PASS  Pitch off with Octave 2 stays on A3, offset = 1.732 cents
 PASS  A3 +30 cents, tuned and shifted up 3: on C4, 95th percentile = 0.006 cents
 PASS  level of a shifted voice, 130 to 330 Hz, +/-12 semitones, worst change = 0.044 dB
 INFO  formant scale, vowel a around 165 Hz, shift 5 semitones: 0.987
-INFO  formant scale, vowel a around 165 Hz, shift -5 semitones: 0.993
+INFO  formant scale, vowel a around 165 Hz, shift -5 semitones: 1.001
 INFO  formant scale, vowel a around 110 Hz, shift 12 semitones: 0.967
-INFO  formant scale, vowel a around 220 Hz, shift -12 semitones: 0.963
+INFO  formant scale, vowel a around 220 Hz, shift -12 semitones: 1.013
 INFO  formant scale, vowel e around 165 Hz, shift 5 semitones: 0.967
-INFO  formant scale, vowel e around 165 Hz, shift -5 semitones: 0.971
+INFO  formant scale, vowel e around 165 Hz, shift -5 semitones: 0.983
 INFO  formant scale, vowel e around 110 Hz, shift 12 semitones: 0.977
-INFO  formant scale, vowel e around 220 Hz, shift -12 semitones: 0.963
+INFO  formant scale, vowel e around 220 Hz, shift -12 semitones: 1.009
 PASS  formants held at +/-5 semitones, worst move = 3.275 %
-PASS  formants held at +/-1 octave, worst move = 3.661 %
+PASS  formants held at +/-1 octave, worst move = 3.275 %
 PASS  Pitch Moves Formants at +3 semitones, scale (1.19 would be exact) = 1.153 times
 PASS  Throat Length 130: formants move down, scale (0.77 would be exact) = 0.784 times
 PASS  Throat Length 75: formants move up, scale (1.33 would be exact) = 1.345 times
@@ -245,8 +245,8 @@ PASS  Harmony off: nothing at E4, against the lead = -159.781 dB
 PASS  Harmony -6 without In Key lands on D#3, offset = -0.500 cents
 PASS  Harmony In Key, +4 over A in A minor plays C, C over C# by = 63.335 dB
 PASS  Harmony In Key off, +4 plays C#, C# over C by = 61.596 dB
-PASS  Harmony Voices Two, Width 100: first voice left against right = 68.431 dB
-PASS    second voice right against left = 83.346 dB
+PASS  Harmony Voices Two, Width 100: first voice left against right = 68.259 dB
+PASS    second voice right against left = 83.316 dB
 PASS    second voice -4 lands on F3, offset = -0.500 cents
 PASS  With C4 held, Harmony +7 lands on G4, offset = 0.000 cents
 PASS  Doubler Detune 30: left double against +30 cents = -1.500 cents
@@ -431,10 +431,10 @@ INFO  preset Hard Tune: level 0.0 dB against plain, peak 0.21, latency 659
 PASS  preset Hard Tune: finite, level near the plain voice, not overloading, level change = 0.000 dB
 PASS    latency unchanged = 659.000 samples
 INFO  preset Robot Stack: level 4.5 dB against plain, peak 0.41, latency 659
-PASS  preset Robot Stack: finite, level near the plain voice, not overloading, level change = 4.480 dB
+PASS  preset Robot Stack: finite, level near the plain voice, not overloading, level change = 4.481 dB
 PASS    latency unchanged = 659.000 samples
 INFO  preset Octave Monster: level 2.2 dB against plain, peak 0.33, latency 659
-PASS  preset Octave Monster: finite, level near the plain voice, not overloading, level change = 2.214 dB
+PASS  preset Octave Monster: finite, level near the plain voice, not overloading, level change = 2.211 dB
 PASS    latency unchanged = 659.000 samples
 INFO  preset Chipmunk Hook: level 1.0 dB against plain, peak 0.27, latency 659
 PASS  preset Chipmunk Hook: finite, level near the plain voice, not overloading, level change = 1.046 dB
@@ -501,9 +501,9 @@ PASS  the smallest saved size lays out = 481.000
 PASS  Advanced saved open stays open
 PASS  window open and drawing against no window, must be exact zero, difference = -240.000 dB
 PASS  20 windows opened and closed with no audio
-PASS  40 windows opened, drawn and closed with audio running, blocks processed = 441.000 
-INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 2.082 %
-PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 3.629 %
+PASS  40 windows opened, drawn and closed with audio running, blocks processed = 368.000 
+INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 1.830 %
+PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 3.189 %
 PASS  Alto/Tenor, held notes under its range, 78 to 92 Hz, output pitch error at instant speed, worst 95th percentile = 0.004 cents
 INFO    worst case is at = 92.499 Hz
 PASS  Alto/Tenor, 87 Hz with vibrato +/-30 cents and breath, output pitch error at instant speed, 95th percentile = 1.328 cents
@@ -546,4 +546,16 @@ PASS    90th percentile = 30.000 ms
 INFO    the slowest, clean, 104 Hz, 35 cents off = 35.000 ms
 INFO    entries that slide up into the note as his do (18: 60, 105 and 250 cents under, over 100 to 200 ms), not judged: median = 20.000 ms
 INFO    the slowest = 50.000 ms
+INFO  formant frames, take 09 down 1 = 1503.000 
+PASS  Pitch -1 octave on Luke's take 09 (20 to 80 s): formant move, median = -1.500 %
+INFO  formant frames, take 09 up 1 = 1503.000 
+PASS  Pitch +1 octave on Luke's take 09 (20 to 80 s): formant move, median = -4.250 %
+INFO  formant frames, take 01 down 1 = 1216.000 
+PASS  Pitch -1 octave on Luke's take 01 (20 to 80 s): formant move, median = -1.250 %
+INFO  formant frames, take 01 up 1 = 1216.000 
+PASS  Pitch +1 octave on Luke's take 01 (20 to 80 s): formant move, median = -4.250 %
+PASS  tracker on a held 220 Hz voice whose every other period is weaker: readings an octave off, 1 ms each = 0.000 
+PASS  tracker on Luke's take 01 from 8.30 to 8.60 s (held notes at 200 to 215 Hz): readings an octave off, 1 ms each = 0.000 
+PASS  tracker on Luke's take 01 from 12.40 to 12.70 s (held notes at 200 to 215 Hz): readings an octave off, 1 ms each = 0.000 
+PASS  tracker on Luke's take 01 from 71.60 to 71.90 s (held notes at 200 to 215 Hz): readings an octave off, 1 ms each = 0.000 
 RESULT PASS  0 failures

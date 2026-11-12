@@ -2601,6 +2601,40 @@ void testUnvoiced()
 
 // A note that starts hard after silence, as a sung entry can. Looks for a short burst in the output's level against the input's.
 // A first model made from a window that is nearly all silence used to ring out at many times the voice's own level.
+// Added 2026-11-11 (third pass), before any change for it. Real take 06 at 5.58 s, High Quality: the output stood at -34 dBFS for 6 ms
+// while the dry take was at -62 to -73 dBFS, just before a sound began (a click by the shared rule, 3.4 times the voice's own steps).
+// High Quality decides voicing 10 ms ahead, so the voiced stretch began in the output before the voice began in the input, and what was
+// given out there was the corrected voice from the moment after. Here: silence, then a note that starts at once, sung 30 cents off so it
+// is corrected, on the note start test's vowels and pitches, Transpose 0 and 3. The output over the 10 ms before the input's onset, at the
+// reported delay, against the output's level on the held note. Limit -40 dB: the input there is silence, a perfect tuner gives silence,
+// and 40 dB under the note is under anything a listener would pick out right before a note.
+void testNothingBeforeOnset()
+{
+    double worst = -200.0;
+    std::string worstName;
+    for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelO })
+        for (double hz : { 110.0, 223.8, 330.0, 560.0 })
+            for (int shift : { 0, 3 })
+            {
+                std::vector<double> f0 ((size_t) (0.3 * SR), 0.0);
+                const auto note = voice::steady (hz * std::pow (2.0, 30.0 / 1200.0), 1.5, SR);
+                f0.insert (f0.end(), note.begin(), note.end());
+                auto x = voice::synth (f0, *v, SR);
+                for (size_t i = 0; i < (size_t) (0.3 * SR); ++i) x[i] = 0.0f;
+                auto p = make();
+                setParam (*p, "inputType", (float) wideRange);
+                setParam (*p, "retune", 0.0f);
+                setParam (*p, "transpose", (float) shift);
+                prepare (*p, 1, SR, 256);
+                const auto out = mono (render (*p, x, 256));
+                const long delay = p->getLatencySamples(), onset = (long) (0.3 * SR), before = (long) (0.010 * SR);
+                const double pre = toDb (rms (out.data() + delay + onset - before, (int) before) + 1.0e-12f);
+                const double held = toDb (rms (out.data() + delay + onset + (long) (0.5 * SR), (int) (0.5 * SR)) + 1.0e-12f);
+                if (pre - held > worst) { worst = pre - held; worstName = std::string (v->name) + " " + std::to_string ((int) hz) + " Hz, transpose " + std::to_string (shift); }
+            }
+    chk (worst <= prolimits::beforeOnsetDb, "nothing before a note starts: the 10 ms before the input's onset against the held note, worst (" + worstName + ")", worst, "dB");
+}
+
 void testNoteStart()
 {
     double worst = 0.0;
@@ -4417,6 +4451,7 @@ int main (int argc, char** argv)
         if (want ("unvoiced")) testUnvoiced();
         if (want ("artifacts")) testArtifacts();
         if (want ("start")) testNoteStart();
+        if (want ("onset")) testNothingBeforeOnset();
         if (want ("real")) testRealMaterial();
         if (want ("added")) testAddedControls();
         if (want ("meter")) testMeter();

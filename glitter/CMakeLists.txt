@@ -8,7 +8,7 @@ set(SP_NAME    "Glitter")
 set(SP_CODE    STfx)
 set(SP_BUNDLE  "com.lukegarito.smoothtunefx")
 set(SP_DESC    "Fast creative vocal tuner with effect modules")
-set(SP_VERSION 1.1.1)
+set(SP_VERSION 1.2.0)
 set(SP_AU_TYPE kAudioUnitType_MusicEffect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN TRUE)                   # TRUE for MusicEffect and MusicDevice

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0, 2026-11-12
+
+Fixes from Luke's real takes (Rode NT1, 17 songs, 2026-11-10). Luke left this call to the lead on 2026-11-11: the tuner, Vocoder, Distortion and two presets sound different where they were at fault. Every parameter, ID and range is as before, so saved sessions load.
+
+- The tuner has the fixes Tune Pro found on these takes, as Tune 1.2.0 has them (Glitter's tuner is the same copy of Smooth Tune). Alto/Tenor follows notes down to 70 Hz at the same latency: held notes at 78 to 92 Hz were left 35 cents off, now 0.004. The pitch control is in line with the audio it belongs to: it ran up to 13.5 ms early, now 0.22 ms. A voice that is not corrected comes out as the input at the reported delay (it was up to 5.6 dB off it, now exact). A note held on the line between two notes keeps its target through a waver: 62.6 cents of waver came out, now 0.19. Nothing sounds before a note starts (-20.6 dB to -137.5 dB). On the takes, at the song's key: the worst take's held notes 24.2 to 2.2 cents (take 02, low notes), notes left uncorrected 4 to 1.
+- Reverb switched on while playing (automation, or a click on its block) never decayed and built up 8.6 to 16.4 dB over the voice: clearing the tank wiped the loss that makes it decay. Now RT60 0.84 and 2.60 s for Decay 1 and 3 s.
+- Vocoder: a note after an S or a pause came in up to 7.8 dB over its own level, and the tone could come in about 13 dB over its own level when switched on. Two level matches now, one for voiced sound and one for consonants and the room, each starting at its first reading, and the tone fades in over 10 ms when switched on. Its steady sound is unchanged.
+- Distortion holds the level of the voice going in (slowly, 0.3 s): its make-up suited a -18 dBFS voice, and a quieter one came out up to 6.8 dB louder (Luke's takes at the default Drive: 3.5 dB). The curve, Drive and Tone are as before.
+- Phone Line and Octave Monster carry the old Distortion make-up in their Output Gain (10.8 and 1.9 dB), so they are as loud as before.
+- Suite numbers that moved, all within their limits: Retune 25 to 200 ms measures 28 to 203 ms (22 to 197), steady tones held off a correction read 1.73 cents (0.003) while the grains walk back to the reported delay.
+
 ## 1.1.1, 2026-11-07
 
 Renamed to Glitter, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.

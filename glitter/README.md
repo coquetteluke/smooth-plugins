@@ -4,7 +4,7 @@ A fast creative vocal tuner with effect modules. Hard tuning by default, held MI
 
 **Load it:** Audio Units > Luke Garito > Glitter. AU code `aumf STfx Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. To play it from MIDI, send a track's MIDI to it with the slot's side chain menu.
 
-Measured on synthetic voices, clean tones and macOS `say`, offline. That does not prove it sounds good on a real singer. Nobody has listened to it yet.
+Measured on synthetic voices, clean tones and macOS `say`, offline, and since 1.2.0 on Luke's real takes (see Real takes below).
 
 ## Signal flow
 
@@ -29,7 +29,7 @@ Every control is a real AU parameter that a host can find by name.
 | Key, Scale | Root and scale: Chromatic, Major, Minor, Harmonic Minor, Melodic Minor, Major Pentatonic, Minor Pentatonic, Blues, Dorian, Mixolydian, Custom. |
 | Retune Speed | Time constant of the correction, 0 to 400 ms. Default 0 reads Instant: hard tuning. |
 | Humanize | Slows correction on the sustained part of a note, so a vibrato survives while the start of the note stays quick. Default 0. |
-| Input Type | Voice range, which sets the latency: Soprano 150 Hz up, Alto/Tenor 98 Hz up, Low Male 65 to 600 Hz, Wide Range 65 Hz up. |
+| Input Type | Voice range, which sets the latency: Soprano 150 Hz up, Alto/Tenor 98 Hz up (and follows notes down to 70 Hz at the same latency), Low Male 65 to 600 Hz, Wide Range 65 Hz up. |
 | Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key, on a background thread. Missing, broken, stale, future dated or low confidence data is ignored: the last good key holds, and with none it uses Key and Scale. A Custom scale stays. |
 | MIDI Target | Off, As Played, Any Octave. As Played: the nearest held note in the octave it was played, however far away, so one held note sets the pitch. Any Octave: the nearest held pitch class. With no notes held, the scale rules. |
 | Reference A4 | 415 to 466 Hz. |
@@ -97,9 +97,15 @@ All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before
 - **Same output** with a playhead or none, at any block size, after `prepareToPlay` again, and after saving and loading state.
 - **CPU:** see the last lines of `tests/results.txt`. About 3% of one core with all on, about 2% with all off, on a machine busy with other builds.
 
-## One change from Smooth Tune
+## The tuner, and what it shares
 
-`src/PitchTracker.h` is Smooth Tune's, except that marks slide towards the loudest part of each period at 0.2% instead of 1%. That slide bends a shifted voice's pitch. Measured on the sweep above, the 1% gave 4.7 cents at default settings and 5.5 cents through Pitch, over the 5 cent limit. Smooth Harmony found this first.
+The tracker, corrector and grain shifter are the same copy of Smooth Tune that Tune and Tune Pro started from. Marks slide towards the loudest part of each period at 0.2% instead of 1% (that slide bends a shifted voice's pitch: the 1% gave 4.7 cents at default settings and 5.5 cents through Pitch, over the 5 cent limit; Smooth Harmony found this first), a grain's read speed stops growing past +3 semitones, and held MIDI notes can be the targets.
+
+Since 1.2.0 it has the fixes Tune Pro found on Luke's real takes, as Tune 1.2.0 has them: Alto/Tenor follows notes down to 70 Hz, the pitch control is read in line with the audio (1.80 periods back), an uncorrected voice comes out exactly as the input at the reported delay, a held note keeps its target through a waver across the line (and a slow slide lands within 110 ms), and grains do not read ahead for 10 ms after a pause. Tests: `PluginTest rode` (low, timing, hold, onset, entry). Glitter has no vocal tract model, so Tune Pro's own formant work does not apply here.
+
+## Real takes
+
+Luke's Rode NT1 takes (2026-11-10), checked with realvox (`_shared/realvox/src/extra/tune-fx.cpp`), the song's real key at A440. Numbers and what is still open are in `~/smooth-plugins/_vox/rode/work/tune-fx/REPORT.md`. What they changed in 1.2.0: the tuner fixes above, Reverb switched on while playing decays again, the Vocoder's level match no longer bursts after an S, a pause or a switch on, and Distortion holds the level of the voice going in (its make-up suited a -18 dBFS voice; quieter ones came out up to 6.8 dB louder).
 
 ## What the numbers do not say
 

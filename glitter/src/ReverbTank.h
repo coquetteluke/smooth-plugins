@@ -148,7 +148,9 @@ namespace smooth
         void clear() noexcept
         {
             if (! memory.empty()) std::memset (memory.data(), 0, memory.size() * sizeof (float));
-            for (auto& s : shelf) s = {};
+            // Only the filter state. The coefficients hold the loss that makes the tank decay; they are worked out again only when
+            // Size, Decay or Damping change, so wiping them here left a tank that never decayed after Reverb was switched on.
+            for (auto& s : shelf) s.z1 = s.z2 = 0.0f;
             writePos = 0u;
             inGain = outGain = 1.0f;
             inTarget = outTarget = 1.0f;

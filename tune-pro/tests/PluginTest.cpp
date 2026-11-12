@@ -2248,11 +2248,20 @@ void testTargetHold()
 // saved by 1.6.1 at its defaults, and every factory preset, must come out bit for bit as 1.6.1 gave them. tests/state-1.6.1.bin is the
 // state a fresh 1.6.1 instance saved, tests/state-1.6.1-ll.raw and -hq.raw are 1.6.1's output for it, and tests/state-1.6.1.txt holds a
 // hash of 1.6.1's output for each preset, in both engines; all written by the 1.6.1 build (TUNE_STATE_WRITE=1) before any default changed.
+// 1.6.1, 1.7.0, 1.7.1 and 1.7.2 all met those pins.
+//
+// Re-pinned for 1.8.0 (2026-11-12, the lead's call, Luke having left it to the lead): 1.8.0 fixes Low Latency's formants on women's
+// voices (held u at 221 and 252 Hz came out 8 to 10 dB low around its formants, the eleventh and twelfth held out sets), which changes
+// every corrected Low Latency voice over 130 Hz, and this test's voice is at 196 and 220 Hz. So the output pins are now 1.8.0's own
+// (tests/state-1.8.0.txt, tests/state-1.8.0-ll.raw and -hq.raw, written by the 1.8.0 build with TUNE_PIN_WRITE=1), with the same limits:
+// presets bit for bit, the session within 1e-6. The 1.6.1 pins that held up to 1.7.2 are kept beside them, unchanged, and still read:
+// how many presets 1.8.0 gives bit for bit as 1.7.2 did, and how far the session's output is from 1.7.2's. What a session carries is
+// not allowed to change at all: every parameter it stored must load as stored (new line, limit set before it was run).
 void testSavedBy161()
 {
     const auto folder = juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory();
-    const auto blobFile = folder.getChildFile ("state-1.6.1.bin"), hashFile = folder.getChildFile ("state-1.6.1.txt");
-    const bool writing = std::getenv ("TUNE_STATE_WRITE") != nullptr;
+    const auto blobFile = folder.getChildFile ("state-1.6.1.bin"), hashFile161 = folder.getChildFile ("state-1.6.1.txt"), hashFile = folder.getChildFile ("state-1.8.0.txt");
+    const bool writing = std::getenv ("TUNE_PIN_WRITE") != nullptr;
     const auto hashed = [] (const juce::AudioBuffer<float>& b)
     {
         unsigned long long h = 1469598103934665603ULL;
@@ -2272,25 +2281,42 @@ void testSavedBy161()
     const auto second = voice::steady (220.0 * std::pow (2.0, -28.0 / 1200.0), 1.0, SR);
     f0.insert (f0.end(), second.begin(), second.end());
     const auto x = voice::synth (f0, voice::vowelA, SR, -40.0);
-    std::map<std::string, std::string> stored, found;
+    std::map<std::string, std::string> stored, stored161, found;
+    const auto readHashes = [] (const juce::File& file, std::map<std::string, std::string>& into)
     {
-        std::ifstream in (hashFile.getFullPathName().toStdString());
+        std::ifstream in (file.getFullPathName().toStdString());
         std::string name, value;
-        while (in >> name >> value) stored[name] = value;
-    }
+        while (in >> name >> value) into[name] = value;
+    };
+    readHashes (hashFile, stored);
+    readHashes (hashFile161, stored161);
     const std::string tag = gEngine == 1 ? "hq_" : "ll_";
-    if (writing && gEngine == 0)
-    {
-        auto p = make();
-        juce::MemoryBlock block;
-        p->getStateInformation (block);
-        blobFile.replaceWithData (block.getData(), block.getSize());
-    }
     {
         juce::MemoryBlock block;
         blobFile.loadFileAsData (block);
         auto p = make();
         p->setStateInformation (block.getData(), (int) block.getSize());
+        // Every parameter the session stored loads as stored: largest difference as a share of the parameter's range, and how many
+        // of the session's parameters were found. The one known rounding (Retune Speed 19.9999981 stored, 20 loaded, see below) is
+        // 5e-9 of its range; the limit, 1e-6 of the range, was set before this line was first run.
+        if (gEngine == 0)
+        {
+            double worstShare = 0.0;
+            int seen = 0, missing = 0;
+            if (auto xml = juce::AudioProcessor::getXmlFromBinary (block.getData(), (int) block.getSize()))
+                for (auto* child : xml->getChildIterator())
+                {
+                    if (! child->hasAttribute ("id") || ! child->hasAttribute ("value")) continue;
+                    const auto id = child->getStringAttribute ("id");
+                    auto* value = p->apvts.getRawParameterValue (id);
+                    if (value == nullptr) { ++missing; continue; }
+                    const auto range = p->apvts.getParameterRange (id);
+                    worstShare = std::max (worstShare, std::abs ((double) value->load() - child->getDoubleAttribute ("value")) / std::max (1.0e-9, (double) (range.end - range.start)));
+                    ++seen;
+                }
+            chk (seen > 0 && missing == 0, "a session saved by 1.6.1: every parameter it stored is a parameter now, parameters found", (double) seen);
+            chk (worstShare <= 1.0e-6, "a session saved by 1.6.1: every parameter loads as stored, largest difference as a share of its range (x 1e6)", worstShare * 1.0e6, "");
+        }
         auto* e = p->apvts.getParameter ("engine");
         e->setValueNotifyingHost (e->convertTo0to1 ((float) gEngine));
         prepare (*p, 1, SR, 256);
@@ -2298,14 +2324,16 @@ void testSavedBy161()
         // parameter's own range), wrote that into the session, and on loading its own session left the value alone because nothing
         // had changed. A build whose default is another value sets the parameter from the session, and the same conversion then gives
         // 20 exactly. That last bit of the setting moves the output by 2.1e-7 at most (-134 dBFS; 1.6.1 set by hand to 20 and 30 against
-        // 1.6.1 loading its session). So this case is held against 1.6.1's own render, kept sample for sample in
-        // tests/state-1.6.1-<engine>.raw, to within 1e-6 (-120 dBFS); the limit was set with that one number known and before the
-        // new defaults were run against it. The presets are exact.
+        // 1.6.1 loading its own session). So this case is held against a render kept sample for sample, to within 1e-6 (-120 dBFS); the
+        // limit was set with that one number known and before the new defaults were run against it.
         const auto out = render (*p, x, 256);
-        const auto rawFile = folder.getChildFile (juce::String ("state-1.6.1-") + (gEngine == 1 ? "hq" : "ll") + ".raw");
-        if (writing)
-            rawFile.replaceWithData (out.getReadPointer (0), (size_t) out.getNumSamples() * sizeof (float));
-        else
+        const juce::String engineName = gEngine == 1 ? "hq" : "ll";
+        if (const char* rawFolder = std::getenv ("TUNE_STATE_RAW"))
+        {
+            std::ofstream raw (std::string (rawFolder) + "/" + tag + "session.raw", std::ios::binary);
+            raw.write ((const char*) out.getReadPointer (0), (std::streamsize) out.getNumSamples() * 4);
+        }
+        const auto largestAgainst = [&out] (const juce::File& rawFile)
         {
             juce::MemoryBlock was;
             rawFile.loadFileAsData (was);
@@ -2316,7 +2344,15 @@ void testSavedBy161()
                 const float* old = static_cast<const float*> (was.getData());
                 for (int i = 0; i < out.getNumSamples(); ++i) worst = std::max (worst, (double) std::abs (old[i] - out.getSample (0, i)));
             }
-            chk (worst <= 1.0e-6, "a session saved by 1.6.1 at its defaults: largest sample difference against 1.6.1's own output (x 1e6)", worst * 1.0e6, "");
+            return worst;
+        };
+        const auto rawFile = folder.getChildFile ("state-1.8.0-" + engineName + ".raw");
+        if (writing)
+            rawFile.replaceWithData (out.getReadPointer (0), (size_t) out.getNumSamples() * sizeof (float));
+        else
+        {
+            chk (largestAgainst (rawFile) <= 1.0e-6, "a session saved by 1.6.1 at its defaults: largest sample difference against the 1.8.0 pin (x 1e6)", largestAgainst (rawFile) * 1.0e6, "");
+            note ("  the same against 1.6.1's own output, which 1.6.1 to 1.7.2 met (x 1e6)", largestAgainst (folder.getChildFile ("state-1.6.1-" + engineName + ".raw")) * 1.0e6, "");
         }
     }
     {
@@ -2325,12 +2361,16 @@ void testSavedBy161()
         {
             auto p = make();
             p->setCurrentProgram (i);
-            auto* e = p->apvts.getParameter ("engine");
-            const float engineOfPreset = e->convertFrom0to1 (e->getValue());
-            (void) engineOfPreset;
             prepare (*p, 1, SR, 256);
             // A preset that names its own engine keeps it; the others run on the engine under test
-            found[tag + "preset_" + std::to_string (i)] = hashed (render (*p, x, 256));
+            const auto out = render (*p, x, 256);
+            found[tag + "preset_" + std::to_string (i)] = hashed (out);
+            // TUNE_STATE_RAW=folder also writes the samples, to read a largest sample difference against another build.
+            if (const char* rawFolder = std::getenv ("TUNE_STATE_RAW"))
+            {
+                std::ofstream raw (std::string (rawFolder) + "/" + tag + "preset_" + std::to_string (i) + ".raw", std::ios::binary);
+                raw.write ((const char*) out.getReadPointer (0), (std::streamsize) out.getNumSamples() * 4);
+            }
         }
     }
     if (writing)
@@ -2340,13 +2380,15 @@ void testSavedBy161()
         for (const auto& kv : stored) out << kv.first << " " << kv.second << "\n";
         return;
     }
-    int same = 0;
+    int same = 0, same161 = 0;
     for (const auto& kv : found)
     {
         if (stored.count (kv.first) && stored[kv.first] == kv.second) ++same;
-        else chk (false, "saved by 1.6.1, case " + kv.first + ": output differs from 1.6.1's");
+        else chk (false, "case " + kv.first + ": output differs from the 1.8.0 pin");
+        if (stored161.count (kv.first) && stored161[kv.first] == kv.second) ++same161;
     }
-    chk (same == (int) found.size() && ! found.empty(), "every factory preset comes out bit for bit as in 1.6.1, cases", (double) same);
+    chk (same == (int) found.size() && ! found.empty(), "every factory preset comes out bit for bit as pinned for 1.8.0, cases", (double) same);
+    note ("  of those, bit for bit as 1.6.1 to 1.7.2 gave them", (double) same161, "");
 }
 
 // ----------------------------------------------------------------------------------------------- Low Latency null test
@@ -2359,7 +2401,11 @@ std::vector<float> loadWav (const char* name);
 // TUNE_AS_160 defined, the same code passes against 1.6.0's own numbers (tests/ll_null-1.6.0.txt), all 24 cases. Before that it was 1.6.0,
 // which read the pitch control in line with the audio, made an uncorrected stretch an exact pass, kept a held target through a waver and
 // followed notes under Alto/Tenor's range; before that 1.4.0, which stopped the burst at note starts and made the level trim slower, and
-// before that 1.2.1. tests/ll_null.txt holds a hash of the 32 bit samples for each case, written by 1.6.1.
+// before that 1.2.1. tests/ll_null-1.6.1.txt holds a hash of the 32 bit samples for each case, written by 1.6.1; 1.6.1 to 1.7.2 met it.
+// Re-pinned for 1.8.0 (2026-11-12, the lead's call): 1.8.0 fixes Low Latency's formants on women's voices (the eleventh and twelfth held
+// out sets), which changes every corrected Low Latency voice over 130 Hz. tests/ll_null.txt now holds 1.8.0's hashes (TUNE_LL_WRITE=1);
+// the 1.6.1 file is kept unchanged beside it, and how many cases still match it is printed. Since 1.8.0 a TUNE_AS_160 build no longer
+// matches 1.6.0's numbers: the 1.8.0 change is not switched off by it.
 // TUNE_LL_RAW=folder also writes the samples, to read a largest sample difference against a saved copy of an older build.
 void testLowLatencyNull()
 {
@@ -2367,11 +2413,16 @@ void testLowLatencyNull()
     const std::string pinned = "1.6.0";
     const auto file = juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory().getChildFile ("ll_null-1.6.0.txt");
 #else
-    const std::string pinned = "1.6.1";
+    const std::string pinned = "1.8.0";
     const auto file = juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory().getChildFile ("ll_null.txt");
 #endif
     const bool writing = std::getenv ("TUNE_LL_WRITE") != nullptr;
-    std::map<std::string, std::string> stored;
+    std::map<std::string, std::string> stored, stored161;
+    {
+        std::ifstream in (juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory().getChildFile ("ll_null-1.6.1.txt").getFullPathName().toStdString());
+        std::string name, value;
+        while (in >> name >> value) stored161[name] = value;
+    }
     {
         std::ifstream in (file.getFullPathName().toStdString());
         std::string name, value;
@@ -2456,15 +2507,17 @@ void testLowLatencyNull()
         for (const auto& [name, value] : found) out << name << " " << value << "\n";
         return;
     }
-    int same = 0;
+    int same = 0, same161 = 0;
     for (const auto& [name, value] : found)
     {
         const bool ok = stored.count (name) > 0 && stored[name] == value;
         same += ok ? 1 : 0;
+        same161 += stored161.count (name) > 0 && stored161[name] == value ? 1 : 0;
         if (! ok)
             check (false, "[LL] null test against " + pinned + ", case " + name);
     }
     check (same == (int) found.size() && ! found.empty(), "[LL] null test against " + pinned + ": output, parameters and latency bit for bit the same, cases", (double) same);
+    info ("[LL]   of those, bit for bit as 1.6.1 to 1.7.2 gave them, cases", (double) same161, "");
 }
 
 // --------------------------------------------------------------------------------------------------------- vibrato

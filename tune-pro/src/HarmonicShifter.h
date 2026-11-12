@@ -103,6 +103,11 @@ public:
             {
                 double was;
                 if (levelDb[k] - noiseDb[k] < checkSnrDb || ! value (k, binOf (f0In), was, 1.0)) continue;
+                // And over the noise in what was stored too (this moment's noise standing for the noise then). A harmonic stored while it
+                // was in the noise reads 15 to 17 dB under where it is now, and that one harmonic alone made the spread over changeDb on
+                // steady test glides (eleventh held out set, u at 221 Hz: at each turn of the glide, at 308 and 179 Hz), so everything
+                // was forgotten two or three times a glide and the memory was used for 3% of the harmonics given out.
+                if (was - noiseDb[k] < checkSnrDb) continue;
                 const double d = levelDb[k] - was;
                 sum += d; sum2 += d * d; ++n;
             }
@@ -392,6 +397,7 @@ public:
         outImag.assign ((size_t) (maxPeriods * maxQ / 2), 0.0f);
         const int harmonics = maxPeriods * maxQ / 2 / maxPeriods + 2;
         levels.assign ((size_t) harmonics, -200.0);
+        groupLevels.assign ((size_t) harmonics, -200.0);
         noise.assign ((size_t) harmonics, -200.0);
         gains.assign ((size_t) harmonics + 8192, 0.0);
         smoothGains.assign (gains.size(), 0.0);
@@ -764,6 +770,13 @@ private:
         };
         for (int k = 1; k <= count; ++k)
             levels[(size_t) k] = 10.0 * std::log10 (power (k * maxPeriods) + 1.0e-30) - norm;
+        for (int k = 1; k <= count; ++k)
+        {
+            double sumPower = 0.0;
+            for (int d = -maxPeriods / 2; d < maxPeriods / 2; ++d)
+                if (k * maxPeriods + d > 0 && k * maxPeriods + d < length / 2) sumPower += power (k * maxPeriods + d);
+            groupLevels[(size_t) k] = 10.0 * std::log10 (sumPower / maxPeriods + 1.0e-30) - norm;
+        }
         // The noise between harmonics: a window over four periods puts no harmonic energy half way between two.
         for (int k = 1; k <= count; ++k)
         {
@@ -834,13 +847,18 @@ private:
                     // still line up where a harmonic hovers around the noise; only past the input's top are another harmonic's bins borrowed.
                     const double target = k * f0Out / scale;
                     const int nearest = std::clamp ((int) std::lround (target / f0In), 1, count);
-                    const double wantedDb = TractMemory::lines (levels.data(), count, f0In, target);
+                    // Levels here are each harmonic's own bins' mean power: a harmonic this weak is mostly noise, and its centre bin alone
+                    // swings by 10 dB or more from frame to frame. Scaled by the centre bin, all of the harmonic's bins were lifted whenever
+                    // that one bin dipped, and the breath between harmonics came out 3 to 6 dB louder than it went in (above 1.5 kHz on a
+                    // breathy u: twelfth held out set, Portuguese u at 252 Hz down 4, 4.8% against a real voice).
+                    const std::vector<double>& by = groupLevels;
+                    const double wantedDb = TractMemory::lines (by.data(), count, f0In, target);
                     if (k <= count)
-                        gainDb = std::min (wantedDb - levels[(size_t) k], weakBoostDb);
+                        gainDb = std::min (wantedDb - by[(size_t) k], weakBoostDb);
                     else
                     {
                         from = nearest;
-                        gainDb = wantedDb - levels[(size_t) from];
+                        gainDb = wantedDb - by[(size_t) from];
                     }
                 }
                 const float g = (float) std::pow (10.0, std::clamp (gainDb, -40.0, 24.0) / 20.0);
@@ -958,7 +976,7 @@ private:
     std::array<Frame, maxFrames> frames;
     std::vector<float> work, outReal, outImag, table;
     std::array<std::vector<float>, 2> real, imag;
-    std::vector<double> levels, noise, gains, smoothGains;
+    std::vector<double> levels, groupLevels, noise, gains, smoothGains;
     long long lastFrameTime = 0, segmentStart = 0;
     bool firstGain = true;
     static constexpr double gainSeconds = 0.008;

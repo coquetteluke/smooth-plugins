@@ -1,0 +1,17 @@
+FAIL  [HQ] eleventh held out set, French women's held vowels 174 to 221 Hz, worst formant move against a real voice at the new pitch = 4.428 %
+FAIL  [HQ]   worst formant move against the input = 7.529 %
+INFO  [HQ]   what a perfect shifter reads on that line: the real voice at the new pitch itself against the input, worst = 3.275 %
+INFO  [HQ]   and the tool's floor there = 3.524 %
+FAIL  [HQ]   formant move against the input, worst, against the floor plus 2% = 7.529 %
+PASS  [HQ]   level change, worst = 0.970 dB
+INFO  [HQ]   first formant against its surroundings, flatter than a real voice, worst = 6.194 dB
+INFO  [HQ]   colour, worst = 3.218 dB
+FAIL  [LL] eleventh held out set, French women's held vowels 174 to 221 Hz in Wide Range, worst formant move against a real voice at the new pitch = 12.121 %
+FAIL  [LL]   worst formant move against the input = 11.061 %
+INFO  [LL]   what a perfect shifter reads on that line: the real voice at the new pitch itself against the input, worst = 3.082 %
+INFO  [LL]   and the tool's floor there = 3.111 %
+FAIL  [LL]   formant move against the input, worst, against the floor plus 2% = 11.061 %
+PASS  [LL]   level change, worst = 1.142 dB
+INFO  [LL]   first formant against its surroundings, flatter than a real voice, worst = 9.427 dB
+INFO  [LL]   colour, worst = 2.901 dB
+RESULT FAIL  6 failures

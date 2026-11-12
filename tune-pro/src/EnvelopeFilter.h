@@ -29,7 +29,7 @@ public:
     {
         sr = sampleRate;
         channels = std::clamp (numChannels, 1, 2);
-        order = std::clamp ((int) std::lround (32.0 * sr / 48000.0), 16, 64);
+        order = baseOrder = sweepOrder = sweepOrderLow = std::clamp ((int) std::lround (32.0 * sr / 48000.0), 16, 64);
         hop = std::max (8, (int) std::lround (0.0025 * sr));
         ringSize = 1;
         while (ringSize < (int) (sr * 0.5)) ringSize *= 2;
@@ -80,8 +80,20 @@ public:
     // Model order, given for 48 kHz and scaled with the rate, at most cap. Call before configure(), which clears the filters. No allocation.
     void setOrder (double at48k, int cap) noexcept
     {
-        order = std::clamp ((int) std::lround (at48k * sr / 48000.0), 16, std::min (cap, maxOrder));
-        directOrder = std::clamp ((int) std::lround (directFitOrder * sr / 48000.0), 16, order);
+        baseOrder = std::clamp ((int) std::lround (at48k * sr / 48000.0), 16, std::min (cap, maxOrder));
+        directOrder = std::clamp ((int) std::lround (directFitOrder * sr / 48000.0), 16, baseOrder);
+        sweepOrder = sweepOrderAt48k > 0.0 ? std::clamp ((int) std::lround (sweepOrderAt48k * sr / 48000.0), 16, std::min (sweepOrderCap, maxOrder)) : baseOrder;
+        sweepOrderLow = sweepOrderLowAt48k > 0.0 ? std::clamp ((int) std::lround (sweepOrderLowAt48k * sr / 48000.0), 16, sweepOrder) : sweepOrder;
+        order = std::max (baseOrder, sweepOrder);
+    }
+    // The sweep memory's model: its order at 48 kHz (at most cap) and its sharpening, apart from the other models'. 0 and a negative
+    // sharpening leave both as the other models have them. Call before setOrder(). No allocation.
+    // Filters run at the larger of the two orders, with the other model's coefficients past its own order at 0, which leaves its output as it was.
+    // Optionally a lower order, lowOrderAt48k, up to lowHz, rising to the full order by highHz.
+    void setSweepModel (double orderAt48k, int cap, double sharpen, double lowOrderAt48k = 0.0, double lowHz = 0.0, double highHz = 0.0) noexcept
+    {
+        sweepOrderAt48k = orderAt48k; sweepOrderCap = cap; sweepSharpen = sharpen;
+        sweepOrderLowAt48k = lowOrderAt48k; sweepOrderLowHz = lowHz; sweepOrderHighHz = highHz;
     }
 
     void reset() noexcept
@@ -120,7 +132,8 @@ public:
     void setHarmonicModelFrom (double hz) noexcept { harmonicModelFromHz = hz; }
     // Below toHz, each harmonic's level is kept where it was heard for about this many seconds, and the model is drawn through all of
     // them. 0 is off.
-    void setSweepMemory (double seconds, double toHz) noexcept { sweepSeconds = seconds; sweepToHz = toHz; clearSweep(); forgetGlide(); }
+    // And from fromHz up only, if given.
+    void setSweepMemory (double seconds, double toHz, double fromHz = 0.0) noexcept { sweepSeconds = seconds; sweepToHz = toHz; sweepFromHz = fromHz; clearSweep(); forgetGlide(); }
     // How much the lowest formants are narrowed once harmonics have moved half a spacing or more. 0 is not at all.
     void setSharpen (double amount) noexcept { sharpenMax = amount; }
 
@@ -259,7 +272,7 @@ private:
             return;
         }
         const double f0Now = periodNow > 0.0 ? sr / periodNow : 0.0;
-        const bool sweepOn = sweepSeconds > 0.0 && f0Now > 0.0 && f0Now < sweepToHz;
+        const bool sweepOn = sweepSeconds > 0.0 && f0Now > 0.0 && f0Now < sweepToHz && f0Now >= sweepFromHz;
         if (! sweepOn) { clearSweep(); forgetGlide(); }
         const bool sweeping = sweepOn && envelopeThroughSweep();
         const bool throughHarmonics = sweeping || (f0Now > 0.0 && f0Now >= harmonicModelFromHz);
@@ -279,7 +292,9 @@ private:
         // Only the sweep memory's model gets the higher order, because only it sees points between the harmonics. A direct fit with more poles
         // locks on to single harmonics, measured as level jumps on speech, and a model drawn through one moment's harmonics on high notes moved
         // the formants further: 17.6% against 16.7% with the plain order.
-        const int fitted = sweeping ? order : std::min (order, directOrder);
+        const int sweptOrder = sweepOrderLow >= sweepOrder || sweepOrderHighHz <= sweepOrderLowHz ? sweepOrder
+            : sweepOrderLow + (int) std::lround ((sweepOrder - sweepOrderLow) * std::clamp ((f0Now - sweepOrderLowHz) / (sweepOrderHighHz - sweepOrderLowHz), 0.0, 1.0));
+        const int fitted = sweeping ? sweptOrder : std::min (baseOrder, directOrder);
         if (! levinson (r.data(), fitted, kA, a.data(), temp.data(), error))
         {
             std::fill (kA, kA + maxOrder, 0.0);
@@ -294,13 +309,14 @@ private:
             kA[m] = 0.0;
 
         // Nothing to reshape: the same filter comes back, so the voice passes exactly.
-        const bool sharpen = wantsSharpening();
+        const double sharpenAmount = sweeping && sweepSharpen >= 0.0 ? sweepSharpen : sharpenMax;
+        const bool sharpen = wantsSharpening (sharpenAmount);
         if ((std::abs (formantScale - 1.0) < 1.0e-4 && ! sharpen) || periodNow <= 0.0 || strength < 1.0)
         {
             std::copy (kA, kA + maxOrder, kS);
             return;
         }
-        reshape (kS, gain, sharpen);
+        reshape (kS, gain, sharpen ? sharpenAmount : 0.0, sweeping ? sweptOrder : baseOrder);
     }
 
     // On a high voice the harmonics are further apart than the formants are wide, so a direct fit locks on to single harmonics and leaves
@@ -501,15 +517,16 @@ private:
     {
         return std::abs (shiftRatio - 1.0) * hz * periodNow / sr;
     }
-    bool wantsSharpening() const noexcept
+    bool wantsSharpening (double amount) const noexcept
     {
-        return periodNow > 0.0 && sharpenMax > 0.0 && spacingsMoved (1000.0) > 0.002;
+        return periodNow > 0.0 && amount > 0.0 && spacingsMoved (1000.0) > 0.002;
     }
 
     // The same model reshaped on a grid of its power spectrum: peaks stretched against their surroundings, the frequency axis scaled, and
     // back to a stable filter.
-    void reshape (double* kS, double& gain, bool sharpen) noexcept
+    void reshape (double* kS, double& gain, double sharpenAmount, int shapedOrder) noexcept
     {
+        const bool sharpen = sharpenAmount > 0.0;
         const int stride = gridStride;
         for (int i = 0; i <= gridSize; ++i)
         {
@@ -542,7 +559,7 @@ private:
             {
                 const double hz = i * gridHz;
                 const double weight = hz <= sharpenFadeFromHz ? 1.0 : (hz >= sharpenFadeToHz ? 0.0 : (sharpenFadeToHz - hz) / (sharpenFadeToHz - sharpenFadeFromHz));
-                const double amount = sharpenMax * bigShiftTaper * std::min (1.0, spacingsMoved (hz) / sharpenFullAt);
+                const double amount = sharpenAmount * bigShiftTaper * std::min (1.0, spacingsMoved (hz) / sharpenFullAt);
                 logPower[(size_t) i] += weight * amount * (logPower[(size_t) i] - smoothed[(size_t) i]);
             }
         }
@@ -550,13 +567,13 @@ private:
         spectrumToAutocorrelation (1.0 / formantScale);
         r[0] *= 1.0 + 1.0e-5;
         double error = 0.0;
-        if (! levinson (r.data(), order, kS, warped.data(), temp.data(), error))
+        if (! levinson (r.data(), shapedOrder, kS, warped.data(), temp.data(), error))
         {
             std::fill (kS, kS + maxOrder, 0.0);
             gain = 1.0;
             return;
         }
-        for (int m = order; m < maxOrder; ++m)
+        for (int m = shapedOrder; m < maxOrder; ++m)
             kS[m] = 0.0;
         gain = std::sqrt (error);
     }
@@ -576,7 +593,9 @@ private:
     // The sweep memory: 5 Hz bins up to 2.5 kHz. Faster than sweepGlideMax semitones a second it is let go.
     static constexpr double sweepBinHz = 5.0, sweepTopHz = 2500.0, sweepMinWeight = 0.3, sweepGlideMax = 30.0;
     static constexpr int sweepBins = (int) (sweepTopHz / sweepBinHz), maxSweepHarmonics = 400;
-    double sweepSeconds = 0.0, sweepToHz = 0.0, lastSweepF0 = 0.0, sweepGlide = 0.0;
+    double sweepSeconds = 0.0, sweepToHz = 0.0, sweepFromHz = 0.0, lastSweepF0 = 0.0, sweepGlide = 0.0;
+    double sweepOrderAt48k = 0.0, sweepSharpen = -1.0, sweepOrderLowAt48k = 0.0, sweepOrderLowHz = 0.0, sweepOrderHighHz = 0.0;
+    int sweepOrderCap = maxOrder, baseOrder = 32, sweepOrder = 32, sweepOrderLow = 32;
     std::array<double, sweepBins> sweepNum {}, sweepDen {};
     std::array<double, maxSweepHarmonics> heardHz {}, heardLog {};
     bool sweepEmpty = false;

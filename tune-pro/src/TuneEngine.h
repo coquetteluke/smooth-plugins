@@ -45,6 +45,15 @@ public:
     static constexpr double highQualityLeadSeconds = 0.010;
     // Poles in each model of the vocal tract, at 48 kHz.
     static constexpr double lowLatencyOrder = 32.0, highQualityOrder = 48.0;
+    // Low Latency's sweep memory (1.8.0): each harmonic's level kept where it was heard for 0.4 s, from 130 Hz (where Low Latency's model
+    // was drawn through one moment's harmonics) to 400 Hz, as High Quality has had since 1.4.0. Drawn through one moment's harmonics, the
+    // model put each formant of a high voice on the harmonics nearest it, so a moved harmonic fell into the gaps: held u (F1 291, F2 779 Hz)
+    // at 221 Hz down 3 came out 8 to 10 dB low at 300 to 350 and 750 to 850 Hz (eleventh held out set 12.1%, twelfth 13.5%, limit 5).
+    // Its model has 48 poles from 160 Hz up, falling to 32 by 140 Hz, and no sharpening: the memory shows the peaks themselves. 48 all the
+    // way down put the pitch movement 1.03 ms early at 147 Hz (testTiming, limit 1); 32 up to 190 Hz left women's voices at 174 Hz 1.39 dB
+    // louder (limit 1.5). Measured on the eleventh and twelfth sets (both seen) and dev voices; the thirteenth set is the proof.
+    static constexpr double lowLatencySweepSeconds = 0.4, lowLatencySweepFromHz = 130.0, lowLatencySweepOrder = 48.0;
+    static constexpr double lowLatencySweepOrderFromHz = 140.0, lowLatencySweepOrderToHz = 160.0;
     // How much corrected voice the level trim averages over, by engine. Low Latency needs longer since 1.4.0 holds the shape through a note
     // start: at 0.6 its worst level change read 1.53 dB, at 2.0 it reads 1.45. In High Quality 1.4.0's grains moved high notes' formants past
     // their limit at 2.0. The harmonic shifter takes 1.0: the trim follows the voice's own rise and fall as harmonics cross a formant, which
@@ -92,6 +101,10 @@ public:
         lastVoicingLimit = -1.0f;
         // High Quality's sweep memory model has half as many poles again. With the memory showing it the peaks between the harmonics, the finer
         // model follows them closely, so less of the vocal tract is left in the grains to move with the pitch. Other models keep 32, see EnvelopeFilter.
+        if (mode == highQuality)
+            envelope.setSweepModel (0.0, EnvelopeFilter::maxOrder, -1.0);
+        else
+            envelope.setSweepModel (lowLatencySweepOrder, 64, 0.0, lowLatencyOrder, lowLatencySweepOrderFromHz, lowLatencySweepOrderToHz);
         envelope.setOrder (mode == highQuality ? highQualityOrder : lowLatencyOrder, mode == highQuality ? EnvelopeFilter::maxOrder : 64);
         if (mode == highQuality)
             envelope.configure (highQualityWindowSeconds, 0.5 * highQualityWindowSeconds, 0.5);
@@ -100,8 +113,9 @@ public:
         // Without lookahead the direct fit can lock on to a harmonic sitting on the first formant, and its level then swings when the harmonic moves away.
         envelope.setHarmonicModelFrom (mode == highQuality ? 300.0 : 130.0);
         // High Quality remembers the harmonics as the pitch moves, which shows the formant peaks far better, so it needs much less sharpening.
+        // Low Latency's sweep memory sharpens nothing: see lowLatencySweepSeconds. Its other models keep their sharpening.
         envelope.setSharpen (mode == highQuality ? 0.1 : 0.35);
-        envelope.setSweepMemory (mode == highQuality ? 0.2 : 0.0, 400.0);
+        envelope.setSweepMemory (mode == highQuality ? 0.2 : lowLatencySweepSeconds, 400.0, mode == highQuality ? 0.0 : lowLatencySweepFromHz);
         ahead = envelope.getLookahead();
         levelGain = 1.0;
         wetLevel = dryLevel = levelSeen = 0.0;
@@ -377,8 +391,11 @@ private:
                 // within 0.3 s. Fully trusted, the first 0.2 s of a glide, input loud and output rightly quiet, set the gain 8 dB up, and it
                 // stayed up through the next second, when the input went quiet (seventh held out set, Korean wi at 237 Hz up 4: 1.59 dB louder).
                 // So the correction in dB is scaled by how full the memory is.
-                if (mode == highQuality)
-                    wanted = std::pow (wanted, levelSeen / levelMemory);
+                // Low Latency the same since 1.8.0: with its sweep memory its output follows a real voice's rise and fall across a formant
+                // too, and the trim, fully trusted from its first 50 ms, chased it: +8 dB in the first second of a glide. Measured with an early
+                // setting of the memory on European Portuguese e at 211 Hz up 3 (twelfth held out set): 2.02 dB level change with the trim as
+                // it was, 0.13 dB with the trim off; limit 1.5.
+                wanted = std::pow (wanted, levelSeen / levelMemory);
             }
         }
         levelGain += (correcting ? levelFollow : levelRelease) * (wanted - levelGain);

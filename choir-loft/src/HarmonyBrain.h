@@ -145,10 +145,13 @@ class HumanVoice
 public:
     static constexpr double slowCents = 12.8, fastCents = 7.5, levelDb = 0.65, rateShare = 0.08, depthShare = 0.3;
     static constexpr double earlierMs = 3.0, laterMs = 7.0;   // 1.5.2: later was 11; a voice that far behind landed late on short notes
+    static constexpr double slowAboutSeconds = 0.1;   // 1.5.3: where the lead's slow movement on a note ends and its quick movement begins
     // At Human 100, how much of the lead's quick level movement a voice does not copy
     static double holdsLevel (int v) noexcept
     {
-        static constexpr double share[8] = { 0.7, 0.3, 0.55, 0.25, 0.6, 0.35, 0.5, 0.4 };
+        // 1.5.3: voice 2 from 0.3 to 0.6. Its level curve was still 0.71 alike the lead's on the working set and 0.79 on the first session's
+        // takes, where the goal for the two voices together is 0.65 or less (they read 0.59 and 0.68 in 1.5.2).
+        static constexpr double share[8] = { 0.7, 0.6, 0.55, 0.25, 0.6, 0.35, 0.5, 0.4 };
         return share[v];
     }
 
@@ -162,7 +165,7 @@ public:
     void reset() noexcept
     {
         random = 0xC2B2AE35u * (std::uint32_t) (voice + 1) + 0x27D4EB2Fu + seedOffset;
-        slow = slowMean = fast = fastMean = level = rate = depth = followed = leadMean = 0.0;
+        slow = slowMean = fast = fastMean = level = rate = depth = followed = leadMean = slowAbout = 0.0;
         lagDraw = 0.0;
         landed = 1.0;
         cents = 0.0;
@@ -183,6 +186,7 @@ public:
         noteAge = 0.0;
         if (fresh) trail = 0.0;
         leadMean = 0.0;
+        slowAbout = 0.0;
         // A note's first moments already carry Humanize's scoop and settle. The wander comes back in over the next tenth of a second, so
         // the two do not pile up and push a voice off its note as it lands.
         // 1.5.2: further out, and back over 150 ms. At Human 100 two held notes of the working set went wrong at their start for this:
@@ -198,7 +202,8 @@ public:
         // still moved together 0.32 where two passes of Luke move 0.12.
         // 1.5.2: a fifth less again, so the share the two voices have in common (0.27 to 0.31 over the runs of the working set, 0.30
         // allowed) sits clear of its limit, and a voice does not follow the lead under its note when the lead slides into one.
-        static constexpr double followGain[8] = { 0.052, 0.036, 0.044, 0.03, 0.04, 0.034, 0.048, 0.028 };
+        // 1.5.3: twice as much, now that each voice follows its own part of the lead (see below), so what it follows is not shared.
+        static constexpr double followGain[8] = { 0.104, 0.072, 0.088, 0.06, 0.08, 0.068, 0.096, 0.056 };
         // How far a voice falls behind over a held note (1.5.1), in ms at Human 100: singers do not let go of a note together. It grows
         // from 200 ms into the note, so a voice still comes in where it did and moves with the lead through short notes, and ends a
         // long one later by its own amount. Two passes of Luke end
@@ -221,7 +226,14 @@ public:
         // The lead's movement about where it has been sitting on this note, not how far off the note it is: a voice that copied a flat
         // lead would be flat too. Smoothed, since a singer follows what they hear and never its fastest part.
         leadMean += tick / 0.2 * (leadOffNote - leadMean);
-        followed += tick / followSeconds[voice] * ((leadOffNote - leadMean) - followed);
+        // 1.5.3: each voice follows its own part of that movement. Voice 1 (and every odd numbered one) the slow part, voice 2 (and every
+        // even numbered one) what is left, the quick part. Two singers both following the same movement of the lead move together: at
+        // Human 100 the two voices shared 0.27 to 0.34 of their movement over four runs of the working set with other random numbers
+        // (0.30 allowed). Split, each still follows the lead, and the two parts hardly overlap.
+        const double about = leadOffNote - leadMean;
+        slowAbout += tick / slowAboutSeconds * (about - slowAbout);
+        const double part = voice % 2 == 0 ? slowAbout : about - slowAbout;
+        followed += tick / followSeconds[voice] * (part - followed);
 
         cents = std::clamp (amount * (landed * (slowCents * (slow - slowMean) + fastCents * (fast - fastMean)) + 100.0 * followGain[voice] * followShare * followed), -35.0, 35.0);
         gain = std::pow (10.0, amount * levelDb * level / 20.0);
@@ -276,7 +288,7 @@ public:
 private:
     double slow = 0.0, slowMean = 0.0, fast = 0.0, fastMean = 0.0, level = 0.0, rate = 0.0, depth = 0.0, followed = 0.0, leadMean = 0.0;
     double lagDraw = 0.0, cents = 0.0, gain = 1.0, amountNow = 0.0, landed = 1.0, trail = 0.0, trailDraw = 0.0, noteAge = 0.0;
-    double endHoldDraw = 0.85, endFadeDraw = 0.75;
+    double endHoldDraw = 0.85, endFadeDraw = 0.75, slowAbout = 0.0;
 };
 
 class HarmonyBrain
@@ -330,6 +342,7 @@ public:
     void reset() noexcept
     {
         chord.clearAll();
+        split.fill (FollowSplit {});
         hasLead = false;
         silentFor = 1.0;
         startAge = 1.0e6;
@@ -442,7 +455,8 @@ public:
             bool wantsPitch = inCount && hasLead;
             bool on = inCount;
             static constexpr double copiesLess[8] = { 0.2, 0.5, 0.35, 0.7, 0.3, 0.6, 0.45, 0.8 };
-            const double follow = std::max (startFollow, std::clamp (s.followLead, 0.0, 1.0) * (1.0 - s.humanize * copiesLess[v]));
+            const double setFollow = std::clamp (s.followLead, 0.0, 1.0) * (1.0 - s.humanize * copiesLess[v]);
+            const double follow = std::max (startFollow, setFollow);
 
             switch (s.mode)
             {
@@ -501,6 +515,23 @@ public:
                     }
                     else out.note = -1;
                     break;
+            }
+
+            // 1.5.3, Human only: what Follow Lead copies of the lead's small movement about its note, Human splits between the voices the way
+            // its own follow is split: by its amount it takes the quick part out of voice 1 (and every odd numbered voice) and the slow part
+            // out of voice 2 (and every even numbered one). Copied whole by both, it moved the two voices together. Only movement within
+            // 18 cents of the note is split: a slide from one note to the next is copied whole by both, or a voice lags the lead through it
+            // and lands off its note (split whole, voice 1 sang off its note for 600 more 5 ms frames of the working set; within 25 cents,
+            // 270). While the lead rises out of a start the voices still bend with all of it. At Human 0 none of this runs.
+            if (s.human > 0.0 && s.mode != modeFixed && hasLead && follow > 0.0 && setFollow > 0.0)
+            {
+                auto& sp = split[(size_t) v];
+                const double offNow = fine / follow;
+                if (discrete != sp.note) { sp.mean = sp.slow = offNow; sp.note = discrete; }
+                sp.mean += tick / splitMeanSeconds * (offNow - sp.mean);
+                sp.slow += tick / HumanVoice::slowAboutSeconds * (offNow - sp.slow);
+                const double part = std::clamp (v % 2 == 0 ? offNow - sp.slow : sp.slow - sp.mean, -splitReach, splitReach);
+                fine -= setFollow * s.human * part;
             }
 
             auto& singer = singers[(size_t) v];
@@ -614,6 +645,9 @@ private:
     MidiChord chord;
     std::array<Singer, maxVoices> singers;
     std::array<HumanVoice, maxVoices> humans;
+    struct FollowSplit { double mean = 0.0, slow = 0.0; int note = -1000000; };
+    std::array<FollowSplit, maxVoices> split {};
+    static constexpr double splitMeanSeconds = 0.2, splitReach = 0.18;
     bool humanActive = false;
     std::array<Voice, maxVoices> voices {};
     std::array<double, maxVoices> remains {}, lastPitch {}, noteHeld {};

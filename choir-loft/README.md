@@ -4,7 +4,7 @@ Up to eight harmony voices from one lead vocal. Formants stay where they are, so
 
 **Load it:** Audio Units > Luke Garito > Choir Loft. AU code `aumf SHrm Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. With mono in, the voices still spread across the stereo field.
 
-Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2, 1.5.0 and 1.5.1 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
+Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2 and 1.5.0 to 1.5.3 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
 
 ## First settings to try
 
@@ -351,6 +351,22 @@ Inside a held note it is a steady gain (what it adds beside a plain turn down: -
 ### Not at zero
 
 With Humanize and Drift at 0 on the working set, five measures read above the better of 1.4.4 and 1.5.0, each inside its noise, none traced to the plug-in: wrong first notes at phrase starts 8 (6, 7), fry phrase starts 90th percentile 50 ms (44), breathy starts 46 ms (44), starts after a consonant 26 ms (24), breath leak 12.19% (12.12). The validation on the Rode blind set and the first session's takes is in `~/smooth-plugins/_vox/rode/work/harmony/REPORT.md`.
+
+## Human: what the two voices share (1.5.3)
+
+Fourth pass, Human only; Human at 0 renders Luke's working takes bit for bit as 1.5.2 at every setting measured. Run with other random numbers (`REALVOX_SEED`, the take untouched), 1.5.2's movement in common at Human 100 read 0.30, 0.30, 0.34 and 0.27 on the working set: it sat on its limit and fell on either side by chance. What the two voices shared was the lead's own movement, copied by both through Follow Lead and through Human's own follow. Now each voice follows its own part of it: voice 1 (and every odd numbered voice) the slow part, voice 2 (and every even numbered one) the quick part. Follow Lead's copy is split that way by Human's amount, only within 18 cents of the note, so a slide from one note to the next is still copied whole and the bend out of a start is untouched. Voice 2 also keeps more of its own level through the lead's quick swells (0.6 of it at Human 100, was 0.3).
+
+| Human 100 | 1.5.2 | 1.5.3 | goal |
+|---|---|---|---|
+| Movement in common, working set, four runs | 0.30, 0.30, 0.34, 0.27 | 0.27, 0.27, 0.29, 0.24 | 0.30 or less |
+| Movement in common, the first session's takes | 0.21 | 0.18 | 0.30 or less |
+| Level curve like the lead's, working set | 0.59 | 0.53 | 0.65 or less |
+| Level curve like the lead's, the first session's takes | 0.68 | 0.61 | 0.65 or less |
+| Pitch spread inside a note, working set | 10.35 | 10.47 | 10 or more |
+| Ends of the two voices apart, working set | 12 ms | 12 ms | 8 or more |
+| Level against the lead inside a note, spread | 0.95 dB | 1.02 dB | 1.21 at most |
+
+U1 to U8 and U9 hold at 35, 65 and 100 on the working set (1.5.2 missed U9 at 35 by one octave verdict). U9's octave and late verdicts move with chance: with other random numbers 1.5.2 fails one of its rules at Human 100 in one run of four (9 octave verdicts against 5), 1.5.3 in two (8 octave verdicts against 5, and time on the note from 98 to 130 Hz 95.64% against 95.66% allowed); with the plug-in's own random numbers both pass. On the first session's takes, Human 100 still has 7 late notes against 3 at Human 0, as 1.5.2: voice 2, standing further back, lands 85 to 90 ms into three notes.
 
 ## Latency
 

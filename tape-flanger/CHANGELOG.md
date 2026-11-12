@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.5, 2026-11-12
+
+A control moved while playing now lands exactly where it is set. Found on the second real vocal pass.
+
+- The glide behind Mix, the gains, Feedback, Invert Phase, Depth, Spread, Delay, Tone and the other smoothed controls works in 32 bit floats. Near its target a step became smaller than the last bit of the number and the value stopped short for good, about 0.01 % under a target near 1. Now, when a step no longer moves it, it lands on the target. Tone's shelf is worked out once more when it lands.
+- What it fixes, measured in the new tests: Invert Phase switched on while playing (Depth 0, Mix 50) left the dry 87.5 dB down where the README says it cancels by more than 160 dB; it now leaves it 167.6 dB down. Mix moved to 100, Output Gain, Input Gain, Feedback and Depth moved while playing landed 59 to 81 dB off the setting, Spread 51 dB; now -207 dB or identical samples. A factory preset picked while playing (as Logic does) sat 38 to 60 dB off the same preset set before the plug-in started, on 12 of 13 presets (Off Zero Double held Delay 0.0003 ms short); now -157 dB or better.
+- Luke left this call to the lead on 2026-11-11. The sound with nothing moving is the same: the default and the first seven presets still match 1.0.0 at -110 dB, and through the real AU the default and Manual Ride are bit identical to 1.2.4. A preset picked on a running plug-in, and automation, now reach the values they ask for; against 1.2.4 that differs by at most -45 dBFS peak (Off Zero Double at 96 kHz), `tests/null_results.txt`.
+- Saved sessions load as before. Latency, parameters and AU codes are unchanged.
+- Tests: 21 new lines (8 for controls moved while playing, 13 for presets picked while playing), 19 of them failed on 1.2.4. The Feedback step limit at Mix 50 is back to the 1.5 dB it was first written with on 10 of its 12 steps; the first step with the wet ahead of the dry stays at 0.3 dB (measured 0.58 and 0.45 dB), the reason is in the test. The other 386 lines print the same numbers as 1.2.4.
+
 ## 1.2.4, 2026-11-11
 
 Phase Flip Thin stays whole in mono. Luke said yes to this on 2026-11-11.

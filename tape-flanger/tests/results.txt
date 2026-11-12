@@ -396,4 +396,25 @@ INFO  never switched, largest sample above 8 kHz re the tone, left, 500 Hz at -1
 PASS  Bypass switching, biggest step against the steady signal's own, right, 500 Hz at -18 dBFS = 1.000 times
 PASS  Bypass switching, largest sample above 8 kHz re the tone, right, 500 Hz at -18 dBFS = -126.630 dB
 INFO  never switched, largest sample above 8 kHz re the tone, right, 500 Hz at -18 dBFS = -133.241 dB
+PASS  moved while playing, lands where it was set: mix 50.0 to 100.0 = -240.000 dB
+PASS  moved while playing, lands where it was set: invert 0.0 to 1.0, Depth 0, Mix 50, level left = -167.579 dB
+PASS  moved while playing, lands where it was set: outputgain 0.0 to 6.0 = -240.000 dB
+PASS  moved while playing, lands where it was set: inputgain 0.0 to -6.0 = -240.000 dB
+PASS  moved while playing, lands where it was set: feedback 0.0 to 60.0 = -240.000 dB
+PASS  moved while playing, lands where it was set: depth 2.5 to 1.0 = -240.000 dB
+PASS  moved while playing, lands where it was set: saturation 0.0 to 50.0 = -240.000 dB
+PASS  moved while playing, lands where it was set: spread 0.0 to 90.0 = -207.446 dB
+PASS  preset 'Slow Zero Crossing' picked while playing, against set before prepare = -240.000 dB
+PASS  preset 'Wide Vocal Sweep' picked while playing, against set before prepare = -180.685 dB
+PASS  preset 'Takeoff Roar' picked while playing, against set before prepare = -156.914 dB
+PASS  preset 'Hollow Inverted' picked while playing, against set before prepare = -164.754 dB
+PASS  preset 'One Bar Swirl' picked while playing, against set before prepare = -240.000 dB
+PASS  preset 'Dark Tape Haze' picked while playing, against set before prepare = -186.543 dB
+PASS  preset 'Quarter Note Wobble' picked while playing, against set before prepare = -240.000 dB
+PASS  preset 'Manual Ride' picked while playing, against set before prepare = -240.000 dB
+PASS  preset 'Triangle Jet' picked while playing, against set before prepare = -240.000 dB
+PASS  preset 'Off Zero Double' picked while playing, against set before prepare = -175.787 dB
+PASS  preset 'Wandering Tape' picked while playing, against set before prepare = -240.000 dB
+PASS  preset 'Square Flip' picked while playing, against set before prepare = -240.000 dB
+PASS  preset 'Phase Flip Thin' picked while playing, against set before prepare = -198.386 dB
 RESULT PASS  0 failures

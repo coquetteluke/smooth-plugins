@@ -112,12 +112,15 @@ Every number is from `tests/PluginTest.cpp` and saved in `tests/results.txt`. De
 - Rate: 0.25, 1 and 5 Hz measure 0.250, 1.000 and 4.998 Hz. Synced values within 0.1 %. No playhead gives 120 BPM.
 - Depth: sweep range within 4 % of twice Depth at 44.1, 48 and 96 kHz.
 - Feedback, Mix 100: peaks stand about 4, 9 and 21 dB above the median at 30, 60 and 90 %, both signs, both sides of zero. Peak positions within 3.8 % of the loop length.
+- Feedback, Mix 50: each 30 % step lifts the peaks 2.3 to 5.4 dB, both signs, except the first step with the wet ahead of the dry, 0.5 dB. Ahead of the dry the comb's lobes are broad, so the median rises with the peaks; the mirror of the late side would need echoes that run ahead of the wet.
 - Feedback bounds: at +95 and -95 %, with full scale noise or sine, peak is +3.4 dBFS or less, and the tail is under -80 dBFS within 3 s.
 - Saturation: THD at 1 kHz, -12 dBFS, 0.000, 0.525, 2.288, 5.773 and 11.772 % at 0, 25, 50, 75 and 100 %. Largest inharmonic product -77.8 dB on a 7.3 kHz sine.
 - Tone: 12 kHz moves -11.8, -5.9 and +11.8 dB at -12, -6 and +12. 200 Hz does not move.
 - Spread: 45, 90, 135 and 180 degrees measure within 0.01 degree.
 - Mix: matches a straight blend of dry and wet to -145 dB. Mix 0 is within 0.002 dB of the input and nulls 73 dB or more against it.
 - Same output with a playhead at 120 BPM or with none, at block size 64 or 1024, and after a second prepare.
+- Phase Flip Thin near the crossing: the inverted wet has cancelled almost all of the voice there, so the take's own sharp sounds (consonant edges, mouth ticks) stand out. On Luke's 11 working takes the 176 such spots the click rule flags (177 with the newer rule) are each the comb at that exact delay, sample for sample, not a click from crossing: residual -38 dB or lower against the comb stopped at that delay.
+- A control moved while playing lands exactly where it is set: a second later the output is what it is with the control there from the start, -207 dB or identical samples. Invert Phase switched on while playing at Depth 0, Mix 50 cancels by 167.6 dB. A preset picked while playing matches the same preset set before the plug-in started at -157 dB or better.
 
 Added in 1.1.0, limits set before the first run:
 

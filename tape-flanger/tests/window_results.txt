@@ -18,22 +18,22 @@ PASS  Typing words does nothing  42.000 %
 PASS  Typing Square on Shape  100.000 
 PASS  Typing 4k on High Cut  4000.000 
 PASS  Field reads the real deck position  2.000 ms
-PASS  Real sound in the field is lower at the predicted notches, worst  10.483 dB
-PASS  Real sound in the field is lower at the predicted notches, average  14.563 dB
+PASS  Real sound in the field is lower at the predicted notches, worst  10.484 dB
+PASS  Real sound in the field is lower at the predicted notches, average  14.568 dB
 PASS  Prediction has a notch at 750 Hz  -60.000 dB
 PASS  Prediction is level at 1 kHz  0.000 dB
-PASS  Picture against the real sound, rms error at Flange 3.0 Feedback 0  0.136 dB
-PASS  Both have notches at Flange 3.0 Feedback 0, real  -31.042 dB
+PASS  Picture against the real sound, rms error at Flange 3.0 Feedback 0  0.135 dB
+PASS  Both have notches at Flange 3.0 Feedback 0, real  -31.063 dB
 PASS  Picture against the real sound, rms error at Flange 3.0 Feedback 60  0.090 dB
-PASS  Both have notches at Flange 3.0 Feedback 60, real  -12.803 dB
-PASS  Picture against the real sound, rms error at Flange -3.0 Feedback 60  0.077 dB
-PASS  Both have notches at Flange -3.0 Feedback 60, real  -12.407 dB
+PASS  Both have notches at Flange 3.0 Feedback 60, real  -12.800 dB
+PASS  Picture against the real sound, rms error at Flange -3.0 Feedback 60  0.076 dB
+PASS  Both have notches at Flange -3.0 Feedback 60, real  -12.403 dB
 PASS  Picture against the real sound, rms error at Flange 1.5 Feedback -55  0.081 dB
-PASS  Both have notches at Flange 1.5 Feedback -55, real  -14.785 dB
-PASS  Picture against the real sound, rms error at Flange -1.5 Feedback -55  0.071 dB
+PASS  Both have notches at Flange 1.5 Feedback -55, real  -14.784 dB
+PASS  Picture against the real sound, rms error at Flange -1.5 Feedback -55  0.069 dB
 PASS  Both have notches at Flange -1.5 Feedback -55, real  -13.501 dB
-PASS  Picture against the real sound, rms error at Flange 2.0 Feedback 30 inverted  0.085 dB
-PASS  Both have notches at Flange 2.0 Feedback 30 inverted, real  -17.690 dB
+PASS  Picture against the real sound, rms error at Flange 2.0 Feedback 30 inverted  0.087 dB
+PASS  Both have notches at Flange 2.0 Feedback 30 inverted, real  -17.670 dB
 PASS  Crossing flash fires at each crossing, in 5 seconds  19.000 
 PASS  An open window changes no sample, samples different  0.000 
 PASS  An open window playing audio writes no parameters  0.000 

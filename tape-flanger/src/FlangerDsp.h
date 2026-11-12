@@ -139,12 +139,13 @@ namespace flanger
         }
     };
 
+    // One step of a one pole glide. Close to the target a step can be smaller than the last bit of a 32 bit float, and the value then
+    // stops short for good (about 0.01 % under a target near 1). When a step no longer moves it, it lands on the target.
     inline void smoothTo (float& value, float target, float coeff) noexcept
     {
         if (value == target)
             return;
-        value += coeff * (target - value);
-        if (std::abs (target - value) < 1.0e-6f)
-            value = target;
+        const float next = value + coeff * (target - value);
+        value = (next == value || std::abs (target - next) < 1.0e-6f) ? target : next;
     }
 }

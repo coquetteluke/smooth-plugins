@@ -442,7 +442,8 @@ void PluginProcessor::controlTick() noexcept
         highDone = highCutNow;
     }
 
-    if (std::abs (toneNow - toneDone) > 1.0e-4f)
+    // Recalculated every 0.0001 dB of the glide, and once more when it lands, so the shelf ends exactly where Tone is set
+    if (std::abs (toneNow - toneDone) > 1.0e-4f || (toneNow == toneTarget && toneDone != toneTarget))
     {
         shelf.set (osRate, kToneHz, (double) toneNow);
         toneDone = toneNow;

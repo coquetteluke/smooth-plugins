@@ -2037,6 +2037,254 @@ static void testCutGlide()
         }
 }
 
+
+// ---- Second real vocal pass, 0.5.0 (2026-11-11). Each test below was written and run on 0.4.0 before the change it holds. ----
+
+// Luke left this call to the lead on 2026-11-11: Clean is on in a new instance and in every factory preset. A session opens with the
+// Clean it was saved with, and a session saved before Clean existed (0.3.1 and older, which has no Clean in it at all) opens with Clean
+// off, so it sounds exactly as it did.
+static void testCleanDefault()
+{
+    const auto cleanOf = [] (PluginProcessor& p) { return p.apvts.getRawParameterValue ("clean")->load() > 0.5f; };
+    {
+        PluginProcessor p;
+        check (cleanOf (p), "Clean is on in a new instance");
+        check (p.apvts.getParameter ("clean")->getDefaultValue() == 1.0f, "Clean's default (what a double-click goes back to) is on");
+        int on = 0;
+        for (int i = 0; i < p.getNumPrograms(); ++i)
+        {
+            set (p, "clean", 0.0f);
+            p.setCurrentProgram (i);
+            if (cleanOf (p)) ++on;
+        }
+        check (on == p.getNumPrograms(), "every factory preset switches Clean on, presets out of " + std::to_string (p.getNumPrograms()), (double) on);
+    }
+    for (bool saved : { false, true })
+        for (bool before : { false, true })
+        {
+            PluginProcessor a;
+            set (a, "clean", saved ? 1.0f : 0.0f); set (a, "mix", 55.0f);
+            juce::MemoryBlock st;
+            a.getStateInformation (st);
+            PluginProcessor b;
+            set (b, "clean", before ? 1.0f : 0.0f);
+            b.setStateInformation (st.getData(), (int) st.getSize());
+            check (cleanOf (b) == saved, std::string ("a session saved with Clean ") + (saved ? "on" : "off") + " opens with Clean " + (saved ? "on" : "off")
+                                         + " (into an instance where it was " + (before ? "on" : "off") + ")");
+        }
+
+    // A 0.3.1 session: every control 0.3.1 had, and no Clean.
+    PluginProcessor source;
+    set (source, "mix", 55.0f); set (source, "feedback", 40.0f); set (source, "saturation", 60.0f); set (source, "wow", 50.0f);
+    juce::MemoryBlock st;
+    source.getStateInformation (st);
+    auto xml = source.getXmlFromBinary (st.getData(), (int) st.getSize());
+    if (xml == nullptr) { check (false, "state reads back as XML"); return; }
+    std::vector<juce::XmlElement*> drop;
+    for (auto* c : xml->getChildIterator())
+        if (c->getStringAttribute ("id") == "clean") drop.push_back (c);
+    for (auto* c : drop) xml->removeChildElement (c, true);
+    juce::MemoryBlock old;
+    source.copyXmlToBinary (*xml, old);
+    for (bool before : { true, false })
+    {
+        PluginProcessor b;
+        set (b, "clean", before ? 1.0f : 0.0f);
+        b.setStateInformation (old.getData(), (int) old.getSize());
+        check (! cleanOf (b), std::string ("a 0.3.1 session (no Clean in it) opens with Clean off (into an instance where it was ") + (before ? "on" : "off") + ")");
+    }
+    // ... and sounds as it did: sample for sample the same settings with Clean switched off by hand.
+    {
+        PluginProcessor b, c;
+        b.setStateInformation (old.getData(), (int) old.getSize());
+        set (c, "mix", 55.0f); set (c, "feedback", 40.0f); set (c, "saturation", 60.0f); set (c, "wow", 50.0f); set (c, "clean", 0.0f);
+        std::vector<float> in (96000);
+        noise (in.data(), 96000, 0.25, 5);
+        prepare (b, 2, 48000.0, 512);
+        prepare (c, 2, 48000.0, 512);
+        const auto ob = render (b, in, 512), oc = render (c, in, 512);
+        double most = 0;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 96000; ++i) most = std::max (most, (double) std::abs (ob.getSample (ch, i) - oc.getSample (ch, i)));
+        check (most == 0.0, "a 0.3.1 session renders exactly as the same settings with Clean off, largest difference", most);
+    }
+}
+
+// The tone twin's rule from the real vocal check (realvox, src/extra/tape-chorus.cpp): a sample stands out when its second difference
+// is over 6 times the 5th largest of its 30 ms block and over 2e-5, and points closer than 48 samples count once.
+static std::vector<int> twinStandsOut (const float* y, int n, int from)
+{
+    std::vector<int> found;
+    const int B = 1440;
+    int last = -100;
+    std::vector<double> d2 ((size_t) B), top ((size_t) B);
+    for (int a = std::max (2, from); a + B + 1 <= n; a += B)
+    {
+        for (int i = 0; i < B; ++i) d2[(size_t) i] = (double) y[a + i] - 2.0 * y[a + i - 1] + y[a + i - 2];
+        for (int i = 0; i < B; ++i) top[(size_t) i] = std::abs (d2[(size_t) i]);
+        std::nth_element (top.begin(), top.begin() + 4, top.end(), std::greater<double>());
+        const double ref = top[4];
+        for (int i = 0; i < B; ++i)
+        {
+            if (std::abs (d2[(size_t) i]) <= 6.0 * ref || std::abs (d2[(size_t) i]) <= 2.0e-5 || a + i - last <= 48) continue;
+            last = a + i;
+            found.push_back (a + i);
+        }
+    }
+    return found;
+}
+
+// Found by the blind set of the first real vocal pass: on one take the tone twin's control step went missing, in 0.4.0 and 0.3.1 alike.
+// Reproduced on a working take: it fell 6 samples after a corner the plug-in made on the twin's steady 100 Hz tone, 7.4 ms after a move,
+// where Mix (37.2 to 74.3 %) finished its glide. Mix glided in a straight line (its whole range in 20 ms) with a corner at each end: the
+// fault Bypass had, and lost in 0.4.0. Here the same move on the same tone, then three more, at the default settings.
+static void testMixGlide()
+{
+    const double sr = 48000.0;
+    struct Move { float from, to; };
+    const Move moves[] = { { 37.2f, 74.3f }, { 0.0f, 100.0f }, { 100.0f, 0.0f }, { 35.0f, 50.0f } };
+    for (const auto& m : moves)
+    {
+        PluginProcessor p;
+        set (p, "mix", m.from);
+        prepare (p, 2, sr, 128);
+        const int n = (int) (1.5 * sr), moveBlock = (int) (0.5 * sr / 128.0), at = moveBlock * 128;
+        std::vector<float> in ((size_t) n);
+        sine (in.data(), n, 100.0, sr, 0.25);
+        auto out = render (p, in, 128, nullptr, [&] (int idx) { if (idx == moveBlock) set (p, "mix", m.to); });
+        const float* y = out.getReadPointer (0);
+        const auto found = twinStandsOut (y, n, at - 1440);
+        const std::string what = "Mix moved from " + juce::String (m.from, 1).toStdString() + " to " + juce::String (m.to, 1).toStdString() + " under a steady 100 Hz tone";
+        check (found.empty(), what + ": samples the tone twin's rule picks out from the move on", (double) found.size());
+        // The twin's control: a step of 0.0065 put in where the glide ends (and 6 samples after any point the rule picked out) must be found.
+        std::vector<float> z (y, y + n);
+        const int glideEnd = at + (int) std::ceil (std::abs (m.to - m.from) * 0.01 / (1.0 / 30.0)) * 32;
+        std::vector<int> spots { glideEnd, glideEnd + 6 };
+        for (int f : found) spots.push_back (f + 6);
+        int hit = 0;
+        for (int s : spots)
+        {
+            std::vector<float> w (z);
+            for (int i = s; i < n; ++i) w[(size_t) i] += 0.0065f;
+            const auto f2 = twinStandsOut (w.data(), n, at - 1440);
+            for (int f : f2) if (std::abs (f - s) <= 2) { ++hit; break; }
+        }
+        check (hit == (int) spots.size(), what + ": steps of 0.0065 put in after the glide that the rule misses", (double) ((int) spots.size() - hit));
+    }
+
+    // What a move adds above 8 kHz on a steady 1 kHz tone, as for Bypass: Mix between 20 and 80 % four times a second.
+    for (double rate : { 44100.0, 48000.0, 96000.0 })
+    {
+        const auto above8k = [&] (bool moving)
+        {
+            PluginProcessor p;
+            set (p, "saturation", 0.0f); set (p, "wow", 0.0f); set (p, "flutter", 0.0f);
+            prepare (p, 2, rate, 128);
+            const int n = (int) (4.0 * rate), every = (int) (rate / 128.0 / 4.0);
+            std::vector<float> in ((size_t) n);
+            sine (in.data(), n, 1000.0, rate, 0.25);
+            auto out = render (p, in, 128, nullptr, [&] (int idx) { if (moving && idx % every == 0) set (p, "mix", (idx / every) % 2 == 1 ? 80.0f : 20.0f); });
+            juce::IIRFilter hp[6];
+            for (auto& f : hp) f.setCoefficients (juce::IIRCoefficients::makeHighPass (rate, 8000.0));
+            double most = 0;
+            for (int i = 0; i < n; ++i)
+            {
+                float v = out.getSample (0, i);
+                for (auto& f : hp) v = f.processSingleSampleRaw (v);
+                if (i > n / 8) most = std::max (most, (double) std::abs (v));
+            }
+            return toDb (most / 0.25);
+        };
+        const double quiet = above8k (false), moved = above8k (true);
+        check (moved < std::max (-90.0, quiet + 3.0), "Mix moved 4 times a second under a 1 kHz tone at " + std::to_string ((int) rate) + " Hz: loudest moment above 8 kHz, below the tone (never moved: "
+                                                       + juce::String (quiet, 1).toStdString() + " dB)", moved, "dB");
+    }
+}
+
+// Luke left this call to the lead on 2026-11-11: near the top of Feedback the level comes down, so the peaks of a voice stay within 3 dB
+// of the dry at Feedback 90 (0.4.0 read 3.2 to 3.8 dB on three of Luke's takes). About 1 dB at 90, scaled smoothly from 70 up, and
+// nothing changes below 70. A voice is low and harmonic, and the loop passes lows more fully than highs (white noise at Feedback 90 was
+// already 1.9 dB under Feedback 0 in 0.4.0 while darker noise was 0.4 dB over it), so the cut is on what the loop keeps: the band under
+// about 1 kHz.
+static void testFeedbackTop()
+{
+    const double sr = 48000.0;
+    // A voice-like tone: a pulse train through two poles (most of its energy under 1 kHz), on a tooth of the 15 ms comb.
+    const auto voiceLike = [&] (double f0, int n)
+    {
+        std::vector<float> x ((size_t) n);
+        double ph = 0, a = 0, b = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            ph += f0 / sr;
+            const double pulse = ph >= 1.0 ? 1.0 : 0.0;
+            if (ph >= 1.0) ph -= 1.0;
+            a += 0.08 * (pulse * 6.0 - a);
+            b += 0.08 * (a - b);
+            x[(size_t) i] = (float) b;
+        }
+        double mean = 0;
+        for (auto v : x) mean += v;
+        mean /= n;
+        double most = 0;
+        for (auto& v : x) { v = (float) (v - mean); most = std::max (most, (double) std::abs (v)); }
+        for (auto& v : x) v = (float) (v * 0.4 / most);
+        return x;
+    };
+    double worst = -100;
+    for (double f0 : { 133.333, 200.0, 266.667 })
+    {
+        const int n = (int) (4.0 * sr);
+        const auto in = voiceLike (f0, n);
+        PluginProcessor p;
+        set (p, "feedback", 90.0f);
+        prepare (p, 2, sr, 512);
+        const auto out = render (p, in, 512);
+        const double dryPeak = peak (in.data() + n / 2, n / 2);
+        const double wetPeak = std::max (peak (out.getReadPointer (0) + n / 2, n / 2), peak (out.getReadPointer (1) + n / 2, n / 2));
+        worst = std::max (worst, toDb (wetPeak / dryPeak));
+    }
+    check (worst <= 3.0, "Feedback 90 at the default, a voice-like tone on a tooth of the comb (133, 200, 267 Hz): peak over the dry's peak, worst", worst, "dB");
+
+    // Nothing below 70 moves: one still voice, wet only, dark noise, Clean off; each render's checksum (every sample, to the last bit)
+    // was taken on 0.4.0 and is written here. Then the level at Feedback 90 against 0.4.0's.
+    const auto darkRender = [&] (float amount, double* levelDb)
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "depth", 1.5f); set (p, "rate", 0.7f); set (p, "feedback", amount); set (p, "clean", 0.0f);
+        prepare (p, 2, sr, 512);
+        std::vector<float> in (240000);
+        noise (in.data(), 240000, 0.5, 9);
+        double z = 0;
+        for (auto& x : in) { z += 0.12 * ((double) x - z); x = (float) z; }
+        auto out = render (p, in, 512);
+        if (levelDb != nullptr) *levelDb = rmsDb (out, 0, 96000);
+        juce::uint64 h = 14695981039346656037ull;
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            const auto* bytes = (const juce::uint8*) out.getReadPointer (ch);
+            for (size_t i = 0; i < (size_t) out.getNumSamples() * sizeof (float); ++i) h = (h ^ bytes[i]) * 1099511628211ull;
+        }
+        return juce::String::toHexString ((juce::int64) h);
+    };
+    if (std::getenv ("TAPE_CHORUS_PRINT_HASHES") != nullptr)
+        for (float amount : { 0.0f, 30.0f, 60.0f, 69.9f, 70.0f, 90.0f })
+        {
+            double l = 0;
+            const auto h = darkRender (amount, &l);
+            std::printf ("hash at Feedback %.1f: %s, level %.4f dB\n", amount, h.toRawUTF8(), l);
+        }
+    const std::pair<float, const char*> was[] = { { 0.0f, "92c9c584c643cf25" }, { 30.0f, "22f18e7ad7df4aa5" }, { 60.0f, "e61f8f0c44f6cd8d" }, { 69.9f, "173b4a222754d019" }, { 70.0f, "4344599ad9408c9" } };
+    for (const auto& [amount, hash] : was)
+        check (darkRender (amount, nullptr) == hash, "Feedback " + juce::String (amount, 1).toStdString() + ", Clean off: the render is 0.4.0's to the last bit (checksum " + hash + ")");
+    double l0 = 0, l90 = 0;
+    darkRender (0.0f, &l0);
+    darkRender (90.0f, &l90);
+    const double was90 = 0.4167;   // 0.4.0, this signal: Feedback 90 against Feedback 0
+    check ((l90 - l0) - was90 < -0.7 && (l90 - l0) - was90 > -1.3, "Feedback 90, dark noise: level against 0.4.0's, about 1 dB down", (l90 - l0) - was90, "dB");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -2049,35 +2297,42 @@ int main()
     // is hiss at -40 dBFS with steps of its own.
     opt.clickLimit = 0.012;
     opt.clickLimitFor = { { "inputGain", 0.1 }, { "outputGain", 0.1 }, { "noise", 0.03 } };
-    runGenericChecks ([] { return std::make_unique<PluginProcessor>(); }, opt);
-    testVoices();
-    testRateDepth();
-    testDelay();
-    testWowFlutter();
-    testSaturation();
-    testTone();
-    testSpread();
-    testMix();
-    testMonoToStereo();
-    testRepeatable();
-    testPresets();
-    testDamagedState();
-    testSameAsBefore();
-    testVoiceRoom();
-    testFeedback();
-    testGains();
-    testCuts();
-    testWowFlutterRates();
-    testRandom();
-    testDegrade();
-    testNoise();
-    testReadings();
-    testAllOn();
-    testOldSession();
-    testDelayToTheSample();
-    testArrival();
-    testClean();
-    testBypassTick();
-    testCutGlide();
+    // TAPE_CHORUS_ONLY=testMixGlide,testCleanDefault runs only those (and "generic" for the shared checks), to iterate on one fault.
+    const char* only = std::getenv ("TAPE_CHORUS_ONLY");
+    const auto wanted = [only] (const char* name) { return only == nullptr || juce::StringArray::fromTokens (only, ",", "").contains (name); };
+    if (wanted ("generic"))
+        runGenericChecks ([] { return std::make_unique<PluginProcessor>(); }, opt);
+    if (wanted ("testVoices")) testVoices();
+    if (wanted ("testRateDepth")) testRateDepth();
+    if (wanted ("testDelay")) testDelay();
+    if (wanted ("testWowFlutter")) testWowFlutter();
+    if (wanted ("testSaturation")) testSaturation();
+    if (wanted ("testTone")) testTone();
+    if (wanted ("testSpread")) testSpread();
+    if (wanted ("testMix")) testMix();
+    if (wanted ("testMonoToStereo")) testMonoToStereo();
+    if (wanted ("testRepeatable")) testRepeatable();
+    if (wanted ("testPresets")) testPresets();
+    if (wanted ("testDamagedState")) testDamagedState();
+    if (wanted ("testSameAsBefore")) testSameAsBefore();
+    if (wanted ("testVoiceRoom")) testVoiceRoom();
+    if (wanted ("testFeedback")) testFeedback();
+    if (wanted ("testGains")) testGains();
+    if (wanted ("testCuts")) testCuts();
+    if (wanted ("testWowFlutterRates")) testWowFlutterRates();
+    if (wanted ("testRandom")) testRandom();
+    if (wanted ("testDegrade")) testDegrade();
+    if (wanted ("testNoise")) testNoise();
+    if (wanted ("testReadings")) testReadings();
+    if (wanted ("testAllOn")) testAllOn();
+    if (wanted ("testOldSession")) testOldSession();
+    if (wanted ("testDelayToTheSample")) testDelayToTheSample();
+    if (wanted ("testArrival")) testArrival();
+    if (wanted ("testClean")) testClean();
+    if (wanted ("testBypassTick")) testBypassTick();
+    if (wanted ("testCutGlide")) testCutGlide();
+    if (wanted ("testCleanDefault")) testCleanDefault();
+    if (wanted ("testMixGlide")) testMixGlide();
+    if (wanted ("testFeedbackTop")) testFeedbackTop();
     return finish();
 }

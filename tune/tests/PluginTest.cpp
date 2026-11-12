@@ -2065,6 +2065,34 @@ void testNothingBeforeOnset()
     check (worst <= rodelimits::beforeOnsetDb, "nothing before a note starts: the 10 ms before the input's onset against the held note, worst (" + worstName + ")", worst, "dB");
 }
 
+// Natural Vibrato on what is left after correction (real takes, Robot Flat preset on the song key: held notes 90th percentile 15 to
+// 18 cents against Hard Tune's 3 to 4, and 10% of sliding frames turned round). Written before the change. Robot Flat's own settings
+// (Retune 0, Humanize 0, Flex 0, Natural Vibrato -100) on a +/-40 cent vibrato must leave no more vibrato than Hard Tune's limit, and a
+// slide must not come out moving the other way.
+void testRobotFlat()
+{
+    {
+        auto p = make(); setParam (*p, "retune", 0.0f); setParam (*p, "humanize", 0.0f); setParam (*p, "flex", 0.0f); setParam (*p, "naturalVibrato", -100.0f);
+        const double kept = vibratoKept (*p);
+        check (kept <= limits::vibratoFlatHard, "Robot Flat's settings flatten vibrato, kept", kept * 100.0, "%");
+    }
+    {
+        // A slow rise of 2 semitones over 1 s in C Chromatic: the output steps up note by note and must never step down.
+        auto p = make(); setParam (*p, "retune", 0.0f); setParam (*p, "humanize", 0.0f); setParam (*p, "flex", 0.0f); setParam (*p, "naturalVibrato", -100.0f);
+        prepare (*p, 1, SR, 256);
+        std::vector<double> f0;
+        for (size_t i = 0; i < (size_t) (2.0 * SR); ++i) { const double t = (double) i / SR; f0.push_back (196.0 * std::pow (2.0, (t < 0.5 ? 0.0 : t > 1.5 ? 2.0 : 2.0 * (t - 0.5)) / 12.0)); }
+        const auto x = voice::synth (f0, voice::vowelA, SR);
+        const auto out = mono (render (*p, x, 256));
+        const double delay = p->getLatencySamples() / SR, hop = 0.005;
+        const auto trace = pitchTrace (out.data(), (long) out.size(), SR, 208.0, 0.4 + delay, 1.6 + delay, hop, 0.2);
+        double down = 0.0;
+        for (size_t i = 2; i < trace.size(); ++i)
+            if (trace[i] > 0.0 && trace[i - 2] > 0.0) down = std::max (down, -cents (trace[i], trace[i - 2]));
+        check (down <= 10.0, "Robot Flat's settings on a slow rise of 2 semitones: the most the output falls in 10 ms", down, "cents");
+    }
+}
+
 // Entries into a note (Tune Pro's testEntries), judged by the real vocal check's start lag rule for Tune: time from the first voiced
 // sample until the output stays within 10 cents of the note for 15 ms, at Retune 0 and at the default. Luke's real entries mostly slide up
 // into the note (Tune Pro measured them: 70 cents under where they settle at 50 ms, 35 at 100 ms); those are given here, not judged.
@@ -2216,5 +2244,6 @@ int main (int argc, char** argv)
     if (want ("hold") || only == "rode") testTargetHold();
     if (want ("onset") || only == "rode") testNothingBeforeOnset();
     if (want ("entry") || only == "rode") testEntries();
+    if (want ("robot") || only == "rode") testRobotFlat();
     return finish();
 }

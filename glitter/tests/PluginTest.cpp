@@ -2752,6 +2752,157 @@ void testTargetHold()
     }
 }
 
+// ------------------------------------------------------------------------------------------------------------- formants on real takes
+
+// Formants of Luke's real voice across a shift of one octave down and up (2026-11-12, the real vocal check's pitch_down1 read -6.5% on every
+// working take, limit 4.43%; up 1 read -4.25%). Measured as that check measures it (realvox src/extra/tune-fx.cpp formantMoves): held notes
+// of the input's reference track, every fourth 5 ms frame from 20 ms in, a 2048 point cepstral envelope of input and output there, liftered
+// at 0.6 of the higher period, and the scale on frequency from 0.80 to 1.25 that lines the two up from 250 Hz to 4 kHz. The median over the
+// frames, signed, against limits::realFormantMove. The takes are read where they are (~/smooth-plugins/_vox/rode, never copied) and the test
+// is skipped without them. Written before the change: 1.2.3 reads the octave down over the limit on both takes.
+struct CepstralEnvelope
+{
+    static constexpr int order = 11, N = 1 << order;
+    juce::dsp::FFT fft { order };
+    std::vector<double> cosTab, win;
+    std::vector<float> buf;
+    CepstralEnvelope() : cosTab (N), win (N), buf (2 * N)
+    {
+        for (int i = 0; i < N; ++i) { cosTab[(size_t) i] = std::cos (2.0 * juce::MathConstants<double>::pi * i / N); win[(size_t) i] = 0.5 - 0.5 * std::cos (2.0 * juce::MathConstants<double>::pi * (i + 0.5) / N); }
+    }
+    bool envelope (const std::vector<float>& x, long centre, int qc, int maxBin, std::vector<double>& env)
+    {
+        const long a = centre - N / 2;
+        if (a < 0 || a + N > (long) x.size()) return false;
+        std::fill (buf.begin(), buf.end(), 0.0f);
+        for (int i = 0; i < N; ++i) buf[(size_t) i] = (float) (x[(size_t) (a + i)] * win[(size_t) i]);
+        fft.performFrequencyOnlyForwardTransform (buf.data());
+        std::vector<double> L (N / 2 + 1);
+        double e = 0.0;
+        for (int k = 0; k <= N / 2; ++k) { const double p = (double) buf[(size_t) k] * buf[(size_t) k]; L[(size_t) k] = 10.0 * std::log10 (p + 1.0e-14); e += p; }
+        if (e < 1.0e-10) return false;
+        std::vector<double> c ((size_t) qc);
+        for (int q = 0; q < qc; ++q)
+        {
+            double sum = L[0] + ((q & 1) ? -L[N / 2] : L[N / 2]);
+            for (int k = 1; k < N / 2; ++k) sum += 2.0 * L[(size_t) k] * cosTab[(size_t) (((long) k * q) % N)];
+            c[(size_t) q] = sum / N;
+        }
+        env.assign ((size_t) maxBin + 2, 0.0);
+        for (int k = 0; k <= maxBin + 1; ++k)
+        {
+            double sum = c[0];
+            for (int q = 1; q < qc; ++q) sum += 2.0 * c[(size_t) q] * cosTab[(size_t) (((long) k * q) % N)];
+            env[(size_t) k] = sum;
+        }
+        return true;
+    }
+    static double warp (const std::vector<double>& eo, const std::vector<double>& ed)
+    {
+        const double binHz = SR / N;
+        const int k0 = (int) std::ceil (250.0 / binHz), k1 = (int) std::floor (4000.0 / binHz);
+        double bestErr = 1.0e30, bestK = 1.0;
+        for (double k = 0.80; k <= 1.2501; k += 0.0025)
+        {
+            double sd = 0.0, sdd = 0.0; int n = 0;
+            for (int b = k0; b <= k1; ++b)
+            {
+                const double src = b / k;
+                const int i = (int) src;
+                if (i + 1 >= (int) ed.size()) break;
+                const double d = eo[(size_t) b] - (ed[(size_t) i] + (src - i) * (ed[(size_t) i + 1] - ed[(size_t) i]));
+                sd += d; sdd += d * d; ++n;
+            }
+            if (n < 10) continue;
+            const double err = sdd / n - (sd / n) * (sd / n);
+            if (err < bestErr) { bestErr = err; bestK = k; }
+        }
+        return bestK - 1.0;
+    }
+};
+
+std::vector<float> lukeTake (const char* prefix, double fromSec, double seconds)
+{
+    const auto found = juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("smooth-plugins/_vox/rode")
+                           .findChildFiles (juce::File::findFiles, false, juce::String (prefix) + "-*.wav");
+    if (found.isEmpty()) return {};
+    juce::AudioFormatManager fm; fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (found[0]));
+    if (r == nullptr) return {};
+    const auto from = (juce::int64) (fromSec * SR);
+    juce::AudioBuffer<float> b (1, (int) std::min<juce::int64> (r->lengthInSamples - from, (juce::int64) (seconds * SR)));
+    r->read (&b, 0, b.getNumSamples(), from, true, false);
+    return left (b);
+}
+
+// Held notes of a reference track as the real vocal check finds them: 5 frame medians, within 0.6 semitones of the running median, 150 ms or more.
+std::vector<std::pair<int, int>> heldNotesOf (const std::vector<double>& track)
+{
+    const int n = (int) track.size();
+    std::vector<double> s ((size_t) n, std::nan ("")), sm ((size_t) n, std::nan (""));
+    for (int f = 0; f < n; ++f) if (track[(size_t) f] > 0.0) s[(size_t) f] = 69.0 + 12.0 * std::log2 (track[(size_t) f] / 440.0);
+    for (int f = 2; f + 2 < n; ++f)
+    {
+        std::vector<double> w;
+        for (int k = -2; k <= 2; ++k) if (std::isfinite (s[(size_t) (f + k)])) w.push_back (s[(size_t) (f + k)]);
+        if (w.size() == 5) sm[(size_t) f] = median (w);
+    }
+    std::vector<std::pair<int, int>> notes;
+    for (int i = 0; i < n;)
+    {
+        if (! std::isfinite (sm[(size_t) i])) { ++i; continue; }
+        std::vector<double> vals { sm[(size_t) i] };
+        double med = vals[0];
+        int j = i;
+        while (j + 1 < n && std::isfinite (sm[(size_t) (j + 1)]) && std::abs (sm[(size_t) (j + 1)] - med) < 0.6)
+        {
+            ++j;
+            vals.push_back (sm[(size_t) j]);
+            if (vals.size() % 4 == 0) med = median (vals);
+        }
+        if ((j - i + 1) * 0.005 >= 0.150) notes.push_back ({ i, j });
+        i = j + 1;
+    }
+    return notes;
+}
+
+void testRealFormants()
+{
+    struct T { const char* take; double from, seconds; };
+    const T takes[] = { { "09", 20.0, 60.0 }, { "01", 20.0, 60.0 } };
+    CepstralEnvelope E;
+    const int maxBin = (int) (4000.0 / (SR / CepstralEnvelope::N)) + 2;
+    for (const auto& tk : takes)
+    {
+        const auto x = lukeTake (tk.take, tk.from, tk.seconds);
+        if (x.empty()) { info (std::string ("formants on Luke's take ") + tk.take + ": take not found, skipped", 0.0); continue; }
+        const auto track = referenceTrack (x, SR);
+        const auto notes = heldNotesOf (track);
+        for (int octave : { -1, 1 })
+        {
+            auto p = with ({ { "pitchOn", 1 }, { "pitchOctave", (float) octave } });
+            const auto out = left (render (*p, x, 256));
+            const long lat = p->getLatencySamples();
+            const double ratio = std::pow (2.0, octave);
+            std::vector<double> moves, eo, ed;
+            for (const auto& nt : notes)
+                for (int f = nt.first + 4; f <= nt.second - 4; f += 4)
+                {
+                    const double dHz = track[(size_t) f];
+                    if (dHz <= 0.0) continue;
+                    const long s = (long) std::lround (referenceTime (f, SR) * SR);
+                    const int qc = std::max (8, (int) (0.6 * SR / std::max (dHz, dHz * ratio)));
+                    if (! E.envelope (x, s, qc, maxBin, ed) || ! E.envelope (out, s + lat, qc, maxBin, eo)) continue;
+                    moves.push_back (100.0 * CepstralEnvelope::warp (eo, ed));
+                }
+            const double m = moves.empty() ? 100.0 : median (moves);
+            info (std::string ("formant frames, take ") + tk.take + (octave < 0 ? " down 1" : " up 1"), (double) moves.size());
+            check (std::abs (m) <= limits::realFormantMove, std::string ("Pitch ") + (octave < 0 ? "-1" : "+1") + " octave on Luke's take " + tk.take
+                   + " (" + juce::String (tk.from, 0).toStdString() + " to " + juce::String (tk.from + tk.seconds, 0).toStdString() + " s): formant move, median", m, "%");
+        }
+    }
+}
+
 // Nothing comes out before a note starts out of silence (Tune Pro, real take 06 at 5.58 s)
 void testNothingBeforeOnset()
 {
@@ -2946,5 +3097,6 @@ int main (int argc, char** argv)
     if (want ("hold") || only == "rode") testTargetHold();
     if (want ("onset") || only == "rode") testNothingBeforeOnset();
     if (want ("entry") || only == "rode") testEntries();
+    if (want ("formant") || only == "rode") testRealFormants();
     return finish();
 }

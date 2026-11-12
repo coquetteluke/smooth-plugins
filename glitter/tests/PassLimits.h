@@ -27,6 +27,7 @@ namespace limits
     constexpr double pitchCents = 5.0;              // Octave and Semitones, output against the wanted pitch, 95th percentile
     constexpr double pitchFormantSmallMove = 0.08;  // formants held at +/-5 semitones
     constexpr double pitchFormantOctaveMove = 0.15; // formants held at +/-12 semitones
+    constexpr double realFormantMove = 4.43;        // percent, Pitch +/-1 octave on Luke's real takes, measured as the real vocal check does (its limit). Added 2026-11-12
     constexpr double pitchLevelDb = 3.0;            // level of a shifted voice against the same voice unshifted, +/-12 semitones. Added after Harmony read +2.4 dB at +7, before shifts were measured
     constexpr double formantToolFraction = 0.05;    // Throat Length and Pitch Moves Formants, against the exact scale
     constexpr double harmonyCents = 5.0;            // harmony voice against the wanted pitch

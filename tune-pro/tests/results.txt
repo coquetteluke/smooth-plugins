@@ -284,11 +284,11 @@ PASS  [LL] hard and natural presets are both there, presets = 12.000
 PASS  [LL] preset Hard Tune flattens vibrato, kept = 3.812 %
 PASS  [LL] preset Natural Pop keeps more vibrato, kept = 98.307 %
 PASS  [LL] presets leave Key, Scale and Input Type alone
-PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 4.718 %
-INFO  [LL]   the quickest whole render = 5.680 %
-INFO  [LL]   the slowest whole render = 6.532 %
-INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 6.204 %
-INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 13.025 %
+PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 3.784 %
+INFO  [LL]   the quickest whole render = 3.883 %
+INFO  [LL]   the slowest whole render = 4.424 %
+INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.987 %
+INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 9.719 %
 PASS  [LL] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.788 cents
 PASS  [LL] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.334 cents
 PASS  [LL] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.079 cents
@@ -378,6 +378,7 @@ PASS  [LL] a note on the line with vibrato +/-20 cents: size of the 5.5 Hz waver
 PASS  [LL]   and how far the output sits from the nearer of the two notes, median = 1.485 cents
 PASS  [LL] a step up a semitone landing 25 cents flat, at once: time until the output is within 15 cents of the new note = 10.000 ms
 PASS  [LL] a step up a semitone landing 25 cents flat, as a glide over 60 ms: time until the output is within 15 cents of the new note = 0.000 ms
+PASS  [LL] a held note sliding onto the next one at 13 cents per 100 ms: time from the line until the output is within 15 cents of the new note = 132.000 ms
 PASS  [HQ] Soprano at 44100 Hz: delay measured on noise against reported 2384 = 2384.000 samples
 PASS  [HQ] Alto/Tenor at 44100 Hz: delay measured on noise against reported 2591 = 2591.000 samples
 PASS  [HQ] Low Male at 44100 Hz: delay measured on noise against reported 2895 = 2895.000 samples
@@ -450,7 +451,7 @@ PASS  [HQ] Natural Vibrato -100 takes vibrato down, left = 19.719 %
 PASS  [HQ] Natural Vibrato +100 takes vibrato up, now = 191.978 %
 PASS  [HQ] hard tune step between two notes a tone apart, 10% to 90% = 5.500 ms
 PASS  [HQ] after the step the new note is on pitch, 95th percentile = 0.559 cents
-PASS  [HQ] a slow glide comes out as steps, frames within 10 cents of a note = 98.827 %
+PASS  [HQ] a slow glide comes out as steps, frames within 10 cents of a note = 99.413 %
 PASS  [HQ] Flex Tune 50: a note 30 cents sharp is left where it was sung, output offset = 30.002 cents
 PASS  [HQ] Flex Tune 50: a note 80 cents sharp is brought to the edge, output offset = 49.997 cents
 PASS  [HQ] Flex Tune 0: the same note is corrected fully, output offset = 0.001 cents
@@ -543,11 +544,11 @@ PASS  [HQ] hard and natural presets are both there, presets = 12.000
 PASS  [HQ] preset Hard Tune flattens vibrato, kept = 1.143 %
 PASS  [HQ] preset Natural Pop keeps more vibrato, kept = 97.712 %
 PASS  [HQ] presets leave Key, Scale and Input Type alone
-PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 6.405 %
-INFO  [HQ]   the quickest whole render = 7.162 %
-INFO  [HQ]   the slowest whole render = 9.596 %
-INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 4.651 %
-INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 8.745 %
+PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 5.815 %
+INFO  [HQ]   the quickest whole render = 6.032 %
+INFO  [HQ]   the slowest whole render = 7.276 %
+INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 3.679 %
+INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 6.874 %
 PASS  [HQ] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.040 cents
 PASS  [HQ] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.010 cents
 PASS  [HQ] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.010 cents
@@ -622,6 +623,7 @@ PASS  [HQ] a note on the line with vibrato +/-20 cents: size of the 5.5 Hz waver
 PASS  [HQ]   and how far the output sits from the nearer of the two notes, median = 1.336 cents
 PASS  [HQ] a step up a semitone landing 25 cents flat, at once: time until the output is within 15 cents of the new note = 10.000 ms
 PASS  [HQ] a step up a semitone landing 25 cents flat, as a glide over 60 ms: time until the output is within 15 cents of the new note = 0.000 ms
+PASS  [HQ] a held note sliding onto the next one at 13 cents per 100 ms: time from the line until the output is within 15 cents of the new note = 132.000 ms
 INFO  High Quality against Low Latency at 48 kHz, input type 0, Low Latency = 9.021 ms
 INFO  High Quality against Low Latency at 48 kHz, input type 0, High Quality = 54.021 ms
 INFO  High Quality against Low Latency at 48 kHz, input type 1, Low Latency = 13.729 ms
@@ -835,7 +837,7 @@ PASS  the keyboard's target reads A3 = 57.000
 PASS  the pitch window's newest point: input A3 +30 cents, corrected A3 = 57.000 
 PASS  the reading strip: Active Key C Chromatic  |  In 223.8 Hz  |  Out 220.0 Hz  |  Target A3  |  Correction -30 cents
 PASS  the window paints
-PASS  audio keeps running while the window repaints, blocks = 65.000 
+PASS  audio keeps running while the window repaints, blocks = 66.000 
 PASS  every control in the window is found by its parameter ID
 PASS  Flex Tune is a slider in the window
 PASS  automation moves the window's slider = 42.000 
@@ -859,6 +861,6 @@ PASS  it paints at the smallest, largest and in between sizes
 PASS  with no audio arriving the display asks for no frames
 PASS  null test, window open against no window, largest sample difference = 0.000 
 PASS  25 opens and closes with no audio
-PASS  25 opens and closes with audio running, blocks = 449.000 
+PASS  25 opens and closes with audio running, blocks = 422.000 
 PASS  closing the window leaves audio running
 RESULT PASS  0 failures

@@ -1338,6 +1338,40 @@ void testDistortion()
                 }
         check (std::abs (worst) <= voxlimits::distortionLevelDb, "Distortion on a voice keeps its level within a few dB (+/-3, the real vocal check), Drive 0 to 50, every Type, peaks -6 to -30 dBFS, worst (" + worstName + ")", worst, "dB");
     }
+    // Switched on mid-note (2026-11-12, 1.2.0 on Luke's takes: one take's step in the 30 ms after the switch was 1.53 times the biggest
+    // step in the half second either side, against the real vocal check's 1.5; the level hold started from no correction at all). Written
+    // before the change: the switching claim (limits::switchStepRatio) on that rule, and the level in each 10 ms of the first 300 ms within
+    // voxlimits::distortionLevelDb of the same voice with Distortion on all along, Drive 30 and 60, every Type, peaks -6 and -30 dBFS.
+    {
+        double worstStep = 0.0, worstLevel = 0.0;
+        std::string stepAt, levelAt;
+        for (double peakDb : { -6.0, -30.0 })
+            for (float drive : { 30.0f, 60.0f })
+                for (int type : { 0, 1, 2 })
+                {
+                    auto v = voice::synth (voice::vibrato (196.0, 3.0, SR, 30.0, 5.5), voice::vowelA, SR, -40.0);
+                    const double pk = peak (v.data(), (int) v.size());
+                    for (auto& s : v) s = (float) (s / pk * std::pow (10.0, peakDb / 20.0));
+                    auto p = with ({ { "distOn", 0 }, { "distDrive", drive }, { "distType", (float) type } });
+                    const int onBlock = (int) (1.2 * SR / 256), t1 = onBlock * 256, w = (int) (0.03 * SR), half = (int) (0.5 * SR);
+                    const auto out = left (render (*p, v, 256, nullptr, [&p, onBlock] (int idx) { if (idx == onBlock) setParam (*p, "distOn", 1.0f); }));
+                    const double around = std::max (maxJump (out.data() + t1 - half, half), maxJump (out.data() + t1 + w, half));
+                    const double r = maxJump (out.data() + t1, w) / std::max (around, 1.0e-9);
+                    auto q = with ({ { "distOn", 1 }, { "distDrive", drive }, { "distType", (float) type } });
+                    const auto ref = left (render (*q, v, 256));
+                    double lv = 0.0;
+                    for (int f = 2; f < 30; ++f)
+                    {
+                        const double d = toDb (rms (out.data() + t1 + f * 480, 480)) - toDb (rms (ref.data() + t1 + f * 480, 480));
+                        if (std::abs (d) > std::abs (lv)) lv = d;
+                    }
+                    const std::string name = "peaks " + std::to_string ((int) peakDb) + " dBFS, Drive " + std::to_string ((int) drive) + ", Type " + std::to_string (type);
+                    if (r > worstStep) { worstStep = r; stepAt = name; }
+                    if (std::abs (lv) > std::abs (worstLevel)) { worstLevel = lv; levelAt = name; }
+                }
+        check (worstStep <= limits::switchStepRatio, "Distortion switched on mid-note: step in the 30 ms after against the second either side, worst (" + stepAt + ")", worstStep);
+        check (std::abs (worstLevel) <= voxlimits::distortionLevelDb, "  10 ms level in the first 300 ms against Distortion on all along, worst (" + levelAt + ")", worstLevel, "dB");
+    }
     for (int type : { 1, 2 })
     {
         auto p = with ({ { "distOn", 1 }, { "distType", (float) type }, { "distDrive", 100 } });

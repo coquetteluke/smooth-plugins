@@ -308,7 +308,8 @@ public:
                 // does through any unvoiced sound. On a
                 // voice the peaks of the last 10 ms and the next 12 ms are never that far apart, and at any start the tuned voice is the
                 // input itself until a voiced stretch takes over, so the output is exactly as before everywhere but just before a sound.
-                if (onsetGate)
+                // Classic's plain grains are left as they were: on take 05 at 114.07 s the crossing made a click there.
+                if (onsetGate && ! control.plainGrains)
                 {
                     const long long aheadAt = at + onsetAheadSamples;
                     const double d = std::max (std::abs ((double) dryOut[0]), channels > 1 ? std::abs ((double) dryOut[1]) : 0.0);

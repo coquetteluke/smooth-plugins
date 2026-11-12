@@ -953,8 +953,15 @@ static void testSameSoundAsFirstVersion()
         const auto now = goldenRender (i);
         const auto name = i < 0 ? std::string ("default settings") : "preset '" + PluginProcessor().getProgramName (i).toStdString() + "'";
         if (pos + now.size() > total) { check (false, name + " has reference audio"); return; }
-        const double level = rms (ref + pos, (int) now.size());
-        const double db = nullDb (now.data(), ref + pos, (int) now.size(), level);
+        // The one deliberate change (1.2.6, 2026-11-12): Quarter Note Wobble sets Output Gain to +1.1 dB, so its expected render is the
+        // 1.0.0 render raised by exactly 1.1 dB. On Luke's real takes it dropped the voiced level 3.63 dB (limit 3); Luke left this call
+        // to the lead on 2026-11-11, and the lead chose it. Nothing else in the preset changed. The default and the other six presets are
+        // held to the 1.0.0 render as it is.
+        std::vector<float> expected (ref + pos, ref + pos + now.size());
+        if (i == 6)
+            for (auto& v : expected) v = (float) ((double) v * juce::Decibels::decibelsToGain (1.1));
+        const double level = rms (expected.data(), (int) now.size());
+        const double db = nullDb (now.data(), expected.data(), (int) now.size(), level);
         check (db <= -110.0, name + " against version 1.0.0", db, "dB");
         pos += now.size();
     }

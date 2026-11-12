@@ -73,7 +73,7 @@ Pictures are in `docs/window/`. `RenderWindow` makes them from real speech throu
 - **Square Flip:** synced square flips the wet from early to late on half notes.
 - **Phase Flip Thin:** Invert Phase with a narrow slow sweep, thin and hollow near the crossing. Spread is 0 since 1.2.4, so it stays whole in mono; it has no stereo width of its own.
 
-The first seven are unchanged from version 1.0.0. Loading any preset sets every control, and puts Input Gain and the drift rates back to their defaults. Output Gain is 0 dB except in Triangle Jet (+1.5 dB), Square Flip (+3 dB) and Phase Flip Thin (+3 dB), which thin a voice by 4 to 5.6 dB without it.
+The first seven are unchanged from version 1.0.0, except that Quarter Note Wobble sets Output Gain to +1.1 dB since 1.2.6. Loading any preset sets every control, and puts Input Gain and the drift rates back to their defaults. Output Gain is 0 dB except in Quarter Note Wobble (+1.1 dB), Triangle Jet (+1.5 dB), Square Flip (+3 dB) and Phase Flip Thin (+3 dB), which thin a voice by 3.6 to 5.6 dB without it.
 
 ## Signal flow
 

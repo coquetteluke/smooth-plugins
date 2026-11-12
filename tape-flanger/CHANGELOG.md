@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.6, 2026-11-12
+
+Quarter Note Wobble no longer plays quieter than the rest. Luke left this call to the lead on 2026-11-11, and the lead chose it.
+
+- Loading Quarter Note Wobble now sets Output Gain to +1.1 dB (it was 0). On Luke's real takes it dropped the voiced level by up to 3.63 dB (limit 3 dB; 4 of the 11 working takes past it: 09 -3.63, 10 -3.51, 14 -3.36, 16 -3.08). +1.1 dB is the smallest 0.1 dB step that brings every take inside 3 dB with the margin 1.2.3 left its three presets (about 0.5 dB).
+- Nothing else in the preset changed. The 1.0.0 render test now expects this preset's 1.0.0 render raised by exactly 1.1 dB, a deliberate change named in the test; it nulls at -142.1 dB. The default and the other six of the first seven presets are held to the 1.0.0 render as before.
+- In the test suite only two lines moved: this preset's level on the test signal, -2.961 to -1.861 dB (+1.100), and its line against 1.0.0, now read against the raised render. The other 405 lines are identical to 1.2.5.
+- Sessions that already use Quarter Note Wobble keep the Output Gain they were saved with.
+
 ## 1.2.5, 2026-11-12
 
 A control moved while playing now lands exactly where it is set. Found on the second real vocal pass.

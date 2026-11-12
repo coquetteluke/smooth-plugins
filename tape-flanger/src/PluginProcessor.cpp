@@ -41,7 +41,7 @@ namespace
         { "Hollow Inverted",     0.15f, false, 3, 3.5f, -55.0f, 15.0f, -3.0f,   0.0f, 50.0f },
         { "One Bar Swirl",       0.25f, true,  3, 2.5f,  40.0f, 20.0f,  0.0f,  90.0f, 50.0f },
         { "Dark Tape Haze",      0.30f, false, 3, 1.5f,  35.0f, 60.0f, -8.0f, 120.0f, 40.0f },
-        { "Quarter Note Wobble", 1.00f, true,  8, 1.0f, -30.0f, 25.0f,  0.0f, 180.0f, 40.0f },
+        { "Quarter Note Wobble", 1.00f, true,  8, 1.0f, -30.0f, 25.0f,  0.0f, 180.0f, 40.0f, false,  0.0f, 100.0f, false,  0.0f, 50.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f, false,  20.0f, 20000.0f, 1.1f },   // Output Gain since 1.2.6
         // Second pass. Each uses one of the newer controls.
         { "Manual Ride",         0.25f, false, 3, 2.5f,  25.0f, 15.0f, -1.0f,  45.0f, 50.0f,  true,  0.0f, 150.0f, false,  0.0f, 50.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f, false, 150.0f, 20000.0f },
         { "Triangle Jet",        0.15f, false, 3, 4.0f,  60.0f, 20.0f,  0.0f,  30.0f, 50.0f, false,  0.0f, 100.0f, false,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f, false, 200.0f, 12000.0f, 1.5f },

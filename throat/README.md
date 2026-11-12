@@ -65,7 +65,9 @@ input > clean bad samples > dry delay (same length as the engine) --------------
 - The map is computed at every frequency instead of at tracked formants. There is no formant tracker to lose its place on a consonant.
 - The model is an all-pole curve fitted to the harmonics themselves on voiced sound (discrete all-pole fitting), and to a smoothed envelope on unvoiced sound.
 - The further a frequency moves, the more its harmonics take their level from the model. That removes the ghost of the old formant, which simple filtering leaves behind.
-- Above 6 kHz the gain is never more than 11 dB over what moving the envelope itself would give. The all-pole fit can make a peak at the top of its band that the voice does not have, and before 0.4.1 that came out as a burst of hiss on some sung vowels.
+- Above 6 kHz the gain is never more than 8 dB over what moving the envelope itself would give (11 dB in 0.4.1). The all-pole fit can make a peak at the top of its band that the voice does not have, and before 0.4.1 that came out as a burst of hiss on some sung vowels.
+- No harmonic from 500 Hz up stands out from its neighbours by more than 8 dB, or 2 dB more than the input's most prominent one, so the voice does not whistle (since 0.5.0).
+- A phrase that starts after a pause gets its own Level Match average, so its first 30 ms are not turned down by the phrase before (since 0.5.0).
 
 ## For other plug-ins
 

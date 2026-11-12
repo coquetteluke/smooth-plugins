@@ -1,8 +1,10 @@
 # Changelog
 
-## Not shipped: branch for-luke-sound, for Luke to hear first
+## 0.5.0, 2026-11-11
 
-Three changes to how every setting but Neutral sounds, so nothing here is installed. Throat's own tests pass (244, 0 fail). NullTest does not, by design: it holds the sound to the 0.2.0 renders, and those would have to be saved again if this ships.
+Luke said yes to this on 2026-11-11, after the clips in _vox/rode/work/throat/demo.
+
+Three changes to how every setting but Neutral sounds. Throat's own tests pass. NullTest held the sound to the 0.2.0 renders; with Luke's yes its renders were saved again from 0.5.0 (the 0.2.0 renders stay in git history, and the saved 0.2.0 session file is kept as it was, so a 0.2.0 session is still loaded and compared). Against the 0.2.0 renders, 0.5.0 nulls exactly at the default (Neutral) and differs at Big Chest -20.0, Giant -25.7, Pinched -26.2, the 0.2.0 session -28.6, Subtle Blend -45.9 and Whisper -64.3 dBFS. On the whole working set of real takes the failing rules went from 436 to 329: whistling passes at every setting (Width 2.00 9.96% to 0.35%, limit 1%), the hiss rule at Length 1.30 0.62 to 0.02% and Length 1.50 2.24 to 0.32% (limit 0.5%), and the first 30 ms of a phrase pass at the median at all 9 settings that failed. One rule got worse: formant scatter above 200 Hz at Length 1.50, 5.375 to 5.75% (limit 5.5).
 
 - Phrase starts. Level Match's slow step kept the last phrase's correction into the next one, and the first 30 ms of a phrase came out about 2 dB quieter at settings that lower the formants. Here a phrase that starts after a pause gets its own average.
 - Whistling. A harmonic that landed on a narrow peak of the model came out far above its neighbours (1 to 10% of voiced frames on real vocals). Each harmonic from 500 Hz up is now held to standing out by no more than 8 dB, or 2 dB more than the input's most prominent one. The guard reads what a harmonic really gets, with the bins beside it that the short window spreads it over, and it also holds on frames that are voiced but less clearly so.

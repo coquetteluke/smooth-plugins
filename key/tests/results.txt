@@ -47,16 +47,16 @@ PASS  the time in the file moves on with each of those writes
 PASS  with Lock off an unchanged key is never written again, writes in 20 minutes = 0.000 
 PASS  a reading with a runner up reaches what the window reads
 PASS  with its confidence and its margin, and nothing locked
-PASS  key.json names the runner up: {"key":"E","scale":"major","confidence":0.80,"time":1794399647.3,"listening":true,"altKey":"A","altScale":"major","altConfidence":0.30,"margin":0.60,"unsure":false,"locked":false,"source":"heard"}
+PASS  key.json names the runner up: {"key":"E","scale":"major","confidence":0.80,"time":1794465303.1,"listening":true,"altKey":"A","altScale":"major","altConfidence":0.30,"margin":0.60,"unsure":false,"locked":false,"source":"heard"}
 PASS  that line passes the same checks as every other key.json line in these tests
 PASS  a close call reaches the window's data with its confidence under 0.5 = 0.490 
-PASS  key.json says unsure, under the confidence a follower acts on: {"key":"E","scale":"major","confidence":0.49,"time":1794399647.4,"listening":true,"altKey":"A","altScale":"major","altConfidence":0.45,"margin":0.03,"unsure":true,"locked":false,"source":"heard"}
+PASS  key.json says unsure, under the confidence a follower acts on: {"key":"E","scale":"major","confidence":0.49,"time":1794465303.2,"listening":true,"altKey":"A","altScale":"major","altConfidence":0.45,"margin":0.03,"unsure":true,"locked":false,"source":"heard"}
 PASS  so a follower reads that line and does not act on it
 PASS  and the Confidence reading is under 50 too = 49.000 
 PASS  Lock on holds a key
 PASS  Lock on: E major at confidence 1, no runner up, not unsure
-PASS  key.json says locked, E major, confidence 1.00: {"key":"E","scale":"major","confidence":1.00,"time":1794399647.5,"listening":true,"altKey":null,"altScale":null,"altConfidence":0.00,"margin":1.00,"unsure":false,"locked":true,"source":"locked"}
-PASS  Lock reaches key.json within = 0.148 s
+PASS  key.json says locked, E major, confidence 1.00: {"key":"E","scale":"major","confidence":1.00,"time":1794465303.3,"listening":true,"altKey":null,"altScale":null,"altConfidence":0.00,"margin":1.00,"unsure":false,"locked":true,"source":"locked"}
+PASS  Lock reaches key.json within = 0.173 s
 PASS  a follower reads the locked key and acts on it
 PASS  the readings say the locked key: E Major 100
 PASS  locked: what it hears now still reaches the window's data
@@ -73,14 +73,14 @@ PASS  Lock off: key.json says heard again
 PASS  with Lock off the session is saved exactly as before, with nothing about Lock in it
 PASS  a session saved again straight after loading still holds the key
 PASS  a loaded session shows the held key at confidence 1 with nothing heard
-PASS  and writes it to key.json: {"key":"E","scale":"major","confidence":1.00,"time":1794399650.0,"listening":true,"altKey":null,"altScale":null,"altConfidence":0.00,"margin":1.00,"unsure":false,"locked":true,"source":"locked"}
+PASS  and writes it to key.json: {"key":"E","scale":"major","confidence":1.00,"time":1794465305.7,"listening":true,"altKey":null,"altScale":null,"altConfidence":0.00,"margin":1.00,"unsure":false,"locked":true,"source":"locked"}
 PASS  and keeps it when music in another key plays
 PASS  loading a session that held A# minor into a plug-in holding E major shows A# minor
 PASS  loading a session with Lock off into a locked plug-in unlocks it
 PASS  a 1.6.0 session loads every control and the window as it was
 PASS  a 1.6.0 session loads with Lock off
 PASS  and shows what 1.6.0 showed: G minor, set by hand, nothing locked
-PASS  and writes what 1.6.0 wrote, then the new fields: {"key":"G","scale":"minor","confidence":1.00,"time":1794399650.6,"listening":false,"altKey":null,"altScale":null,"altConfidence":0.00,"margin":1.00,"unsure":false,"locked":false,"source":"manual"}
+PASS  and writes what 1.6.0 wrote, then the new fields: {"key":"G","scale":"minor","confidence":1.00,"time":1794465306.1,"listening":false,"altKey":null,"altScale":null,"altConfidence":0.00,"margin":1.00,"unsure":false,"locked":false,"source":"manual"}
 PASS  saved again, it holds the same ten values and nothing about Lock
 PASS  a damaged held key in a session holds nothing: Lock is on and waits
 PASS  a damaged Lock value in a session leaves Lock off and nothing held
@@ -120,10 +120,10 @@ PASS  the Lock control is solid black when on, brightness = 0.000
 PASS  automation moves Lock and the window follows
 PASS  double-click returns Lock to off
 PASS  clicking Use A major sets Manual Key, Manual Scale and Mode, as one gesture each
-PASS  and key.json then says A major, set by hand, at confidence 1.00: {"key":"A","scale":"major","confidence":1.00,"time":1794399656.1,"listening":false,"altKey":null,"altScale":null,"altConfidence":0.00,"margin":1.00,"unsure":false,"locked":false,"source":"manual"}
+PASS  and key.json then says A major, set by hand, at confidence 1.00: {"key":"A","scale":"major","confidence":1.00,"time":1794465311.2,"listening":false,"altKey":null,"altScale":null,"altConfidence":0.00,"margin":1.00,"unsure":false,"locked":false,"source":"manual"}
 PASS  the window shows A, set by hand, and offers nothing more
 PASS  in the window: click Manual, then C# minor on the circle
-PASS  and that key reaches key.json for the other plug-ins: {"key":"C#","scale":"minor","confidence":1.00,"time":1794399656.3,"listening":false,"altKey":null,"altScale":null,"altConfidence":0.00,"margin":1.00,"unsure":false,"locked":false,"source":"manual"}
+PASS  and that key reaches key.json for the other plug-ins: {"key":"C#","scale":"minor","confidence":1.00,"time":1794465311.4,"listening":false,"altKey":null,"altScale":null,"altConfidence":0.00,"margin":1.00,"unsure":false,"locked":false,"source":"manual"}
 PASS  a click on the keyboard's G sets it too
 PASS  locked in Manual: clicking the circle or the keyboard changes nothing: G, Locked = 7.000 
 PASS  and the hints there say to turn Lock off: Locked on this key. Turn Lock off to change it.
@@ -196,11 +196,11 @@ PASS  decimal points kept under a comma locale (locale was available)
 PASS  path ignores a redirected HOME: ~/Library/Application Support/SmoothPlugins/key.json
 PASS  the folder is created when missing
 PASS  contents parse as valid JSON with the five fields, and the seven added in 1.7.0
-INFO  atomic write test: writes = 7533.000 
-INFO  atomic write test: reads while writing = 63938.000 
+INFO  atomic write test: writes = 11669.000 
+INFO  atomic write test: reads while writing = 85676.000 
 PASS  the atomic test really raced reads against writes
 PASS  reads that saw a partial or missing file = 0.000 
-PASS  each write replaces the file by rename rather than writing into it, replacements = 7533.000 
+PASS  each write replaces the file by rename rather than writing into it, replacements = 11669.000 
 PASS  no temporary files left behind, files in the folder = 1.000 
 PASS  nothing changed: one write in 10 s = 1.000 
 PASS  changing every 0.1 s for 10 s: writes (limit 2 per second) = 20.000 
@@ -218,7 +218,7 @@ PASS  that note is on screen
 PASS  write retries after 5 s and recovers when the folder can be made
 PASS  Manual mode shows all 24 keys at confidence 1 = 100.000 %
 PASS  Manual mode writes all 24 keys to key.json = 100.000 %
-PASS  a Manual Key change reaches key.json within = 0.667 s
+PASS  a Manual Key change reaches key.json within = 0.645 s
 PASS  Relative Swap off shows the detected key
 INFO  Relative Swap, key.json key index matches (1 is yes) = 1.000 
 PASS  Relative Swap off shows the detected key
@@ -265,23 +265,23 @@ PASS  the window reopens at its saved size with Advanced open
 PASS  only window size and open section are added to saved state, attributes = 2.000 
 PASS  a damaged window size is clamped
 PASS  a session from before the window opens at the default size
-PASS  audio bit identical while the window opened, drew and closed 30 times, blocks = 323.000 
-INFO  slowest audio block during that = 0.010 ms
-PASS  no audio block took longer than the block itself during that = 0.010 ms
+PASS  audio bit identical while the window opened, drew and closed 30 times, blocks = 184.000 
+INFO  slowest audio block during that = 0.020 ms
+PASS  no audio block took longer than the block itself during that = 0.020 ms
 PASS  no file written before there is a key
 PASS  real background thread finds G minor through processBlock
 PASS  samples dropped by the queue at 7 times real time = 0.000 
-PASS  key.json writes per second while confidence moves = 0.349 per s
-PASS  key.json is valid: {"key":"G","scale":"minor","confidence":0.93,"time":1794399697.4,"listening":true,"altKey":"C","altScale":"minor","altConfidence":0.00,"margin":1.00,"unsure":false,"locked":false,"source":"heard"}
+PASS  key.json writes per second while confidence moves = 0.503 per s
+PASS  key.json is valid: {"key":"G","scale":"minor","confidence":1.00,"time":1794465347.8,"listening":true,"altKey":"C","altScale":"minor","altConfidence":0.00,"margin":1.00,"unsure":false,"locked":false,"source":"heard"}
 PASS  key.json holds the key found
 PASS  key.json says listening
 PASS  key.json time is Unix seconds, now
-PASS  readings as AU parameters: G Minor 93.441704
+PASS  readings as AU parameters: G Minor 100.000000
 PASS  readings changing never notify the host as automation, notifications = 0.000 
 PASS  Listening off: reading frozen with another key playing, confidence moved = 0.000 
 PASS  Listening off: key.json says listening false
 PASS  nothing changing: no more writes in 1.2 s, writes = 0.000 
-PASS  no calls from the host for 5 s: confidence falls = 0.124 
+PASS  no calls from the host for 5 s: confidence falls = 0.127 
 PASS  the key stays shown when the host stops
 PASS  Reset: no key and confidence 0
 PASS  Reset: key.json shows confidence 0
@@ -331,7 +331,7 @@ PASS  rap, Full Mix: share of the time at confidence 0.5 or more = 0.000 %
 PASS  off key singer goes up a semitone, Single Voice: new 7 notes within 30 s = 91.667 %
 INFO  off key singer goes up a semitone: median time to the new notes = 12.003 s
 INFO  off key singer goes up a semitone: ends on the new notes = 100.000 %
-PASS  off key singer goes up two semitones, Single Voice: new 7 notes within 30 s, or not sure from then on = 95.833 %
+PASS  off key singer goes up two semitones, Single Voice: new 7 notes within 30 s, or not sure from then on = 100.000 %
 INFO  off key singer goes up two semitones: new 7 notes within 30 s (the first wording, out of reach: tests/proofs/ideal_reader.py) = 4.167 %
 INFO  off key singer goes up two semitones: median time to the new notes = 26.680 s
 INFO  off key singer goes up two semitones: ends on the new notes = 8.333 %
@@ -380,7 +380,7 @@ INFO  music with the off key singer 6 dB over it, Full Mix: median time until th
 INFO  music with the off key singer 6 dB over it, Full Mix: clips whose reading moves after 8 s (chord tests, 24 s clips: limit 1) = 9.375 %
 INFO  music with the off key singer 6 dB over it, Full Mix: bounces, A to B and back to A (chord tests, 24 s clips: limit 0) = 2.000 
 INFO  music with the off key singer 6 dB over it, Full Mix: share of the time at confidence 0.5 or more on the wrong 7 notes = 0.264 %
-INFO  music with the off key singer 6 dB over it, Full Mix: share of the time at confidence 0.5 or more on the right 7 notes = 76.103 %
+INFO  music with the off key singer 6 dB over it, Full Mix: share of the time at confidence 0.5 or more on the right 7 notes = 76.085 %
 INFO  music with the off key singer 6 dB over it, Full Mix: changes of reading after the first, a clip = 0.115 
 INFO  music with the off key singer 6 dB over it, Full Mix: clips read as a lone voice at some point = 5.208 %
 INFO  off key singer alone, Full Mix: clips, every key, one minute each = 24.000 
@@ -391,8 +391,8 @@ INFO  off key singer alone, Full Mix: median time until the exact key is shown a
 INFO  off key singer alone, Full Mix: median time until the right 7 notes are shown and kept (-1: never, in half the clips) = 14.507 s
 INFO  off key singer alone, Full Mix: clips whose reading moves after 8 s (chord tests, 24 s clips: limit 1) = 25.000 %
 INFO  off key singer alone, Full Mix: bounces, A to B and back to A (chord tests, 24 s clips: limit 0) = 0.000 
-INFO  off key singer alone, Full Mix: share of the time at confidence 0.5 or more on the wrong 7 notes = 1.197 %
-INFO  off key singer alone, Full Mix: share of the time at confidence 0.5 or more on the right 7 notes = 3.224 %
+INFO  off key singer alone, Full Mix: share of the time at confidence 0.5 or more on the wrong 7 notes = 1.185 %
+INFO  off key singer alone, Full Mix: share of the time at confidence 0.5 or more on the right 7 notes = 2.892 %
 INFO  off key singer alone, Full Mix: changes of reading after the first, a clip = 0.250 
 INFO  off key singer alone, Full Mix: clips read as a lone voice at some point = 100.000 %
 PASS  chords in Full Mix: every reading over 96 clips bit identical to 1.5.1

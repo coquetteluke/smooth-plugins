@@ -193,6 +193,11 @@ public:
         double voiceChangeFit = 0.85;   // and of the held notes since the change began, the new set covers at least this share,
         double voiceChangeOld = 0.45;   // the old one at most this share,
         double voiceChangeShared = 4.0; // and the two sets share at most this many notes: nearer sets cannot be told from straying
+        double voiceChangeEvents = 2.0; // and counted in held note events since the count left zero, each held note once however long,
+                                        // the notes in the new set and not the old (a) against the old and not the new (b) give
+                                        // (a - b) / sqrt (a + b) of at least this (one sided 2.3 %): two long notes that stray are not
+                                        // a key change. 2.33 (1 %, as voiceSureEvents) followed one semitone clip fewer on dev seed
+                                        // 3000 (79.2 %, limit 80); 2.0 follows exactly as 1.7.0 on dev seeds 2000, 1030, 3000. 0: off
         double voiceChangeSlack = 0.05; // sets within this of the best cover equally well; of those, the old key moved up one or two
                                         // semitones is taken first, as that is how a song goes up a key
         double voiceMoveEvidence = 0.0; // the long memory moves the reading to another set of notes only when the notes that tell the
@@ -206,6 +211,12 @@ public:
         // half a second; that is not knowledge. The lead needed grows with the square root of the seconds in memory, as the
         // scatter of a count does. A margin of 0.5 is a lead of exactly voiceSureSigma times that root.
         double voiceSureSigma = 0.3;
+        // And a sign test on held note EVENTS, each held note once however long: the notes that tell the shown set from each rival
+        // set, a in the shown set and b in the rival, must give (a - b) / sqrt (a + b) of at least this (2.33: one sided 1 %, the
+        // chance of so many going one way if the singer were only straying between the two). Seconds alone are not evidence: one
+        // note held two seconds counted as much as four short ones, so three notes could make a lone voice sure. Every rival must pass,
+        // so no correction for the number of rivals is needed. Both tests must pass; this one only takes sureness away.
+        double voiceSureEvents = 2.33;
         double voiceSureHeld = 6.0;     // seconds of held notes in memory before the confidence can be full
         double voiceMargin = 2.0;       // a new key must lead the shown one by this many times the usual margin
         double voiceHome = 1.0;         // how much the listener ratings count in choosing between a key and its relative. 0: the even profile alone
@@ -289,7 +300,7 @@ public:
         std::fill (ring.begin(), ring.end(), 0.0);
         ringPos = 0; hopCounter = 0; windowFilled = 0;
         trebleMemory.fill (0.0); bassMemory.fill (0.0); opening.fill (0.0); chordMemory.fill (0.0); recentMemory.fill (0.0);
-        heldMemory.fill (0.0); clearChangeCounts(); changePeak.fill (0.0); sureSet = -1; inheritedSet = -1; shownSetBefore = -1; shownSince = 0.0; heldSeconds = 0.0; voiceFit = 0.0; lastTopPc = -1; heldRun = 0;
+        heldMemory.fill (0.0); heldEvents.fill (0.0); clearChangeCounts(); changePeak.fill (0.0); sureSet = -1; inheritedSet = -1; shownSetBefore = -1; shownSince = 0.0; heldSeconds = 0.0; voiceFit = 0.0; lastTopPc = -1; heldRun = 0;
         tunWeight = 0.0; tuneClarity = 1.0; clarityAvg = -1.0; clearSeconds = 0.0; offKey = false; keyChanges = 0;
         for (auto& f : frameHistory) f.fill (0.0);
         for (auto& f : frameTreble) f.fill (0.0);
@@ -365,6 +376,7 @@ public:
     // How tightly the sound sits on one tuning offset: 0 spread evenly round the semitone, 1 all on one offset.
     double tuningClarity() const noexcept { return tuneClarity; }
     double changeCountPeak (int semitonesUp) const noexcept { return changePeak[(size_t) (semitonesUp % 12)]; } // for tools: the highest count toward the set this far above the shown one
+    double clarityNow() const noexcept { return clarityAvg; }       // for tools: the tuning clarity, averaged (-1 before it is judged)
     int voiceKeyChanges() const noexcept { return keyChanges; } // times a lone voice's reading moved because the song changed key
     double secondsHeard() const noexcept { return heardSeconds; }
 
@@ -516,6 +528,7 @@ private:
                 if (clarityAvg < knobs.offKeyEnter)
                 {
                     offKey = true; clearSeconds = 0.0;
+                    smoothedMargin = 0.0;   // the lone voice margin is earned from its own held notes, not carried over from the other reading
                     // A key already on show was read from every note sounding, before the sound proved to have no tuning of its own.
                     inheritedSet = current.key < 0 ? -1 : (current.minor ? (current.key + 3) % 12 : current.key);
                 }
@@ -790,10 +803,12 @@ private:
         const double heldWeight = frameWeight * std::min (1.0, (heldRun - 1) / std::max (1.0, knobs.heldFull));
         const double decay = std::exp (-hopSeconds / knobs.tauVoice);
         for (auto& x : heldMemory) x *= decay;
+        for (auto& x : heldEvents) x *= decay;
         heldNow = 0.0;
         if (held)
         {
             heldMemory[(size_t) topPc] += heldWeight;
+            if (heldRun == 2) heldEvents[(size_t) topPc] += 1.0;   // a held note begins
             heldNow = heldWeight * hopSeconds;
             if (voicePath() && current.key >= 0 && sureSet >= 0)
             {
@@ -812,6 +827,7 @@ private:
                     {
                         changeScore[(size_t) n] = 0.0;
                         changeNotes[(size_t) n].fill (0.0);
+                        changeEvents[(size_t) n].fill (0.0);
                     }
                     if (changeScore[(size_t) n] <= 0.0) { changeRef[(size_t) n] = sureSet; changeStart[(size_t) n] = heardSeconds; }
                     const int ref = changeRef[(size_t) n];
@@ -819,8 +835,12 @@ private:
                     const bool inNew = inSignature (topPc, n), inOld = inSignature (topPc, ref);
                     double& score = changeScore[(size_t) n];
                     score += inNew && ! inOld ? changeNow : (inOld && ! inNew ? -changeNow : 0.0);
-                    if (score <= 0.0) { score = 0.0; changeNotes[(size_t) n].fill (0.0); }
-                    else changeNotes[(size_t) n][(size_t) topPc] += changeWeight;
+                    if (score <= 0.0) { score = 0.0; changeNotes[(size_t) n].fill (0.0); changeEvents[(size_t) n].fill (0.0); }
+                    else
+                    {
+                        changeNotes[(size_t) n][(size_t) topPc] += changeWeight;
+                        if (heldRun == 2) changeEvents[(size_t) n][(size_t) topPc] += 1.0;
+                    }
                     changePeak[(size_t) ((n - ref + 12) % 12)] = std::max (changePeak[(size_t) ((n - ref + 12) % 12)], score);
 #ifdef KEY_TRACE
                     for (double level : { 1.5, 2.0 })
@@ -839,6 +859,7 @@ private:
         weighScore.fill (0.0);
         changeRef.fill (-1);
         for (auto& m : changeNotes) m.fill (0.0);
+        for (auto& m : changeEvents) m.fill (0.0);
     }
 
     // A change of key is being weighed: the count of some set other than the one on show is well off zero. This takes in the
@@ -1004,6 +1025,16 @@ private:
                 for (auto x : changeNotes[(size_t) n]) total += x;
                 if (coverage (changeNotes[(size_t) n], n, total) < knobs.voiceChangeFit) continue;
                 if (coverage (changeNotes[(size_t) n], ref, total) > knobs.voiceChangeOld) continue;
+                if (knobs.voiceChangeEvents > 0.0)
+                {
+                    double gain = 0.0, loss = 0.0;
+                    for (int i = 0; i < 12; ++i)
+                    {
+                        if (inSignature (i, n) && ! inSignature (i, ref)) gain += changeEvents[(size_t) n][(size_t) i];
+                        if (inSignature (i, ref) && ! inSignature (i, n)) loss += changeEvents[(size_t) n][(size_t) i];
+                    }
+                    if (gain + loss <= 0.0 || (gain - loss) / std::sqrt (gain + loss) < knobs.voiceChangeEvents) continue;
+                }
                 if (pick < 0 || changeScore[(size_t) n] > changeScore[(size_t) pick]) pick = n;
             }
             if (pick < 0) return;
@@ -1014,6 +1045,7 @@ private:
                             changeScore[(size_t) pick], tot * hopSeconds, coverage (changeNotes[(size_t) pick], pick, tot), coverage (changeNotes[(size_t) pick], ref, tot), all * hopSeconds, (double) current.confidence, shownSet); }
 #endif
             heldMemory = changeNotes[(size_t) pick];   // the reading is built anew from where the change began
+            heldEvents.fill (0.0);                     // and must earn sureness again from new notes
             {
                 double total = 0.0, best = 0.0;
                 for (auto x : heldMemory) total += x;
@@ -1437,19 +1469,27 @@ private:
             if (voicePath())
             {
                 // Two sets of notes about equally likely: say so. Under 0.5 nothing that follows this reading acts on it.
-                double heldTotal = 0.0, nearest = 1.0e9;
+                double heldTotal = 0.0, nearest = 1.0e9, nearestEvents = 1.0e9;
                 for (auto x : heldMemory) heldTotal += x;
                 int rival = -1;
                 for (int k = 0; k < 12; ++k)
                 {
                     if (inSignature (0, k) == inSignature (0, shown) && sharedNotes (k, shown < 12 ? shown : (shown - 12 + 3) % 12) == 7) continue;
-                    double lead = 0.0;
+                    double lead = 0.0, mine = 0.0, theirs = 0.0;
                     for (int i = 0; i < 12; ++i)
-                        lead += heldMemory[(size_t) i] * ((inSignature (i, shown) ? 1.0 : 0.0) - (inSignature (i, k) ? 1.0 : 0.0));
+                    {
+                        const bool inShown = inSignature (i, shown), inRival = inSignature (i, k);
+                        lead += heldMemory[(size_t) i] * ((inShown ? 1.0 : 0.0) - (inRival ? 1.0 : 0.0));
+                        if (inShown && ! inRival) mine += heldEvents[(size_t) i];
+                        if (inRival && ! inShown) theirs += heldEvents[(size_t) i];
+                    }
                     if (lead < nearest) { nearest = lead; rival = k; }
+                    nearestEvents = std::min (nearestEvents, mine + theirs > 0.0 ? (mine - theirs) / std::sqrt (mine + theirs) : 0.0);
                 }
                 const double needed = knobs.voiceSureSigma * std::sqrt (std::max (heldTotal * hopSeconds, 1.0e-9));
-                current.margin = (float) std::clamp (0.5 * nearest * hopSeconds / needed, 0.0, 1.0);
+                const double bySeconds = 0.5 * nearest * hopSeconds / needed;
+                const double byEvents = knobs.voiceSureEvents > 0.0 ? 0.5 * nearestEvents / knobs.voiceSureEvents : bySeconds;
+                current.margin = (float) std::clamp (std::min (bySeconds, byEvents), 0.0, 1.0);
                 if (rival >= 0)
                 {
                     // The runner up is the set the notes tell least from the shown one, named in the shown key's own scale.
@@ -1515,6 +1555,7 @@ private:
         for (auto& x : bassMemory) x *= 0.25;
         for (auto& x : chordMemory) x *= 0.25;
         for (auto& x : heldMemory) x *= 0.25;
+        for (auto& x : heldEvents) x *= 0.25;
         opening.fill (0.0);
         openingHeard = 0.0;
        
@@ -1557,6 +1598,7 @@ private:
 
     std::array<double, 12> trebleMemory {}, bassMemory {}, opening {}, recentMemory {};
     std::array<double, 12> heldMemory {};      // a lone voice's held notes: about two minutes
+    std::array<double, 12> heldEvents {};      // the same notes counted once each as they begin, same memory (voiceSureEvents)
     std::array<std::array<double, 12>, 24> voiceProfile {};
     int lastTopPc = -1, heldRun = 0, keyChanges = 0;
     double tuneClarity = 1.0, clarityAvg = -1.0, clearSeconds = 0.0;
@@ -1571,6 +1613,7 @@ private:
     std::array<double, 12> changeStart {};                        // when each count left zero
     std::array<int, 12> changeRef {};                             // the shown set each count is measured against, from when it left zero
     std::array<std::array<double, 12>, 12> changeNotes {};        // held notes since each count left zero
+    std::array<std::array<double, 12>, 12> changeEvents {};       // the same, each held note counted once as it begins
     bool offKey = false;
     std::array<std::array<double, 12>, numHistory> frameHistory {}, frameTreble {}, frameBass {};
     std::array<int, numHistory> frameChord {};

@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.7.1, 2026-11-12
+
+A lone voice is called sure only on real evidence, so a follower never acts on a guess. Luke left this call to the lead on 2026-11-11. Music reads exactly as in 1.7.0 and 1.5.0: both reading fingerprints are unchanged, and every music alone, voice under and voice as loud line of the music with a voice test is identical to 1.7.0.
+
+Why. In the Rode blind set Key was sure (confidence 0.5 or more, what Choir Loft, Tune and Tune Pro act on) of a wrong key on take 13 for 15.8% of the take. "Sure" for a lone voice counted seconds of held notes against the square root of the seconds in memory, so two or three long notes could make it sure. Counted as notes (each held note once, however long), the notes that tell the shown key from its nearest rival never pass even a one sided 1% sign test on any of Luke's working takes: the highest is z 1.54 for a right key (take 04) and 1.67 for a wrong one (take 14), against 2.33 (work/key/p4/ev.py over the working set and the first session).
+
+- Sure now also needs that sign test: for every rival set of 7 notes, the held notes in the shown set and not the rival (a) against the rival's (b) give (a - b) / sqrt (a + b) of at least 2.33 (`voiceSureEvents`). It only ever takes sureness away. The margin in the window and key.json is the smaller of the two tests, 0.5 at the line.
+- Entering the lone voice reading, the margin starts from nothing instead of the music reading's, so the first half second cannot be sure on the old reading's key.
+- A key change move needs the same kind of count on the notes since the change began, at 2.0 (one sided 2.3%, `voiceChangeEvents`): two long notes that stray are not a key change. 2.33 followed one semitone clip fewer on dev seed 3000 (79.2%, limit 80); 2.0 follows exactly as 1.7.0 on dev seeds 2000, 1030 and 3000.
+
+Measured (limits unchanged):
+
+| | 1.7.0 | 1.7.1 |
+|---|---|---|
+| Luke's 9 sung working takes, through the plug-in, sure and on other notes | 0% | 0% |
+| Same, sure at all | 0.2% (take 10 only, all right) | 0% |
+| Same, readings (keys and changes) | | identical to 1.7.0 on all 11 takes, analyser offline |
+| Same takes played in a row (11 joins, same 7 notes), key change moves / sure and wrong | 0 / 0% | 0 / 0% |
+| First session (11 takes), key change moves | 5 | 4 (2 of them move to the song's real key) |
+| First session, sure at all | 4.2% (all right) | 0% |
+| Lone singer up a semitone, followed in 30 s (held out seed, limit 80) | 91.7% | 91.7% |
+| Up two semitones, followed or not sure from 30 s (limit 80) | 95.8% | 100% |
+| Made up singer alone, sure and wrong (INFO) | 1.20% | 1.19% |
+| Music with the singer 6 dB over it, sure and right (INFO) | 76.10% | 76.09% |
+
+The made up singer's sure and wrong time is not from the lone voice reading: his tuning clarity takes 8 to 17 s to fall under 0.20, and until then the music reading hears him. Luke's real takes are taken for a lone voice 1.2 to 4.7 s in, before any reading, so this does not reach him. Closing it would mean changing the music reading, which this version does not touch.
+
+Rap take 12 still ends on A# minor, marked not sure, at confidence under 0.5, with 3 changes in 3.5 minutes (allowed 4). Hiding a reading whose held notes fit no key well cannot be done by fit: rap 12's best set covers 0.66 to 0.80 of its held notes, sung take 14 (right 91% of the take) 0.68 to 0.80.
+
+Tests: 334 pass, 0 fail. Tools: VoxEval plays several files joined by + as one take and prints lone voice and tuning clarity; MixVoiceEval takes any lone voice knob, nolevels and nomusic.
+
 ## 1.7.0, 2026-11-11
 
 Key now says when it does not know, can be locked, and reads music exactly as 1.5.0 did. The short advice that the numbers below support: put Key on the beat or the mix bus, not on the vocal. On a lone off key voice it shows its best reading and says Not sure; play the song through once on the music, press Lock, done.

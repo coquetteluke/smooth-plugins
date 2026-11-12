@@ -1,8 +1,8 @@
 // Development tool, not part of the plug-in. Runs the analyser over a recording, as fast as the CPU allows, and prints the reading over
 // time: what the plug-in would show if that file were played into it. The file is read in place, nothing is copied.
 // Build: clang++ -std=c++17 -O2 -Isrc tests/VoxEval.cpp -o build/VoxEval
-// Run:   build/VoxEval <file.wav> [stable|fast] [mix|voice] [knob value ...] [dump 1]
-// Output: one line per 50 ms, "S <seconds> <key 0 to 23 or -1> <confidence> <the key scoring highest now>", then "CHG <seconds> <key name> <confidence>" per change.
+// Run:   build/VoxEval <file.wav>[+<file.wav>...] [stable|fast] [mix|voice] [knob value ...] [dump 1]   (files joined by + play in a row)
+// Output: one line per 50 ms, "S <seconds> <key 0 to 23 or -1> <confidence> <the key scoring highest now> <runner up> <margin> <unsure> <lone voice> <tuning clarity>", then "CHG <seconds> <key name> <confidence>" per change.
 // With "dump 1": one line per analysis frame with the notes heard, for looking into a wrong reading.
 #include "KeyAnalyser.h"
 #include <cstdio>
@@ -71,7 +71,7 @@ static bool setKnob (KeyAnalyser::Knobs& k, const std::string& name, double v)
         { "outsideStable", &K::outsideStable }, { "outsideFast", &K::outsideFast }, { "recentStable", &K::recentStable }, { "recentFast", &K::recentFast },
         { "holdStable", &K::holdStable }, { "holdFast", &K::holdFast }, { "outsideWeight", &K::outsideWeight }, { "chromaPower", &K::chromaPower },
         { "softness", &K::softness }, { "harmonicDecay", &K::harmonicDecay },
-        { "voiceModel", &K::voiceModel }, { "heldShare", &K::heldShare }, { "heldFull", &K::heldFull }, { "tauVoice", &K::tauVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight }, { "voiceChangeEvidence", &K::voiceChangeEvidence }, { "voiceChangeFit", &K::voiceChangeFit }, { "voiceChangeOld", &K::voiceChangeOld }, { "voiceChangeShared", &K::voiceChangeShared }, { "voiceChangeFull", &K::voiceChangeFull }, { "voiceChangeWindow", &K::voiceChangeWindow }, { "voiceChangeWatch", &K::voiceChangeWatch }, { "voiceInheritEvidence", &K::voiceInheritEvidence }, { "voiceInheritHeld", &K::voiceInheritHeld }, { "voiceMoveUnsure", &K::voiceMoveUnsure }, { "voiceSureSigma", &K::voiceSureSigma }, { "voiceRefSeconds", &K::voiceRefSeconds }, { "voiceChangeSlack", &K::voiceChangeSlack }, { "voiceMoveEvidence", &K::voiceMoveEvidence }, { "voiceUnsureMargin", &K::voiceUnsureMargin }, { "voiceSureHeld", &K::voiceSureHeld }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh }, { "voiceMargin", &K::voiceMargin }, { "voiceHome", &K::voiceHome }, { "offKeyEnter", &K::offKeyEnter }, { "offKeyLeave", &K::offKeyLeave }, { "offKeyLeaveSeconds", &K::offKeyLeaveSeconds }, { "clarityTau", &K::clarityTau },
+        { "voiceModel", &K::voiceModel }, { "heldShare", &K::heldShare }, { "heldFull", &K::heldFull }, { "tauVoice", &K::tauVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight }, { "voiceChangeEvidence", &K::voiceChangeEvidence }, { "voiceChangeFit", &K::voiceChangeFit }, { "voiceChangeOld", &K::voiceChangeOld }, { "voiceChangeShared", &K::voiceChangeShared }, { "voiceChangeFull", &K::voiceChangeFull }, { "voiceChangeWindow", &K::voiceChangeWindow }, { "voiceChangeWatch", &K::voiceChangeWatch }, { "voiceInheritEvidence", &K::voiceInheritEvidence }, { "voiceInheritHeld", &K::voiceInheritHeld }, { "voiceMoveUnsure", &K::voiceMoveUnsure }, { "voiceSureSigma", &K::voiceSureSigma }, { "voiceSureEvents", &K::voiceSureEvents }, { "voiceRefSeconds", &K::voiceRefSeconds }, { "voiceChangeSlack", &K::voiceChangeSlack }, { "voiceChangeEvents", &K::voiceChangeEvents }, { "voiceMoveEvidence", &K::voiceMoveEvidence }, { "voiceUnsureMargin", &K::voiceUnsureMargin }, { "voiceSureHeld", &K::voiceSureHeld }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh }, { "voiceMargin", &K::voiceMargin }, { "voiceHome", &K::voiceHome }, { "offKeyEnter", &K::offKeyEnter }, { "offKeyLeave", &K::offKeyLeave }, { "offKeyLeaveSeconds", &K::offKeyLeaveSeconds }, { "clarityTau", &K::clarityTau },
     };
     for (const auto& t : table)
         if (name == t.first) { k.*(t.second) = v; return true; }
@@ -83,7 +83,21 @@ int main (int argc, char** argv)
     if (argc < 2) { std::fprintf (stderr, "usage: VoxEval <file.wav> [stable|fast] [mix|voice] [knob value ...]\n"); return 2; }
     std::vector<float> x;
     double rate = 0.0;
-    if (! readWav (argv[1], x, rate)) { std::fprintf (stderr, "cannot read %s\n", argv[1]); return 1; }
+    {
+        // Several files joined with '+' are played one after the other, as one take (same sample rate), read in place.
+        const std::string all = argv[1];
+        for (size_t from = 0; from <= all.size();)
+        {
+            const size_t to = std::min (all.find ('+', from), all.size());
+            std::vector<float> part;
+            double r = 0.0;
+            const std::string one = all.substr (from, to - from);
+            if (! readWav (one.c_str(), part, r) || (rate > 0.0 && r != rate)) { std::fprintf (stderr, "cannot read %s\n", one.c_str()); return 1; }
+            rate = r;
+            x.insert (x.end(), part.begin(), part.end());
+            from = to + 1;
+        }
+    }
     KeyAnalyser::Knobs knobs;
     auto response = smoothkey::Response::stable;
     auto source = smoothkey::Source::mix;
@@ -119,7 +133,7 @@ int main (int argc, char** argv)
         const double t = (double) (pos + (size_t) n) / rate;
         int lead = -1;   // the key that scores highest now, whatever is shown
         for (int k = 0; k < 24; ++k) if (r.candidates[(size_t) k] > 0.0f && (lead < 0 || r.candidates[(size_t) k] > r.candidates[(size_t) lead])) lead = k;
-        std::printf ("S %.2f %d %.3f %d %d %.3f %d\n", t, idx, (double) r.confidence, lead, r.altKey < 0 ? -1 : r.altKey + (r.altMinor ? 12 : 0), (double) r.margin, r.unsure ? 1 : 0);
+        std::printf ("S %.2f %d %.3f %d %d %.3f %d %d %.3f\n", t, idx, (double) r.confidence, lead, r.altKey < 0 ? -1 : r.altKey + (r.altMinor ? 12 : 0), (double) r.margin, r.unsure ? 1 : 0, r.loneVoice ? 1 : 0, a.clarityNow());
         if (idx != last)
         {
             char line[96];

@@ -54,7 +54,7 @@ Render every state to PNG with real speech from macOS `say`: `build/RenderWindow
 
 ## Where to put it
 
-On the beat or the mix bus, not on the vocal. Hearing the music, Key ends on the exact key on 99% of clips, shows it after 7.85 s and is sure and right 83% of the time, and an off key voice on top up to as loud as the music leaves that at 95% or better. Hearing a lone off key voice it needs a verse or more, is rarely sure, and says Not sure with the runner up named. Play the song through once on the music, press Lock, and every follower has the key for the session. The table is in CHANGELOG.md under 1.7.0; rerun it with `build/MixVoiceEval` (first lines of tests/MixVoiceEval.cpp).
+On the beat or the mix bus, not on the vocal. Hearing the music, Key ends on the exact key on 99% of clips, shows it after 7.85 s and is sure and right 83% of the time, and an off key voice on top up to as loud as the music leaves that at 95% or better. Hearing a lone off key voice it needs a verse or more, is not sure (since 1.7.1 never, on Luke's takes), and says Not sure with the runner up named. Play the song through once on the music, press Lock, and every follower has the key for the session. The table is in CHANGELOG.md under 1.7.0; rerun it with `build/MixVoiceEval` (first lines of tests/MixVoiceEval.cpp).
 
 Under the reading the window shows the runner up with its confidence and how close it is, and Use to take it as the manual key. In a close call it says Not sure and names both keys, and the big letters go grey. Lock is on the top row, solid black when on. Pictures: `docs/window/runner-up@2x.png`, `docs/window/not-sure@2x.png`, `docs/window/locked@2x.png`.
 
@@ -90,6 +90,7 @@ A lone voice is read differently, since 1.6.0. It applies in Single Voice, and i
 - They are scored against a profile in which every note of the scale counts about the same (Temperley's revision of the listener ratings), and notes outside the scale count against a key. The listener ratings favour tonic, fifth and third so much that a tune sitting on its fifth was read as the key a fifth up.
 - When the held notes fit no key's seven notes (rap, speech) there is no reading, or the confidence stays low. Confidence, for a lone voice, is how sure the seven notes are: the key and its relative together.
 - A new key must lead by twice the usual margin, and the old key is only let go when about three seconds of held notes in a row sit mostly outside it and make a key of their own.
+- Sure, for a lone voice (confidence 0.5 or more, what Choir Loft and the tuners act on), since 1.7.1 also needs the held notes counted as notes, not seconds: each held note once however long, the notes that tell the shown key from every rival must pass a one sided 1% sign test, (a - b) / sqrt (a + b) of 2.33 or more. Two or three long notes no longer make it sure. On Luke's lone voice that test is never passed, so on a vocal track Key informs and says Not sure, and Lock or Manual decides. A key change move needs the same kind of count at 2.0.
 
 Why not plain profile correlation: a note's own harmonics add false fifths and thirds, and relative keys have the same notes, so correlation alone can't separate them.
 

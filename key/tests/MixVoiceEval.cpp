@@ -8,7 +8,10 @@
 //   level X    the voice X dB against the music, in place of the usual three levels; may be given more than once
 //   alone 0    leaves out the music alone and the singer alone
 //   verbose 1  a line for every clip that went wrong in some way: L marks a reading taken as a lone voice
-//   knobs      voiceModel 0 is the reading before 1.6.0, which never takes anything for a lone voice; offKeyEnter, offKeyLeave
+//   knobs      voiceModel 0 is the reading before 1.6.0, which never takes anything for a lone voice; offKeyEnter, offKeyLeave;
+//              any other lone voice knob by its name in KeyAnalyser::Knobs (voiceSureSigma, voiceChangeEvidence, ...)
+//   nolevels 1 no music with the voice on top: with alone 1 (the default) only the music alone and the singer alone
+//   nomusic 1  leaves out the music alone (with nolevels 1: the singer alone only, 24 clips a seed, about 20 s)
 // A minute of audio takes most of a second, so one seed of Full Mix is about five minutes.
 #include "MixVoiceTests.h"
 #include <cmath>
@@ -33,6 +36,26 @@ static void table (const char* title, const std::vector<Row>& rows)
     std::fflush (stdout);
 }
 
+// Any lone voice setting of the analyser by its name in KeyAnalyser::Knobs.
+static bool setKnob (KeyAnalyser::Knobs& k, const std::string& name, double v)
+{
+    using K = KeyAnalyser::Knobs;
+    static const std::pair<const char*, double K::*> table[] = {
+        { "voiceModel", &K::voiceModel }, { "offKeyEnter", &K::offKeyEnter }, { "offKeyLeave", &K::offKeyLeave }, { "offKeyLeaveSeconds", &K::offKeyLeaveSeconds },
+        { "heldShare", &K::heldShare }, { "heldFull", &K::heldFull }, { "tauVoice", &K::tauVoice }, { "voiceOutsideWeight", &K::voiceOutsideWeight },
+        { "voiceChangeEvidence", &K::voiceChangeEvidence }, { "voiceChangeFit", &K::voiceChangeFit }, { "voiceChangeOld", &K::voiceChangeOld },
+        { "voiceChangeShared", &K::voiceChangeShared }, { "voiceChangeFull", &K::voiceChangeFull }, { "voiceChangeWindow", &K::voiceChangeWindow },
+        { "voiceChangeWatch", &K::voiceChangeWatch }, { "voiceInheritEvidence", &K::voiceInheritEvidence }, { "voiceInheritHeld", &K::voiceInheritHeld },
+        { "voiceMoveUnsure", &K::voiceMoveUnsure }, { "voiceSureSigma", &K::voiceSureSigma }, { "voiceSureEvents", &K::voiceSureEvents }, { "voiceRefSeconds", &K::voiceRefSeconds },
+        { "voiceChangeSlack", &K::voiceChangeSlack }, { "voiceChangeEvents", &K::voiceChangeEvents }, { "voiceMoveEvidence", &K::voiceMoveEvidence }, { "voiceUnsureMargin", &K::voiceUnsureMargin },
+        { "voiceSureHeld", &K::voiceSureHeld }, { "voiceMinHeld", &K::voiceMinHeld }, { "voiceFitLow", &K::voiceFitLow }, { "voiceFitHigh", &K::voiceFitHigh },
+        { "voiceMargin", &K::voiceMargin }, { "voiceHome", &K::voiceHome }, { "clarityTau", &K::clarityTau },
+    };
+    for (const auto& t : table)
+        if (name == t.first) { k.*(t.second) = v; return true; }
+    return false;
+}
+
 int main (int argc, char** argv)
 {
     unsigned seed = 5000;
@@ -53,10 +76,9 @@ int main (int argc, char** argv)
         else if (k == "alone") o.musicAlone = o.voiceAlone = v > 0.0;
         else if (k == "verbose") verbose = v > 0.0;
         else if (k == "step") o.tonicStep = (int) v;
-        else if (k == "voiceModel") knobs.voiceModel = v;
-        else if (k == "offKeyEnter") knobs.offKeyEnter = v;
-        else if (k == "offKeyLeave") knobs.offKeyLeave = v;
-        else { std::fprintf (stderr, "unknown name %s\n", k.c_str()); return 2; }
+        else if (k == "nolevels") { if (v > 0.0) { o.levels.clear(); ownLevels = true; } }
+        else if (k == "nomusic") o.musicAlone = ! (v > 0.0);
+        else if (! setKnob (knobs, k, v)) { std::fprintf (stderr, "unknown name %s\n", k.c_str()); return 2; }
     }
     if (extra) { o.levels.push_back (12.0); o.levels.push_back (18.0); }
     if (verbose) o.log = stdout;

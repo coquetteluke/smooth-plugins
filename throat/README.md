@@ -53,7 +53,7 @@ Neutral, A Little Longer, A Little Shorter, Big Chest, Small Bright, Rounded Lip
 input > clean bad samples > dry delay (same length as the engine) ---------------> Mix > Bypass and Output Gain > output
       \> long window (43 ms) > pitch, voicing, envelope through the harmonics > formant model
                                                                                    |
-         tract shape > frequency map > gain per bin = model at mapped place - model here, + source tilt, + level match
+         tract shape > frequency map > gain per bin = model (low) or envelope (high) at mapped place - here, + source tilt, + level match
                                                                                    |
       \> short window (21 ms) ------------------------- gain --- + breath ---> overlap add -> Mix
 ```
@@ -65,8 +65,9 @@ input > clean bad samples > dry delay (same length as the engine) --------------
 - The map is computed at every frequency instead of at tracked formants. There is no formant tracker to lose its place on a consonant.
 - The model is an all-pole curve fitted to the harmonics themselves on voiced sound (discrete all-pole fitting), and to a smoothed envelope on unvoiced sound.
 - The further a frequency moves, the more its harmonics take their level from the model. That removes the ghost of the old formant, which simple filtering leaves behind.
+- From 4 times the pitch up (fully from 8 times), where many harmonics sit on each formant, the move reads the envelope through the harmonics instead of the model, which is smoother than the voice there. On real vocals that moves formants the whole way the tube says (since 0.6.0; before, about 0.7 to 0.8 of the way).
 - Above 6 kHz the gain is never more than 8 dB over what moving the envelope itself would give (11 dB in 0.4.1). The all-pole fit can make a peak at the top of its band that the voice does not have, and before 0.4.1 that came out as a burst of hiss on some sung vowels.
-- No harmonic from 500 Hz up stands out from its neighbours by more than 8 dB, or 2 dB more than the input's most prominent one, so the voice does not whistle (since 0.5.0).
+- No harmonic from 500 Hz up stands out from its neighbours by more than 8 dB, or 2 dB more than the input's most prominent one, so the voice does not whistle (since 0.5.0; since 0.6.0 the harmonics are read at whole multiples of the pitch).
 - A phrase that starts after a pause gets its own Level Match average, so its first 30 ms are not turned down by the phrase before (since 0.5.0).
 
 ## For other plug-ins

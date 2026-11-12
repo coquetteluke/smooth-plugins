@@ -8,7 +8,7 @@ set(SP_NAME    "Throat")
 set(SP_CODE    SThr)
 set(SP_BUNDLE  "com.lukegarito.smooththroat")
 set(SP_DESC    "Reshapes the vocal tract of a voice without moving its pitch")
-set(SP_VERSION 0.5.0)
+set(SP_VERSION 0.6.0)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice

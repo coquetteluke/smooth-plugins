@@ -168,6 +168,8 @@ private:
     static constexpr float nepersPerDb = 0.115129f;
     static constexpr float resynthesisFull = 0.05f; // A move of this much, as a log ratio, takes the harmonics' levels fully from the model
     // Above highBandFromHz the gain may be at most this much over what moving the envelope itself would give. See shapeFrame.
+    // From this many times the pitch up the move starts to take the harmonics' own envelope instead of the model, fully at twice that.
+    static constexpr float envelopeFromHarmonic = 4.0f;
     static constexpr float highBandFromHz = 6000.0f;
     // 11 dB in 0.4.1, the least that leaves the 0.2.0 renders bit for bit. On the branch 8 dB: at 11 dB Length 1.50 still had 1.8% of
     // voiced frames on takes 01 and 16 more than 12 dB over the tube model from 6 to 12 kHz, mostly where the level match lifts the
@@ -341,11 +343,25 @@ private:
             if (tilting)
                 w += tiltNepers * tiltCurve ((float) (k * binHz), corner);
             const float reference = m[2 * k] + resynthesis * (flat[2 * k] - m[2 * k]);
-            const float g = juce::jlimit (-maxLogGain, maxLogGain, w - reference);
-            // What the flattened envelope itself, read at the same place, says this bin should get. Only used above highBandFromHz.
+            // What the flattened envelope itself, read at the same place, says this bin should get.
             float shift = flat[a] + (at - (float) a) * (flat[a + 1] - flat[a]) - flat[2 * k];
             if (tilting)
                 shift += tiltNepers * tiltCurve ((float) (k * binHz), corner);
+            // Where many harmonics sit on each formant (from 4 times the pitch up, fully from 8 times), the envelope through them shows
+            // the formants as they are, and moving it moves them exactly as far as the tube says. The model is smoother than that: on
+            // real vocals its formants came out about 0.7 to 0.8 of the way and scattered (0.5.0, Length 0.70: 9% of frames 9% off).
+            // Low down, with two or three harmonics on a formant, the envelope cannot place it and the model can, so it stays there.
+            // The width's sharpening is kept in both.
+            float gRaw = w - reference;
+            if (! identityMap)
+            {
+                const float u = juce::jlimit (0.0f, 1.0f, ((float) (k * binHz) / std::max (f0, 60.0f) - envelopeFromHarmonic) / envelopeFromHarmonic);
+                const float fromEnvelope = u * u * (3.0f - 2.0f * u);
+                const float mRead = m[a] + (at - (float) a) * (m[a + 1] - m[a]);
+                const float detail = readFrom[a] + (at - (float) a) * (readFrom[a + 1] - readFrom[a]) - mRead;
+                gRaw += fromEnvelope * (shift + detail - gRaw);
+            }
+            const float g = juce::jlimit (-maxLogGain, maxLogGain, gRaw);
             envelopeShift[(size_t) k] = juce::jlimit (-maxLogGain, maxLogGain, shift);
             modelGain[(size_t) k] = juce::jlimit (-maxLogGain, maxLogGain, w - m[2 * k]);
             logGain[(size_t) k] = std::isfinite (g) ? g : 0.0f;
@@ -355,26 +371,20 @@ private:
 
         // No harmonic may whistle. The model's peaks can be narrower than the space between two harmonics, and when a harmonic lands
         // on one it comes out far above its neighbours: on real vocals 1 to 10% of voiced frames had a harmonic 12 dB or more over
-        // the two next to it and 6 dB more than any harmonic of the input stood out. So each harmonic from 500 Hz up, read where
-        // the envelope found its tip in this frame, is held to standing out by no more than 8 dB, or 2 dB more than the input's
-        // most prominent one if that is more. What is over comes off that harmonic alone, half a harmonic spacing either side.
-        // The envelope only finds tips on frames it calls clearly voiced. On a frame the pitch tracker still follows but calls less
-        // voiced (onsets, breathy or rough notes) the harmonics are read here from the spectrum itself, the same way, so the guard
-        // holds there too.
-        int count = std::min (envelope.numTips(), (int) harmonicIn.size());
-        for (int t = 0; t < count; ++t)
+        // the two next to it and 6 dB more than any harmonic of the input stood out. So each harmonic from 500 Hz up is held to
+        // standing out by no more than 8 dB, or 2 dB more than the input's most prominent one if that is more. What is over comes off
+        // that harmonic alone, half a harmonic spacing either side.
+        // The harmonics are looked for at whole multiples of the pitch, within a quarter of the spacing, in the long window's spectrum.
+        // (Up to 0.5.0 the envelope's tips were used, but those are found one from the last, and on a gliding note they wander off the
+        // harmonics: on a rap take at Giant a harmonic at 1640 Hz came out 20 dB over its neighbours while the guard looked at 1770 Hz.)
+        int count = 0;
+        if (f0 > 60.0f && voicing > 0.2f)
         {
-            harmonicBin[(size_t) t] = envelope.tipBinAt (t);
-            harmonicIn[(size_t) t] = envelope.tipLevelAt (t);
-        }
-        if (count < 3 && f0 > 60.0f && voicing > 0.2f)
-        {
-            count = 0;
             const float step = f0 * (float) analysisSize / (float) sr;
             const int top = std::min (analysisHalf - 1, (int) (9000.0f * (float) analysisSize / (float) sr));
             for (float next = step; next < (float) top && count < (int) harmonicIn.size(); next += step)
             {
-                const int from = std::max (1, (int) std::ceil (next - 0.35f * step)), to = std::min (analysisHalf - 1, (int) (next + 0.35f * step));
+                const int from = std::max (1, (int) std::ceil (next - 0.25f * step)), to = std::min (analysisHalf - 1, (int) (next + 0.25f * step));
                 int best = from;
                 for (int j = from; j <= to; ++j)
                     if (power[(size_t) j] > power[(size_t) best]) best = j;
@@ -397,10 +407,12 @@ private:
                     const float d = (float) k - centre;
                     const auto dirichlet = [] (float x) { return std::abs (x) < 1.0e-4f ? 1.0f : std::sin (juce::MathConstants<float>::pi * x) / (juce::MathConstants<float>::pi * x); };
                     const float w = 0.5f * dirichlet (d) + 0.25f * dirichlet (d - 1.0f) + 0.25f * dirichlet (d + 1.0f);
-                    sum += (double) (w * w) * std::exp (2.0 * (double) logGain[(size_t) k]);
+                    sum += (double) (w * w) * std::exp ((double) logGain[(size_t) k]);
                     weight += (double) (w * w);
                 }
-                return weight > 0.0 ? (float) (0.5 * std::log (sum / weight)) : 0.0f;
+                // The gains add up in amplitude, as the overlap add does: an average of powers would read a harmonic beside a steep
+                // gain as brighter than it comes out, and its neighbour as less prominent than it is.
+                return weight > 0.0 ? (float) std::log (sum / weight) : 0.0f;
             };
             for (int t = 0; t < count; ++t)
                 harmonicOut[(size_t) t] = harmonicIn[(size_t) t] + effectiveGain (std::min (0.5f * harmonicBin[(size_t) t], (float) synthHalf));   // the harmonics are on the long window's grid

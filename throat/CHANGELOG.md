@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0, 2026-11-11
+
+Luke left this call to the lead on 2026-11-11. A change to how every setting but Neutral sounds: formants now move as far as the tube says. Throat's own tests pass (246, 0 fail). NullTest's renders were saved again from 0.6.0 (the saved 0.2.0 session file kept); against the 0.5.0 renders, 0.6.0 differs at Pinched -23.7, Big Chest -26.1, the session -26.0, Giant -29.5 and Subtle Blend -36.1 dBFS, and nulls exactly at the default.
+
+- Formants move the whole way. Above a 5% move the harmonics took their level from the formant model alone, and the model is smoother than a real voice where many harmonics sit on a formant, so on real vocals the formants came out about 0.7 to 0.8 of the way the tube says and scattered (Length 0.70: 10% of frames 9% or more off). From 4 times the pitch up the move now reads the envelope through the harmonics, fully from 8 times; below that, where two or three harmonics cannot place a formant, the model stays. Takes 06, 09 and 16 against 0.5.0: failing rules 266 to 230, none newly failing. Formant move against the tube (limit 0.8 to 1.2) Length 0.70 0.79 to 0.89, Length 1.10 0.70 to 0.82, Length 1.20 0.76 to 0.87, Width 2.00 0.67 to 0.80, A Little Longer 0.70 to 0.82, Big Chest 0.78 to 0.87, Giant 0.78 to 0.85, Tiny 0.76 to 0.86; formant scatter p90 at Length 0.70 9.0 to 4.5% and in the 98 to 130 Hz band 29.8 to 3.8%; late phrase starts p95 at Length 1.10, Width 2.00 and A Little Longer 13 or 14 to 7 ms (limit 10).
+- Whistle guard. It read harmonics where the envelope found its tips, which are found one from the last and on a gliding note wander off the harmonics (rap take 16 at Giant, 13.9 s: a harmonic at 1640 Hz 20 dB over its neighbours while the guard looked at 1770 Hz). It now reads them at whole multiples of the pitch, and adds the gains around a harmonic in amplitude, as the overlap add does.
+
 ## 0.5.0, 2026-11-11
 
 Luke said yes to this on 2026-11-11, after the clips in _vox/rode/work/throat/demo.

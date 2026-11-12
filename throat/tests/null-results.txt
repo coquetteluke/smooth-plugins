@@ -1,38 +1,38 @@
 PASS  default    no window          null exact, 0 of 144000 samples differ
 PASS  default    window drawing     null exact, 0 of 144000 samples differ
-PASS  default    window drawing     221 frames drawn, saved state unchanged
+PASS  default    window drawing     841 frames drawn, saved state unchanged
 PASS  default    window reopening   null exact, 0 of 144000 samples differ
-INFO  default    opened and closed the window 315 times during audio
+INFO  default    opened and closed the window 1602 times during audio
 PASS  big-chest  no window          null exact, 0 of 144000 samples differ
 PASS  big-chest  window drawing     null exact, 0 of 144000 samples differ
-PASS  big-chest  window drawing     192 frames drawn, saved state unchanged
+PASS  big-chest  window drawing     828 frames drawn, saved state unchanged
 PASS  big-chest  window reopening   null exact, 0 of 144000 samples differ
-INFO  big-chest  opened and closed the window 261 times during audio
+INFO  big-chest  opened and closed the window 1411 times during audio
 PASS  pinched    no window          null exact, 0 of 144000 samples differ
 PASS  pinched    window drawing     null exact, 0 of 144000 samples differ
-PASS  pinched    window drawing     179 frames drawn, saved state unchanged
+PASS  pinched    window drawing     846 frames drawn, saved state unchanged
 PASS  pinched    window reopening   null exact, 0 of 144000 samples differ
-INFO  pinched    opened and closed the window 199 times during audio
+INFO  pinched    opened and closed the window 1438 times during audio
 PASS  whisper    no window          null exact, 0 of 144000 samples differ
 PASS  whisper    window drawing     null exact, 0 of 144000 samples differ
-PASS  whisper    window drawing     69 frames drawn, saved state unchanged
+PASS  whisper    window drawing     859 frames drawn, saved state unchanged
 PASS  whisper    window reopening   null exact, 0 of 144000 samples differ
-INFO  whisper    opened and closed the window 120 times during audio
+INFO  whisper    opened and closed the window 1672 times during audio
 PASS  giant      no window          null exact, 0 of 144000 samples differ
 PASS  giant      window drawing     null exact, 0 of 144000 samples differ
-PASS  giant      window drawing     84 frames drawn, saved state unchanged
+PASS  giant      window drawing     863 frames drawn, saved state unchanged
 PASS  giant      window reopening   null exact, 0 of 144000 samples differ
-INFO  giant      opened and closed the window 114 times during audio
+INFO  giant      opened and closed the window 1454 times during audio
 PASS  blend      no window          null exact, 0 of 144000 samples differ
 PASS  blend      window drawing     null exact, 0 of 144000 samples differ
-PASS  blend      window drawing     73 frames drawn, saved state unchanged
+PASS  blend      window drawing     860 frames drawn, saved state unchanged
 PASS  blend      window reopening   null exact, 0 of 144000 samples differ
-INFO  blend      opened and closed the window 97 times during audio
+INFO  blend      opened and closed the window 1677 times during audio
 PASS  session    no window          null exact, 0 of 144000 samples differ
 PASS  session    window drawing     null exact, 0 of 144000 samples differ
-PASS  session    window drawing     87 frames drawn, saved state unchanged
+PASS  session    window drawing     866 frames drawn, saved state unchanged
 PASS  session    window reopening   null exact, 0 of 144000 samples differ
-INFO  session    opened and closed the window 111 times during audio
+INFO  session    opened and closed the window 1414 times during audio
 PASS  window: opening and running it writes no parameter
 PASS  window: every parameter has a place on screen, 24 parameters
 PASS  window: automation moves the Length control

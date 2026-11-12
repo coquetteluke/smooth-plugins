@@ -386,6 +386,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     for (auto& l : doubleLine) l.prepare (sr, 0.09);
     vocoder.prepare (sr);
     for (auto& d : distortion) d.prepare (sr);
+    distLevel.prepare (sr);
     filter.prepare (sr);
     delay.prepare (sr, maxDelaySeconds);
     tank.prepare (sr);
@@ -1004,8 +1005,11 @@ void PluginProcessor::processSample (float inL, float inR, float& outL, float& o
     if (! fadeDist.silent())
     {
         const float back = std::pow (distGain, -0.62f); // keeps a -18 dBFS voice within a few dB across Drive
-        const float wetL = distortion[0].process (busL, distGain, back, distTypeNow);
-        const float wetR = distortion[1].process (busR, distGain, back, distTypeNow);
+        float wetL = distortion[0].process (busL, distGain, back, distTypeNow);
+        float wetR = distortion[1].process (busR, distGain, back, distTypeNow);
+        const float hold = distLevel.next (0.5f * (busL + busR), 0.5f * (wetL + wetR));
+        wetL *= hold;
+        wetR *= hold;
         const float amount = mixDist * distAmount;
         busL += amount * (wetL - busL);
         busR += amount * (wetR - busR);
@@ -1013,6 +1017,7 @@ void PluginProcessor::processSample (float inL, float inR, float& outL, float& o
     else if (! distActive)
     {
         for (auto& x : distortion) x.reset();
+        distLevel.reset();
     }
 
     // Filter

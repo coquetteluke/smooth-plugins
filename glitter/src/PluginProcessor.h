@@ -180,6 +180,7 @@ private:
     std::array<tunefx::DoublerLine, 2> doubleLine;
     tunefx::VocoderTone vocoder;
     std::array<tunefx::Distortion, 2> distortion;
+    tunefx::DistortionLevel distLevel;
     tunefx::SweepFilter filter;
     tunefx::TempoDelay delay;
     smooth::ReverbTank tank;

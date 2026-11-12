@@ -72,6 +72,30 @@ struct LevelMatch
     }
 };
 
+// Holds Distortion's output at the level of the voice going in, slowly, so switching it on does not make the voice louder or quieter.
+// The make-up gain for each Drive (PluginProcessor) is set for a -18 dBFS voice; a quieter one goes through the curve almost straight and
+// came out up to 6.8 dB louder (Luke's takes, Drive 30: 3.5 dB). It only learns while there is sound going in (over -70 dBFS), so a pause
+// leaves it where it was, and it is slow (0.3 s) so the curve's own squash within a note stays. Limited to -12 and +6 dB.
+struct DistortionLevel
+{
+    float inPower = 0.0f, outPower = 0.0f, gain = 1.0f, powerCoef = 0.001f, gainCoef = 0.001f;
+    void prepare (double rate) noexcept
+    {
+        powerCoef = (float) (1.0 - std::exp (-1.0 / (0.3 * rate)));
+        gainCoef = (float) (1.0 - std::exp (-1.0 / (0.1 * rate)));
+        reset();
+    }
+    void reset() noexcept { inPower = outPower = 0.0f; gain = 1.0f; }
+    float next (float in, float out) noexcept
+    {
+        inPower += powerCoef * (in * in - inPower);
+        outPower += powerCoef * (out * out - outPower);
+        if (inPower > 1.0e-7f && outPower > 1.0e-9f)
+            gain += gainCoef * (std::clamp (std::sqrt (inPower / outPower), 0.25f, 2.0f) - gain);
+        return gain;
+    }
+};
+
 // ----------------------------------------------------------------------------------------------------------- Doubler line
 
 // A short delay line with a moving read head, one per double.

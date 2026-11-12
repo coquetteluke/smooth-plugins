@@ -7,13 +7,15 @@ using namespace smoothtune;
 
 namespace
 {
-    struct InputRange { const char* name; double lowHz, highHz; };
+    struct InputRange { const char* name; double lowHz, highHz, belowHz; };
     // The lowest note sets the latency, because a grain needs one full period plus the time to find its mark.
+    // belowHz: notes under the range that are still followed, at the same latency (PitchTracker::setRange). Since 1.2.0 Alto/Tenor follows
+    // down to 70 Hz: Luke sings down to 77 to 95 Hz, and those notes came out exactly as sung. Notes at and above 98 Hz are read as before.
     constexpr InputRange inputRanges[] = {
-        { "Soprano",    150.0, 1300.0 },
-        { "Alto/Tenor",  98.0, 1000.0 },
-        { "Low Male",    65.0,  600.0 },
-        { "Wide Range",  65.0, 1300.0 },
+        { "Soprano",    150.0, 1300.0,  0.0 },
+        { "Alto/Tenor",  98.0, 1000.0, 70.0 },
+        { "Low Male",    65.0,  600.0,  0.0 },
+        { "Wide Range",  65.0, 1300.0,  0.0 },
     };
     constexpr int numInputTypes = (int) std::size (inputRanges);
 
@@ -209,9 +211,22 @@ void PluginProcessor::applyInputType (int type) noexcept
 {
     typeNow = juce::jlimit (0, numInputTypes - 1, type);
     const auto& range = inputRanges[(size_t) typeNow];
-    tracker.setRange (range.lowHz, range.highHz);
+    tracker.setRange (range.lowHz, range.highHz, range.belowHz);
+    baseLatency = latencyFor (typeNow, sr);
+    ring.fill (0.0);
+    ringAt = 0;
     shifter.setLatency (latencyFor (typeNow, sr));
     shifter.restart();
+    inPeak = aheadPeak = wetPeak = longPeak = 0.0;
+    onsetGain = 1.0;
+    onsetComing = false;
+    onsetAheadSamples = juce::jmin (baseLatency, (int) std::lround (0.012 * sr));
+    inFall = std::exp (-1.0 / (0.010 * sr));
+    aheadFall = std::exp (-1.0 / (double) juce::jmax (1, onsetAheadSamples));
+    wetFall = std::exp (-1.0 / (0.001 * sr));
+    longFall = std::exp (-1.0 / (0.3 * sr));
+    onsetGainUp = 1.0 - std::exp (-1.0 / (0.001 * sr));
+    onsetGainDown = 1.0 - std::exp (-1.0 / (0.0001 * sr));
     corrector.reset();
     control = {};
 }
@@ -306,7 +321,13 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, bool forceBypas
         if (++tickPhase >= tickSamples)
         {
             tickPhase = 0;
-            const double period = tracker.period();
+            ring[(size_t) ringAt] = tracker.period();
+            double period = ring[(size_t) ringAt];
+            // The pitch is read from further back, so that it is in line with the audio the grains are giving out. Whether a sound is
+            // voiced at all is still decided where it was, so a note is not picked up any later.
+            if (period > 0.0)
+                period = pitchInLine (period);
+            ringAt = (ringAt + 1) % (int) ring.size();
             corrector.update (period, settings, tickSeconds);
             control.voiced = period > 0.0;
             if (control.voiced)
@@ -342,6 +363,35 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, bool forceBypas
 
         const float dryL = shifter.dry (0);
         const float dryR = right != nullptr ? shifter.dry (1) : 0.0f;
+
+        // Nothing comes out before the input begins. Voicing is decided ahead of the output and the grains read ahead of it, so where a
+        // sound starts out of a pause the corrected sound was heard before it (a vowel at 560 Hz moved up 3: -21 dB against the held
+        // note in the 10 ms before it starts, Tune 1.1.1). The input is known a little ahead of the output, so a sound about to start
+        // is seen coming: where the input's peak over the next 12 ms stands 20 dB or more over its peak of the last 10 ms (until it falls
+        // under 10 dB), that peak is 20 dB under the input's peak over the last 300 ms or nothing in those 300 ms came near the coming
+        // sound (a pause, not a quiet stretch of voice), and the tuned voice (its peak over about 1 ms) stands over that last peak, the
+        // input itself goes out, as through any unvoiced sound. It crosses over within about 0.1 ms and back over about 1 ms. On a voice
+        // the two peaks are never that far apart, so the output is exactly as before everywhere but just before a sound. From Tune Pro
+        // 1.7.2 (b269554 to 8742f85, as it stands at 8742f85).
+        {
+            const double d = juce::jmax (std::abs ((double) dryL), right != nullptr ? std::abs ((double) dryR) : 0.0);
+            const double a = juce::jmax (std::abs ((double) shifter.dryAhead (0, onsetAheadSamples)), right != nullptr ? std::abs ((double) shifter.dryAhead (1, onsetAheadSamples)) : 0.0);
+            const double w = juce::jmax (std::abs ((double) wet[0]), right != nullptr ? std::abs ((double) wet[1]) : 0.0);
+            inPeak = juce::jmax (d, inPeak * inFall);
+            aheadPeak = juce::jmax (a, aheadPeak * aheadFall);
+            wetPeak = juce::jmax (w, wetPeak * wetFall);
+            longPeak = juce::jmax (d, longPeak * longFall);
+            onsetComing = aheadPeak > inPeak * (onsetComing ? onsetReleaseRatio : onsetRiseRatio)
+                          && (inPeak < longPeak * onsetPauseRatio || longPeak < aheadPeak * onsetPauseRatio);
+            const double want = onsetComing && wetPeak > inPeak ? 0.0 : 1.0;
+            if (want < onsetGain) onsetGain = juce::jmax (0.0, onsetGain + onsetGainDown * (want - onsetGain) - 1.0e-7);
+            else if (onsetGain < 1.0) onsetGain = juce::jmin (1.0, onsetGain + onsetGainUp * (want - onsetGain) + 1.0e-7);
+            if (onsetGain < 1.0)
+            {
+                wet[0] = (float) (dryL + onsetGain * (wet[0] - dryL));
+                if (right != nullptr) wet[1] = (float) (dryR + onsetGain * (wet[1] - dryR));
+            }
+        }
 
         // Input Type changes the delay, so fade out, jump, fade in, over 2 ms each way.
         if (fading)
@@ -380,6 +430,53 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, bool forceBypas
     noteReading->set ((float) corrector.targetNote());
     keyReading->set ((float) (activeKeyNow + 12 * activeScaleNow));
     voicedNow.store (voiced ? 1 : 0, std::memory_order_relaxed);
+}
+
+// The grains give out the input one whole latency late: 1.33 times the Input Type's longest period, so that even its lowest note has its
+// mark in time. The pitch the tracker reports is younger than that: the spacing of its two newest marks, about two of the voice's own
+// periods old by the time a grain is heard. So on every note above the bottom of the range the pitch control ran ahead of the audio
+// (Tune Pro, measured on a voice with vibrato: 0.8 to 13.2 ms early by Input Type and pitch). It is now read that much further back. On a
+// note whose reading is older than the whole delay (every note under about 147 Hz in Alto/Tenor, under 98 Hz in Low Male and Wide
+// Range) the voice's own movement over its last period and a half is carried on for the time that is missing, only while it moves the
+// way a held note does (under 60 cents in 25 ms) and never by more than 15 cents. From Tune Pro 1.6.0 and 1.6.1 (14ec99f, fffcaeb,
+// d0f2c71, 4061be9), whose Classic engine is Tune's plain grains.
+double PluginProcessor::pitchInLine (double period) const noexcept
+{
+    // How old the reported pitch is by the time it is heard, in periods. Tune's grains sit on the tracker's marks, as Tune Pro's Low Latency
+    // grains do since its 1.6.1, which took 1.80 for them (2.02 is for grains centred on the pulses, a quarter of a period later). Measured
+    // on Tune's own test voice with vibrato (PluginTest timing): 1.80 holds at every pitch, 71 to 262 Hz; Tune Pro's lower age for long
+    // periods (1.85) put Low Male's 95 Hz 1.18 ms early here, and 1.75 put its 71 Hz 1.09 ms late.
+    constexpr double age = 1.80;
+    constexpr double lowNoteHeldMost = 0.034657, lowNoteAheadMost = 0.008664;   // 60 and 15 cents as ratios of the period
+    const double lead = ((double) baseLatency - age * period) / (double) tickSamples;
+    const int size = (int) ring.size(), nominal = ringAt;
+    if (lead <= 0.0)
+    {
+        const int back = juce::jlimit (12, 32, (int) std::lround (1.5 * period / (double) tickSamples));
+        const double older = ring[(size_t) ((nominal + 2 * size - back) % size)];
+        if (older <= 0.0)
+            return period;
+        const double moved = std::log (period / older);
+        if (std::abs (moved) > lowNoteHeldMost * (double) back / 25.0)
+            return period;
+        return period * std::exp (juce::jlimit (-lowNoteAheadMost, lowNoteAheadMost, moved * (-lead) / (double) back));
+    }
+    const int whole = (int) lead;
+    const double part = lead - whole;
+    const double a = ring[(size_t) ((nominal + 2 * size - whole) % size)];
+    const double b = ring[(size_t) ((nominal + 2 * size - whole - 1) % size)];
+    if (a > 0.0 && b > 0.0)
+        return a + part * (b - a);
+    if (a > 0.0)
+        return a;
+    // The note is younger than that: the oldest reading it has
+    for (int k = whole - 1; k > 0; --k)
+    {
+        const double p = ring[(size_t) ((nominal + 2 * size - k) % size)];
+        if (p > 0.0)
+            return p;
+    }
+    return period;
 }
 
 PluginProcessor::Readings PluginProcessor::getReadings() const noexcept

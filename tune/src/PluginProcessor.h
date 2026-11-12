@@ -126,6 +126,7 @@ private:
     void applyInputType (int type) noexcept;
     void readSettings() noexcept;
     void handleAsyncUpdate() override;
+    double pitchInLine (double period) const noexcept;
 
     std::atomic<float>* keyParam = nullptr, *scaleParam = nullptr, *retune = nullptr, *humanize = nullptr, *flex = nullptr,
                        *inputType = nullptr, *followKey = nullptr, *naturalVibrato = nullptr, *transpose = nullptr,
@@ -145,6 +146,15 @@ private:
     int tickSamples = 48, tickPhase = 0, historyPhase = 0;
     double tickSeconds = 0.001;
     int typeNow = 1;
+    // The tracker's readings, one a tick, newest at ringAt, so the pitch control can be read in line with the audio (pitchInLine)
+    std::array<double, 128> ring {};
+    int ringAt = 0, baseLatency = 0;
+    // Onset gate (see process): peaks of the input now, ahead, over the last 300 ms, and of the tuned voice
+    double inPeak = 0.0, aheadPeak = 0.0, wetPeak = 0.0, longPeak = 0.0, onsetGain = 1.0;
+    double inFall = 0.999, aheadFall = 0.999, wetFall = 0.98, longFall = 0.9999, onsetGainUp = 0.02, onsetGainDown = 0.07;
+    int onsetAheadSamples = 576;
+    bool onsetComing = false;
+    static constexpr double onsetRiseRatio = 10.0, onsetReleaseRatio = 3.1622776601683795, onsetPauseRatio = 0.1;   // 20, 10 and -20 dB
     bool fading = false;
     float fadeGain = 1.0f, fadeStep = 1.0f / 64.0f, bypassMix = 1.0f, bypassStep = 0.001f;
     bool formantOn = true;

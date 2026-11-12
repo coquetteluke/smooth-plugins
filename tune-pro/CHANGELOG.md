@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.1, 2026-11-12
+
+**Low Latency's new memory waits 0.1 s before it is used** (`EnvelopeFilter::setSweepMemory`, `lowLatencySweepUseAfterSeconds`). The full working set on 1.8.0 (Luke's 11 working takes, each song's key) turned 12 more of 15650 sliding frames round on the rap takes 12 and 16 than 1.7.2 did, at the default: 4.967% -> 5.041%, limit 5, a fail. In rap and speech the pitch moves faster than the memory follows (30 semitones a second), so it is let go every few hundred ms and starts again from one moment's harmonics; drawn from those few points with 48 poles and no sharpening, it gave the output a slightly different pitch track from 1.7.2's. Now the memory still fills from the first moment but is used only once it has been filling for 0.1 s; until then the model is drawn through the moment's harmonics as in 1.7.2. Measured on takes 12 and 16 before choosing (rap reversed frames, 1.7.2 777 of 15644): used at once 789; after 50 ms 778; after 100 ms 777; after 200 ms 777. Changing the memory's length (0.2 or 0.8 s), how fast a glide lets it go (10 to 20 semitones a second), its sharpening or its order (32, 40 or 48 throughout) left 782 to 792; the level trim change of 1.8.0 none. Held notes and the held out sets are read after the first 0.1 s, so they read as in 1.8.0: eleventh set in Low Latency 2.700% / 3.661% / level 0.913 dB (1.8.0: 0.919), twelfth 2.888% / 3.111% / 0.895 dB (0.856). High Quality is unchanged from 1.8.0.
+
+Re-pinned again, the same day (the lead's call for 1.8.0 covers it): `saved` and the Low Latency null test now hold 1.8.1's output (`tests/state-1.8.1*`, `tests/ll_null.txt`; 1.8.0's pins are in git, 1.6.1's still beside them). Against 1.7.2, largest sample difference: the session in Low Latency 0.0567 (20.2 dB under the signal), the same 10 presets 0.019 to 0.070 (18.5 to 40.8 dB under), null cases: speech and singing files now 47 to 60 dB under (1.8.0: 16 to 41), transpose +3 at 224 Hz 0.101 (9.0 dB), throat 120% 0.129 (8.1 dB). A session saved by 1.6.1 still loads with every parameter as stored.
+
+The thirteenth held out set had its one run on 1.8.0 (above) and is not run again on 1.8.1.
+
 ## 1.8.0, 2026-11-12
 
 **Held vowels at a woman's pitch keep their formants, in both engines.** Found by the eleventh and twelfth held out sets (French, Greek and Portuguese women's vowels at 174 to 252 Hz), which failed on every version since they were written. This is a fault fix, and it changes how Low Latency sounds on corrected voices over 130 Hz, the default and the presets included. The lead's call, 2026-11-12 (Luke left these calls to the lead): ship it, and re-pin the tests that hold Low Latency's output bit for bit.

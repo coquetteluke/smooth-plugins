@@ -54,6 +54,11 @@ public:
     // louder (limit 1.5). Measured on the eleventh and twelfth sets (both seen) and dev voices; the thirteenth set is the proof.
     static constexpr double lowLatencySweepSeconds = 0.4, lowLatencySweepFromHz = 130.0, lowLatencySweepOrder = 48.0;
     static constexpr double lowLatencySweepOrderFromHz = 140.0, lowLatencySweepOrderToHz = 160.0;
+    // 1.8.1: the memory is used once it has been filling for 0.1 s since it was last let go; until then the model is drawn through the moment's
+    // harmonics as before. In rap and speech the pitch moves too fast for the memory most of the time, and it is let go every few hundred ms;
+    // used from its first set, a memory of a few points turned 12 more of 15650 sliding frames round on Luke's rap takes 12 and 16 than 1.7.2
+    // did (real vocal check, 4.967 -> 5.041%, limit 5). With 0.1 s it is 777 of 15644, as 1.7.2; the held out sets read as in 1.8.0.
+    static constexpr double lowLatencySweepUseAfterSeconds = 0.1;
     // How much corrected voice the level trim averages over, by engine. Low Latency needs longer since 1.4.0 holds the shape through a note
     // start: at 0.6 its worst level change read 1.53 dB, at 2.0 it reads 1.45. In High Quality 1.4.0's grains moved high notes' formants past
     // their limit at 2.0. The harmonic shifter takes 1.0: the trim follows the voice's own rise and fall as harmonics cross a formant, which
@@ -115,7 +120,10 @@ public:
         // High Quality remembers the harmonics as the pitch moves, which shows the formant peaks far better, so it needs much less sharpening.
         // Low Latency's sweep memory sharpens nothing: see lowLatencySweepSeconds. Its other models keep their sharpening.
         envelope.setSharpen (mode == highQuality ? 0.1 : 0.35);
-        envelope.setSweepMemory (mode == highQuality ? 0.2 : lowLatencySweepSeconds, 400.0, mode == highQuality ? 0.0 : lowLatencySweepFromHz);
+        if (mode == highQuality)
+            envelope.setSweepMemory (0.2, 400.0);
+        else
+            envelope.setSweepMemory (lowLatencySweepSeconds, 400.0, lowLatencySweepFromHz, lowLatencySweepUseAfterSeconds);
         ahead = envelope.getLookahead();
         levelGain = 1.0;
         wetLevel = dryLevel = levelSeen = 0.0;

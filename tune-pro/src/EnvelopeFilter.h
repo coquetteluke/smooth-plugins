@@ -132,8 +132,14 @@ public:
     void setHarmonicModelFrom (double hz) noexcept { harmonicModelFromHz = hz; }
     // Below toHz, each harmonic's level is kept where it was heard for about this many seconds, and the model is drawn through all of
     // them. 0 is off.
-    // And from fromHz up only, if given.
-    void setSweepMemory (double seconds, double toHz, double fromHz = 0.0) noexcept { sweepSeconds = seconds; sweepToHz = toHz; sweepFromHz = fromHz; clearSweep(); forgetGlide(); }
+    // And from fromHz up only, if given; and only once it has been filling for useAfterSeconds since it was last let go, the other
+    // models standing in until then. Call after prepare().
+    void setSweepMemory (double seconds, double toHz, double fromHz = 0.0, double useAfterSeconds = 0.0) noexcept
+    {
+        sweepSeconds = seconds; sweepToHz = toHz; sweepFromHz = fromHz;
+        sweepUseAfterSets = (int) std::lround (useAfterSeconds * sr / hop);
+        clearSweep(); forgetGlide();
+    }
     // How much the lowest formants are narrowed once harmonics have moved half a spacing or more. 0 is not at all.
     void setSharpen (double amount) noexcept { sharpenMax = amount; }
 
@@ -391,6 +397,7 @@ private:
     void clearSweep() noexcept
     {
         if (! sweepEmpty) { sweepNum.fill (0.0); sweepDen.fill (0.0); sweepEmpty = true; }
+        sweepSets = 0;
     }
     void forgetGlide() noexcept { lastSweepF0 = 0.0; sweepGlide = 0.0; }
 
@@ -452,6 +459,10 @@ private:
             sweepNum[(size_t) low + 1] += f * value; sweepDen[(size_t) low + 1] += f;
         }
         sweepEmpty = false;
+        // Kept from here on, but used only once it has been filling for sweepUseAfter: see setSweepMemory().
+        ++sweepSets;
+        if (sweepSets < sweepUseAfterSets)
+            return false;
 
         // Points: below sweepTopHz every bin heard often enough lately, at its average level. Above it this moment's harmonics as they
         // are, as high numbered ones move too far between moments to be worth remembering. Straight lines between points, in log.
@@ -599,6 +610,7 @@ private:
     std::array<double, sweepBins> sweepNum {}, sweepDen {};
     std::array<double, maxSweepHarmonics> heardHz {}, heardLog {};
     bool sweepEmpty = false;
+    int sweepSets = 0, sweepUseAfterSets = 0;
     double sr = 48000.0, strength = 1.0, formantScale = 1.0, periodNow = 0.0, shiftRatio = 1.0, gainNow = 1.0;
     int directOrder = 32;
     int channels = 2, order = 32, hop = 120, ringSize = 32768, windowLength = 1920, lookahead = 0, numSets = 128;

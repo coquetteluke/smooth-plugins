@@ -2252,15 +2252,16 @@ void testTargetHold()
 //
 // Re-pinned for 1.8.0 (2026-11-12, the lead's call, Luke having left it to the lead): 1.8.0 fixes Low Latency's formants on women's
 // voices (held u at 221 and 252 Hz came out 8 to 10 dB low around its formants, the eleventh and twelfth held out sets), which changes
-// every corrected Low Latency voice over 130 Hz, and this test's voice is at 196 and 220 Hz. So the output pins are now 1.8.0's own
-// (tests/state-1.8.0.txt, tests/state-1.8.0-ll.raw and -hq.raw, written by the 1.8.0 build with TUNE_PIN_WRITE=1), with the same limits:
+// every corrected Low Latency voice over 130 Hz, and this test's voice is at 196 and 220 Hz. So the output pins are now the build's own
+// (tests/state-1.8.1.txt, tests/state-1.8.1-ll.raw and -hq.raw, written by the 1.8.1 build with TUNE_PIN_WRITE=1; 1.8.0 had its own, in
+// git, replaced the same day when 1.8.1 changed when Low Latency's memory is first used), with the same limits:
 // presets bit for bit, the session within 1e-6. The 1.6.1 pins that held up to 1.7.2 are kept beside them, unchanged, and still read:
-// how many presets 1.8.0 gives bit for bit as 1.7.2 did, and how far the session's output is from 1.7.2's. What a session carries is
+// how many presets the build gives bit for bit as 1.7.2 did, and how far the session's output is from 1.7.2's. What a session carries is
 // not allowed to change at all: every parameter it stored must load as stored (new line, limit set before it was run).
 void testSavedBy161()
 {
     const auto folder = juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory();
-    const auto blobFile = folder.getChildFile ("state-1.6.1.bin"), hashFile161 = folder.getChildFile ("state-1.6.1.txt"), hashFile = folder.getChildFile ("state-1.8.0.txt");
+    const auto blobFile = folder.getChildFile ("state-1.6.1.bin"), hashFile161 = folder.getChildFile ("state-1.6.1.txt"), hashFile = folder.getChildFile ("state-1.8.1.txt");
     const bool writing = std::getenv ("TUNE_PIN_WRITE") != nullptr;
     const auto hashed = [] (const juce::AudioBuffer<float>& b)
     {
@@ -2346,12 +2347,12 @@ void testSavedBy161()
             }
             return worst;
         };
-        const auto rawFile = folder.getChildFile ("state-1.8.0-" + engineName + ".raw");
+        const auto rawFile = folder.getChildFile ("state-1.8.1-" + engineName + ".raw");
         if (writing)
             rawFile.replaceWithData (out.getReadPointer (0), (size_t) out.getNumSamples() * sizeof (float));
         else
         {
-            chk (largestAgainst (rawFile) <= 1.0e-6, "a session saved by 1.6.1 at its defaults: largest sample difference against the 1.8.0 pin (x 1e6)", largestAgainst (rawFile) * 1.0e6, "");
+            chk (largestAgainst (rawFile) <= 1.0e-6, "a session saved by 1.6.1 at its defaults: largest sample difference against the 1.8.1 pin (x 1e6)", largestAgainst (rawFile) * 1.0e6, "");
             note ("  the same against 1.6.1's own output, which 1.6.1 to 1.7.2 met (x 1e6)", largestAgainst (folder.getChildFile ("state-1.6.1-" + engineName + ".raw")) * 1.0e6, "");
         }
     }
@@ -2384,10 +2385,10 @@ void testSavedBy161()
     for (const auto& kv : found)
     {
         if (stored.count (kv.first) && stored[kv.first] == kv.second) ++same;
-        else chk (false, "case " + kv.first + ": output differs from the 1.8.0 pin");
+        else chk (false, "case " + kv.first + ": output differs from the 1.8.1 pin");
         if (stored161.count (kv.first) && stored161[kv.first] == kv.second) ++same161;
     }
-    chk (same == (int) found.size() && ! found.empty(), "every factory preset comes out bit for bit as pinned for 1.8.0, cases", (double) same);
+    chk (same == (int) found.size() && ! found.empty(), "every factory preset comes out bit for bit as pinned for 1.8.1, cases", (double) same);
     note ("  of those, bit for bit as 1.6.1 to 1.7.2 gave them", (double) same161, "");
 }
 
@@ -2403,7 +2404,8 @@ std::vector<float> loadWav (const char* name);
 // followed notes under Alto/Tenor's range; before that 1.4.0, which stopped the burst at note starts and made the level trim slower, and
 // before that 1.2.1. tests/ll_null-1.6.1.txt holds a hash of the 32 bit samples for each case, written by 1.6.1; 1.6.1 to 1.7.2 met it.
 // Re-pinned for 1.8.0 (2026-11-12, the lead's call): 1.8.0 fixes Low Latency's formants on women's voices (the eleventh and twelfth held
-// out sets), which changes every corrected Low Latency voice over 130 Hz. tests/ll_null.txt now holds 1.8.0's hashes (TUNE_LL_WRITE=1);
+// out sets), which changes every corrected Low Latency voice over 130 Hz. tests/ll_null.txt now holds 1.8.1's hashes (TUNE_LL_WRITE=1;
+// 1.8.0's, in git, were replaced the same day);
 // the 1.6.1 file is kept unchanged beside it, and how many cases still match it is printed. Since 1.8.0 a TUNE_AS_160 build no longer
 // matches 1.6.0's numbers: the 1.8.0 change is not switched off by it.
 // TUNE_LL_RAW=folder also writes the samples, to read a largest sample difference against a saved copy of an older build.
@@ -2413,7 +2415,7 @@ void testLowLatencyNull()
     const std::string pinned = "1.6.0";
     const auto file = juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory().getChildFile ("ll_null-1.6.0.txt");
 #else
-    const std::string pinned = "1.8.0";
+    const std::string pinned = "1.8.1";
     const auto file = juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory().getChildFile ("ll_null.txt");
 #endif
     const bool writing = std::getenv ("TUNE_LL_WRITE") != nullptr;

@@ -45,7 +45,7 @@ Latency at 48 kHz, reported to the host and measured on noise and voices:
 | Alto/Tenor | 13.7 ms | 58.7 ms |
 | Low Male, Wide Range | 20.6 ms | 65.6 ms |
 
-- **Low Latency** sits as close to the input as the longest period allows. Use it while tracking. Since 1.6.0 its pitch control is read in line with the audio it is giving out (it ran up to 13 ms ahead in Low Male and Wide Range), and a voice with nothing to correct comes out as the delayed input, sample for sample. Since 1.8.0 its vocal tract model remembers each harmonic's level for 0.4 s as the pitch moves, from 130 to 400 Hz, so a high voice keeps its formants.
+- **Low Latency** sits as close to the input as the longest period allows. Use it while tracking. Since 1.6.0 its pitch control is read in line with the audio it is giving out (it ran up to 13 ms ahead in Low Male and Wide Range), and a voice with nothing to correct comes out as the delayed input, sample for sample. Since 1.8.0 its vocal tract model remembers each harmonic's level for 0.4 s as the pitch moves, from 130 to 400 Hz, so a high voice keeps its formants; since 1.8.1 that memory is used once it has been filling for 0.1 s, so rap and speech, which move too fast for it, come out as before.
 - **High Quality** adds 45 ms. That buys a vocal tract model that sees both sides of each moment, a first look at whether a sound is voiced before it reaches the output, and grains centred on the pulses of the voice. Use it for mixing.
 
 Changing Engine or Input Type warms the other engine while the first keeps playing, then crossfades over 12 ms, so there is no gap and no click. The host is told the new latency at that point. During those 12 ms the two run at different delays, so level can dip briefly: 7 dB at worst in a 5 ms reading.

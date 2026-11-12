@@ -1416,6 +1416,19 @@ void testReverb()
             const double rt = measureRt60 (out, (int) (0.55 * SR) + p->getLatencySamples(), SR);
             check (std::abs (rt / decay - 1.0) <= limits::reverbRt60Fraction, "Reverb Type " + std::to_string (type) + " Decay " + juce::String (decay, 1).toStdString() + " s, measured RT60", rt, "s");
         }
+    // Switched on while playing, as automation or a click on its block does (2026-11-12): the tank is cleared on the way in, and it must
+    // still decay as set. Written before the fix on branch wip/reverb-clear was tried.
+    for (float decay : { 1.0f, 3.0f })
+    {
+        std::vector<float> x ((size_t) (8.0 * SR), 0.0f);
+        std::vector<float> n ((size_t) (0.3 * SR));
+        noise (n.data(), (int) n.size(), 0.25);
+        std::copy (n.begin(), n.end(), x.begin() + (long) (0.5 * SR));
+        auto p = with ({ { "reverbOn", 0 }, { "reverbDecay", decay }, { "reverbMix", 100 }, { "reverbPreDelay", 0 } });
+        const auto out = left (render (*p, x, 256, nullptr, [&p] (int idx) { if (idx == 20) setParam (*p, "reverbOn", 1.0f); }));
+        const double rt = measureRt60 (out, (int) (0.85 * SR) + p->getLatencySamples(), SR);
+        check (std::abs (rt / decay - 1.0) <= limits::reverbRt60Fraction, "Reverb switched on while playing, Decay " + juce::String (decay, 1).toStdString() + " s, measured RT60", rt, "s");
+    }
     // Mix and off
     {
         const auto x = burst (3.0, 0.2, 0.02, 1760.0, 0.25);

@@ -127,6 +127,7 @@ private:
     void applyDueMidi() noexcept;
     void applyMidi (std::uint8_t status, std::uint8_t a, std::uint8_t b) noexcept;
     void tick() noexcept;
+    double pitchInLine (double period) const noexcept;
     void controlRate() noexcept;
     void processSample (float inL, float inR, float& outL, float& outR, float& dryL, float& dryR) noexcept;
     double periodFor (double pitch) const noexcept { return sr / (settings.referenceHz * std::pow (2.0, (pitch - 69.0) / 12.0)); }
@@ -220,6 +221,9 @@ private:
     int tickSamples = 48, tickPhase = 0, historyPhase = 0, chunkPhase = 0;
     double tickSeconds = 0.001;
     int typeNow = 1, latencyNow = 0;
+    // The tracker's readings, one a tick, newest at ringAt, so the pitch control can be read in line with the audio (pitchInLine)
+    std::array<double, 128> ring {};
+    int ringAt = 0;
     bool fading = false;
     float fadeGain = 1.0f, fadeStep = 1.0f / 64.0f, bypassMix = 1.0f, bypassStep = 0.001f;
     float lastVoicingLimit = -1.0f;

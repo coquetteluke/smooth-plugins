@@ -8,13 +8,16 @@ using namespace tunefx;
 
 namespace
 {
-    struct InputRange { const char* name; double lowHz, highHz; };
+    struct InputRange { const char* name; double lowHz, highHz, belowHz; };
     // The lowest note sets the latency, because a grain needs one full period plus the time to find its mark.
+    // belowHz: notes under the range that are still followed, at the same latency (PitchTracker::setRange). Since 1.2.0 Alto/Tenor follows
+    // down to 70 Hz: Luke sings down to 77 to 95 Hz, and those notes came out exactly as sung. Notes at and above 98 Hz are read as before.
+    // From Tune Pro 1.6.0 (b0e0220, 213656f), as Tune 1.2.0 has it.
     constexpr InputRange inputRanges[] = {
-        { "Soprano",    150.0, 1300.0 },
-        { "Alto/Tenor",  98.0, 1000.0 },
-        { "Low Male",    65.0,  600.0 },
-        { "Wide Range",  65.0, 1300.0 },
+        { "Soprano",    150.0, 1300.0,  0.0 },
+        { "Alto/Tenor",  98.0, 1000.0, 70.0 },
+        { "Low Male",    65.0,  600.0,  0.0 },
+        { "Wide Range",  65.0, 1300.0,  0.0 },
     };
     constexpr int numInputTypes = (int) std::size (inputRanges);
     constexpr int chunk = smooth::ReverbTank::kChunk;
@@ -456,9 +459,11 @@ void PluginProcessor::applyInputType (int type) noexcept
 {
     typeNow = juce::jlimit (0, numInputTypes - 1, type);
     const auto& range = inputRanges[(size_t) typeNow];
-    tracker.setRange (range.lowHz, range.highHz);
+    tracker.setRange (range.lowHz, range.highHz, range.belowHz);
     const int samples = latencyFor (typeNow, sr);
     latencyNow = samples;
+    ring.fill (0.0);
+    ringAt = 0;
     for (auto* s : { &shifterA, &shifterB, &harmonyShifter[0], &harmonyShifter[1], &doubleShifter[0], &doubleShifter[1] })
     {
         s->setLatency (samples);
@@ -678,7 +683,13 @@ void PluginProcessor::tick() noexcept
         else settings.allowed = heldClasses;
     }
 
-    const double period = tracker.period();
+    ring[(size_t) ringAt] = tracker.period();
+    double period = ring[(size_t) ringAt];
+    // The pitch is read from further back, so that it is in line with the audio the grains are giving out. Whether a sound is voiced at
+    // all is still decided where it was, so a note is not picked up any later.
+    if (period > 0.0)
+        period = pitchInLine (period);
+    ringAt = (ringAt + 1) % (int) ring.size();
     corrector.update (period, settings, tickSeconds);
     const bool voiced = period > 0.0;
     voicedGate += slew (voiced ? 5.0 : 30.0) * ((voiced ? 1.0 : 0.0) - voicedGate);
@@ -792,6 +803,52 @@ void PluginProcessor::tick() noexcept
         point.harmony2.store (voiced && harmonyActive && twoVoices && ! displayBypassed ? (float) (lead + harmonyOffset[1]) : 0.0f, std::memory_order_relaxed);
         pitchHistoryCount.store (at + 1, std::memory_order_relaxed);
     }
+}
+
+// The grains give out the input one whole latency late: 1.33 times the Input Type's longest period, so that even its lowest note has its
+// mark in time. The pitch the tracker reports is younger than that: the spacing of its two newest marks, about two of the voice's own
+// periods old by the time a grain is heard. So on every note above the bottom of the range the pitch control ran ahead of the audio
+// (Tune Pro, measured on a voice with vibrato: 0.8 to 13.2 ms early by Input Type and pitch). It is now read that much further back. On a
+// note whose reading is older than the whole delay (every note under about 147 Hz in Alto/Tenor, under 98 Hz in Low Male and Wide
+// Range) the voice's own movement over its last period and a half is carried on for the time that is missing, only while it moves the
+// way a held note does (under 60 cents in 25 ms) and never by more than 15 cents. From Tune Pro 1.6.0 and 1.6.1 (14ec99f, fffcaeb,
+// d0f2c71, 4061be9) as Tune 1.2.0 has it: Tune Pro's Classic engine and Tune are Glitter's plain grains. Every shifter (lead, Pitch,
+// Harmony, Doubler) reads the same control.
+double PluginProcessor::pitchInLine (double period) const noexcept
+{
+    // How old the reported pitch is by the time it is heard, in periods. Glitter's grains sit on the tracker's marks, as Tune's and Tune
+    // Pro's Low Latency grains do, which took 1.80 for them.
+    constexpr double age = 1.80;
+    constexpr double lowNoteHeldMost = 0.034657, lowNoteAheadMost = 0.008664;   // 60 and 15 cents as ratios of the period
+    const double lead = ((double) latencyNow - age * period) / (double) tickSamples;
+    const int size = (int) ring.size(), nominal = ringAt;
+    if (lead <= 0.0)
+    {
+        const int back = juce::jlimit (12, 32, (int) std::lround (1.5 * period / (double) tickSamples));
+        const double older = ring[(size_t) ((nominal + 2 * size - back) % size)];
+        if (older <= 0.0)
+            return period;
+        const double moved = std::log (period / older);
+        if (std::abs (moved) > lowNoteHeldMost * (double) back / 25.0)
+            return period;
+        return period * std::exp (juce::jlimit (-lowNoteAheadMost, lowNoteAheadMost, moved * (-lead) / (double) back));
+    }
+    const int whole = (int) lead;
+    const double part = lead - whole;
+    const double a = ring[(size_t) ((nominal + 2 * size - whole) % size)];
+    const double b = ring[(size_t) ((nominal + 2 * size - whole - 1) % size)];
+    if (a > 0.0 && b > 0.0)
+        return a + part * (b - a);
+    if (a > 0.0)
+        return a;
+    // The note is younger than that: the oldest reading it has
+    for (int k = whole - 1; k > 0; --k)
+    {
+        const double p = ring[(size_t) ((nominal + 2 * size - k) % size)];
+        if (p > 0.0)
+            return p;
+    }
+    return period;
 }
 
 // Once every 16 samples: filter, ring, delay time and reverb. Counted across blocks, so the block size does not change the sound.

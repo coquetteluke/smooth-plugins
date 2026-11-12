@@ -61,6 +61,8 @@ public:
         havePending = false;
         lastMarkUsed = -1;
         lastOffset = 0.0;
+        plannedOffset = 0.0;
+        enteredAt = -1.0e12;
         needDecision = true;
         firstGrain = true;
     }
@@ -293,14 +295,34 @@ private:
                 const long long following = lastMarkUsed + 1;
                 if (following <= tracker.lastMark() && following >= tracker.firstMark())
                 {
-                    const double m = tracker.mark (following).position - lastOffset;
+                    // The grain before may have read its mark from somewhere else than the reported delay: every corrected grain does, and
+                    // so does one whose mark was not known in time. Up to 1.1.1 that offset was then kept for as long as nothing was
+                    // corrected, so the "untouched" voice came out up to 0.6 of a period early or late. Now it is walked back to the
+                    // reported delay, by at most 0.1% of the period a grain: 1.7 cents, for 600 periods at the very most (2 to 4 s), the
+                    // same thing the grains do while correcting a note by 1.7 cents. Going back in one grain would make one period up to
+                    // 60% too long or short. From Tune Pro 1.6.0 (fffcaeb, d0f2c71).
+                    double offset = lastOffset;
+                    if (offset != 0.0)
+                    {
+                        const double most = lockedWalkShare * period;
+                        offset -= std::clamp (offset, -most, most);
+                    }
+                    const double m = tracker.mark (following).position - offset;
                     const double gap = m - s;
                     if (gap > 0.5 * period && gap < 1.6 * period)
                     {
                         spacing = gap;
                         planned = Plan::locked;
+                        plannedOffset = offset;
                     }
                 }
+                // No next mark to step to (the marks were started again, or the next one is not known yet). Up to 1.1.1 this grain was
+                // then cut from whichever mark was nearest, somewhere within 0.6 of a period of the reported delay, and that offset was
+                // kept for the rest of the uncorrected stretch (on Luke's takes with every note on Bypass the output was only 3.2 dB under
+                // the input at the worst take). Now it is a plain read at the reported delay, as on unvoiced sound, and the grain after it
+                // lands on a mark again.
+                if (planned != Plan::locked && lastOffset == 0.0)
+                    planned = Plan::pass;
             }
             else if (lastMarkUsed < 0 && tracker.hasMarks())
             {
@@ -320,6 +342,8 @@ private:
                     spacing = tracker.mark (found).position - s;
                     lastMarkUsed = found - 1;
                     lastOffset = 0.0;
+                    plannedOffset = 0.0;
+                    enteredAt = s + spacing;
                     planned = Plan::locked;
                 }
                 else
@@ -333,9 +357,15 @@ private:
             // grain. Longer ones were measured and only flattened the formants further. The rise never takes longer than the
             // spacing, because the next grain cannot start before it has been decided.
             const double shortest = period, longest = period;
-            const double half = std::clamp (spacing, shortest, longest);
+            // Nothing corrected and both grains at the reported delay: the falling and the rising half share one raised cosine as long as
+            // the spacing, so the two sum to exactly 1 and the output is the delayed input, whatever the spacing of the marks.
+            const bool exactPass = c.noCorrection && lastOffset == 0.0
+                                   && (planned == Plan::pass || (planned == Plan::locked && plannedOffset == 0.0));
+            if (planned == Plan::pass && exactPass)
+                spacing = std::floor (std::min ((double) fallback, std::max (16.0, period)));
+            const double half = exactPass ? spacing : std::clamp (spacing, shortest, longest);
             if (current != nullptr) { current->fall = half; current->fallIsFinal = true; }
-            next.rise = std::min (spacing, longest);
+            next.rise = exactPass ? spacing : std::min (spacing, longest);
             next.mark = s + spacing;
 
             if (planned != Plan::pass)
@@ -384,7 +414,8 @@ private:
         else if (planned == Plan::locked)
         {
             const long long following = std::clamp (lastMarkUsed + 1, tracker.firstMark(), tracker.lastMark());
-            g.offset = lastOffset;
+            g.offset = plannedOffset;
+            lastOffset = plannedOffset;
             lastMarkUsed = following;
         }
         else
@@ -396,6 +427,15 @@ private:
                 ++q;
             while (q > tracker.firstMark() && tracker.mark (q).position - g.mark > 0.6 * period)
                 --q;
+            // Just after the grains have come in from a pass, as where a sound starts out of a pause, a grain may not read ahead of where
+            // it is heard: up to 1.1.1 a voice moved up began to sound up to a period before the input did (a vowel at 560 Hz moved up 3:
+            // -21 dB against the held note in the 10 ms before it starts). Reading from the last mark at or before the grain instead
+            // costs nothing but up to a period of lag for those first ms; after that, the nearest mark either side as always. In place of
+            // Tune Pro's onset gate (1.7.2), which crossed to the input there: on Tune's plain grains that crossing made clicks by the real
+            // vocal check on takes 02, 05 and 07 (Hard Tune, song key), as it did on Tune Pro's Classic.
+            if (g.mark - enteredAt < entrySeconds * sr)
+                while (q > tracker.firstMark() && tracker.mark (q).position > g.mark)
+                    --q;
             const double offset = tracker.mark (q).position - g.mark;
             if (std::abs (offset) > 1.6 * period || offset > (double) latency)
             {
@@ -431,7 +471,11 @@ private:
     Grain pending;
     bool havePending = false, needDecision = true, firstGrain = true;
     Plan planned = Plan::pass;
-    double peakOfNewest = 0.0, lastOffset = 0.0;
+    double peakOfNewest = 0.0, lastOffset = 0.0, plannedOffset = 0.0, enteredAt = -1.0e12;
+    // 10 ms: 2 ms left the onset test at -21 dB, 5 ms read -68 dB, 10 and 15 ms -137 dB; 15 ms added a click by the real vocal check on
+    // take 04 at 60.91 s (Hard Tune, song key) that 10 ms does not have.
+    static constexpr double entrySeconds = 0.010;
+    static constexpr double lockedWalkShare = 0.001;
     long long lastMarkUsed = -1;
 };
 } // namespace smoothtune

@@ -78,16 +78,32 @@ struct LevelMatch
 // leaves it where it was, and it is slow (0.3 s) so the curve's own squash within a note stays. Limited to -12 and +6 dB.
 struct DistortionLevel
 {
-    float inPower = 0.0f, outPower = 0.0f, gain = 1.0f, powerCoef = 0.001f, gainCoef = 0.001f;
+    float inPower = 0.0f, outPower = 0.0f, gain = 1.0f, powerCoef = 0.001f, gainCoef = 0.001f, fastCoef = 0.01f;
+    int warm = 0, warmSamples = 960;
     void prepare (double rate) noexcept
     {
         powerCoef = (float) (1.0 - std::exp (-1.0 / (0.3 * rate)));
         gainCoef = (float) (1.0 - std::exp (-1.0 / (0.1 * rate)));
+        fastCoef = (float) (1.0 - std::exp (-1.0 / (0.004 * rate)));
+        warmSamples = (int) (0.02 * rate);
         reset();
     }
-    void reset() noexcept { inPower = outPower = 0.0f; gain = 1.0f; }
-    float next (float in, float out) noexcept
+    void reset() noexcept { inPower = outPower = 0.0f; gain = 1.0f; warm = warmSamples; }
+    // After a reset (Distortion switched on, or the plug-in prepared) it reads the level quickly for the first 20 ms of sound, under the On switch's 15 ms fade, and sets the hold
+    // straight from that, starting from start (the curve's gain for a quiet voice turned round). Then slow as above. 1.2.0 began at 1,
+    // no hold, and came in up to 7 dB high or low until the slow reading caught up.
+    float next (float in, float out, float start) noexcept
     {
+        if (warm > 0)
+        {
+            if (warm == warmSamples) gain = std::clamp (start, 0.25f, 2.0f);
+            inPower += fastCoef * (in * in - inPower);
+            if (inPower > 1.0e-7f) --warm;   // the quick reading is spent on sound, not on a pause before it
+            outPower += fastCoef * (out * out - outPower);
+            if (inPower > 1.0e-7f && outPower > 1.0e-9f)
+                gain = std::clamp (std::sqrt (inPower / outPower), 0.25f, 2.0f);
+            return gain;
+        }
         inPower += powerCoef * (in * in - inPower);
         outPower += powerCoef * (out * out - outPower);
         if (inPower > 1.0e-7f && outPower > 1.0e-9f)

@@ -1009,7 +1009,9 @@ void PluginProcessor::processSample (float inL, float inR, float& outL, float& o
         const float back = std::pow (distGain, -0.62f); // keeps a -18 dBFS voice within a few dB across Drive
         float wetL = distortion[0].process (busL, distGain, back, distTypeNow);
         float wetR = distortion[1].process (busR, distGain, back, distTypeNow);
-        const float hold = distLevel.next (0.5f * (busL + busR), 0.5f * (wetL + wetR));
+        // the curves' slope at rest: Tube tanh'(0.25), Clip and Fold 1
+        const float quietGain = distGain * back * (distTypeNow == 0 ? 0.9400f : 1.0f);
+        const float hold = distLevel.next (0.5f * (busL + busR), 0.5f * (wetL + wetR), 1.0f / quietGain);
         wetL *= hold;
         wetR *= hold;
         const float amount = mixDist * distAmount;

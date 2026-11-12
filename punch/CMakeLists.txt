@@ -8,7 +8,7 @@ set(SP_NAME    "Punch")
 set(SP_CODE    SPun)
 set(SP_BUNDLE  "com.lukegarito.smoothpunch")
 set(SP_DESC    "Vocal impact: transient shaper, compressors and output ceiling")
-set(SP_VERSION 0.5.1)
+set(SP_VERSION 0.6.0)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice

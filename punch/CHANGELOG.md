@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0, 2026-11-12
+
+Steady Notes is on in a new instance. Luke left this call to the lead on 2026-11-11.
+
+- What a new instance sounds like does not change: with Punch, Attack and Sustain at 0, Steady Notes changes nothing. Measured through the real plug-in, the default of 0.5.1 against the default of 0.6.0 on all 11 working set takes: identical, 0 samples differ. Once Punch, Attack or Sustain is moved, a new instance now gets the voice behaviour that the Steady Notes groups of the real vocal check measure (every one of those limits met on all 11 takes).
+- Saved sessions keep their sound. A session saved since 0.4.0 holds a value for Steady Notes and keeps it, on or off. A session saved before 0.4.0 has none and loads with it off. The 14 older presets still turn it off; the six lead presets still turn it on.
+- A new instance shows "Neutral, edited" in the preset box, because Neutral has Steady Notes off.
+- For drums or anything without a pitch, turn Steady Notes off: with it on, Sustain does nothing to a sound with no pitch.
+- The window's preview drew no Sustain at all with Steady Notes on (a drawn hit falls more than 6 dB before it could count as a note). It now draws the hit's body as the note and the tail after it the way a voice gets it.
+- The pitch sense now runs at the default: the worst audio block on the working set took 1.3 to 2.1 % of one core, against at most 1.0 % in 0.5.1.
+
+The 14 working set lines that fail are the groups the real vocal check runs with Steady Notes set off on purpose. They read exactly as in 0.5.1, because the check sets Steady Notes off itself and does not use the default.
+
+Tests: 450 pass, 0 fail (0.5.1 had 439). New: a new instance has Steady Notes on; a session from before 0.4.0 loads with it off into a new instance and into one that had it on; 0.5.1 sessions saved with it off and on keep it; a damaged value goes back to the default; the default's output with it on and off is the same sample for sample on two real voices and the sung line; the preview draws Sustain with it on. Two older checks follow the new default: the control list now expects Steady Notes to default to on, and the window check "Sustain moves its tail" turns Steady Notes off first, so it checks the same drawing as before.
+
 ## 0.5.1, 2026-11-11
 
 Two fixes to Steady Notes and a ceiling for every lead preset, from the third real vocal pass. With Steady Notes off nothing changes: every older preset and every saved session that does not use it sounds exactly as before.

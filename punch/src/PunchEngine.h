@@ -469,7 +469,11 @@ private:
         // sounding, of the note's own level). A note that has sunk further than that is over a moment later, whatever pitch the
         // room goes on humming. And a note can only start near where the level is, not far down in what is left of the sound before:
         // that is how the hum of the room, once the voice has gone, is never taken for a note that is dying away.
-        const bool pitched = levelsOnly || pitch.voiced;
+        // The window's drawing of a hit has only levels, no pitch. There the hit's body counts as the note, from its start, until it has
+        // sagged heldDepthDb under the note's level; that is where the drawing puts "the pitch stops", so the tail window is drawn after it.
+        // (Up to 0.5.1 every sound counted as pitched, but a hit that falls 6 dB within 80 ms never became a note, so Sustain was drawn
+        // doing nothing at all with Steady Notes on.)
+        const bool pitched = levelsOnly ? sustainFast > 0.0f && sustainFast >= noteLevel * noteStartGain : pitch.voiced;
         const bool alive = pitched && sustainFast >= noteLevel * noteDepthGain;
         sunkFor = alive ? 0 : std::min (sunkFor + 1, graceSamples);
         if (! pitched || sunkFor >= graceSamples)
@@ -481,7 +485,7 @@ private:
         {
             if (notedFor < noteSamples)
                 ++notedFor;
-            noteOn = notedFor >= noteSamples;
+            noteOn = levelsOnly || notedFor >= noteSamples;
         }
         if (noteOn)
             sinceNote = 0;

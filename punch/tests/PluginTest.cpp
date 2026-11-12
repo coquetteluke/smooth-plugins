@@ -312,7 +312,8 @@ static void testSteadyNotes()
     }
     {
         PluginProcessor p;
-        check (p.apvts.getRawParameterValue ("steadyNotes")->load() < 0.5f, "Steady Notes is off by default");
+        // 0.6.0: a new instance has Steady Notes on (it said off by default from 0.4.0 to 0.5.1). Older sessions are tested in testSteadyDefault.
+        check (p.apvts.getRawParameterValue ("steadyNotes")->load() > 0.5f, "Steady Notes is on by default");
         bool olderOff = true;
         // 0.5.0 appended six presets for a lead vocal that have it on. The 14 that were there before keep it off, as this test has always asked.
         // Every preset is looked at again (0.5.1): the 14 older ones must have it off, the ones after them must have it on, because with it off
@@ -1745,6 +1746,84 @@ static void testHeldAfterLoudStart()
     }
 }
 
+// 0.6.0. Steady Notes is on in a new instance. Written before the change, limits fixed then:
+// a new instance has it on; a session saved before Steady Notes existed loads with it off, into a new instance and into one that had it on;
+// a session saved by 0.5.1 with it off loads off, and one saved with it on loads on; a damaged value goes back to the default;
+// and the default's own sound does not change: with every other control at its default, on and off give the same output sample for sample.
+static void testSteadyDefault()
+{
+    const auto steady = [] (PluginProcessor& p) { return p.apvts.getRawParameterValue ("steadyNotes")->load() > 0.5f; };
+    {
+        PluginProcessor p;
+        check (steady (p), "a new instance has Steady Notes on");
+    }
+    // A session from before 0.4.0: every parameter of 0.3.x, no Steady Notes.
+    juce::MemoryBlock before040;
+    {
+        juce::XmlElement xml ("STATE");
+        const std::pair<const char*, double> old[] = { { "punch", 30.0 }, { "attack", 2.5 }, { "sustain", 6.0 }, { "mix", 100.0 }, { "bypass", 0.0 },
+                                                       { "gain", 0.0 }, { "impact", 0.0 }, { "ceiling", -1.0 }, { "ceilingOn", 0.0 } };
+        for (const auto& [id, v] : old)
+        {
+            auto* e = xml.createNewChildElement ("PARAM");
+            e->setAttribute ("id", id);
+            e->setAttribute ("value", v);
+        }
+        juce::AudioProcessor::copyXmlToBinary (xml, before040);
+    }
+    {
+        PluginProcessor q;
+        q.setStateInformation (before040.getData(), (int) before040.getSize());
+        check (! steady (q) && std::abs (q.apvts.getRawParameterValue ("sustain")->load() - 6.0f) < 0.01f,
+               "a session saved before Steady Notes existed loads into a new instance with it off, and its other values");
+        PluginProcessor r;
+        setParam (r, "steadyNotes", 1.0f);
+        r.setStateInformation (before040.getData(), (int) before040.getSize());
+        check (! steady (r), "the same session loaded into an instance that had it on: off");
+    }
+    // Sessions saved by 0.5.1 (default off) as 0.5.1 writes them: every parameter, Steady Notes among them.
+    for (const bool savedOn : { false, true })
+    {
+        PluginProcessor old;
+        setParam (old, "steadyNotes", 0.0f);
+        setParam (old, "sustain", 6.0f);
+        setParam (old, "steadyNotes", savedOn ? 1.0f : 0.0f);
+        juce::MemoryBlock saved;
+        old.getStateInformation (saved);
+        PluginProcessor q;
+        q.setStateInformation (saved.getData(), (int) saved.getSize());
+        check (steady (q) == savedOn, std::string ("a session saved with Steady Notes ") + (savedOn ? "on" : "off") + " loads with it " + (savedOn ? "on" : "off"));
+    }
+    // A damaged Steady Notes value is dropped and goes back to the default, as every other parameter does.
+    {
+        juce::XmlElement xml ("STATE");
+        auto* e = xml.createNewChildElement ("PARAM");
+        e->setAttribute ("id", "steadyNotes");
+        e->setAttribute ("value", "nan");
+        juce::MemoryBlock bad;
+        juce::AudioProcessor::copyXmlToBinary (xml, bad);
+        PluginProcessor q;
+        setParam (q, "steadyNotes", 0.0f);
+        q.setStateInformation (bad.getData(), (int) bad.getSize());
+        check (steady (q), "a damaged Steady Notes value goes back to the default, on");
+    }
+    // The default's sound: a new instance against one with Steady Notes off, every other control at its default. Real speech and the sung line.
+    for (const char* name : { "speech_daniel.wav", "speech_samantha.wav", "sung line" })
+    {
+        const auto x = std::string (name) == "sung line" ? sungLine (48000.0) : loadSpeech (name);
+        PluginProcessor a, b;
+        setParam (b, "steadyNotes", 0.0f);
+        prepare (a, 2, 48000.0, 512);
+        prepare (b, 2, 48000.0, 512);
+        const auto ya = render (a, x, 512), yb = render (b, x, 512);
+        long differ = 0;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < ya.getNumSamples(); ++i)
+                differ += ya.getSample (ch, i) != yb.getSample (ch, i) ? 1 : 0;
+        check (! x.empty() && differ == 0, std::string ("the default's sound with Steady Notes on against off, ") + name + ": samples that differ", (double) differ);
+    }
+}
+
 static void testLeadPresets()
 {
     struct Want { const char* name; float punch, attack, sustain, mix, gain, impact, ceiling; bool ceilingOn; };
@@ -2002,7 +2081,7 @@ void testWindow()
             { "punch", "Punch", 0, 100, 0 }, { "attack", "Attack", -15, 15, 0 }, { "sustain", "Sustain", -15, 15, 0 }, { "mix", "Mix", 0, 100, 100 },
             { "bypass", "Bypass", 0, 1, 0 }, { "gain", "Gain", -12, 24, 0 }, { "impact", "Impact", 0, 100, 0 }, { "ceiling", "Ceiling", -24, 0, -1 },
             { "ceilingOn", "Ceiling On", 0, 1, 0 },
-            { "steadyNotes", "Steady Notes", 0, 1, 0 },
+            { "steadyNotes", "Steady Notes", 0, 1, 1 }, // on in a new instance since 0.6.0 (was 0)
         };
         int missing = 0, wrong = 0;
         for (const auto& e : expected)
@@ -2318,9 +2397,17 @@ void testWindow()
         te->tick (1.0 / 30.0);
         check (at (6) > 6.0, "Attack moves its start", at (6), "dB");
         setParam (*q, "attack", 0.0f);
+        // This check was written when Steady Notes was off by default; since 0.6.0 it is on in a new instance, so it is turned off here
+        // to keep checking the same drawing. With it on, the drawing is checked after it: the tail right after the hit's body is cut, and
+        // 0.3 s on the cut is over, as on a voice. (0.5.1 drew no Sustain at all with Steady Notes on.)
+        setParam (*q, "steadyNotes", 0.0f);
         setParam (*q, "sustain", -12.0f);
         te->tick (1.0 / 30.0);
         check (at (400) < -6.0, "Sustain moves its tail", at (400), "dB");
+        setParam (*q, "steadyNotes", 1.0f);
+        te->tick (1.0 / 30.0);
+        check (at (200) < -6.0, "with Steady Notes on, Sustain moves the tail right after the hit's body", at (200), "dB");
+        check (std::abs (at (600)) < 0.5, "with Steady Notes on, 0.3 s after the hit the tail is left alone", at (600), "dB");
         paintAt (*e, 2.0f);
     }
 
@@ -2441,6 +2528,7 @@ int main()
     testSteadyAttack();
     testOffStaysOff();
     testHeldAfterLoudStart();
+    testSteadyDefault();
     testLeadPresets();
     testEnvelopeTap();
     testHitDisplayNumbers();

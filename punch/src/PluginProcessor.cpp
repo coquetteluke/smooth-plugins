@@ -62,7 +62,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
                                                        AudioParameterFloatAttributes().withLabel ("dBFS")));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "ceilingOn", 1 }, "Ceiling On", false));
     // Added in 0.4.0. Off leaves Sustain and Punch exactly as they were, so every older session and preset sounds the same.
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "steadyNotes", 1 }, "Steady Notes", false));
+    // On in a new instance since 0.6.0. A session saved before 0.4.0 has no value for it and loads with it off (setStateInformation).
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "steadyNotes", 1 }, "Steady Notes", true));
     return layout;
 }
 
@@ -304,6 +305,17 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (windowHeightAttribute);
             xml->removeAttribute (advancedOpenAttribute);
+            // Steady Notes is on in a new instance since 0.6.0. A session saved before it existed (0.3.x and older) has no value for it,
+            // and must sound as it did when it was saved: with it off.
+            bool hasSteady = false;
+            for (auto* e : xml->getChildWithTagNameIterator ("PARAM"))
+                hasSteady = hasSteady || e->getStringAttribute ("id") == "steadyNotes";
+            if (! hasSteady)
+            {
+                auto* e = xml->createNewChildElement ("PARAM");
+                e->setAttribute ("id", "steadyNotes");
+                e->setAttribute ("value", 0.0);
+            }
             applySafeState (apvts, *xml);
         }
 }

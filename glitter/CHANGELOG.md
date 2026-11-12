@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.3, 2026-11-12
+
+Vocoder: 1.2.0 to 1.2.2 kept a second level match for consonants and the room. On a room with a rumble under the vocoder's lowest band it grew far too big, and where the voice left its voicing it took over: Robot Stack on Luke's take 06 reached 0 dBFS where the voice was at -42 dBFS (20.9 dB over the voice nearby, now 4.8). Back to one level match, learnt on voiced sound only, which also carries the consonants. The first note and switch-on fixes of 1.2.0 to 1.2.2 stay. Luke left this call to the lead on 2026-11-11.
+
 ## 1.2.2, 2026-11-12
 
 Vocoder: 1.2.0's level match could put the first note after a pause or a switch-on far over its level (up to 30 dB for its first 10 ms; Robot Stack on Luke's take 06 peaked at +2.6 dBFS on the first note): its first reading was taken while the filters were still ringing up, and a gain learnt on a room's noise stood in for the voiced one. A first reading now waits until the carrier has played 20 ms over sound, nothing stands in, and the tone comes in over a few ms: 1.34 dB at most. Its steady sound is unchanged. Luke left this call to the lead on 2026-11-11.

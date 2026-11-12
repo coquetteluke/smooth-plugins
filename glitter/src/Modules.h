@@ -133,6 +133,7 @@ public:
         phase = { 0.0, 0.31, 0.67 };
         inc = 0.005;
         gain = 8.0f;
+        gainNoise = 8.0f;
         gainPhase = 0;
         voicePower = tonePower = voicedTarget = 0.0f;
         noise = {};
@@ -179,6 +180,10 @@ public:
 
         // Level match, feed forward: the gain is worked out from the tone before gain, so it cannot chase itself and overshoot.
         // It moves by ratio rather than by amount, so the start of a note, when the tone lags the voice for a moment, cannot make a burst.
+        // Two gains, one learnt on voiced sound (the oscillator) and one on the rest (the noise carrier, consonants and the room), blended
+        // as the carrier is. Up to 1.1.1 one gain learnt on both, so after an S or a pause over a room it was set for the noise and the
+        // next note came in up to 7.8 dB over its own level for its first 100 ms (PluginTest vocoder; on Luke's takes the tone peaked up to
+        // 11.7 dB over the voice). Each gain only learns while its own carrier is playing.
         const float tone = 0.5f * (l + r);
         voicePower += levelCoef * (voice * voice - voicePower);
         tonePower += levelCoef * (tone * tone - tonePower);
@@ -187,10 +192,15 @@ public:
         {
             gainPhase = 0;
             if (settle == 0 && voicePower > 1.0e-7f && tonePower > 1.0e-12f)
-                gain *= std::pow (std::clamp (std::sqrt (voicePower / tonePower), 0.5f, 400.0f) / gain, gainCoef);
+            {
+                const float want = std::clamp (std::sqrt (voicePower / tonePower), 0.5f, 400.0f);
+                if (voicedNow > 0.9f) gain *= std::pow (want / gain, gainCoef);
+                else if (voicedNow < 0.1f) gainNoise *= std::pow (want / gainNoise, gainCoef);
+            }
         }
-        outL = l * gain;
-        outR = r * gain;
+        const float g = voicedNow * gain + (1.0f - voicedNow) * gainNoise;
+        outL = l * g;
+        outR = r * g;
     }
 
 private:
@@ -227,7 +237,7 @@ private:
     double sr = 48000.0, inc = 0.005;
     std::array<double, 3> phase { 0.0, 0.31, 0.67 };
     std::array<Band, numBands> bands {};
-    float attack = 0, release = 0, levelCoef = 0, gainCoef = 0, voicedCoef = 0, voicePower = 0, tonePower = 0, gain = 8, voicedNow = 0, voicedTarget = 0;
+    float attack = 0, release = 0, levelCoef = 0, gainCoef = 0, voicedCoef = 0, voicePower = 0, tonePower = 0, gain = 8, gainNoise = 8, voicedNow = 0, voicedTarget = 0;
     int wave = saw, gainPhase = 0, settle = 0;
     Random noise;
 };

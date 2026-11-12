@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.3, 2026-11-12
+
+Fourth pass of the real vocal re-test. Every setting that changes the voice sounds exactly as in 1.2.2 (Giant on a real take, 60 s: the same samples). The default and Clean Slate are still the delayed input.
+
+- Fixed: after choosing a setting and going back to the default, the voice no longer came back exactly. The level match's memory of the gain other settings needed (1.2.2) set every later phrase start a hair off, and the check for "is this the default" read the formant control's own rounding (-2.7e-7 st) as a move. Real takes, 3 s after the move back, against the delayed input: -107.8 to -117.7 dB on 1.2.2 at 11 of the hunt's 17 moves (limit -120; -141.8 on 1.2.1). Engine alone, take 16, Pitch +7, Monster, Whisper 100 and back: -125.6, -115.6, -116.7 > -150.0 dB. With everything at 0 the level match is now exactly 1 and lets go of that memory.
+- Fixed: Peak Guard let Output take the peak past the input's. Deep Double's Output +2.5 dB (1.2.2) put 18 samples over full scale on a hot take with the guard on (2.1 dB over the input's peak). On, the output now never peaks higher than the input has; Output can only lower that ceiling. Off by default, no preset touches it. Luke left this call to the lead on 2026-11-11.
+- Tests: a preset and back to Clean Slate on real speech, from 3 s after, against the delayed input (limit -120, the real vocal check's): -110.3 dB on 1.2.2, -142.0 now. Peak Guard on at every preset, Output included: 1229 samples over the input's peak on 1.2.2 (Deep Double), 0 now.
+
 ## 1.2.2, 2026-11-11
 
 Third pass of the real vocal re-test: phrase starts. The default and Clean Slate are untouched (-142 dB against the delayed input).

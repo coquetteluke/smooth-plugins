@@ -40,7 +40,7 @@ Every control is a real AU parameter that a host can find by name.
 | Mix | 0 to 100 % | Blend with the dry signal, delayed to match. |
 | Output | -24 to +12 dB | Level after Mix. |
 | Bypass | off, on | Input at the same delay. |
-| Peak Guard | off, on | On, the output never peaks higher than the input has (times Output). Off by default, no preset touches it, and off it adds nothing. New in 1.2.0. |
+| Peak Guard | off, on | On, the output never peaks higher than the input has; Output can only lower that ceiling (1.2.3). Off by default, no preset touches it, and off it adds nothing. New in 1.2.0. |
 
 Readings, which never write automation: Detected Pitch, Output Pitch, Range Offset.
 
@@ -84,6 +84,7 @@ Measured on Luke's own takes with `~/smooth-plugins/_shared/realvox` (the check 
 - Pitch down and formants down raise the peaks at the same level: fewer, stronger pulses. Giant reads 7 dB over the input's highest peak on real takes. That is the sound, not a fault, so it is left alone by default and Peak Guard is there for a take recorded hot.
 - 1.2.1: switching Range Match off brought the voice back over 1.4 s; it now goes at Pitch's speed. Whisper's breath and Monster's shake are noise that belongs to the moment of the input, so a setting reached by moving a control ends up as exactly the sound of that setting from the start. And the plug-in no longer depends on how loud the voice was recorded: three fixed thresholds (the tracker's -60 dBFS gate, the envelope's silence test, the level match's guard) made the same take 12 dB louder come out differently (-2.9 dB against the plain render at Pitch +7); it now nulls to -166 dB.
 - 1.2.2: phrase starts. The level match lets go on every consonant and breath; a voiced start now begins half way to the gain the notes before it needed and follows fast for 30 ms, the match comes down fast so a start cannot leave a note too loud, and Robot's sharpened envelope keeps its power. Deep Double's Output is +2.5 dB, because its Mix 50 adds two voices not in step as power.
+- 1.2.3: going back to the default after any setting passes the voice straight through again (-142 dB 3 s after the move back; 1.2.2 read -108 to -118 dB on real takes), and Peak Guard holds every preset, Deep Double's Output +2.5 dB included, under the input's highest peak.
 - The CPU lines of the suite use process time. With other builds filling this Mac's four fast cores they read about double (43 to 46% at 96 kHz for 1.1.1 and 1.2.0 alike, against 24% on a quiet Mac), so they only mean something when the Mac is quiet.
 
 ## Latency

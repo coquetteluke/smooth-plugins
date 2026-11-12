@@ -34,6 +34,7 @@ public:
         double robotPeriod = 0.0;    // samples
         double vibratoScale = 1.0;   // on the output period, last of all
         bool noCorrection = false;   // the output pitch is the input pitch: pass straight through
+        bool neutral = false;        // nothing at all is changed: no pitch, formant, character, vibrato or whisper (level match off)
         double alternate = 0.0;      // every other grain spacing is this fraction longer, and the next shorter: a subharmonic
         double gainAlternate = 0.0;  // every other grain is this fraction louder, the next quieter
         double jitter = 0.0;         // fraction added to this grain's spacing, chosen fresh by the caller

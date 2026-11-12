@@ -291,6 +291,20 @@ public:
                 onsetLeft = 0;
             }
             levelWasVoiced = control.voiced;
+            if (control.neutral)
+            {
+                // With everything back at 0 the changed voice is the voice going in, so there is nothing to match: the gain is exactly
+                // 1 and the memory of the gains other settings needed is let go. In 1.2.2 that memory set every later phrase start a
+                // hair off 1, and after moving a control and back the output stayed -108 to -118 dB away from the delayed input on
+                // real takes instead of passing straight through (-142 dB in 1.2.1) (1.2.3).
+                levelGain += levelRelease * (1.0 - levelGain); // a 3 ms glide, so the last of a changed voice still on its way out cannot step
+                if (std::abs (levelGain - 1.0) < 1.0e-9)
+                    levelGain = 1.0;
+                levelOut = levelIn;
+                gainMemory = 1.0;
+                logGainMemory = 0.0;
+                onsetLeft = 0;
+            }
 
             const double wetAmount = current.mix * current.engaged;
             // Hiss passes unshifted, so on a sound that is part noise the level match, which answers to the voiced part, is held back from it.
@@ -316,7 +330,9 @@ public:
                 // than they went in at the same level (7 dB over full scale at Giant on a take that peaks just under it). On, the gain
                 // drops at once on a sample that would pass the ceiling and comes back over about 100 ms. Switched off, it lets go at
                 // that same rate and then nothing here runs: the output is the same samples as without the control.
-                const double ceiling = heldPeak * overall;
+                // Never over the input's own highest peak: Output may turn the voice down under it but not past it. With Output
+                // allowed through, Deep Double's +2.5 dB put 18 samples over full scale on a hot take with the guard on (1.2.3).
+                const double ceiling = heldPeak * std::min (overall, 1.0);
                 const double biggest = std::max (std::abs (out[0]), std::abs (out[1]));
                 const double want = wanted.peakGuard && biggest > ceiling ? ceiling / biggest : 1.0;
                 guardGain = std::min (want, guardGain + guardRelease * (1.0 - guardGain));
@@ -558,6 +574,7 @@ private:
         pulseGate += fadeSmooth * ((control.voiced ? 1.0 : 0.0) - pulseGate);
         airShare += fadeSmooth * (std::clamp (((double) tracker.difference() - 0.05) / 0.15, 0.0, 1.0) - airShare);
         control.noCorrection = std::abs (current.pitch + rangeNow) < 1.0e-3 && current.robot <= 0.0 && current.monster <= 0.0 && std::abs (current.vibrato) <= 0.0;
+        control.neutral = control.noCorrection && std::abs (current.formant) < 1.0e-3 && current.whisper < 1.0e-6;
         control.alternate = 0.10 * current.monster;
         control.gainAlternate = 0.35 * current.monster;
         if (current.monster > 0.0)

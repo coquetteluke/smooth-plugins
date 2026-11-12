@@ -73,6 +73,7 @@ namespace limits
     // Peak Guard (1.2.0), set before it was first measured. The same rules the real vocal check holds it to.
     constexpr double guardNullDb = -100.0;            // on at the default settings: output against the delayed input
     constexpr int guardSamplesOver = 0;               // on: samples of the output higher than the input's highest peak
+    constexpr double backToDefaultNullDb = -120.0;     // (1.2.3) a preset chosen and the default chosen again: from 3 s after, against the delayed input. The real vocal check's own limit, set before this test ran
     constexpr double guardLevelPastPeakDb = 0.5;      // on: the level falls by no more than the peak it took off, plus this
     constexpr double guardBurstDb = 6.0;              // a soft note with two strong harmonics, Pitch +7: loudest 10 ms frame over the input's
 

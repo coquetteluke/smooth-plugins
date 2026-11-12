@@ -1040,6 +1040,23 @@ void testPeakGuard()
     }
     info ("  with Peak Guard off the output's peak passes the input's by, worst preset", worstOver, "dB");
     check (samplesOver <= limits::guardSamplesOver, "Peak Guard on, four presets on a voice just under full scale: samples over the input's highest peak", (double) samplesOver);
+    {
+        // Every preset, Output included (1.2.3: Deep Double's Output +2.5 dB went straight past the ceiling, over full scale on a hot take).
+        long over = 0;
+        auto first = make();
+        for (int preset = 0; preset < first->getNumPrograms(); ++preset)
+        {
+            auto on = make();
+            on->setCurrentProgram (preset);
+            setParam (*on, "peakGuard", 1.0f);
+            const auto b = run (*on, in);
+            long n = 0;
+            for (float v : b) if (std::abs (v) > (float) inPeak) ++n;
+            if (n > 0) std::printf ("  %s with Peak Guard on: %ld samples over the input's highest peak, peak %+.2f dBFS\n", on->getProgramName (preset).toRawUTF8(), n, toDb (peak (b.data(), (int) b.size())));
+            over += n;
+        }
+        check (over <= limits::guardSamplesOver, "Peak Guard on, every preset, Output included, on a voice just under full scale: samples over the input's highest peak", (double) over);
+    }
     check (worstPast <= limits::guardLevelPastPeakDb, "Peak Guard on: the level falls by no more than the peak it took off plus, worst", worstPast, "dB");
     {
         // Switched off again it lets go, and then the output is the same samples as if it had never been on.
@@ -1229,6 +1246,39 @@ void testRangeMatch()
         }
         const double nb = 10.0 * std::log10 (std::max (e, 1.0e-30) / std::max (s, 1.0e-30));
         check (nb <= limits::rangeMatchBackNullDb, "Range Match switched off at +12 st: 0.5 to 1.5 s later, against the delayed input", nb, "dB");
+    }
+
+    // A preset chosen, then the default chosen again: once it has settled the voice passes straight through (1.2.3, from the real
+    // vocal re-test: from 1.2.2 the level match's memory of the gain other settings needed kept every later phrase start a hair off,
+    // -108 to -118 dB on real takes where the check's limit is -120). Real speech, so there are many starts after the move back.
+    {
+        std::vector<float> v;
+        for (const char* name : { "speech_samantha.wav", "speech_daniel.wav", "speech_kathy.wav" })
+        {
+            const auto x = loadWav (name);
+            v.insert (v.end(), x.begin(), x.end());
+        }
+        check (v.size() > (size_t) (8.0 * SR), "found the three speech files for the move back test");
+        double worstBack = -400.0;
+        for (int preset : { 11, 5, 6, 10 }) // Giant, Monster Growl, Ghost Whisper, Chipmunk
+        {
+            auto q = make();
+            const int block = 256;
+            prepare (*q, 1, SR, block);
+            const int toAt = (int) (0.3 * SR / block), backAt = (int) (3.0 * SR / block);
+            const auto o = mono (render (*q, v, block, nullptr, [&] (int idx) { if (idx == toAt) q->setCurrentProgram (preset); if (idx == backAt) q->setCurrentProgram (0); }));
+            const int L = q->getLatencySamples();
+            double e = 0.0, s2 = 0.0;
+            for (long i = (long) backAt * block + (long) (3.0 * SR); i < (long) o.size(); ++i)
+            {
+                const double d = (double) o[(size_t) i] - v[(size_t) (i - L)];
+                e += d * d; s2 += (double) v[(size_t) (i - L)] * v[(size_t) (i - L)];
+            }
+            const double nb = 10.0 * std::log10 (std::max (e, 1.0e-30) / std::max (s2, 1.0e-30));
+            std::printf ("  %s, then Clean Slate: from 3 s after, %.1f dB against the delayed input\n", q->getProgramName (preset).toRawUTF8(), nb);
+            worstBack = std::max (worstBack, nb);
+        }
+        check (worstBack <= limits::backToDefaultNullDb, "a preset and back to Clean Slate: from 3 s after, against the delayed input, worst", worstBack, "dB");
     }
 
     // Off does nothing

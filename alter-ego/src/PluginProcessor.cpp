@@ -31,7 +31,7 @@ namespace
         { "Chipmunk",          12.0f,  8.0f, 0, 100.0f, 45, 5.5f,  0.0f,   0.0f, 100.0f, 0.0f },
         { "Giant",            -12.0f, -6.0f, 0, 100.0f, 45, 5.5f,  0.0f,   0.0f, 100.0f, 0.0f },
         { "Old Singer",         0.0f, -0.5f, 0, 100.0f, 45, 6.5f, 70.0f,  15.0f, 100.0f, 0.0f },
-        { "Deep Double",        0.0f,  0.0f, 1,  60.0f, 45, 5.5f,  0.0f,   0.0f,  50.0f, 0.0f },
+        { "Deep Double",        0.0f,  0.0f, 1,  60.0f, 45, 5.5f,  0.0f,   0.0f,  50.0f, 2.5f },  // Output +2.5 dB (1.2.2): Mix 50 of two voices not in step adds as power, 3 dB down
     };
 
     juce::String noteName (int midi)

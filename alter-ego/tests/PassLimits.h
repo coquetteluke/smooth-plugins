@@ -57,6 +57,12 @@ namespace limits
     constexpr double rangeMatchSemitones = 1.0;       // median output pitch against the set centre, input anywhere over two octaves
     constexpr double rangeMatchBackNullDb = -40.0;    // (1.2.1) switched off: 0.5 to 1.5 s later against the delayed input. The real vocal check's own limit, set before this test ran
 
+    constexpr double presetLevelDb = 2.0;             // (1.2.2) every preset's level against the input: the real vocal check's voiced level limit, set before this test ran
+
+    // Phrase starts (1.2.2), the real vocal check's own limits, set before this test ran
+    constexpr double startLevelMedianDb = -1.0;       // first 30 ms of a phrase, output against input, median: this or more
+    constexpr double startLevelP5Db = -3.0;           // the same, 5th percentile: this or more
+
     // Input level (1.2.1), the real vocal check's own limit, set before this test ran
     constexpr double inputLevelNullDb = -60.0;        // Pitch +7, input times 4 and times 0.25, scaled back, against the plain level, each phrase
 

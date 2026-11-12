@@ -86,6 +86,10 @@ public:
         breathRate = 1.0 - std::exp (-1.0 / (0.006 * sr));
         levelRate = 1.0 - std::exp (-1.0 / (0.025 * sr));
         levelGainRate = 1.0 - std::exp (-1.0 / (0.015 * sr));
+        levelGainRateOnset = 1.0 - std::exp (-1.0 / (0.002 * sr));
+        levelRateOnset = 1.0 - std::exp (-1.0 / (0.005 * sr));
+        onsetSamples = (int) std::lround (0.030 * sr);
+        memoryRate = 1.0 - std::exp (-1.0 / (0.300 * sr / tickEvery));
         levelRelease = 1.0 - std::exp (-1.0 / (0.003 * sr));
         guardRelease = 1.0 - std::exp (-1.0 / (0.100 * sr));
         fastRate = 1.0 - std::exp (-1.0 / (0.005 * sr));
@@ -137,6 +141,10 @@ public:
         breathPower.fill (0.0);
         levelIn = levelOut = 0.0;
         levelGain = 1.0;
+        gainMemory = 1.0;
+        logGainMemory = 0.0;
+        levelWasVoiced = false;
+        onsetLeft = 0;
         heldPeak = 0.0;
         guardGain = 1.0;
         fastIn = fastOut = dryHold = 0.0;
@@ -255,20 +263,34 @@ public:
             }
 
             // Level match, shared by both sides so the stereo image stays
-            levelIn += levelRate * (powerIn - levelIn);
-            levelOut += levelRate * (powerOut - levelOut);
+            const double levelRateNow = onsetLeft > 0 ? levelRateOnset : levelRate;
+            levelIn += levelRateNow * (powerIn - levelIn);
+            levelOut += levelRateNow * (powerOut - levelOut);
             if (control.voiced)
             {
+                // A voiced sound that starts (after a consonant, a breath or silence) starts from the gain the notes before it needed,
+                // and the match follows fast for its first 30 ms. From 1 and at the slow rate, every phrase start came out quiet and
+                // late for 40 ms where the changed voice is quieter than the voice going in: at Robot the first 30 ms read 3.7 dB under
+                // the dry and half the peak came 18 ms late (median, real takes) (1.2.2).
+                if (! levelWasVoiced)
+                {
+                    levelOut = levelIn / gainMemory; // half way, in dB: a start is a guess
+                    onsetLeft = onsetSamples;
+                }
                 // The guard against 0 / 0 is far under any real level, so the match is the same for a voice at any level (1.2.1)
                 const double target = std::clamp (std::sqrt ((levelIn + 1.0e-30) / (levelOut + 1.0e-30)), 0.125, 8.0);
-                levelGain += levelGainRate * (target - levelGain);
+                levelGain += (onsetLeft > 0 || target < levelGain ? levelGainRateOnset : levelGainRate) * (target - levelGain);
+                if (onsetLeft > 0)
+                    --onsetLeft;
             }
             else
             {
                 // Consonants pass unchanged, so nothing to match, and a gain left over from the vowel must not colour them.
                 levelOut = levelIn;
                 levelGain += levelRelease * (1.0 - levelGain);
+                onsetLeft = 0;
             }
+            levelWasVoiced = control.voiced;
 
             const double wetAmount = current.mix * current.engaged;
             // Hiss passes unshifted, so on a sound that is part noise the level match, which answers to the voiced part, is held back from it.
@@ -478,6 +500,12 @@ private:
         current.engaged += fadeSmooth * ((s.bypass ? 0.0 : 1.0) - current.engaged);
         current.vibrato += blendSmooth * (s.vibratoCents - current.vibrato);
         current.userPitch += pitchSmooth * (s.pitchSemitones - current.userPitch);
+        // What the level match has been asking for on voiced sound lately (about 300 ms, as a ratio), for the next phrase start
+        if (control.voiced && onsetLeft == 0 && levelGain > 0.0)
+        {
+            logGainMemory += memoryRate * (std::log (levelGain) - logGainMemory);
+            gainMemory = std::exp (logGainMemory);
+        }
         // Land exactly, so a voice with everything back at 0 passes straight through.
         if (std::abs (current.pitch - wantPitch) < 1.0e-3) current.pitch = wantPitch;
         if (std::abs (current.formant - wantFormant) < 1.0e-3) current.formant = wantFormant;
@@ -572,6 +600,9 @@ private:
     double airShare = 0.0;
     std::array<double, 2> tiltIn {}, tiltOut {};
     float lastMono = 0.0f;
+    double levelRateOnset = 0.01, levelGainRateOnset = 0.01, memoryRate = 0.001, gainMemory = 1.0, logGainMemory = 0.0;
+    int onsetSamples = 0, onsetLeft = 0;
+    bool levelWasVoiced = false;
     double breathRate = 0.01, levelRate = 0.001, levelGainRate = 0.001, levelRelease = 0.01, levelIn = 0.0, levelOut = 0.0, levelGain = 1.0;
     double heldPeak = 0.0, guardGain = 1.0, guardRelease = 0.001;
     static constexpr int fastRingSize = 256;      // ticks: reaches a whole delay and 20 ms back at every rate

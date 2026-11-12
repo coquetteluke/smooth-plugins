@@ -238,11 +238,22 @@ private:
             }
             if (std::abs (sharpen - 1.0) >= 1.0e-6)
             {
-                double top = 1.0e-30;
-                for (int i = 0; i <= half; ++i) top = std::max (top, warped[(size_t) i]);
+                double top = 1.0e-30, before = 0.0, after = 0.0;
+                for (int i = 0; i <= half; ++i) { top = std::max (top, warped[(size_t) i]); before += warped[(size_t) i]; }
                 const double inverse = 1.0 / top;
                 for (int i = 0; i <= half; ++i)
+                {
                     warped[(size_t) i] = top * std::pow (std::max (warped[(size_t) i] * inverse, 1.0e-12), sharpen);
+                    after += warped[(size_t) i];
+                }
+                // Sharpening deepens the valleys, which took the voice's level down with it: 15 dB at Robot on a real take, which the
+                // level match then had to win back over 40 ms at every start and every change (1.2.2). The shape is sharpened, the
+                // power stays what it was.
+                if (after > 0.0)
+                {
+                    const double keep = before / after;
+                    for (int i = 0; i <= half; ++i) warped[(size_t) i] *= keep;
+                }
             }
             toLags (warped, f.wantedLags.data());
             if (useLines)

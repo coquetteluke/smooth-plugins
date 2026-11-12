@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.2, 2026-11-11
+
+Third pass of the real vocal re-test: phrase starts. The default and Clean Slate are untouched (-142 dB against the delayed input).
+
+- Fixed: every phrase start at a changed setting came out quiet and late. The level match let go to 1 on every consonant and breath, then took 40 ms to find the gain again; at Robot the first 30 ms of a phrase read 3.7 dB under the voice (median, real takes) and half its peak came 18 to 30 ms late. A start now begins half way to the gain the notes before it needed, and the match follows fast for its first 30 ms. Robot on takes 01, 10, 16: first 30 ms median -3.27, -3.69, -4.31 dB > -0.23, -1.60, -2.35; 5th percentile -5.3, -7.3, -7.9 > -2.1, -4.6, -4.6. Half Robot -2.9, -2.5, -2.2 > -1.0, -1.1, -0.8. Chipmunk 5th percentile -4.5, -4.6, -4.0 > -2.3, -2.2, -1.9.
+- Fixed: Robot's sharpened envelope took the voice's level down by up to 15 dB, which the level match then had to win back at every start and every change. The shape is still sharpened; its power stays what it was.
+- Changed: the level match comes down fast and goes up at its usual pace, so a gain that suited a quiet start cannot leave the rest of the note too loud. Peaks over the dry on takes 01, 10, 16 (worst of the three): Ghost Whisper 6.07 > 4.67 dB, Child 4.46 > 2.61, Giant 8.02 > 6.84, Half Robot 2.99 > 2.72. Luke left this call to the lead on 2026-11-11.
+- Changed: Deep Double's Output is +2.5 dB. At Mix 50 the voice and a changed copy no longer in step add as power, so the preset sat 3 dB under the voice (-2.96 dB on real takes, limit 2); it now reads -0.2 to -0.5 dB. Saved sessions keep the Output they were saved with. Luke left this call to the lead on 2026-11-11.
+- Tests: phrase starts at Robot, Giant, Chipmunk, Monster and Child (median -2.905 and 5th percentile -5.076 dB on 1.2.1, limits -1 and -3; now -0.993 and -1.914), and every preset's level within 2 dB (Deep Double -3.017 dB on 1.2.1, now -0.517).
+
 ## 1.2.1, 2026-11-11
 
 Second pass of the real vocal re-test. The default and Clean Slate are untouched (still the delayed input, -142 dB).

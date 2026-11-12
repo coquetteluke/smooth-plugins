@@ -1144,6 +1144,52 @@ void testInputLevel()
     check (worst <= limits::inputLevelNullDb, "Pitch +7 with the input times 4 and times 0.25, scaled back, against the plain level, worst phrase", worst, "dB");
 }
 
+// ------------------------------------------------------------------------------------------------- phrase starts
+
+// The level of a phrase's first 30 ms, output against input (1.2.2, from the real vocal re-test, where every phrase start at Robot came
+// out 3.7 dB quiet, median). Phrases of a made up voice, each after a gap long enough to be a consonant or a breath (the level match lets
+// go there), at the settings that read worst on the real takes. The real vocal check's limits, set before this test ran: median -1 dB or
+// more, 5th percentile -3 dB or more.
+void testPhraseStarts()
+{
+    const int gapLen = (int) (0.12 * SR);
+    std::vector<float> in;
+    std::vector<long> starts;
+    const double notes[] = { 147.0, 165.0, 131.0, 175.0, 156.0, 139.0, 196.0, 123.0 };
+    int k = 0;
+    for (double hz : notes)
+    {
+        in.resize (in.size() + (size_t) gapLen, 0.0f);
+        starts.push_back ((long) in.size());
+        const auto ph = voice::synth (voice::vibrato (hz, 0.45, SR, 10.0, 5.0), k % 2 == 0 ? voice::vowelA : voice::vowelE, SR, -50.0, -20.0, 7 + (unsigned) k);
+        in.insert (in.end(), ph.begin(), ph.end());
+        ++k;
+    }
+    in.resize (in.size() + (size_t) gapLen, 0.0f);
+    struct Setting { const char* name; std::vector<std::pair<const char*, float>> set; };
+    const std::vector<Setting> settings = { { "Robot", { { "character", 3.0f } } }, { "Giant", { { "pitch", -12.0f }, { "formant", -6.0f } } },
+                                            { "Chipmunk", { { "pitch", 12.0f }, { "formant", 8.0f } } }, { "Monster", { { "character", 4.0f } } },
+                                            { "Child", { { "character", 2.0f } } } };
+    double worstMedian = 100.0, worstP5 = 100.0;
+    for (const auto& st : settings)
+    {
+        auto p = make();
+        for (const auto& [id, v] : st.set) setParam (*p, id, v);
+        const auto out = run (*p, in);
+        const int L = p->getLatencySamples(), n30 = (int) (0.030 * SR);
+        std::vector<double> d;
+        // the first start comes before the level match has heard anything: left out, as the real check has no start at sample 0 either
+        for (size_t i = 1; i < starts.size(); ++i)
+            d.push_back (toDb (rms (out.data() + starts[i] + L, n30)) - toDb (rms (in.data() + starts[i], n30)));
+        const double med = median (d), p5 = percentile (d, 5.0);
+        std::printf ("  %-8s first 30 ms of a phrase against the input: median %+.2f dB, 5th percentile %+.2f dB\n", st.name, med, p5);
+        worstMedian = std::min (worstMedian, med);
+        worstP5 = std::min (worstP5, p5);
+    }
+    check (worstMedian >= limits::startLevelMedianDb, "phrase starts, first 30 ms against the input, median, worst setting", worstMedian, "dB");
+    check (worstP5 >= limits::startLevelP5Db, "phrase starts, first 30 ms against the input, 5th percentile, worst setting", worstP5, "dB");
+}
+
 // ------------------------------------------------------------------------------------------------- Range Match
 
 void testRangeMatch()
@@ -1214,6 +1260,8 @@ void testOutputAndPresets()
         const double d = levelChange (in, out, (long) (0.3 * SR));
         std::printf ("  preset %s: level %+.1f dB\n", q->getProgramName (i).toRawUTF8(), d);
         check (std::abs (d) <= 6.0, std::string ("preset ") + q->getProgramName (i).toStdString() + " sits near the input level", d, "dB");
+        // (1.2.2) the real vocal check's level rule for every setting, set before this test ran: Deep Double read -3.0 here and on real takes
+        check (std::abs (d) <= limits::presetLevelDb, std::string ("preset ") + q->getProgramName (i).toStdString() + " level within the real vocal check's limit", d, "dB");
         outs.push_back (out);
     }
     bool differ = true;
@@ -1945,6 +1993,7 @@ int main (int argc, char** argv)
     if (want ("guard")) testPeakGuard();
     if (want ("burst")) testSoftNoteBurst();
     if (want ("level")) testInputLevel();
+    if (want ("starts")) testPhraseStarts();
     if (want ("range")) testRangeMatch();
     if (want ("presets")) testOutputAndPresets();
     if (want ("blocks")) testBlocksAndStereo();

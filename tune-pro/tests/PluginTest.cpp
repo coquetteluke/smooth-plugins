@@ -1539,6 +1539,90 @@ void testHeldOutTwelfth()
     gEngine = 1;
 }
 
+// A thirteenth held out set, written on 2026-11-12 (fourth pass) and committed before the last change of a formant fix it is to prove. The
+// eleventh and twelfth sets have been seen (the twelfth had its one run on 1.7.1, and both are used while the fix for held u at a woman's
+// pitch is worked out), so the final fix needs voices that were never looked at. A published source and a language none of the earlier
+// sets used: Czech, 27 men aged 20 to 30 reading a text of about a minute, ten vowels (short and long), F1 and F2 by Praat's Burg LPC,
+// the mean of seven points over the middle third of each vowel.
+//   Skarnitzl, R. and Volin, J. (2012), Referencni hodnoty vokalickych formantu pro mlade dospele mluvci standardni cestiny, Akusticke
+//   listy 18 (1), 7 to 11, Tabulka 1 (men's values in hertz, copied as printed, decimals kept). The paper prints no women's table and
+//   no F3; that is why this set is men's tracts.
+// Two groups. Men speaking at 99, 117 and 138 Hz, pitches no earlier set used, in Low Male and in Alto/Tenor, both engines. And the same
+// ten tracts at 207 and 233 Hz in Wide Range: a high voice on a long tract, not a voice anyone measured, put here on purpose because the
+// fault being fixed is a low first and second formant under a high pitch (Czech u: has F1 304 and F2 769 Hz). Both groups are judged by
+// the same lines and limits as the eleventh and twelfth sets, fixed before the first run.
+// F3 set here: 2950 Hz for i:, 2650 for i, 2500 for e and e:, 2450 for the rest; F4 and F5 3550 and 4450, a men's pairing none of the earlier
+// sets used; bandwidths by the tenth set's men's conventions (first formant an eighth of its frequency, rounded to 5 Hz, 45 Hz at least;
+// F2 80 below 1000 Hz, 90 to 1600, 100 above; then 130, 165, 215). Breath and source tone values none of the earlier sets used. Nothing
+// was tuned on these and none of it was chosen by looking at output. To be run once on the final build and once on the build before the fix.
+void testHeldOutThirteenth()
+{
+    if (gEngine != 1)
+        return;
+    struct Held { voice::Vowel v; VoiceStyle style; };
+    // F1 and F2 from Skarnitzl and Volin (2012), Tabulka 1; F3 to F5 and all bandwidths set here.
+    const std::vector<Held> tracts {
+        { { { 414.9, 1943.2, 2650, 3550, 4450 }, { 50, 100, 130, 165, 215 }, "Czech i men" }, { -52.5, 0.0 } },
+        { { { 281.7, 2255.2, 2950, 3550, 4450 }, { 45, 100, 130, 165, 215 }, "Czech long i men" }, { -46.5, 3450.0 } },
+        { { { 566.3, 1518.8, 2500, 3550, 4450 }, { 70, 90, 130, 165, 215 }, "Czech e men" }, { -56.5, 0.0 } },
+        { { { 575.7, 1578.0, 2500, 3550, 4450 }, { 70, 90, 130, 165, 215 }, "Czech long e men" }, { -41.0, 2650.0 } },
+        { { { 648.5, 1286.0, 2450, 3550, 4450 }, { 80, 90, 130, 165, 215 }, "Czech a men" }, { -49.0, 0.0 } },
+        { { { 698.6, 1206.3, 2450, 3550, 4450 }, { 85, 90, 130, 165, 215 }, "Czech long a men" }, { -37.0, 4150.0 } },
+        { { { 457.7, 1054.8, 2450, 3550, 4450 }, { 55, 90, 130, 165, 215 }, "Czech o men" }, { -53.5, 0.0 } },
+        { { { 483.7, 1027.9, 2450, 3550, 4450 }, { 60, 90, 130, 165, 215 }, "Czech long o men" }, { -44.0, 3150.0 } },
+        { { { 359.2, 936.6, 2450, 3550, 4450 }, { 45, 80, 130, 165, 215 }, "Czech u men" }, { -50.0, 0.0 } },
+        { { { 304.1, 768.9, 2450, 3550, 4450 }, { 45, 80, 130, 165, 215 }, "Czech long u men" }, { -42.0, 3850.0 } } };
+    const auto judge = [] (const FormantScore& score, double limit, double levelLimit, const std::string& who)
+    {
+        chk (score.moveReal <= limit, "thirteenth held out set, " + who + ", worst formant move against a real voice at the new pitch", score.moveReal * 100.0, "%");
+        if (score.ideal <= limit)
+            chk (score.move <= limit, "  worst formant move against the input", score.move * 100.0, "%");
+        else
+            note ("  worst formant move against the input (no verdict: a perfect shifter reads over the limit here, next line)", score.move * 100.0, "%");
+        note ("  what a perfect shifter reads on that line: the real voice at the new pitch itself against the input, worst", score.ideal * 100.0, "%");
+        note ("  and the tool's floor there", score.floor * 100.0, "%");
+        chk (score.move <= score.floor + prolimits::highNoteMoveOverFloor, "  formant move against the input, worst, against the floor plus 2%", score.move * 100.0, "%");
+        chk (score.level <= levelLimit, "  level change, worst", score.level, "dB");
+        note ("  first formant against its surroundings, flatter than a real voice, worst", score.peakFlatter, "dB");
+        note ("  colour, worst", score.colour, "dB");
+    };
+    FormantScore menHigh, menLowMale, menTenor, highHigh, highLow;
+    for (const auto& h : tracts)
+    {
+        gStyle = h.style;
+        for (double centre : { 99.0, 117.0, 138.0 })
+        {
+            gEngine = 1;
+            for (int shift : { 4, -4, 3, -3, 1, -1 })
+                scoreFormants (menHigh, h.v, centre, shift, lowMale);
+            gEngine = 0;
+            for (int shift : { 3, -3, 1, -1 })
+            {
+                scoreFormants (menLowMale, h.v, centre, shift, lowMale);
+                scoreFormants (menTenor, h.v, centre, shift, altoTenor);
+            }
+        }
+        for (double centre : { 207.0, 233.0 })
+        {
+            gEngine = 1;
+            for (int shift : { 4, -4, 3, -3, 1, -1 })
+                scoreFormants (highHigh, h.v, centre, shift, wideRange);
+            gEngine = 0;
+            for (int shift : { 3, -3, 1, -1 })
+                scoreFormants (highLow, h.v, centre, shift, wideRange);
+        }
+    }
+    gStyle = {};
+    gEngine = 1;
+    judge (menHigh, prolimits::hqFormantMove, prolimits::hqLevelChangeDb, "Czech men's vowels 99 to 138 Hz");
+    judge (highHigh, prolimits::hqFormantMove, prolimits::hqLevelChangeDb, "Czech men's tracts at 207 and 233 Hz in Wide Range");
+    gEngine = 0;
+    judge (menLowMale, prolimits::llFormantMove, limits::levelChangeDb, "Czech men's vowels 99 to 138 Hz in Low Male");
+    judge (menTenor, prolimits::llFormantMove, limits::levelChangeDb, "Czech men's vowels 99 to 138 Hz in Alto/Tenor");
+    judge (highLow, prolimits::llFormantMove, limits::levelChangeDb, "Czech men's tracts at 207 and 233 Hz in Wide Range");
+    gEngine = 1;
+}
+
 // A vowel change in the middle of a glide, added for 1.5.0 with its limit set before it was first run. High Quality remembers each
 // harmonic's level over a voiced stretch; it must not carry the old vowel into the new one. After the change, the output's formants
 // are read against a real voice singing the new vowel at the new pitch, with the same tool and limit as the formant test.
@@ -4524,6 +4608,8 @@ int main (int argc, char** argv)
     if (only == "heldout11") testHeldOutEleventh();
     // The twelfth set: written and committed before any of it was run (third pass, 2026-11-11), for a fix of what the eleventh found. By name only.
     if (only == "heldout12") testHeldOutTwelfth();
+    // The thirteenth set: written and committed before the last change of the held u fix (fourth pass, 2026-11-12). By name only.
+    if (only == "heldout13") testHeldOutThirteenth();
     if (want ("heldout10")) testHeldOutTenth();   // had its one run on 2026-11-11 (tests/results-heldout10.txt); a regression test since
     if (want ("vowel")) testVowelChange();
     gEngine = 0;

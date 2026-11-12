@@ -55,7 +55,7 @@ PASS  no click when Doubler Level jumps, biggest step = 0.005
 PASS  no click when Doubler Timing jumps, biggest step = 0.005 
 PASS  no click when Doubler Detune jumps, biggest step = 0.005 
 PASS  no click when Doubler Width jumps, biggest step = 0.005 
-PASS  no click when Vocoder On jumps, biggest step = 0.041 
+PASS  no click when Vocoder On jumps, biggest step = 0.018 
 PASS  no click when Vocoder Mix jumps, biggest step = 0.005 
 PASS  no click when Vocoder Octave jumps, biggest step = 0.005 
 PASS  no click when Vocoder Wave jumps, biggest step = 0.005 
@@ -141,26 +141,26 @@ PASS  processBlockBypassed: output is the delayed input, worst sample difference
 PASS  Input Type changes the reported latency = 990.000 samples
 PASS  Input Type jump does not click, biggest step = 0.004 
 PASS  Retune Speed defaults to Instant and Humanize to 0
-PASS  tuning accuracy at default settings, 110 Hz to 988 Hz, worst 95th percentile = 0.721 cents
-PASS  tuning accuracy at default settings, vibrato +/-30 cents with breath, worst 95th percentile = 1.521 cents
+PASS  tuning accuracy at default settings, 110 Hz to 988 Hz, worst 95th percentile = 0.720 cents
+PASS  tuning accuracy at default settings, vibrato +/-30 cents with breath, worst 95th percentile = 1.514 cents
 PASS  tuning accuracy at 44100 Hz, 95th percentile = 0.004 cents
 PASS  tuning accuracy at 96000 Hz, 95th percentile = 0.003 cents
 PASS  Key C, Scale Major: F#4 +20 goes to G4, offset = -0.001 cents
 PASS  Key D, Scale Major: F#4 +20 stays on F#4, offset = -0.003 cents
-INFO  speech_samantha.wav: median distance from a note, before 20.9 cents, after 5.4 cents
-INFO  speech_kathy.wav: median distance from a note, before 26.8 cents, after 1.4 cents
-INFO  speech_daniel.wav: median distance from a note, before 27.9 cents, after 10.4 cents
+INFO  speech_samantha.wav: median distance from a note, before 20.9 cents, after 5.3 cents
+INFO  speech_kathy.wav: median distance from a note, before 26.8 cents, after 1.6 cents
+INFO  speech_daniel.wav: median distance from a note, before 27.9 cents, after 9.6 cents
 INFO  speech_fred.wav: median distance from a note, before 23.7 cents, after 2.4 cents
-INFO  held_fred.wav: median distance from a note, before 23.1 cents, after 2.5 cents
+INFO  held_fred.wav: median distance from a note, before 23.1 cents, after 2.3 cents
 INFO  held_kathy.wav: median distance from a note, before 26.4 cents, after 2.3 cents
 INFO  sung_cellos.wav: median distance from a note, before 17.0 cents, after 1.6 cents
 INFO  sung_goodnews.wav: median distance from a note, before 6.4 cents, after 0.4 cents
-PASS  say speech at default settings: worst file's median distance from a note = 10.401 cents
-PASS  say singing and held vowels at default settings: worst file's median distance from a note = 2.466 cents
-PASS  Retune Speed 25 ms, measured time constant = 22.000 ms
-PASS  Retune Speed 50 ms, measured time constant = 48.000 ms
-PASS  Retune Speed 100 ms, measured time constant = 97.000 ms
-PASS  Retune Speed 200 ms, measured time constant = 197.000 ms
+PASS  say speech at default settings: worst file's median distance from a note = 9.617 cents
+PASS  say singing and held vowels at default settings: worst file's median distance from a note = 2.336 cents
+PASS  Retune Speed 25 ms, measured time constant = 28.000 ms
+PASS  Retune Speed 50 ms, measured time constant = 53.000 ms
+PASS  Retune Speed 100 ms, measured time constant = 103.000 ms
+PASS  Retune Speed 200 ms, measured time constant = 203.000 ms
 PASS  default settings leave this share of a +/-40 cent vibrato = 0.010 
 PASS  Humanize 100 keeps this share of the same vibrato = 0.991 
 PASS  Reference A4 432 Hz puts A3 at 216 Hz, offset = 0.000 cents
@@ -169,16 +169,16 @@ PASS  Custom note on Remove with only C left sends A3 to C, offset = -0.000 cent
 PASS  Tracking 0 calls a noisy voice pitched this share of the time = 0.599 %
 PASS  Tracking 100 calls the same voice pitched this share of the time = 100.000 %
 PASS  takes MIDI, makes none
-PASS  MIDI target accuracy, voice on A3, held notes D3 to E4, worst 95th percentile = 0.017 cents
-PASS  MIDI target accuracy, voice with vibrato and breath, a tone and a half off, with a scale set, 95th percentile = 0.920 cents
-PASS  pitch reaches a new held note this close to its place in the delayed audio = 6.000 ms
+PASS  MIDI target accuracy, voice on A3, held notes D3 to E4, worst 95th percentile = 1.747 cents
+PASS  MIDI target accuracy, voice with vibrato and breath, a tone and a half off, with a scale set, 95th percentile = 0.915 cents
+PASS  pitch reaches a new held note this close to its place in the delayed audio = 5.000 ms
 PASS    and sits on it, offset = -0.001 cents
-PASS  after note off, back to the nearest scale note, offset = 0.003 cents
+PASS  after note off, back to the nearest scale note, offset = 1.731 cents
 PASS  As Played with three notes held picks the nearest, offset = -0.003 cents
 PASS  Any Octave: C1 held pulls a voice near C4 to C4, offset = 0.003 cents
 PASS  MIDI Notes Held reading counts one note = 1.000 
-PASS  MIDI Target Off ignores held notes, offset = 0.000 cents
-PASS  All Notes Off lets go of the note, offset = 0.000 cents
+PASS  MIDI Target Off ignores held notes, offset = 1.733 cents
+PASS  All Notes Off lets go of the note, offset = 0.001 cents
 PASS  a held note registers
 PASS  a note off during bypass is not lost
 PASS  4000 MIDI events in one block: nothing stuck
@@ -204,7 +204,7 @@ PASS  a large junk file changes nothing
 PASS  a folder at that path changes nothing
 PASS  a held note wins over a followed key, offset = 0.000 cents
 PASS  sweep, A2 to E5, five vowels, default settings: worst 95th percentile = 1.044 cents
-PASS  sweep: Pitch +7, -5 and +12, worst 95th percentile = 1.269 cents
+PASS  sweep: Pitch +7, -5 and +12, worst 95th percentile = 1.270 cents
 PASS  sweep: Harmony +7, the voice alone, worst 95th percentile = 1.241 cents
 PASS  sweep: held MIDI note, worst 95th percentile = 1.090 cents
 PASS  Pitch 1 octaves 0 semitones on A3, 95th percentile against the wanted note = 0.016 cents
@@ -212,9 +212,9 @@ PASS  Pitch -1 octaves 0 semitones on A3, 95th percentile against the wanted not
 PASS  Pitch 0 octaves 5 semitones on A3, 95th percentile against the wanted note = 0.009 cents
 PASS  Pitch 0 octaves -7 semitones on A3, 95th percentile against the wanted note = 0.005 cents
 PASS  Pitch 1 octaves -5 semitones on A3, 95th percentile against the wanted note = 0.010 cents
-PASS  Pitch -2 octaves 0 semitones on A3, 95th percentile against the wanted note = 0.012 cents
+PASS  Pitch -2 octaves 0 semitones on A3, 95th percentile against the wanted note = 0.013 cents
 PASS  Pitch 0 octaves 12 semitones on A3, 95th percentile against the wanted note = 0.016 cents
-PASS  Pitch off with Octave 2 stays on A3, offset = -0.000 cents
+PASS  Pitch off with Octave 2 stays on A3, offset = 1.732 cents
 PASS  A3 +30 cents, tuned and shifted up 3: on C4, 95th percentile = 0.006 cents
 PASS  level of a shifted voice, 130 to 330 Hz, +/-12 semitones, worst change = 0.044 dB
 INFO  formant scale, vowel a around 165 Hz, shift 5 semitones: 0.987
@@ -232,76 +232,82 @@ PASS  Throat Length 130: formants move down, scale (0.77 would be exact) = 0.784
 PASS  Throat Length 75: formants move up, scale (1.33 would be exact) = 1.345 times
 PASS  Throat off with Length 130: formants stay, scale = 1.001 times
 PASS  Throat Length 130 leaves the pitch on A3, 95th percentile = 0.005 cents
-PASS  Motion Trill Up in C major: each step of A3 and B3 on pitch, worst = 0.003 cents
-PASS  Motion steps land on the eighth notes, worst = 6.500 ms
-PASS  Motion Arp Up on quarter notes in C major: A3 C4 E4 A4, worst = 0.004 cents
-PASS  Motion at 90 BPM: fourth eighth note on B3, offset = 0.000 cents
+PASS  Motion Trill Up in C major: each step of A3 and B3 on pitch, worst = 1.732 cents
+PASS  Motion steps land on the eighth notes, worst = 7.000 ms
+PASS  Motion Arp Up on quarter notes in C major: A3 C4 E4 A4, worst = 1.733 cents
+PASS  Motion at 90 BPM: fourth eighth note on B3, offset = 0.001 cents
 PASS  Motion Glide 60 ms: half way between notes after = 43.000 ms
 PASS  Harmony +7 on A3 lands on E4, offset = -0.500 cents
 PASS    and the lead stays on A3, offset = 0.000 cents
-PASS  Harmony Level -6 on a voice measures = -6.000 dB
-PASS  Harmony Level -18 on a voice measures = -18.000 dB
-PASS  Harmony off: nothing at E4, against the lead = -137.916 dB
+PASS  Harmony Level -6 on a voice measures = -5.999 dB
+PASS  Harmony Level -18 on a voice measures = -17.999 dB
+PASS  Harmony off: nothing at E4, against the lead = -159.781 dB
 PASS  Harmony -6 without In Key lands on D#3, offset = -0.500 cents
-PASS  Harmony In Key, +4 over A in A minor plays C, C over C# by = 63.328 dB
-PASS  Harmony In Key off, +4 plays C#, C# over C by = 61.598 dB
-PASS  Harmony Voices Two, Width 100: first voice left against right = 68.428 dB
-PASS    second voice right against left = 83.258 dB
+PASS  Harmony In Key, +4 over A in A minor plays C, C over C# by = 63.335 dB
+PASS  Harmony In Key off, +4 plays C#, C# over C by = 61.596 dB
+PASS  Harmony Voices Two, Width 100: first voice left against right = 68.431 dB
+PASS    second voice right against left = 83.346 dB
 PASS    second voice -4 lands on F3, offset = -0.500 cents
 PASS  With C4 held, Harmony +7 lands on G4, offset = 0.000 cents
 PASS  Doubler Detune 30: left double against +30 cents = -1.500 cents
 PASS    right double against -30 cents = 0.000 cents
-INFO    left double's peak against the lead on a tone, spread by its slow wander so not a level reading = -10.740 dB
-PASS  Doubler Level -6 on a voice measures = -5.917 dB
-PASS  Doubler Level -18 on a voice measures = -17.917 dB
+INFO    left double's peak against the lead on a tone, spread by its slow wander so not a level reading = -10.742 dB
+PASS  Doubler Level -6 on a voice measures = -5.915 dB
+PASS  Doubler Level -18 on a voice measures = -17.915 dB
 PASS  Doubler Timing 30 ms: measured lag of the left double = 30.000 ms
-PASS  Doubler off: nothing at +30 cents, against the lead = -107.017 dB
+PASS  Doubler off: nothing at +30 cents, against the lead = -107.019 dB
 PASS  Doubler Width 100 against 10: side level rises by = 20.000 dB
 PASS  Doubler Width 0 is mono, side level = -240.000 dB
-PASS  Vocoder Mix 100 sits on the voice's pitch, 95th percentile = 0.028 cents
-PASS    level against the voice = 0.002 dB
+PASS  Vocoder Mix 100 sits on the voice's pitch, 95th percentile = 0.030 cents
+PASS    level against the voice = 0.025 dB
 PASS  With E4 held, the tone follows to E4, 95th percentile = 0.032 cents
-PASS  Vocoder Octave -1, Mix 40: tone at 110 Hz rises over off by = 88.473 dB
-INFO    voice's own 220 Hz at Mix 40 against off = 4.985 dB
-PASS  Vocoder Mix 10 to 50 raises the tone by about 14 dB, measured = 13.979 dB
-PASS  Vocoder Wave changes the sound: 440 Hz against 660 Hz differs between Saw and Square by = 29.988 dB
+PASS  Vocoder Octave -1, Mix 40: tone at 110 Hz rises over off by = 88.877 dB
+INFO    voice's own 220 Hz at Mix 40 against off = 0.025 dB
+PASS  Vocoder Mix 10 to 50 raises the tone by about 14 dB, measured = 13.980 dB
+PASS  Vocoder Wave changes the sound: 440 Hz against 660 Hz differs between Saw and Square by = 35.485 dB
+PASS  Vocoder switched on mid-note: biggest step in the 30 ms after, against the steady step, worst (a 220 Hz, quiet) = 0.766 
+PASS    10 ms level in the first 300 ms against the steady level with the tone, worst (o 147 Hz, quiet) = 1.730 dB
+PASS  Vocoder on, notes starting out of a pause with a room under it and an S before: 10 ms level in a note's first 100 ms against its steady level, worst (110 Hz after 1500 ms) = 1.956 dB
+PASS  Vocoder switched on mid-note on bright sources: the tone's 10 ms level in its first 100 ms against its steady level, worst (saw 110 Hz quiet) = 2.148 dB
+PASS  Vocoder switched on at the loudest moments of say speech and singing: step in the 30 ms after against the second either side, worst (sung_cellos.wav at 4.21 s) = 0.961 
 PASS  Vocoder tone stops when the voice stops, level = -240.000 dBFS
-INFO  Distortion Drive 0, Tube: THD 1.53 %, level change -0.57 dB
-PASS  Distortion Drive 0, THD on a -18 dBFS tone = 1.526 %
-INFO  Distortion Drive 25, Tube: THD 4.19 %, level change 2.67 dB
-INFO  Distortion Drive 50, Tube: THD 10.48 %, level change 4.80 dB
-INFO  Distortion Drive 75, Tube: THD 24.48 %, level change 3.09 dB
-INFO  Distortion Drive 100, Tube: THD 37.99 %, level change -1.62 dB
-PASS  Distortion Drive 100, THD on a -18 dBFS tone = 37.987 %
+INFO  Distortion Drive 0, Tube: THD 1.52 %, level change -0.00 dB
+PASS  Distortion Drive 0, THD on a -18 dBFS tone = 1.523 %
+INFO  Distortion Drive 25, Tube: THD 4.19 %, level change 0.00 dB
+INFO  Distortion Drive 50, Tube: THD 10.48 %, level change 0.01 dB
+INFO  Distortion Drive 75, Tube: THD 24.48 %, level change 0.00 dB
+INFO  Distortion Drive 100, Tube: THD 37.99 %, level change -0.00 dB
+PASS  Distortion Drive 100, THD on a -18 dBFS tone = 37.988 %
 PASS  Distortion THD rises with every step of Drive
 PASS  Distortion level holds within the limit across Drive, unless a line above says otherwise
-PASS  Distortion Type Clip, Drive 100, THD = 40.385 %
-PASS  Distortion Type Fold, Drive 100, THD = 224.079 %
-PASS  Distortion Drive 50, 5.2 kHz tone: non-harmonic energy against the total = -55.350 dB
-PASS  Distortion Tone 800 Hz against 18 kHz takes the 5th harmonic down by = 9.255 dB
-PASS  Distortion Mix 50 has less THD than Mix 100, measured = 16.578 %
-PASS  Filter High Pass at 880 Hz, tone at 880 Hz = -3.013 dB
-PASS    tone two octaves under the cutoff = -24.118 dB
+PASS  Distortion on a voice keeps its level within a few dB (+/-3, the real vocal check), Drive 0 to 50, every Type, peaks -6 to -30 dBFS, worst (peaks -30 dBFS, Drive 50, Type 1) = 0.010 dB
+PASS  Distortion Type Clip, Drive 100, THD = 40.386 %
+PASS  Distortion Type Fold, Drive 100, THD = 223.876 %
+PASS  Distortion Drive 50, 5.2 kHz tone: non-harmonic energy against the total = -55.337 dB
+PASS  Distortion Tone 800 Hz against 18 kHz takes the 5th harmonic down by = 7.995 dB
+PASS  Distortion Mix 50 has less THD than Mix 100, measured = 18.340 %
+PASS  Filter High Pass at 880 Hz, tone at 880 Hz = -3.012 dB
+PASS    tone two octaves under the cutoff = -24.117 dB
 PASS  Filter Low Pass at 220 Hz, tone at 220 Hz = -3.012 dB
-PASS    tone two octaves over the cutoff = -24.119 dB
-PASS  Filter Band Pass at 440 Hz, Resonance 60: tone at 440 Hz = -0.001 dB
+PASS    tone two octaves over the cutoff = -24.117 dB
+PASS  Filter Band Pass at 440 Hz, Resonance 60: tone at 440 Hz = 0.000 dB
 PASS    tone two octaves under = -21.453 dB
-PASS  Filter High Pass at 880 Hz at 96 kHz, tone at 880 Hz = -3.013 dB
+PASS  Filter High Pass at 880 Hz at 96 kHz, tone at 880 Hz = -3.012 dB
 PASS  Filter Resonance 80 against 0 raises a tone at the cutoff by = 17.267 dB
-PASS  Filter Sweep Depth 2 octaves: a tone's level swings = 24.183 dB
+PASS  Filter Sweep Depth 2 octaves: a tone's level swings = 24.181 dB
 PASS  Filter Sweep Rate 1/2 at 120 BPM repeats every = 1.020 s
-PASS  Filter Sweep Depth 0 leaves a tone steady, swing = 0.140 dB
+PASS  Filter Sweep Depth 0 leaves a tone steady, swing = 0.137 dB
 PASS  Ring 300 Hz on 880 Hz: sidebands at 580 and 1180 Hz match within = -0.000 dB
-PASS    sideband level = -24.084 dBFS
-PASS    input tone left over at Mix 100 = -166.903 dB
-PASS  Ring Mix 0: no sideband = -180.885 dBFS
+PASS    sideband level = -24.082 dBFS
+PASS    input tone left over at Mix 100 = -183.740 dB
+PASS  Ring Mix 0: no sideband = -208.173 dBFS
 PASS  Delay Time 1/4 with no host tempo, first echo = 500.271 ms
-PASS  Delay Feedback 50: each repeat falls = -6.143 dB
-PASS  Delay Mix 50: first echo is at the input's level, within = -0.046 dB
+PASS  Delay Feedback 50: each repeat falls = -6.149 dB
+PASS  Delay Mix 50: first echo is at the input's level, within = -0.439 dB
 PASS  Delay Time 1/8 at 95 BPM, first echo = 316.062 ms
-PASS  Delay Time 1/4 at 96 kHz, first echo = 499.990 ms
-PASS  Delay Ping Pong: first echo left against right = 220.141 dB
-PASS    second echo right against left = 213.836 dB
+PASS  Delay Time 1/4 at 96 kHz, first echo = 500.552 ms
+PASS  Delay Ping Pong: first echo left against right = 219.772 dB
+PASS    second echo right against left = 213.467 dB
 PASS  Delay Feedback 95 with a loud tone for 10 s stays bounded, peak = 0.821 
 PASS  Delay off: no echo, level = -240.000 dBFS
 PASS  Delay Time changing on the fly, biggest step = 0.009 
@@ -311,33 +317,35 @@ PASS  Reverb Type 1 Decay 1.0 s, measured RT60 = 0.920 s
 PASS  Reverb Type 1 Decay 3.0 s, measured RT60 = 2.520 s
 PASS  Reverb Type 2 Decay 1.0 s, measured RT60 = 0.880 s
 PASS  Reverb Type 2 Decay 3.0 s, measured RT60 = 2.520 s
+PASS  Reverb switched on while playing, Decay 1.0 s, measured RT60 = 0.840 s
+PASS  Reverb switched on while playing, Decay 3.0 s, measured RT60 = 2.600 s
 PASS  Reverb off: no tail, level = -240.000 dBFS
 PASS  Reverb Mix 10 to 50 raises the tail by about 14 dB, measured = 13.979 dB
 PASS  Reverb Pre-Delay 100 ms moves the first reflection by = 100.000 ms
 PASS  Reverb Type changing while it rings, biggest step = 0.006 
-PASS  Reverb wakes up after going to sleep, level = -16.790 dBFS
+PASS  Reverb wakes up after going to sleep, level = -16.528 dBFS
 PASS  the reference is not silent, level = -17.936 dBFS
 PASS  Pitch off, its controls moved: difference from never touching it = -240.000 dB
 PASS  Pitch on then off: difference once it has faded = -240.000 dB
-PASS  Pitch on: difference from off = 3.043 dB
+PASS  Pitch on: difference from off = 3.074 dB
 PASS  Throat off, its controls moved: difference from never touching it = -240.000 dB
 PASS  Throat on then off: difference once it has faded = -240.000 dB
-PASS  Throat on: difference from off = -4.596 dB
+PASS  Throat on: difference from off = -4.736 dB
 PASS  Motion off, its controls moved: difference from never touching it = -240.000 dB
 PASS  Motion on then off: difference once it has faded = -240.000 dB
-PASS  Motion on: difference from off = 3.091 dB
+PASS  Motion on: difference from off = 3.088 dB
 PASS  Harmony off, its controls moved: difference from never touching it = -240.000 dB
 PASS  Harmony on then off: difference once it has faded = -240.000 dB
-PASS  Harmony on: difference from off = -5.415 dB
+PASS  Harmony on: difference from off = -5.416 dB
 PASS  Doubler off, its controls moved: difference from never touching it = -240.000 dB
 PASS  Doubler on then off: difference once it has faded = -240.000 dB
 PASS  Doubler on: difference from off = -5.993 dB
 PASS  Vocoder off, its controls moved: difference from never touching it = -240.000 dB
 PASS  Vocoder on then off: difference once it has faded = -240.000 dB
-PASS  Vocoder on: difference from off = 0.112 dB
+PASS  Vocoder on: difference from off = 0.113 dB
 PASS  Distortion off, its controls moved: difference from never touching it = -240.000 dB
 PASS  Distortion on then off: difference once it has faded = -240.000 dB
-PASS  Distortion on: difference from off = -6.705 dB
+PASS  Distortion on: difference from off = -11.951 dB
 PASS  Filter off, its controls moved: difference from never touching it = -240.000 dB
 PASS  Filter on then off: difference once it has faded = -240.000 dB
 PASS  Filter on: difference from off = -2.806 dB
@@ -346,46 +354,46 @@ PASS  Ring on then off: difference once it has faded = -240.000 dB
 PASS  Ring on: difference from off = -4.263 dB
 PASS  Delay off, its controls moved: difference from never touching it = -240.000 dB
 PASS  Delay on then off: difference once it has faded = -240.000 dB
-PASS  Delay on: difference from off = -4.874 dB
+PASS  Delay on: difference from off = -4.877 dB
 PASS  Reverb off, its controls moved: difference from never touching it = -240.000 dB
 PASS  Reverb on then off: difference once it has faded = -240.000 dB
-PASS  Reverb on: difference from off = 0.734 dB
+PASS  Reverb on: difference from off = 0.739 dB
 INFO  worst null, off with controls moved = -240.000 dB
 INFO  worst null, on then off = -240.000 dB
 PASS  all modules on then all off: difference from never on (other controls moved too) = -240.000 dB
-INFO  Pitch steady step 0.00515, switching step 0.00513, steady bend 0.000216, switching bend 0.000216
+INFO  Pitch steady step 0.00515, switching step 0.00512, steady bend 0.000216, switching bend 0.000217
 PASS  Pitch on and off does not click, biggest step = 0.005 
-INFO  Throat steady step 0.00377, switching step 0.00378, steady bend 0.000111, switching bend 0.000111
+INFO  Throat steady step 0.00377, switching step 0.00377, steady bend 0.000111, switching bend 0.000110
 PASS  Throat on and off does not click, biggest step = 0.004 
-INFO  Motion steady step 0.00899, switching step 0.00902, steady bend 0.000331, switching bend 0.000364
+INFO  Motion steady step 0.00962, switching step 0.00901, steady bend 0.000363, switching bend 0.000363
 PASS  Motion on and off does not click, biggest step = 0.009 
 INFO  Harmony steady step 0.00658, switching step 0.00657, steady bend 0.000253, switching bend 0.000251
 PASS  Harmony on and off does not click, biggest step = 0.007 
 INFO  Doubler steady step 0.00538, switching step 0.00511, steady bend 0.000271, switching bend 0.000224
 PASS  Doubler on and off does not click, biggest step = 0.005 
-INFO  Vocoder steady step 0.00936, switching step 0.01678, steady bend 0.006226, switching bend 0.006656
+INFO  Vocoder steady step 0.00936, switching step 0.01693, steady bend 0.006226, switching bend 0.006808
 PASS  Vocoder on and off does not click, biggest step = 0.017 
-INFO  Distortion steady step 0.00777, switching step 0.00778, steady bend 0.000218, switching bend 0.000220
-PASS  Distortion on and off does not click, biggest step = 0.008 
+INFO  Distortion steady step 0.00447, switching step 0.00732, steady bend 0.000126, switching bend 0.000206
+PASS  Distortion on and off does not click, biggest step = 0.007 
 INFO  Filter steady step 0.00360, switching step 0.00361, steady bend 0.000104, switching bend 0.000107
 PASS  Filter on and off does not click, biggest step = 0.004 
 INFO  Ring steady step 0.00360, switching step 0.00360, steady bend 0.000146, switching bend 0.000146
 PASS  Ring on and off does not click, biggest step = 0.004 
 INFO  Delay steady step 0.00360, switching step 0.00375, steady bend 0.000104, switching bend 0.000109
 PASS  Delay on and off does not click, biggest step = 0.004 
-INFO  Reverb steady step 0.01051, switching step 0.00738, steady bend 0.000304, switching bend 0.000223
-PASS  Reverb on and off does not click, biggest step = 0.007 
-PASS  Pitch on, on a say voice: difference from off = 2.925 dB
-PASS  Throat on, on a say voice: difference from off = -13.159 dB
-PASS  Motion on, on a say voice: difference from off = 2.831 dB
-PASS  Harmony on, on a say voice: difference from off = -5.703 dB
-PASS  Doubler on, on a say voice: difference from off = -9.476 dB
-PASS  Vocoder on, on a say voice: difference from off = 0.578 dB
-PASS  Distortion on, on a say voice: difference from off = -2.523 dB
-PASS  Filter on, on a say voice: difference from off = 2.243 dB
-PASS  Ring on, on a say voice: difference from off = -4.400 dB
-PASS  Delay on, on a say voice: difference from off = -5.787 dB
-PASS  Reverb on, on a say voice: difference from off = -3.549 dB
+INFO  Reverb steady step 0.00594, switching step 0.00576, steady bend 0.000171, switching bend 0.000191
+PASS  Reverb on and off does not click, biggest step = 0.006 
+PASS  Pitch on, on a say voice: difference from off = 2.915 dB
+PASS  Throat on, on a say voice: difference from off = -13.156 dB
+PASS  Motion on, on a say voice: difference from off = 2.895 dB
+PASS  Harmony on, on a say voice: difference from off = -5.713 dB
+PASS  Doubler on, on a say voice: difference from off = -9.099 dB
+PASS  Vocoder on, on a say voice: difference from off = 0.342 dB
+PASS  Distortion on, on a say voice: difference from off = -15.864 dB
+PASS  Filter on, on a say voice: difference from off = 2.245 dB
+PASS  Ring on, on a say voice: difference from off = -4.376 dB
+PASS  Delay on, on a say voice: difference from off = -5.833 dB
+PASS  Reverb on, on a say voice: difference from off = -3.569 dB
 PASS  switching on a say voice: no step over 2.5 times the voice's own, unless a line above says so (Distortion and Vocoder change the wave on purpose)
 PASS  all modules on, every control jumping end to end: no step over 0.30, unless a line above says so
 PASS  mono in, stereo out is an accepted layout
@@ -395,7 +403,7 @@ PASS    both sides have signal = -17.951 dBFS
 PASS    and the same as mono in, mono out, difference = -240.000 dB
 PASS  mono in, stereo out is an accepted layout
 PASS  mono in, stereo out, all on: finite
-PASS  mono in, stereo out, all on: side against left = -1.498 dB
+PASS  mono in, stereo out, all on: side against left = -1.463 dB
 PASS  stereo in: a 12 dB louder left stays 12 dB louder = 12.041 dB
 PASS  all on: no playhead against a playhead from bar 1 at 120 BPM, difference = -240.000 dB
 PASS  all on: a playhead with no tempo falls back to 120 BPM, difference = -240.000 dB
@@ -403,51 +411,51 @@ PASS  all on: block 32 against 4096, difference = -240.000 dB
 PASS  all on: block 32 against 137, difference = -240.000 dB
 PASS  all on: prepareToPlay again gives the same output, difference = -240.000 dB
 PASS  all on: state saved and loaded gives the same output, difference = -240.000 dB
-PASS  all on: recovers after NaN, infinity and huge input, peak in the last second = 0.537 
-PASS  all on at 44100 Hz: finite, with signal, level = -16.856 dBFS
-PASS  all on at 96000 Hz: finite, with signal, level = -15.801 dBFS
+PASS  all on: recovers after NaN, infinity and huge input, peak in the last second = 0.573 
+PASS  all on at 44100 Hz: finite, with signal, level = -18.134 dBFS
+PASS  all on at 96000 Hz: finite, with signal, level = -16.738 dBFS
 PASS  readings send nothing to the host while audio runs, parameter changes = 0.000 
 PASS  a reading is not automatable
-PASS  Detected Pitch reads the voice = 222.000 Hz
+PASS  Detected Pitch reads the voice = 222.003 Hz
 PASS  Target Note reads A3 = 57.000 
 PASS  the window's strip shows the target note
 PASS  pitch history gives the output note for a later window = 69.000 
 PASS  factory presets = 12.000 
-INFO  preset Hard Tune: level 0.0 dB against plain, peak 0.20, latency 659
+INFO  preset Hard Tune: level 0.0 dB against plain, peak 0.21, latency 659
 PASS  preset Hard Tune: finite, level near the plain voice, not overloading, level change = 0.000 dB
 PASS    latency unchanged = 659.000 samples
-INFO  preset Robot Stack: level 4.1 dB against plain, peak 0.43, latency 659
-PASS  preset Robot Stack: finite, level near the plain voice, not overloading, level change = 4.122 dB
+INFO  preset Robot Stack: level 4.5 dB against plain, peak 0.80, latency 659
+PASS  preset Robot Stack: finite, level near the plain voice, not overloading, level change = 4.472 dB
 PASS    latency unchanged = 659.000 samples
 INFO  preset Octave Monster: level 2.2 dB against plain, peak 0.33, latency 659
-PASS  preset Octave Monster: finite, level near the plain voice, not overloading, level change = 2.173 dB
+PASS  preset Octave Monster: finite, level near the plain voice, not overloading, level change = 2.214 dB
 PASS    latency unchanged = 659.000 samples
-INFO  preset Chipmunk Hook: level 1.1 dB against plain, peak 0.27, latency 659
-PASS  preset Chipmunk Hook: finite, level near the plain voice, not overloading, level change = 1.132 dB
+INFO  preset Chipmunk Hook: level 1.0 dB against plain, peak 0.27, latency 659
+PASS  preset Chipmunk Hook: finite, level near the plain voice, not overloading, level change = 1.046 dB
 PASS    latency unchanged = 659.000 samples
-INFO  preset Wide Double: level 1.9 dB against plain, peak 0.37, latency 659
-PASS  preset Wide Double: finite, level near the plain voice, not overloading, level change = 1.877 dB
+INFO  preset Wide Double: level 1.8 dB against plain, peak 0.34, latency 659
+PASS  preset Wide Double: finite, level near the plain voice, not overloading, level change = 1.766 dB
 PASS    latency unchanged = 659.000 samples
-INFO  preset Power Harmony: level 1.6 dB against plain, peak 0.30, latency 659
-PASS  preset Power Harmony: finite, level near the plain voice, not overloading, level change = 1.584 dB
+INFO  preset Power Harmony: level 1.6 dB against plain, peak 0.32, latency 659
+PASS  preset Power Harmony: finite, level near the plain voice, not overloading, level change = 1.569 dB
 PASS    latency unchanged = 659.000 samples
 INFO  preset Phone Line: level -3.8 dB against plain, peak 0.26, latency 659
-PASS  preset Phone Line: finite, level near the plain voice, not overloading, level change = -3.832 dB
+PASS  preset Phone Line: finite, level near the plain voice, not overloading, level change = -3.805 dB
 PASS    latency unchanged = 659.000 samples
-INFO  preset Filter Riser: level 1.7 dB against plain, peak 0.31, latency 659
-PASS  preset Filter Riser: finite, level near the plain voice, not overloading, level change = 1.745 dB
+INFO  preset Filter Riser: level 1.8 dB against plain, peak 0.31, latency 659
+PASS  preset Filter Riser: finite, level near the plain voice, not overloading, level change = 1.757 dB
 PASS    latency unchanged = 659.000 samples
 INFO  preset Dub Throw: level 2.8 dB against plain, peak 0.32, latency 659
-PASS  preset Dub Throw: finite, level near the plain voice, not overloading, level change = 2.787 dB
+PASS  preset Dub Throw: finite, level near the plain voice, not overloading, level change = 2.829 dB
 PASS    latency unchanged = 659.000 samples
-INFO  preset Melody Machine: level 0.4 dB against plain, peak 0.23, latency 659
-PASS  preset Melody Machine: finite, level near the plain voice, not overloading, level change = 0.386 dB
+INFO  preset Melody Machine: level 0.4 dB against plain, peak 0.24, latency 659
+PASS  preset Melody Machine: finite, level near the plain voice, not overloading, level change = 0.422 dB
 PASS    latency unchanged = 659.000 samples
-INFO  preset Alien Ring: level -2.9 dB against plain, peak 0.27, latency 659
-PASS  preset Alien Ring: finite, level near the plain voice, not overloading, level change = -2.945 dB
+INFO  preset Alien Ring: level -2.9 dB against plain, peak 0.30, latency 659
+PASS  preset Alien Ring: finite, level near the plain voice, not overloading, level change = -2.895 dB
 PASS    latency unchanged = 659.000 samples
-INFO  preset Synth Voice: level 1.6 dB against plain, peak 0.31, latency 659
-PASS  preset Synth Voice: finite, level near the plain voice, not overloading, level change = 1.583 dB
+INFO  preset Synth Voice: level 1.2 dB against plain, peak 0.84, latency 659
+PASS  preset Synth Voice: finite, level near the plain voice, not overloading, level change = 1.206 dB
 PASS    latency unchanged = 659.000 samples
 PASS  presets leave Key and Scale alone
 PASS  first preset is exactly the default sound, difference = -240.000 dB
@@ -487,7 +495,49 @@ PASS  the smallest saved size lays out = 481.000
 PASS  Advanced saved open stays open
 PASS  window open and drawing against no window, must be exact zero, difference = -240.000 dB
 PASS  20 windows opened and closed with no audio
-PASS  40 windows opened, drawn and closed with audio running, blocks processed = 432.000 
-INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 1.793 %
-PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 2.997 %
+PASS  40 windows opened, drawn and closed with audio running, blocks processed = 1007.000 
+INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 6.098 %
+PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 10.550 %
+PASS  Alto/Tenor, held notes under its range, 78 to 92 Hz, output pitch error at instant speed, worst 95th percentile = 0.004 cents
+INFO    worst case is at = 92.499 Hz
+PASS  Alto/Tenor, 87 Hz with vibrato +/-30 cents and breath, output pitch error at instant speed, 95th percentile = 1.328 cents
+PASS  Alto/Tenor, 87 Hz 30 cents sharp, non-harmonic energy in the corrected voice = -48.372 dB
+INFO    the same voice in Low Male = -48.370 dB
+PASS  Alto/Tenor, a phrase A2 E2 A2 F#2 sung 30 cents sharp, each note's output pitch error, worst 95th percentile = 1.523 cents
+PASS  voices at 99 to 440 Hz in Alto/Tenor: tracker samples that differ with the reach under the range switched on = 0.000 
+INFO    samples compared = 696000.000 
+INFO    pitch movement against the sound, Alto/Tenor at 147 Hz = -0.107 ms
+INFO    pitch movement against the sound, Alto/Tenor at 196 Hz = 0.130 ms
+INFO    pitch movement against the sound, Alto/Tenor at 262 Hz = 0.207 ms
+INFO    pitch movement against the sound, Low Male at 147 Hz = -0.099 ms
+INFO    pitch movement against the sound, Low Male at 196 Hz = 0.101 ms
+INFO    pitch movement against the sound, Low Male at 262 Hz = 0.221 ms
+INFO    pitch movement against the sound, Wide Range at 147 Hz = -0.099 ms
+INFO    pitch movement against the sound, Wide Range at 196 Hz = 0.101 ms
+INFO    pitch movement against the sound, Wide Range at 262 Hz = 0.221 ms
+PASS  pitch movement arrives with the sound it belongs to, 147 to 262 Hz, three Input Types, worst (negative is early), Wide Range at 262 Hz = 0.221 ms
+INFO    pitch movement against the sound, Alto/Tenor at 101 Hz = 0.204 ms
+INFO    pitch movement against the sound, Alto/Tenor at 112 Hz = 0.127 ms
+INFO    pitch movement against the sound, Alto/Tenor at 124 Hz = -0.259 ms
+INFO    pitch movement against the sound, Alto/Tenor at 138 Hz = -0.167 ms
+INFO    pitch movement against the sound, Low Male at 71 Hz = 0.552 ms
+INFO    pitch movement against the sound, Low Male at 84 Hz = -0.411 ms
+INFO    pitch movement against the sound, Low Male at 95 Hz = -0.257 ms
+PASS  pitch movement arrives with the sound it belongs to on low notes, Alto/Tenor 101 to 138 Hz and Low Male 71 to 95 Hz, worst (negative is early), Low Male at 71 Hz = 0.552 ms
+INFO    under Alto/Tenor's range, not judged: pitch movement against the sound at 78 Hz = 2.472 ms
+INFO    under Alto/Tenor's range, not judged: pitch movement against the sound at 90 Hz = -0.391 ms
+PASS  a voice left uncorrected after a correction, 147 to 262 Hz: output against the input at the reported delay, from 4.5 s on, worst = -200.000 dB
+PASS  a voice never corrected, a glide and a phrase with gaps, every Input Type: output against the input at the reported delay, worst = -200.000 dB
+PASS    the worst 100 ms of it = -200.000 dB
+PASS  a note on the line with vibrato +/-20 cents: size of the 5.5 Hz waver in the output = 0.188 cents
+PASS    and how far the output sits from the nearer of the two notes, median = 0.105 cents
+PASS  a step up a semitone landing 25 cents flat, at once: time until the output is within 15 cents of the new note = 8.000 ms
+PASS  a step up a semitone landing 25 cents flat, as a glide over 60 ms: time until the output is within 15 cents of the new note = 0.000 ms
+PASS  a held note sliding onto the next one at 13 cents per 100 ms: time from the line until the output is within 15 cents of the new note = 110.000 ms
+PASS  nothing before a note starts: the 10 ms before the input's onset against the held note, worst (a 560 Hz, Pitch +0) = -137.468 dB
+PASS  entries that hold their pitch from the start, Retune 0 (the default) (72: clean, soft, breathy; 104 to 233 Hz; 22 to 45 cents off): time until the output is within 10 cents for 15 ms, median = 20.000 ms
+PASS    90th percentile = 30.000 ms
+INFO    the slowest, clean, 104 Hz, 35 cents off = 35.000 ms
+INFO    entries that slide up into the note as his do (18: 60, 105 and 250 cents under, over 100 to 200 ms), not judged: median = 20.000 ms
+INFO    the slowest = 50.000 ms
 RESULT PASS  0 failures

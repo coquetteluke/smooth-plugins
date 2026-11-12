@@ -110,7 +110,7 @@ public:
         inPeak = aheadPeak = wetPeak = 0.0;
         onsetGain = 1.0;
         onsetComing = false;
-        onsetGainUp = 1.0 - std::exp (-1.0 / (0.003 * sr));
+        onsetGainUp = 1.0 - std::exp (-1.0 / (0.001 * sr));
         inFall = std::exp (-1.0 / (0.010 * sr));
         onsetAheadSamples = std::min ((long long) latency, (long long) std::llround (0.012 * sr));
         aheadFall = std::exp (-1.0 / (double) std::max (1LL, onsetAheadSamples));
@@ -312,7 +312,7 @@ public:
                     aheadPeak = std::max (std::max (a0, a1), aheadPeak * aheadFall);
                     wetPeak = std::max (w, wetPeak * wetFall);
                     // Shut once the rise is 20 dB, open again once it is under 10 dB; the gain drops at once (the tuned voice is rising out of
-                    // silence there) and comes back over about 3 ms, so the gate itself never makes a step (a first version without this made one on take 05 at 187.70 s).
+                    // silence there) and comes back over about 1 ms, so the gate itself never makes a step (a first version without this made one on take 05 at 187.70 s).
                     onsetComing = aheadPeak > inPeak * (onsetComing ? onsetReleaseRatio : onsetRiseRatio);
                     const double allowed = inPeak * onsetGateRatio;
                     const double want = onsetComing && wetPeak > allowed ? allowed / wetPeak : 1.0;
@@ -622,7 +622,7 @@ private:
     std::array<ControlPoint, 128> ring {};
     int ringAt = 0, controlDelayTicks = 0, leadTicks = 0, ahead = 0;
     static constexpr bool onsetGate = true;
-    static constexpr double onsetGateDb = 6.0, onsetRiseDb = 20.0, onsetReleaseDb = 10.0;
+    static constexpr double onsetGateDb = 0.0, onsetRiseDb = 20.0, onsetReleaseDb = 10.0;
     const double onsetGateRatio = std::pow (10.0, onsetGateDb / 20.0), onsetRiseRatio = std::pow (10.0, onsetRiseDb / 20.0), onsetReleaseRatio = std::pow (10.0, onsetReleaseDb / 20.0);
     double onsetGain = 1.0, onsetGainUp = 0.007;
     bool onsetComing = false;

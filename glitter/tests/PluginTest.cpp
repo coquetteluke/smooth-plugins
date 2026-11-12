@@ -1134,6 +1134,77 @@ void testVocoder()
         const double saw = level (0.0f), square = level (1.0f);
         check (std::abs (saw - square) > 3.0, "Vocoder Wave changes the sound: 440 Hz against 660 Hz differs between Saw and Square by", std::abs (saw - square), "dB");
     }
+    // Switched on in the middle of a note and notes starting out of a pause, as on Luke's takes (2026-11-12: Vocoder switched on mid-take
+    // stepped 1.75 times the voice's own biggest step and peaked 11.7 dB over the voice). Written before any change. The step limit is the
+    // switching claim (limits::switchStepRatio), the burst limit is the tone's level claim (limits::vocoderLevelDb): no 10 ms frame in the
+    // first 300 ms after the switch, or the first 100 ms of a note, more than that over the same voice's steady level with the tone.
+    {
+        double worstStep = 0.0, worstBurst = -100.0;
+        std::string stepAt, burstAt;
+        for (double hz : { 98.0, 147.0, 220.0, 330.0 })
+            for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelO })
+                for (double amp : { 0.03, 0.25 })
+                {
+                    auto x = voice::synth (voice::vibrato (hz, 3.0, SR, 25.0, 5.5), *v, SR, -35.0);
+                    for (auto& s : x) s = (float) (s * amp / 0.25);
+                    auto p = with ({ { "vocoderOn", 0 }, { "vocoderMix", 40 } });
+                    const int onBlock = (int) (1.2 * SR / 256);
+                    const auto out = left (render (*p, x, 256, nullptr, [&p, onBlock] (int idx) { if (idx == onBlock) setParam (*p, "vocoderOn", 1.0f); }));
+                    const int t1 = onBlock * 256, w = (int) (0.03 * SR);
+                    const double steadyStep = std::max (maxJump (out.data() + t1 - (int) (0.5 * SR), (int) (0.5 * SR)), maxJump (out.data() + t1 + w, (int) (0.5 * SR)));
+                    const double step = maxJump (out.data() + t1, w) / std::max (steadyStep, 1.0e-9);
+                    const double steady = toDb (rms (out.data() + t1 + (int) (0.8 * SR), (int) (0.8 * SR)));
+                    double burst = -100.0;
+                    for (int f = 0; f < 30; ++f) burst = std::max (burst, toDb (rms (out.data() + t1 + f * 480, 480)) - steady);
+                    const std::string name = std::string (v->name) + " " + std::to_string ((int) hz) + " Hz, " + (amp < 0.1 ? "quiet" : "loud");
+                    if (step > worstStep) { worstStep = step; stepAt = name; }
+                    if (burst > worstBurst) { worstBurst = burst; burstAt = name; }
+                }
+        check (worstStep <= limits::switchStepRatio, "Vocoder switched on mid-note: biggest step in the 30 ms after, against the steady step, worst (" + stepAt + ")", worstStep);
+        check (worstBurst <= limits::vocoderLevelDb, "  10 ms level in the first 300 ms against the steady level with the tone, worst (" + burstAt + ")", worstBurst, "dB");
+    }
+    {
+        double worstBurst = -100.0;
+        std::string burstAt;
+        for (double hz : { 110.0, 196.0, 294.0 })
+            for (double gap : { 0.08, 0.4, 1.5 })
+            {
+                std::vector<double> f0;
+                for (int k = 0; k < 4; ++k)
+                {
+                    const auto nt = voice::steady (hz * std::pow (2.0, (k % 2) * 3.0 / 12.0), 0.8, SR);
+                    f0.insert (f0.end(), nt.begin(), nt.end());
+                    f0.insert (f0.end(), (size_t) (gap * SR), 0.0);
+                }
+                auto x = voice::synth (f0, voice::vowelA, SR, -35.0);
+                // A room under it as in the takes (noise floor about -62 dBFS), and an S of 80 ms before each note after the first
+                std::mt19937 g (5);
+                std::normal_distribution<double> gauss (0.0, 1.0);
+                double hp = 0.0, last = 0.0;
+                for (size_t i = 0; i < x.size(); ++i)
+                {
+                    const double w = gauss (g);
+                    hp = 0.6 * (hp + w - last); last = w;
+                    x[i] += (float) (0.0008 * w);
+                    const long into = (long) i % (long) ((0.8 + gap) * SR);
+                    if (i > (size_t) SR && into >= (long) ((0.8 + gap - 0.08) * SR) && gap >= 0.08) x[i] += (float) (0.03 * hp);
+                }
+                auto p = with ({ { "vocoderOn", 1 }, { "vocoderMix", 40 } });
+                const auto out = left (render (*p, x, 256));
+                const int lat = p->getLatencySamples(), noteLen = (int) (0.8 * SR), step = noteLen + (int) (gap * SR);
+                for (int k = 1; k < 4; ++k)
+                {
+                    const int a = k * step + lat;
+                    const double steady = toDb (rms (out.data() + a + (int) (0.3 * SR), (int) (0.4 * SR)));
+                    for (int f = 0; f < 10; ++f)
+                    {
+                        const double b = toDb (rms (out.data() + a + f * 480, 480)) - steady;
+                        if (b > worstBurst) { worstBurst = b; burstAt = std::to_string ((int) hz) + " Hz after " + std::to_string ((int) (gap * 1000)) + " ms"; }
+                    }
+                }
+            }
+        check (worstBurst <= limits::vocoderLevelDb, "Vocoder on, notes starting out of a pause with a room under it and an S before: 10 ms level in a note's first 100 ms against its steady level, worst (" + burstAt + ")", worstBurst, "dB");
+    }
     // Stays quiet in silence
     {
         auto p = with ({ { "vocoderOn", 1 }, { "vocoderMix", 100 } });
@@ -1180,6 +1251,28 @@ void testDistortion()
     check (rising, "Distortion THD rises with every step of Drive");
     check (true, "Distortion level holds within the limit across Drive, unless a line above says otherwise");
 
+    // On a real voice at real levels (2026-11-12): Luke's Rode takes peak at -7.7 to -17.7 dBFS, and Distortion at its defaults (Tube,
+    // Drive 30) put every one of them 3.52 to 3.60 dB over the voice without it, against the real vocal check's +/-3 dB ("within a few
+    // dB", the code's own claim for the make-up gain). Written before any change, with that limit: a voice with vibrato at peaks of -6,
+    // -18 and -30 dBFS, Drive 0 to 50, every Type, level against Distortion off over the held part.
+    {
+        double worst = 0.0;
+        std::string worstName;
+        for (double peakDb : { -6.0, -18.0, -30.0 })
+            for (float drive : { 0.0f, 15.0f, 30.0f, 50.0f })
+                for (int type : { 0, 1, 2 })
+                {
+                    auto v = voice::synth (voice::vibrato (196.0, 2.0, SR, 30.0, 5.5), voice::vowelA, SR, -40.0);
+                    const double pk = peak (v.data(), (int) v.size());
+                    for (auto& s : v) s = (float) (s / pk * std::pow (10.0, peakDb / 20.0));
+                    auto off = with ({});
+                    auto on = with ({ { "distOn", 1 }, { "distDrive", drive }, { "distType", (float) type } });
+                    const auto a = left (render (*off, v, 256)), b = left (render (*on, v, 256));
+                    const double level = toDb (rms (b.data() + from, n)) - toDb (rms (a.data() + from, n));
+                    if (std::abs (level) > std::abs (worst)) { worst = level; worstName = "peaks " + std::to_string ((int) peakDb) + " dBFS, Drive " + std::to_string ((int) drive) + ", Type " + std::to_string (type); }
+                }
+        check (std::abs (worst) <= voxlimits::distortionLevelDb, "Distortion on a voice keeps its level within a few dB (+/-3, the real vocal check), Drive 0 to 50, every Type, peaks -6 to -30 dBFS, worst (" + worstName + ")", worst, "dB");
+    }
     for (int type : { 1, 2 })
     {
         auto p = with ({ { "distOn", 1 }, { "distType", (float) type }, { "distDrive", 100 } });

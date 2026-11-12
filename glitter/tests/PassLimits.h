@@ -89,3 +89,10 @@ namespace entrylimits
 {
     constexpr double instantMedianMs = 20.0, instantP90Ms = 40.0;
 }
+
+// Added 2026-11-12, before the tests that use them were run: limits of the real vocal check (realvox src/extra/tune-fx.cpp), brought into
+// the suite where the real takes found a fault, so it can be tested and fixed here.
+namespace voxlimits
+{
+    constexpr double distortionLevelDb = 3.0;         // Distortion on a voice: level against off, "within a few dB" (the make-up gain's claim)
+}

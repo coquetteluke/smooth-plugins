@@ -2911,7 +2911,7 @@ void testRealFormants()
 // it (its grains pass the marks), but Pitch, Harmony and the Vocoder took the reading and came out an octave off: on the real vocal check
 // Pitch +1 octave read the take's own pitch there and Pitch -1 octave a twelfth under it. Written before the change. Readings every 1 ms
 // against the reference track of the same audio (within 20 ms either side); an octave off is 1200 +/- 250 cents from all of them.
-long trackerOctaveOff (const std::vector<float>& x, double fromSec, double toSec, double& firstAt)
+long trackerOctaveOff (const std::vector<float>& x, double fromSec, double toSec, double& firstAt, double knownHz = 0.0)
 {
     smoothtune::PitchTracker t;
     t.prepare (SR);
@@ -2926,6 +2926,11 @@ long trackerOctaveOff (const std::vector<float>& x, double fromSec, double toSec
         const double sec = i / SR;
         if (i % 48 != 0 || sec < fromSec || sec > toSec || t.period() <= 0.0) continue;
         const double hz = SR / t.period();
+        if (knownHz > 0.0)
+        {
+            if (std::abs (std::abs (cents (hz, knownHz)) - 1200.0) < 250.0) { if (off == 0) firstAt = sec; ++off; }
+            continue;
+        }
         int near = 0, octave = 0;
         for (int f = 0; f < (int) ref.size(); ++f)
         {
@@ -2934,7 +2939,11 @@ long trackerOctaveOff (const std::vector<float>& x, double fromSec, double toSec
             ++near;
             if (std::abs (std::abs (cents (hz, ref[(size_t) f])) - 1200.0) < 250.0) ++octave;
         }
-        if (near >= 3 && octave == near) { if (off == 0) firstAt = sec; ++off; }
+        if (near >= 3 && octave == near)
+        {
+            if (off == 0) { firstAt = sec; if (std::getenv ("OCTAVE_DEBUG")) std::printf ("  first at %.3f s: tracker %.1f Hz\n", sec, hz); }
+            ++off;
+        }
     }
     return off;
 }
@@ -2942,11 +2951,13 @@ long trackerOctaveOff (const std::vector<float>& x, double fromSec, double toSec
 void testOctaveGuard()
 {
     {
-        // A held A3 at 220 Hz whose every other period is up to 8% weaker (a gain swinging at half the pitch): 1.2.3 read all of it at 110 Hz
+        // A held A3 at 220 Hz whose every other period is up to 20% weaker (a gain swinging at half the pitch), against its known pitch:
+        // 1.2.3 read all of it at 110 Hz (from a 16% swing up; at 40% the reference track reads 110 Hz too, and so does 1.2.4)
         auto x = voice::synth (voice::steady (220.0, 1.5, SR), voice::vowelA, SR);
-        for (size_t i = 0; i < x.size(); ++i) x[i] *= (float) (0.96 + 0.04 * std::cos (juce::MathConstants<double>::pi * 220.0 * (double) i / SR));
+        const double depth = std::getenv ("DEPTH") ? std::atof (std::getenv ("DEPTH")) : 0.10;
+        for (size_t i = 0; i < x.size(); ++i) x[i] *= (float) (1.0 - depth + depth * std::cos (juce::MathConstants<double>::pi * 220.0 * (double) i / SR));
         double at = 0.0;
-        const long n = trackerOctaveOff (x, 0.3, 1.4, at);
+        const long n = trackerOctaveOff (x, 0.3, 1.4, at, 220.0);
         check (n == 0, "tracker on a held 220 Hz voice whose every other period is weaker: readings an octave off, 1 ms each (first at " + juce::String (at, 3).toStdString() + " s)", (double) n, "");
     }
     struct Spot { const char* take; double from, to; };

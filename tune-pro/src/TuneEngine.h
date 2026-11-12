@@ -298,10 +298,11 @@ public:
                 // Nothing comes out before the input begins (real take 06 at 5.58 s, High Quality: -34 dBFS for 6 ms over a dry take at -62
                 // to -73 dBFS, just before a sound began). Voicing is decided ahead of the output and the shifters read ahead of it, so where
                 // a sound starts out of silence the corrected sound could be heard before it. The input is known a little ahead of the output,
-                // so a sound about to start is seen coming: where the input's peak over the next 12 ms (or the whole delay, if shorter) stands onsetRiseDb or more over its
-                // peak of the last 10 ms (until it falls under onsetReleaseDb), the tuned voice (its peak over about 1 ms) may not stand more than onsetGateDb over that last one.
-                // On a voice the peaks of the last 10 ms and the next 5 ms are never that far apart, and at any start the tuned voice is the
-                // input itself until a voiced stretch takes over, so the gain is exactly 1 everywhere but just before a sound.
+                // so a sound about to start is seen coming: where the input's peak over the next 12 ms (or the whole delay, if shorter) stands
+                // onsetRiseDb or more over its peak of the last 10 ms (until it falls under onsetReleaseDb), and the tuned voice (its peak
+                // over about 1 ms) would stand over that last peak, the input itself goes out, as it does through any unvoiced sound. On a
+                // voice the peaks of the last 10 ms and the next 12 ms are never that far apart, and at any start the tuned voice is the
+                // input itself until a voiced stretch takes over, so the output is exactly as before everywhere but just before a sound.
                 if (onsetGate)
                 {
                     const long long aheadAt = at + onsetAheadSamples;
@@ -311,17 +312,18 @@ public:
                     inPeak = std::max (d, inPeak * inFall);
                     aheadPeak = std::max (std::max (a0, a1), aheadPeak * aheadFall);
                     wetPeak = std::max (w, wetPeak * wetFall);
-                    // Shut once the rise is 20 dB, open again once it is under 10 dB; the gain drops at once (the tuned voice is rising out of
-                    // silence there) and comes back over about 1 ms, so the gate itself never makes a step (a first version without this made one on take 05 at 187.70 s).
+                    // Shut once the rise is 20 dB, open again once it is under 10 dB. It shuts at once (the tuned voice is rising out of silence
+                    // there) and opens over about 1 ms, so the gate itself never makes a step (a first version without this made one on take 05
+                    // at 187.70 s).
                     onsetComing = aheadPeak > inPeak * (onsetComing ? onsetReleaseRatio : onsetRiseRatio);
                     const double allowed = inPeak * onsetGateRatio;
-                    const double want = onsetComing && wetPeak > allowed ? allowed / wetPeak : 1.0;
+                    const double want = onsetComing && wetPeak > allowed ? 0.0 : 1.0;
                     if (want < onsetGain) onsetGain = want;
                     else if (onsetGain < 1.0) onsetGain = std::min (1.0, onsetGain + onsetGainUp * (want - onsetGain) + 1.0e-7);
                     if (onsetGain < 1.0)
                     {
-                        wet[0] = (float) (wet[0] * onsetGain);
-                        wet[1] = (float) (wet[1] * onsetGain);
+                        wet[0] = (float) (dryOut[0] + onsetGain * (wet[0] - dryOut[0]));
+                        wet[1] = (float) (dryOut[1] + onsetGain * (wet[1] - dryOut[1]));
                     }
                 }
             }

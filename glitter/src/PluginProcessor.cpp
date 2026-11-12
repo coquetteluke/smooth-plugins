@@ -37,6 +37,8 @@ namespace
     float driveToGain (float percent) noexcept { return std::pow (10.0f, percent * 0.01f * 36.0f / 20.0f); }
 
     // Presets leave Key, Scale, Input Type, Follow Key, MIDI Target, Reference and Tracking alone, so they never fight the song.
+    // Since 1.2.0 Distortion keeps the level of the voice going in; Phone Line and Octave Monster had leant on its old make-up (4.8 and
+    // 1.9 dB on say speech), so their Output Gain carries that now and they come out as loud as before.
     // Every control named in moduleIds goes back to its default first.
     struct Setting { const char* id; float value; };
     struct Preset { const char* name; std::vector<Setting> settings; };
@@ -48,13 +50,13 @@ namespace
             { "Robot Stack", { { "vocoderOn", 1 }, { "vocoderMix", 60 }, { "vocoderWave", 2 }, { "harmonyOn", 1 }, { "harmonyInterval1", -12 }, { "harmonyLevel", -9 },
                                { "reverbOn", 1 }, { "reverbType", 1 }, { "reverbDecay", 1.2f }, { "reverbMix", 15 } } },
             { "Octave Monster", { { "pitchOn", 1 }, { "pitchOctave", -1 }, { "throatOn", 1 }, { "throatLength", 125 }, { "distOn", 1 }, { "distDrive", 25 },
-                                  { "reverbOn", 1 }, { "reverbType", 1 }, { "reverbDecay", 0.9f }, { "reverbMix", 12 } } },
+                                  { "reverbOn", 1 }, { "reverbType", 1 }, { "reverbDecay", 0.9f }, { "reverbMix", 12 }, { "outputGain", 1.9f } } },
             { "Chipmunk Hook", { { "pitchOn", 1 }, { "pitchOctave", 1 }, { "pitchFormants", 1 }, { "doublerOn", 1 }, { "doublerLevel", -9 } } },
             { "Wide Double", { { "doublerOn", 1 }, { "doublerLevel", -4 }, { "doublerDetune", 14 }, { "doublerTiming", 26 },
                                { "reverbOn", 1 }, { "reverbDecay", 1.4f }, { "reverbMix", 14 } } },
             { "Power Harmony", { { "harmonyOn", 1 }, { "harmonyVoices", 1 }, { "harmonyInterval1", 4 }, { "harmonyInterval2", 7 }, { "harmonyLevel", -7 }, { "harmonyWidth", 80 },
                                  { "reverbOn", 1 }, { "reverbType", 2 }, { "reverbDecay", 2.4f }, { "reverbMix", 16 } } },
-            { "Phone Line", { { "filterOn", 1 }, { "filterType", 1 }, { "filterCutoff", 1400 }, { "filterResonance", 35 }, { "distOn", 1 }, { "distType", 1 }, { "distDrive", 35 }, { "outputGain", 6 } } },
+            { "Phone Line", { { "filterOn", 1 }, { "filterType", 1 }, { "filterCutoff", 1400 }, { "filterResonance", 35 }, { "distOn", 1 }, { "distType", 1 }, { "distDrive", 35 }, { "outputGain", 10.8f } } },
             { "Filter Riser", { { "filterOn", 1 }, { "filterType", 2 }, { "filterCutoff", 900 }, { "filterResonance", 45 }, { "filterSweepDepth", 2.5f }, { "filterSweepRate", 1 },
                                 { "delayOn", 1 }, { "delayTime", 6 }, { "delayFeedback", 30 }, { "delayMix", 18 } } },
             { "Dub Throw", { { "delayOn", 1 }, { "delayTime", 6 }, { "delayFeedback", 58 }, { "delayTone", 3200 }, { "delayMix", 34 }, { "delayPingPong", 1 },

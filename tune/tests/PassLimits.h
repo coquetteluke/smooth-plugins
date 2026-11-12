@@ -64,3 +64,17 @@ namespace limits
     constexpr double trackingChoosyPercent = 20.0;    // Tracking 0 corrects at most this share of a noisy voice
     constexpr double trackingRelaxedPercent = 70.0;   // Tracking 100 corrects at least this share of the same voice
 }
+
+// Added 2026-11-12, for the faults Tune Pro found on Luke's real takes (Rode NT1, 2026-11-10), in the engine Tune shares with it. The
+// same values as Tune Pro's prolimits, set before any of these tests was run on Tune.
+namespace rodelimits
+{
+    constexpr double pitchInLineMs = 1.0;             // pitch movement against the sound it belongs to, either way
+    constexpr double uncorrectedNullDb = -90.0;       // an uncorrected voice against the input at the reported delay, once settled
+    constexpr double lineWaverCents = 20.0;           // the output's waver may not be bigger than the +/-20 cents that were sung
+    constexpr double lineSettleCents = 15.0;          // the output's median from the nearer note: it has settled on one
+    constexpr double flatStepMs = 20.0;               // a semitone step landing 25 cents flat reaches the new note within this
+    constexpr double flatGlideStepMs = 14.0;          // the same step as a 60 ms glide, from the end of the glide
+    constexpr double slowSlideMs = 150.0;             // a held note sliding slowly across the line (13 cents per 100 ms) is on the new note within 150 ms of the line
+    constexpr double beforeOnsetDb = -40.0;           // the output in the 10 ms before a note starts in the input, against the held note
+}

@@ -92,37 +92,37 @@ PASS  Input Type Alto/Tenor tracks both ends of its range, median = 0.053 cents
 PASS  Input Type Low Male tracks both ends of its range, median = 0.016 cents
 PASS  tracking error at 44100 Hz, median = 0.039 cents
 PASS  tracking error at 96000 Hz, median = 0.022 cents
-PASS  output pitch error at instant speed, steady notes 82 Hz to 1 kHz, worst 95th percentile = 1.011 cents
+PASS  output pitch error at instant speed, steady notes 82 Hz to 1 kHz, worst 95th percentile = 1.013 cents
 INFO    worst case is at = 987.767 Hz
-PASS  output pitch error at instant speed, vibrato +/-30 cents with breath, worst 95th percentile = 1.521 cents
-PASS  output pitch error at instant speed, voice with wander, jitter and breath, 95th percentile = 0.318 cents
+PASS  output pitch error at instant speed, vibrato +/-30 cents with breath, worst 95th percentile = 1.514 cents
+PASS  output pitch error at instant speed, voice with wander, jitter and breath, 95th percentile = 0.343 cents
 INFO    non-harmonic energy on that voice, in then out = -20.507 dB
-INFO    non-harmonic energy on that voice, out = -30.122 dB
+INFO    non-harmonic energy on that voice, out = -30.133 dB
 PASS  output pitch error on a voice at -45 dBFS, 95th percentile = 0.005 cents
 PASS  output pitch error on a voice at -6 dBFS, 95th percentile = 0.005 cents
 PASS  output pitch error at 44100 Hz, 95th percentile = 0.004 cents
 PASS  output pitch error at 96000 Hz, 95th percentile = 0.003 cents
-PASS  Retune Speed 25 ms, measured time constant = 22.000 ms
-PASS  Retune Speed 50 ms, measured time constant = 48.000 ms
-PASS  Retune Speed 100 ms, measured time constant = 97.000 ms
-PASS  Retune Speed 200 ms, measured time constant = 197.000 ms
-PASS  Retune Speed 400 ms, measured time constant = 398.000 ms
-PASS  Retune Speed 0 after a 40 cent step, frames from 50 ms on, 95th percentile = 0.005 cents
-PASS  formant positions at +/-1 and +/-3 semitones, output against input, worst move = 4.428 %
+PASS  Retune Speed 25 ms, measured time constant = 28.000 ms
+PASS  Retune Speed 50 ms, measured time constant = 53.000 ms
+PASS  Retune Speed 100 ms, measured time constant = 103.000 ms
+PASS  Retune Speed 200 ms, measured time constant = 203.000 ms
+PASS  Retune Speed 400 ms, measured time constant = 404.000 ms
+PASS  Retune Speed 0 after a 40 cent step, frames from 50 ms on, 95th percentile = 0.004 cents
+PASS  formant positions at +/-1 and +/-3 semitones, output against input, worst move = 4.619 %
 PASS  formant positions on vowels and pitches not used for tuning, worst move = 4.619 %
 INFO    the same output against a real voice at the new pitch, worst = 4.809 %
 INFO    and the tool's floor: the input against that same real voice, which share a vocal tract, worst = 1.913 %
-INFO    first formant peak flatter than a real voice at that pitch, worst case = 11.224 dB
-PASS  level stays put at +/-1 and +/-3 semitones, worst change = 1.381 dB
-PASS  hard settings flatten vibrato, kept = 1.033 %
-PASS  Flex Amount 60 cents keeps a +/-40 cent vibrato, kept = 99.084 %
-PASS  Humanize 100 keeps vibrato on the sustained part, kept = 98.699 %
-PASS  Retune Speed 400 ms keeps vibrato, kept = 98.656 %
-PASS  Natural Vibrato -100 takes vibrato down, left = 19.798 %
-PASS  Natural Vibrato +100 takes vibrato up, now = 191.481 %
+INFO    first formant peak flatter than a real voice at that pitch, worst case = 11.218 dB
+PASS  level stays put at +/-1 and +/-3 semitones, worst change = 1.379 dB
+PASS  hard settings flatten vibrato, kept = 1.029 %
+PASS  Flex Amount 60 cents keeps a +/-40 cent vibrato, kept = 99.082 %
+PASS  Humanize 100 keeps vibrato on the sustained part, kept = 98.735 %
+PASS  Retune Speed 400 ms keeps vibrato, kept = 98.789 %
+PASS  Natural Vibrato -100 takes vibrato down, left = 19.639 %
+PASS  Natural Vibrato +100 takes vibrato up, now = 192.158 %
 PASS  hard tune step between two notes a tone apart, 10% to 90% = 5.000 ms
-PASS  after the step the new note is on pitch, 95th percentile = 0.009 cents
-PASS  a slow glide comes out as steps, frames within 10 cents of a note = 99.120 %
+PASS  after the step the new note is on pitch, 95th percentile = 1.739 cents
+PASS  a slow glide comes out as steps, frames within 10 cents of a note = 99.413 %
 PASS  Flex Amount 50: a note 30 cents sharp is left where it was sung, output offset = 30.002 cents
 PASS  Flex Amount 50: a note 80 cents sharp is brought to the edge, output offset = 49.998 cents
 PASS  Flex Amount 0: the same note is corrected fully, output offset = 0.000 cents
@@ -143,15 +143,15 @@ PASS  unchanged on Soprano: breath, 300 Hz to 5 kHz, difference = -318.938 dB
 PASS  unchanged on Soprano: dark breath, 100 to 1500 Hz, difference = -315.427 dB
 PASS  an S between two corrected vowels, middle of the S, difference = -314.978 dB
 PASS  the vowel after the S is corrected again, 95th percentile = 0.006 cents
-PASS  non-harmonic energy, 220 Hz tone corrected by 30 cents = -47.538 dB
+PASS  non-harmonic energy, 220 Hz tone corrected by 30 cents = -47.536 dB
 INFO    the same measure on the uncorrected input = -47.458 dB
 PASS  non-harmonic energy, 220 Hz tone corrected by 150 cents = -46.368 dB
 PASS  output pitch steadiness on a corrected sustained note, standard deviation = 0.002 cents
 PASS  output level steadiness on a corrected sustained note, peak to peak = 0.001 dB
 PASS  output pitch steadiness at everyday settings (Retune 20, Humanize 30), standard deviation = 0.009 cents
-PASS  and the note settles on pitch, offset = 0.001 cents
-PASS  non-harmonic energy at everyday settings = -47.499 dB
-PASS  a voice with nothing to correct passes as a plain delay, difference = -101.909 dB
+PASS  and the note settles on pitch, offset = -0.000 cents
+PASS  non-harmonic energy at everyday settings = -47.491 dB
+PASS  a voice with nothing to correct passes as a plain delay, difference = -331.117 dB
 PASS  key and scale masks match the written-out notes of all 24 keys = 24.000 of 24
 PASS  every note sung in all 24 keys lands on the right note, 408 cases = 408.000 right
 PASS  A Harmonic Minor mask is right
@@ -195,37 +195,37 @@ PASS  the background thread picks up the file by itself within 0.7 s
 PASS  a large junk file changes nothing
 PASS  a folder at that path changes nothing
 INFO  speech_samantha.wav: 3.8 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  speech_samantha.wav: distance from a note, median, before 20.9 cents, after 5.4 cents, 828 voiced frames
+INFO  speech_samantha.wav: distance from a note, median, before 20.9 cents, after 5.3 cents, 831 voiced frames
 PASS    speech_samantha.wav gives finite output
 INFO  speech_kathy.wav: 4.9 s voiced in both, 1 octave disagreements, 12.2 per minute
-INFO  speech_kathy.wav: distance from a note, median, before 26.8 cents, after 1.4 cents, 996 voiced frames
+INFO  speech_kathy.wav: distance from a note, median, before 26.8 cents, after 1.6 cents, 1002 voiced frames
 PASS    speech_kathy.wav gives finite output
 INFO  speech_daniel.wav: 3.4 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  speech_daniel.wav: distance from a note, median, before 27.9 cents, after 10.4 cents, 738 voiced frames
+INFO  speech_daniel.wav: distance from a note, median, before 27.9 cents, after 9.6 cents, 724 voiced frames
 PASS    speech_daniel.wav gives finite output
 INFO  speech_fred.wav: 4.5 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  speech_fred.wav: distance from a note, median, before 23.7 cents, after 2.4 cents, 918 voiced frames
+INFO  speech_fred.wav: distance from a note, median, before 23.7 cents, after 2.4 cents, 920 voiced frames
 PASS    speech_fred.wav gives finite output
 INFO  held_fred.wav: 5.3 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  held_fred.wav: distance from a note, median, before 23.1 cents, after 2.5 cents, 1068 voiced frames
+INFO  held_fred.wav: distance from a note, median, before 23.1 cents, after 2.3 cents, 1070 voiced frames
 PASS    held_fred.wav gives finite output
 INFO  held_kathy.wav: 5.0 s voiced in both, 0 octave disagreements, 0.0 per minute
-INFO  held_kathy.wav: distance from a note, median, before 26.4 cents, after 2.3 cents, 1015 voiced frames
+INFO  held_kathy.wav: distance from a note, median, before 26.4 cents, after 2.3 cents, 1017 voiced frames
 PASS    held_kathy.wav gives finite output
 INFO  sung_cellos.wav: 7.9 s voiced in both, 1 octave disagreements, 7.6 per minute
-INFO  sung_cellos.wav: distance from a note, median, before 17.0 cents, after 1.6 cents, 1572 voiced frames
+INFO  sung_cellos.wav: distance from a note, median, before 17.0 cents, after 1.6 cents, 1575 voiced frames
 PASS    sung_cellos.wav gives finite output
 INFO  sung_goodnews.wav: 12.9 s voiced in both, 3 octave disagreements, 13.9 per minute
-INFO  sung_goodnews.wav: distance from a note, median, before 6.4 cents, after 0.4 cents, 2656 voiced frames
+INFO  sung_goodnews.wav: distance from a note, median, before 6.4 cents, after 0.4 cents, 2655 voiced frames
 PASS    sung_goodnews.wav gives finite output
 INFO  sung_organ.wav: 4.5 s voiced in both, 10 octave disagreements, 133.3 per minute
-INFO  sung_organ.wav: distance from a note, median, before 31.7 cents, after 1.7 cents, 851 voiced frames
+INFO  sung_organ.wav: distance from a note, median, before 31.7 cents, after 1.7 cents, 852 voiced frames
 PASS    sung_organ.wav gives finite output
-PASS  real material at instant speed: 99th percentile change in 20 ms frame level, worst file = 2.776 dB
+PASS  real material at instant speed: 99th percentile change in 20 ms frame level, worst file = 2.822 dB
 PASS  real material at instant speed: biggest sample step against the input's, worst file = 1.000 times
 PASS  real speech and say singing: octave disagreements with the slow two sided reference, which is not ground truth = 17.258 per minute
-PASS  real speech at instant speed: worst file's median distance from a note = 10.401 cents
-PASS  say singing and held vowels at instant speed: worst file's median distance from a note = 2.466 cents
+PASS  real speech at instant speed: worst file's median distance from a note = 9.617 cents
+PASS  say singing and held vowels at instant speed: worst file's median distance from a note = 2.336 cents
 PASS  Transpose +7 on A3 gives E4, offset = -0.004 cents
 PASS  Transpose -12 on A4 gives A3, offset = 0.000 cents
 PASS  Reference A4 432 Hz puts A3 at 216 Hz, offset = 0.000 cents
@@ -237,10 +237,10 @@ PASS  Throat Length 75%: formants move up, scale (1.33 would be exact) = 1.285 t
 PASS    and the formant tool reads that known move within 5%
 PASS  Tracking 0 calls a noisy voice pitched this share of the time = 0.000 %
 PASS  Tracking 100 calls the same voice pitched this share of the time = 100.000 %
-PASS  Pitch Off Target reads the sung error, 30 cents sharp = 30.026 cents
+PASS  Pitch Off Target reads the sung error, 30 cents sharp = 29.971 cents
 PASS  Target Note reads A3
-PASS  Correction Applied reads the correction, -30 cents = -30.026 cents
-PASS  Detected Pitch reads the sung pitch = 223.849 Hz
+PASS  Correction Applied reads the correction, -30 cents = -29.971 cents
+PASS  Detected Pitch reads the sung pitch = 223.842 Hz
 PASS  readings send nothing to the host while audio runs: parameter messages = 0.000 
 PASS  Pitch Off Target has a real value string and is not automatable: +30 cents
 PASS  silence: readings show no pitch
@@ -251,8 +251,8 @@ PASS  output does not depend on block size (and so not on a playhead)
 PASS  prepareToPlay again resets all state
 PASS  stereo: a voice on the left stays on the left, right against left = -240.000 dB
 PASS  hard and natural presets are both there, presets = 8.000 
-PASS  preset Hard Tune flattens vibrato, kept = 1.033 %
-PASS  preset Natural Pop keeps more vibrato, kept = 97.561 %
+PASS  preset Hard Tune flattens vibrato, kept = 1.029 %
+PASS  preset Natural Pop keeps more vibrato, kept = 97.998 %
 PASS  presets leave Key, Scale and Input Type alone
 PASS  the window is the custom one
 PASS  every one of the 26 parameters has a control in the window = 26.000 
@@ -299,5 +299,52 @@ PASS  with the host stopped, the display stops moving
 PASS  60 windows opened, painted and closed, 30 of them with audio running = 60.000 
 PASS  a window opens and paints before the host has prepared the plug-in
 PASS  audio with the window open and painting nulls to exact zero against the window closed = 0.000 
-PASS  CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 0.467 %
+PASS  CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 0.691 %
+PASS  Alto/Tenor, held notes under its range, 78 to 92 Hz, output pitch error at instant speed, worst 95th percentile = 0.004 cents
+INFO    worst case is at = 92.499 Hz
+PASS  Alto/Tenor, 87 Hz with vibrato +/-30 cents and breath, output pitch error at instant speed, 95th percentile = 1.328 cents
+PASS  Alto/Tenor, 87 Hz 30 cents sharp, non-harmonic energy in the corrected voice = -48.372 dB
+INFO    the same voice in Low Male = -48.370 dB
+PASS  Alto/Tenor, a phrase A2 E2 A2 F#2 sung 30 cents sharp, each note's output pitch error, worst 95th percentile = 1.523 cents
+PASS  voices at 99 to 440 Hz in Alto/Tenor: tracker samples that differ with the reach under the range switched on = 0.000 
+INFO    samples compared = 696000.000 
+INFO    pitch movement against the sound, Alto/Tenor at 147 Hz = -0.107 ms
+INFO    pitch movement against the sound, Alto/Tenor at 196 Hz = 0.131 ms
+INFO    pitch movement against the sound, Alto/Tenor at 262 Hz = 0.207 ms
+INFO    pitch movement against the sound, Low Male at 147 Hz = -0.099 ms
+INFO    pitch movement against the sound, Low Male at 196 Hz = 0.102 ms
+INFO    pitch movement against the sound, Low Male at 262 Hz = 0.221 ms
+INFO    pitch movement against the sound, Wide Range at 147 Hz = -0.099 ms
+INFO    pitch movement against the sound, Wide Range at 196 Hz = 0.102 ms
+INFO    pitch movement against the sound, Wide Range at 262 Hz = 0.221 ms
+PASS  pitch movement arrives with the sound it belongs to, 147 to 262 Hz, three Input Types, worst (negative is early), Wide Range at 262 Hz = 0.221 ms
+INFO    pitch movement against the sound, Alto/Tenor at 101 Hz = 0.205 ms
+INFO    pitch movement against the sound, Alto/Tenor at 112 Hz = 0.127 ms
+INFO    pitch movement against the sound, Alto/Tenor at 124 Hz = -0.259 ms
+INFO    pitch movement against the sound, Alto/Tenor at 138 Hz = -0.167 ms
+INFO    pitch movement against the sound, Low Male at 71 Hz = 0.551 ms
+INFO    pitch movement against the sound, Low Male at 84 Hz = -0.409 ms
+INFO    pitch movement against the sound, Low Male at 95 Hz = -0.256 ms
+PASS  pitch movement arrives with the sound it belongs to on low notes, Alto/Tenor 101 to 138 Hz and Low Male 71 to 95 Hz, worst (negative is early), Low Male at 71 Hz = 0.551 ms
+INFO    under Alto/Tenor's range, not judged: pitch movement against the sound at 78 Hz = 2.471 ms
+INFO    under Alto/Tenor's range, not judged: pitch movement against the sound at 90 Hz = -0.388 ms
+PASS  a voice left uncorrected after a correction, 147 to 262 Hz: output against the input at the reported delay, from 4.5 s on, worst = -200.000 dB
+PASS  a voice never corrected, a glide and a phrase with gaps, every Input Type: output against the input at the reported delay, worst = -200.000 dB
+PASS    the worst 100 ms of it = -200.000 dB
+PASS  a note on the line with vibrato +/-20 cents: size of the 5.5 Hz waver in the output = 19.445 cents
+PASS    and how far the output sits from the nearer of the two notes, median = 13.944 cents
+PASS  a step up a semitone landing 25 cents flat, at once: time until the output is within 15 cents of the new note = 14.000 ms
+PASS  a step up a semitone landing 25 cents flat, as a glide over 60 ms: time until the output is within 15 cents of the new note = 8.000 ms
+PASS  a held note sliding onto the next one at 13 cents per 100 ms: time from the line until the output is within 15 cents of the new note = 136.000 ms
+PASS  nothing before a note starts: the 10 ms before the input's onset against the held note, worst (a 560 Hz, transpose 0) = -137.468 dB
+PASS  entries that hold their pitch from the start, Retune 0 (72: clean, soft, breathy; 104 to 233 Hz; 22 to 45 cents off): time until the output is within 10 cents for 15 ms, median = 20.000 ms
+PASS    90th percentile = 30.000 ms
+INFO    the slowest, clean, 104 Hz, 35 cents off = 35.000 ms
+INFO    entries that slide up into the note as his do (18: 60, 105 and 250 cents under, over 100 to 200 ms), not judged: median = 20.000 ms
+INFO    the slowest = 50.000 ms
+PASS  entries that hold their pitch from the start, the default (Retune 20, Humanize 30) (72: clean, soft, breathy; 104 to 233 Hz; 22 to 45 cents off): time until the output is within 10 cents for 15 ms, median = 40.000 ms
+PASS    90th percentile = 45.000 ms
+INFO    the slowest, breathy, 104 Hz, 45 cents off = 55.000 ms
+INFO    entries that slide up into the note as his do (18: 60, 105 and 250 cents under, over 100 to 200 ms), not judged: median = 65.000 ms
+INFO    the slowest = 240.000 ms
 RESULT PASS  0 failures

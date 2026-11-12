@@ -641,13 +641,13 @@ PASS  a 1.0.0 session with none of them opens at the default size
 PASS  absurd saved sizes are clamped
 PASS  a saved size that is not a number stays in range
 PASS  the dropped file arrives
-PASS  while it loaded, blocks ran = 2324.000 
+PASS  while it loaded, blocks ran = 2823.000 
 PASS  no block allocated while the file loaded, allocations = 0.000 
 PASS  the held note kept sounding the whole time, silent blocks = 0.000 
 PASS  and the window said so while it loaded
 PASS  then it names the new file: window-big.wav, 96.00 s, 48.0 kHz, mono, 8 slices
 PASS  a broken file says so, and the sample stays: Could not read broken.wav
-PASS  60 windows opened and closed while audio ran, blocks = 208.000 
+PASS  60 windows opened and closed while audio ran, blocks = 63.000 
 PASS  30 more with no audio
 PASS  readings are parameters
 PASS  Slices Found reads 4: 4
@@ -676,6 +676,6 @@ PASS  Pitch shows +3.00
 PASS  Root Note 60 shows C3
 PASS  Slice Mode shows its name
 PASS  every control jumps on a held note with no click, worst step (Transpose) = 0.014 
-INFO  16 stereo voices pitched up 7 st: share of one core = 11.291 %
-PASS  16 stereo voices run faster than real time, for 10 s of audio took = 1129.106 ms
+INFO  16 stereo voices pitched up 7 st: share of one core = 3.414 %
+PASS  16 stereo voices run faster than real time, for 10 s of audio took = 341.399 ms
 RESULT PASS  0 failures

@@ -79,7 +79,7 @@ All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before
 
 | Module | Off | Main control |
 |---|---|---|
-| Pitch | stays on A3 | Octave and Semitones on the wanted note within 0.02 cents. Formants held within 3.7% at +/-1 octave, 3.3% at +/-5 semitones |
+| Pitch | stays on A3 | Octave and Semitones on the wanted note within 0.02 cents. Formants held within 3.3% at +/-1 octave and at +/-5 semitones; on Luke's takes (the real vocal check's measure) 1.25 to 1.5% an octave down, 4.25% up |
 | Throat | formants stay, 1.00 | Length 130 moves formants by 0.78 (0.77 exact), Length 75 by 1.35 (1.33 exact) |
 | Motion | no steps | Trill on pitch within 0.01 cents, steps land within 6.5 ms |
 | Harmony | -147 dB at the interval | +7 lands on E4 within 0.5 cents, Level -6 measures -6.0 dB on a voice |
@@ -99,13 +99,13 @@ All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before
 
 ## The tuner, and what it shares
 
-The tracker, corrector and grain shifter are the same copy of Smooth Tune that Tune and Tune Pro started from. Marks slide towards the loudest part of each period at 0.2% instead of 1% (that slide bends a shifted voice's pitch: the 1% gave 4.7 cents at default settings and 5.5 cents through Pitch, over the 5 cent limit; Smooth Harmony found this first), a grain's read speed stops growing past +3 semitones, and held MIDI notes can be the targets.
+The tracker, corrector and grain shifter are the same copy of Smooth Tune that Tune and Tune Pro started from. Marks slide towards the loudest part of each period at 0.2% instead of 1% (that slide bends a shifted voice's pitch: the 1% gave 4.7 cents at default settings and 5.5 cents through Pitch, over the 5 cent limit; Smooth Harmony found this first), a grain's read speed stops growing past 3 semitones either way (downwards since 1.2.4: left to grow it moved a real voice's formants 6.5% down an octave down), the guard against a strong second harmonic needs a clear difference before it moves to twice the period (1.2.4: a clean voice whose every other period differs a little was read an octave low, which Pitch, Harmony and the Vocoder followed), and held MIDI notes can be the targets.
 
 Since 1.2.0 it has the fixes Tune Pro found on Luke's real takes, as Tune 1.2.0 has them: Alto/Tenor follows notes down to 70 Hz, the pitch control is read in line with the audio (1.80 periods back), an uncorrected voice comes out exactly as the input at the reported delay, a held note keeps its target through a waver across the line (and a slow slide lands within 110 ms), and grains do not read ahead for 10 ms after a pause. Tests: `PluginTest rode` (low, timing, hold, onset, entry). Glitter has no vocal tract model, so Tune Pro's own formant work does not apply here.
 
 ## Real takes
 
-Luke's Rode NT1 takes (2026-11-10), checked with realvox (`_shared/realvox/src/extra/tune-fx.cpp`), the song's real key at A440. Numbers and what is still open are in `~/smooth-plugins/_vox/rode/work/tune-fx/REPORT.md`. What they changed in 1.2.0: the tuner fixes above, Reverb switched on while playing decays again, the Vocoder's level match no longer bursts after an S, a pause, a switch on, on the first note or where a note leaves its voicing over a room (1.2.2, 1.2.3), and Distortion holds the level of the voice going in (its make-up suited a -18 dBFS voice; quieter ones came out up to 6.8 dB louder), from the first 20 ms after it is switched on (1.2.1).
+Luke's Rode NT1 takes (2026-11-10), checked with realvox (`_shared/realvox/src/extra/tune-fx.cpp`), the song's real key at A440. Numbers and what is still open are in `~/smooth-plugins/_vox/rode/work/tune-fx/REPORT.md`. What they changed in 1.2.0: the tuner fixes above, Reverb switched on while playing decays again, the Vocoder's level match no longer bursts after an S, a pause, a switch on, on the first note or where a note leaves its voicing over a room (1.2.2, 1.2.3), and Distortion holds the level of the voice going in (its make-up suited a -18 dBFS voice; quieter ones came out up to 6.8 dB louder), from the first 20 ms after it is switched on (1.2.1). The second pass (1.2.4): formants an octave down and the tracker's octave guard, above.
 
 ## What the numbers do not say
 

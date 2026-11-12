@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.4, 2026-11-12
+
+Two fixes from the second pass over Luke's real takes. Luke left this call to the lead on 2026-11-11. Every parameter, ID and range is as before, so saved sessions load.
+
+- Pitch an octave down (and Harmony an octave down, and Octave Monster) moved the voice's formants down by 6.25 to 6.5% on Luke's takes, over the real vocal check's 4.43%: the grains' reading speed, which corrects for the formants a shift drags along, kept growing all the way down, where on a real voice the grains barely drag them at all. It now stops growing past 3 semitones, as it already did upwards: 1.25 to 1.5% on the same takes. The test vowels read 1.013 and 1.009 an octave down (0.963 before). Shifts within 3 semitones, and the lead, are unchanged.
+- The tracker read a clean voice an octave low, for about 20 ms at a time, where every other period differs a little (Luke's take 01 at 200 to 226 Hz): its guard against a strong second harmonic moved to twice the period although both fit almost perfectly. The lead never let it be heard, but Pitch, Harmony and the Vocoder took the reading and jumped an octave. The guard now also needs a clear difference: Luke's take 01 at 8.42, 12.54 and 71.72 s is read at its pitch (1.2.3: an octave low for 19 to 23 ms), and so is a held voice whose every other period is 20% weaker (1.2.3: an octave low throughout).
+
 ## 1.2.3, 2026-11-12
 
 Vocoder: 1.2.0 to 1.2.2 kept a second level match for consonants and the room. On a room with a rumble under the vocoder's lowest band it grew far too big, and where the voice left its voicing it took over: Robot Stack on Luke's take 06 reached 0 dBFS where the voice was at -42 dBFS (20.9 dB over the voice nearby, now 4.8). Back to one level match, learnt on voiced sound only, which also carries the consonants. The first note and switch-on fixes of 1.2.0 to 1.2.2 stay. Luke left this call to the lead on 2026-11-11.

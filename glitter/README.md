@@ -105,7 +105,7 @@ Since 1.2.0 it has the fixes Tune Pro found on Luke's real takes, as Tune 1.2.0 
 
 ## Real takes
 
-Luke's Rode NT1 takes (2026-11-10), checked with realvox (`_shared/realvox/src/extra/tune-fx.cpp`), the song's real key at A440. Numbers and what is still open are in `~/smooth-plugins/_vox/rode/work/tune-fx/REPORT.md`. What they changed in 1.2.0: the tuner fixes above, Reverb switched on while playing decays again, the Vocoder's level match no longer bursts after an S, a pause or a switch on, and Distortion holds the level of the voice going in (its make-up suited a -18 dBFS voice; quieter ones came out up to 6.8 dB louder), from the first 20 ms after it is switched on (1.2.1).
+Luke's Rode NT1 takes (2026-11-10), checked with realvox (`_shared/realvox/src/extra/tune-fx.cpp`), the song's real key at A440. Numbers and what is still open are in `~/smooth-plugins/_vox/rode/work/tune-fx/REPORT.md`. What they changed in 1.2.0: the tuner fixes above, Reverb switched on while playing decays again, the Vocoder's level match no longer bursts after an S, a pause, a switch on or on the first note (1.2.2), and Distortion holds the level of the voice going in (its make-up suited a -18 dBFS voice; quieter ones came out up to 6.8 dB louder), from the first 20 ms after it is switched on (1.2.1).
 
 ## What the numbers do not say
 

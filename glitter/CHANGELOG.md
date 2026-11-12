@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.2, 2026-11-12
+
+Vocoder: 1.2.0's level match could put the first note after a pause or a switch-on far over its level (up to 30 dB for its first 10 ms; Robot Stack on Luke's take 06 peaked at +2.6 dBFS on the first note): its first reading was taken while the filters were still ringing up, and a gain learnt on a room's noise stood in for the voiced one. A first reading now waits until the carrier has played 20 ms over sound, nothing stands in, and the tone comes in over a few ms: 1.34 dB at most. Its steady sound is unchanged. Luke left this call to the lead on 2026-11-11.
+
 ## 1.2.1, 2026-11-12
 
 Distortion switched on in the middle of a note came in up to 7 dB high or low for a moment, until its new level hold had caught up (on Luke's takes one switch-on step read 1.53 times the voice's own, against 1.5). The hold now reads the level quickly for the first 20 ms of sound after the switch, under the switch's own fade: 0.33 dB at most. Luke left this call to the lead on 2026-11-11.

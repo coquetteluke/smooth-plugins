@@ -118,8 +118,8 @@ PASS  hard settings flatten vibrato, kept = 1.029 %
 PASS  Flex Amount 60 cents keeps a +/-40 cent vibrato, kept = 99.082 %
 PASS  Humanize 100 keeps vibrato on the sustained part, kept = 98.735 %
 PASS  Retune Speed 400 ms keeps vibrato, kept = 98.789 %
-PASS  Natural Vibrato -100 takes vibrato down, left = 19.639 %
-PASS  Natural Vibrato +100 takes vibrato up, now = 192.158 %
+PASS  Natural Vibrato -100 takes vibrato down, left = 26.427 %
+PASS  Natural Vibrato +100 takes vibrato up, now = 191.072 %
 PASS  hard tune step between two notes a tone apart, 10% to 90% = 5.000 ms
 PASS  after the step the new note is on pitch, 95th percentile = 1.739 cents
 PASS  a slow glide comes out as steps, frames within 10 cents of a note = 99.413 %
@@ -299,7 +299,7 @@ PASS  with the host stopped, the display stops moving
 PASS  60 windows opened, painted and closed, 30 of them with audio running = 60.000 
 PASS  a window opens and paints before the host has prepared the plug-in
 PASS  audio with the window open and painting nulls to exact zero against the window closed = 0.000 
-PASS  CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 0.691 %
+PASS  CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 0.805 %
 PASS  Alto/Tenor, held notes under its range, 78 to 92 Hz, output pitch error at instant speed, worst 95th percentile = 0.004 cents
 INFO    worst case is at = 92.499 Hz
 PASS  Alto/Tenor, 87 Hz with vibrato +/-30 cents and breath, output pitch error at instant speed, 95th percentile = 1.328 cents
@@ -347,4 +347,6 @@ PASS    90th percentile = 45.000 ms
 INFO    the slowest, breathy, 104 Hz, 45 cents off = 55.000 ms
 INFO    entries that slide up into the note as his do (18: 60, 105 and 250 cents under, over 100 to 200 ms), not judged: median = 65.000 ms
 INFO    the slowest = 240.000 ms
+PASS  Robot Flat's settings flatten vibrato, kept = 1.029 %
+PASS  Robot Flat's settings on a slow rise of 2 semitones: the most the output falls in 10 ms = 0.099 cents
 RESULT PASS  0 failures

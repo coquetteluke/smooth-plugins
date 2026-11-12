@@ -72,7 +72,7 @@ All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before
 - Retune Speed 25, 50, 100, 200, 400 ms measures 28, 53, 103, 203, 404 ms. Since 1.2.0 the pitch control is read in line with the audio (`pitchInLine`): a correction no longer starts about 5 ms before its note. Pitch movement against the sound it belongs to: within 0.55 ms, 71 to 262 Hz.
 - Formant positions at +/-1 and +/-3 semitones: worst move 4.62% (1.1.1: 4.43%), against a 5% limit. Thin margin: see below.
 - Level at those shifts: within 1 dB.
-- Vibrato kept: Flex 60 cents 99%, Humanize 100 99%, Retune 400 ms 99%. Hard settings leave 1%. Natural Vibrato -100 leaves 20%, +100 gives 191%.
+- Vibrato kept: Flex 60 cents 99%, Humanize 100 99%, Retune 400 ms 99%. Hard settings leave 1%. Natural Vibrato -100 leaves 26%, +100 gives 191% (since 1.2.1 it works on the vibrato left after correction, so with Retune 0, as in Robot Flat, -100 leaves the note flat: 1.0%).
 - Hard step between two notes: 5 ms from 10% to 90%.
 - Unvoiced sound: at most -315 dB difference from the delayed input. The middle of an S between two corrected vowels is the same.
 - Artifacts on a corrected sustained tone: -47.5 dB non-harmonic, the same as the input's own -47.5 dB. Pitch steady to 0.002 cents, level to 0.001 dB.

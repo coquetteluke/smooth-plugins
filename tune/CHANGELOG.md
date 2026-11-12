@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1, 2026-11-12
+
+**Robot Flat is flat.** Natural Vibrato worked on the voice as sung, so where the correction had already taken the vibrato out, -100 put it back upside down: Robot Flat's settings (Retune 0, Humanize 0, Flex 0, Natural Vibrato -100) kept 93.8% of a +/-40 cent vibrato, inverted. It now works on the vibrato left after correction, as the README says, and a new note starts its average where it comes out. Luke left this call to the lead on 2026-11-11 (it changes how Robot Flat sounds). Test `robot`, written and committed before the change: vibrato kept 93.8% (FAIL) to 1.03% (limit 10, Hard Tune's); a slow rise of 2 semitones never falls by more than 0.10 cents in 10 ms (limit 10).
+
+With Natural Vibrato at 0, the default and every other preset, nothing changes: the suite is 1.2.0's to the last digit except Natural Vibrato -100 at Retune 400 ms, which now leaves 26.4% of the vibrato (19.6%, limit 45), and +100 191.1% (192.2%, limit 160 or more).
+
+Luke's 11 working takes, Robot Flat on the song key (realvox): held notes 90th percentile 15.1 to 3.2 cents (1.1.1: 17.7), left as sung 2 to 0, slides turned round 10.59 to 2.90% on the sung takes and 7.12 to 3.87% on the rap takes (limit 5), wrong note jumps 69 to 11. It now reads exactly as Hard Tune does. Parameters, presets, latency and AU codes are unchanged.
+
 ## 1.2.0, 2026-11-12
 
 The engine fixes Tune Pro found on Luke's own takes (17 whole songs, Rode NT1, 2026-11-10), ported into Tune's own copy of the engine they share, each with Tune Pro's test run on Tune first (tests committed before any fix: `PluginTest rode`). Luke left this call to the lead on 2026-11-11: the default and every preset sound a little different where a note is low, on the line between two notes, or just starting. Parameters, IDs, ranges, defaults, presets, latency and AU codes are unchanged, so saved sessions load as they were.

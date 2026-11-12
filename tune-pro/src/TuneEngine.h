@@ -109,8 +109,11 @@ public:
         passStep = 1.0 / (0.003 * sr);
         inPeak = aheadPeak = wetPeak = 0.0;
         onsetGain = 1.0;
+        longPeak = 0.0;
+        longFall = std::exp (-1.0 / (0.3 * sr));
         onsetComing = false;
         onsetGainUp = 1.0 - std::exp (-1.0 / (0.001 * sr));
+        onsetGainDown = 1.0 - std::exp (-1.0 / (0.0001 * sr));
         inFall = std::exp (-1.0 / (0.010 * sr));
         onsetAheadSamples = std::min ((long long) latency, (long long) std::llround (0.012 * sr));
         aheadFall = std::exp (-1.0 / (double) std::max (1LL, onsetAheadSamples));
@@ -299,8 +302,10 @@ public:
                 // to -73 dBFS, just before a sound began). Voicing is decided ahead of the output and the shifters read ahead of it, so where
                 // a sound starts out of silence the corrected sound could be heard before it. The input is known a little ahead of the output,
                 // so a sound about to start is seen coming: where the input's peak over the next 12 ms (or the whole delay, if shorter) stands
-                // onsetRiseDb or more over its peak of the last 10 ms (until it falls under onsetReleaseDb), and the tuned voice (its peak
-                // over about 1 ms) would stand over that last peak, the input itself goes out, as it does through any unvoiced sound. On a
+                // onsetRiseDb or more over its peak of the last 10 ms (until it falls under onsetReleaseDb), that peak is onsetPauseDb under
+                // the input's peak over the last 300 ms or nothing in those 300 ms came near the coming sound (a pause, not a quiet stretch
+                // of voice), and the tuned voice (its peak over about 1 ms) would stand over that last peak, the input itself goes out, as it
+                // does through any unvoiced sound. On a
                 // voice the peaks of the last 10 ms and the next 12 ms are never that far apart, and at any start the tuned voice is the
                 // input itself until a voiced stretch takes over, so the output is exactly as before everywhere but just before a sound.
                 if (onsetGate)
@@ -312,13 +317,14 @@ public:
                     inPeak = std::max (d, inPeak * inFall);
                     aheadPeak = std::max (std::max (a0, a1), aheadPeak * aheadFall);
                     wetPeak = std::max (w, wetPeak * wetFall);
-                    // Shut once the rise is 20 dB, open again once it is under 10 dB. It shuts at once (the tuned voice is rising out of silence
-                    // there) and opens over about 1 ms, so the gate itself never makes a step (a first version without this made one on take 05
+                    // Shut once the rise is 20 dB, open again once it is under 10 dB. It crosses over to the input within about 0.1 ms and back
+                    // over about 1 ms, so the gate itself never makes a step (a first version without this made one on take 05
                     // at 187.70 s).
-                    onsetComing = aheadPeak > inPeak * (onsetComing ? onsetReleaseRatio : onsetRiseRatio);
+                    longPeak = std::max (d, longPeak * longFall);
+                    onsetComing = aheadPeak > inPeak * (onsetComing ? onsetReleaseRatio : onsetRiseRatio) && (inPeak < longPeak * onsetPauseRatio || longPeak < aheadPeak * onsetPauseRatio);
                     const double allowed = inPeak * onsetGateRatio;
                     const double want = onsetComing && wetPeak > allowed ? 0.0 : 1.0;
-                    if (want < onsetGain) onsetGain = want;
+                    if (want < onsetGain) onsetGain = std::max (0.0, onsetGain + onsetGainDown * (want - onsetGain) - 1.0e-7);
                     else if (onsetGain < 1.0) onsetGain = std::min (1.0, onsetGain + onsetGainUp * (want - onsetGain) + 1.0e-7);
                     if (onsetGain < 1.0)
                     {
@@ -624,9 +630,10 @@ private:
     std::array<ControlPoint, 128> ring {};
     int ringAt = 0, controlDelayTicks = 0, leadTicks = 0, ahead = 0;
     static constexpr bool onsetGate = true;
-    static constexpr double onsetGateDb = 0.0, onsetRiseDb = 20.0, onsetReleaseDb = 10.0;
+    static constexpr double onsetGateDb = 0.0, onsetRiseDb = 20.0, onsetReleaseDb = 10.0, onsetPauseDb = 20.0;
     const double onsetGateRatio = std::pow (10.0, onsetGateDb / 20.0), onsetRiseRatio = std::pow (10.0, onsetRiseDb / 20.0), onsetReleaseRatio = std::pow (10.0, onsetReleaseDb / 20.0);
-    double onsetGain = 1.0, onsetGainUp = 0.007;
+    double onsetGain = 1.0, onsetGainUp = 0.02, onsetGainDown = 0.07, longPeak = 0.0, longFall = 0.9999;
+    const double onsetPauseRatio = std::pow (10.0, -onsetPauseDb / 20.0);
     bool onsetComing = false;
     double inPeak = 0.0, aheadPeak = 0.0, wetPeak = 0.0, inFall = 0.999, aheadFall = 0.999, wetFall = 0.98;
     long long onsetAheadSamples = 240;

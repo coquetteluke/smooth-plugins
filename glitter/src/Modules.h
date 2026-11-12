@@ -158,6 +158,8 @@ public:
         inc = 0.005;
         gain = 8.0f;
         gainNoise = 8.0f;
+        learntVoiced = learntNoise = false;
+        entryStep = (float) (1.0 / (0.01 * sr));
         gainPhase = 0;
         voicePower = tonePower = voicedTarget = 0.0f;
         noise = {};
@@ -169,6 +171,7 @@ public:
         for (auto& b : bands) { b.z1 = b.z2 = b.y1 = b.y2 = 0.0f; b.env = 0.0f; }
         voicedNow = 0.0f; // the level match stays where it was, so coming back on starts near the right level
         settle = (int) (0.02 * sr); // and it waits for the filters to ring up before it believes the tone's level
+        entry = 0.0f; // silent until then, then in over 10 ms
     }
 
     void setCarrier (double hz, bool voiced, int waveform) noexcept
@@ -211,18 +214,28 @@ public:
         const float tone = 0.5f * (l + r);
         voicePower += levelCoef * (voice * voice - voicePower);
         tonePower += levelCoef * (tone * tone - tonePower);
-        if (settle > 0) --settle;
+        // A gain that has never learnt starts where its first reading puts it, not from a guess: up to 1.1.1 it started at 8 whatever the
+        // voice, and on Luke's take 06 the tone came in about 13 dB over its own level for its first 20 ms. Until a gain has a reading the
+        // other one stands in, and with neither the tone stays silent. After the filters have rung up (settle) the tone comes in over 10 ms.
+        if (settle > 0)
+        {
+            --settle;
+            if (settle == (int) (0.01 * sr)) voicePower = tonePower = 0.0f;   // the readings start once the filters are half way up
+        }
         if (++gainPhase >= 32)
         {
             gainPhase = 0;
             if (settle == 0 && voicePower > 1.0e-7f && tonePower > 1.0e-12f)
             {
                 const float want = std::clamp (std::sqrt (voicePower / tonePower), 0.5f, 400.0f);
-                if (voicedNow > 0.9f) gain *= std::pow (want / gain, gainCoef);
-                else if (voicedNow < 0.1f) gainNoise *= std::pow (want / gainNoise, gainCoef);
+                if (voicedNow > 0.9f) { gain = learntVoiced ? gain * std::pow (want / gain, gainCoef) : want; learntVoiced = true; }
+                else if (voicedNow < 0.1f) { gainNoise = learntNoise ? gainNoise * std::pow (want / gainNoise, gainCoef) : want; learntNoise = true; }
             }
         }
-        const float g = voicedNow * gain + (1.0f - voicedNow) * gainNoise;
+        const float gv = learntVoiced ? gain : gainNoise, gn = learntNoise ? gainNoise : gain;
+        const bool ready = settle == 0 && (learntVoiced || learntNoise);
+        entry = ready ? std::min (1.0f, entry + entryStep) : std::max (0.0f, entry - entryStep);
+        const float g = entry * (voicedNow * gv + (1.0f - voicedNow) * gn);
         outL = l * g;
         outR = r * g;
     }
@@ -262,6 +275,8 @@ private:
     std::array<double, 3> phase { 0.0, 0.31, 0.67 };
     std::array<Band, numBands> bands {};
     float attack = 0, release = 0, levelCoef = 0, gainCoef = 0, voicedCoef = 0, voicePower = 0, tonePower = 0, gain = 8, gainNoise = 8, voicedNow = 0, voicedTarget = 0;
+    float entry = 0.0f, entryStep = 0.002f;
+    bool learntVoiced = false, learntNoise = false;
     int wave = saw, gainPhase = 0, settle = 0;
     Random noise;
 };

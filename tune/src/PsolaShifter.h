@@ -62,6 +62,7 @@ public:
         lastMarkUsed = -1;
         lastOffset = 0.0;
         plannedOffset = 0.0;
+        enteredAt = -1.0e12;
         needDecision = true;
         firstGrain = true;
     }
@@ -79,13 +80,6 @@ public:
     float dry (int channel) const noexcept
     {
         const long long index = written - 1 - latency;
-        return index < 0 ? 0.0f : delay[(size_t) channel][(size_t) (index & (long long) (size - 1))];
-    }
-
-    // The input sample `ahead` samples newer than dry() (ahead at most the latency): what the output will hear a little later.
-    float dryAhead (int channel, int ahead) const noexcept
-    {
-        const long long index = written - 1 - latency + ahead;
         return index < 0 ? 0.0f : delay[(size_t) channel][(size_t) (index & (long long) (size - 1))];
     }
 
@@ -349,6 +343,7 @@ private:
                     lastMarkUsed = found - 1;
                     lastOffset = 0.0;
                     plannedOffset = 0.0;
+                    enteredAt = s + spacing;
                     planned = Plan::locked;
                 }
                 else
@@ -430,6 +425,15 @@ private:
                 ++q;
             while (q > tracker.firstMark() && tracker.mark (q).position - g.mark > 0.6 * period)
                 --q;
+            // Just after the grains have come in from a pass, as where a sound starts out of a pause, a grain may not read ahead of where
+            // it is heard: up to 1.1.1 a voice moved up began to sound up to a period before the input did (a vowel at 560 Hz moved up 3:
+            // -21 dB against the held note in the 10 ms before it starts). Reading from the last mark at or before the grain instead
+            // costs nothing but up to a period of lag for those first ms; after that, the nearest mark either side as always. In place of
+            // Tune Pro's onset gate (1.7.2), which crossed to the input there: on Tune's plain grains that crossing made clicks by the real
+            // vocal check on takes 02, 05 and 07 (Hard Tune, song key), as it did on Tune Pro's Classic.
+            if (g.mark - enteredAt < entrySeconds * sr)
+                while (q > tracker.firstMark() && tracker.mark (q).position > g.mark)
+                    --q;
             const double offset = tracker.mark (q).position - g.mark;
             if (std::abs (offset) > 1.6 * period || offset > (double) latency)
             {
@@ -465,7 +469,10 @@ private:
     Grain pending;
     bool havePending = false, needDecision = true, firstGrain = true;
     Plan planned = Plan::pass;
-    double peakOfNewest = 0.0, lastOffset = 0.0, plannedOffset = 0.0;
+    double peakOfNewest = 0.0, lastOffset = 0.0, plannedOffset = 0.0, enteredAt = -1.0e12;
+    // 10 ms: 2 ms left the onset test at -21 dB, 5 ms read -68 dB, 10 and 15 ms -137 dB; 15 ms added a click by the real vocal check on
+    // take 04 at 60.91 s (Hard Tune, song key) that 10 ms does not have.
+    static constexpr double entrySeconds = 0.010;
     static constexpr double lockedWalkShare = 0.001;
     long long lastMarkUsed = -1;
 };

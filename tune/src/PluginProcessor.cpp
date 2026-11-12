@@ -217,16 +217,6 @@ void PluginProcessor::applyInputType (int type) noexcept
     ringAt = 0;
     shifter.setLatency (latencyFor (typeNow, sr));
     shifter.restart();
-    inPeak = aheadPeak = wetPeak = longPeak = 0.0;
-    onsetGain = 1.0;
-    onsetComing = false;
-    onsetAheadSamples = juce::jmin (baseLatency, (int) std::lround (0.012 * sr));
-    inFall = std::exp (-1.0 / (0.010 * sr));
-    aheadFall = std::exp (-1.0 / (double) juce::jmax (1, onsetAheadSamples));
-    wetFall = std::exp (-1.0 / (0.001 * sr));
-    longFall = std::exp (-1.0 / (0.3 * sr));
-    onsetGainUp = 1.0 - std::exp (-1.0 / (0.001 * sr));
-    onsetGainDown = 1.0 - std::exp (-1.0 / (0.0001 * sr));
     corrector.reset();
     control = {};
 }
@@ -363,35 +353,6 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, bool forceBypas
 
         const float dryL = shifter.dry (0);
         const float dryR = right != nullptr ? shifter.dry (1) : 0.0f;
-
-        // Nothing comes out before the input begins. Voicing is decided ahead of the output and the grains read ahead of it, so where a
-        // sound starts out of a pause the corrected sound was heard before it (a vowel at 560 Hz moved up 3: -21 dB against the held
-        // note in the 10 ms before it starts, Tune 1.1.1). The input is known a little ahead of the output, so a sound about to start
-        // is seen coming: where the input's peak over the next 12 ms stands 20 dB or more over its peak of the last 10 ms (until it falls
-        // under 10 dB), that peak is 20 dB under the input's peak over the last 300 ms or nothing in those 300 ms came near the coming
-        // sound (a pause, not a quiet stretch of voice), and the tuned voice (its peak over about 1 ms) stands over that last peak, the
-        // input itself goes out, as through any unvoiced sound. It crosses over within about 0.1 ms and back over about 1 ms. On a voice
-        // the two peaks are never that far apart, so the output is exactly as before everywhere but just before a sound. From Tune Pro
-        // 1.7.2 (b269554 to 8742f85, as it stands at 8742f85).
-        {
-            const double d = juce::jmax (std::abs ((double) dryL), right != nullptr ? std::abs ((double) dryR) : 0.0);
-            const double a = juce::jmax (std::abs ((double) shifter.dryAhead (0, onsetAheadSamples)), right != nullptr ? std::abs ((double) shifter.dryAhead (1, onsetAheadSamples)) : 0.0);
-            const double w = juce::jmax (std::abs ((double) wet[0]), right != nullptr ? std::abs ((double) wet[1]) : 0.0);
-            inPeak = juce::jmax (d, inPeak * inFall);
-            aheadPeak = juce::jmax (a, aheadPeak * aheadFall);
-            wetPeak = juce::jmax (w, wetPeak * wetFall);
-            longPeak = juce::jmax (d, longPeak * longFall);
-            onsetComing = aheadPeak > inPeak * (onsetComing ? onsetReleaseRatio : onsetRiseRatio)
-                          && (inPeak < longPeak * onsetPauseRatio || longPeak < aheadPeak * onsetPauseRatio);
-            const double want = onsetComing && wetPeak > inPeak ? 0.0 : 1.0;
-            if (want < onsetGain) onsetGain = juce::jmax (0.0, onsetGain + onsetGainDown * (want - onsetGain) - 1.0e-7);
-            else if (onsetGain < 1.0) onsetGain = juce::jmin (1.0, onsetGain + onsetGainUp * (want - onsetGain) + 1.0e-7);
-            if (onsetGain < 1.0)
-            {
-                wet[0] = (float) (dryL + onsetGain * (wet[0] - dryL));
-                if (right != nullptr) wet[1] = (float) (dryR + onsetGain * (wet[1] - dryR));
-            }
-        }
 
         // Input Type changes the delay, so fade out, jump, fade in, over 2 ms each way.
         if (fading)

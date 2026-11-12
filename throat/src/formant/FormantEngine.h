@@ -65,6 +65,7 @@ public:
 
         synthFft = std::make_unique<juce::dsp::FFT> (order);
         analysisFft = std::make_unique<juce::dsp::FFT> (order + 1);
+        cepstrumFft = std::make_unique<juce::dsp::FFT> (order + 1);
         envelope.prepare (sr, order + 1);
 
         synthWindow.resize ((size_t) synthSize);
@@ -90,8 +91,10 @@ public:
         readHz.assign ((size_t) synthHalf + 1, 0.0f);
         breathShape.assign ((size_t) synthHalf + 1, 0.0f);
         wantedOnSynthGrid.assign ((size_t) synthHalf + 1, 0.0f);
-        modelGain.assign ((size_t) synthHalf + 1, 0.0f);
         envelopeShift.assign ((size_t) synthHalf + 1, 0.0f);
+        logPower.assign ((size_t) analysisHalf + 1, 0.0f);
+        voicedEnvelope.assign ((size_t) analysisHalf + 1, 0.0f);
+        cepstrumWork.assign ((size_t) analysisSize * 2, 0.0f);
 
         for (int i = 0; i < phaseTableSize; ++i)
         {
@@ -125,6 +128,9 @@ public:
         levelFix = fastLevelFix = slowLevelFix = 0.0f;
         slowEnergyIn = slowEnergyOut = 0.0;
         recentEnergyIn = 0.0;
+        recentHistory.fill (0.0);
+        recentPos = 0;
+        framesSinceStart = 1000;
         levelAmount = target.levelMatch ? 1.0f : 0.0f;
         framesSinceControlMoved = 1000;
         tiltVoicing = 0.0f;
@@ -171,6 +177,10 @@ private:
     // From this many times the pitch up the move starts to take the harmonics' own envelope instead of the model, fully at twice that.
     static constexpr float envelopeFromHarmonic = 4.0f;
     static constexpr float highBandFromHz = 6000.0f;
+    // Phrase starts (see shapeFrame): a rise is judged against the level as it was this many frames back (43 ms at 48 kHz), and for
+    // quickFrames frames (320 ms) after a rise of 6 dB the quick level step follows each frame's real spectrum closely.
+    static constexpr int startLookback = 8, quickFrames = 60;
+    static constexpr double startRise = 4.0, phraseRise = 10.0;
     // 11 dB in 0.4.1, the least that leaves the 0.2.0 renders bit for bit. On the branch 8 dB: at 11 dB Length 1.50 still had 1.8% of
     // voiced frames on takes 01 and 16 more than 12 dB over the tube model from 6 to 12 kHz, mostly where the level match lifts the
     // whole frame. At 8 dB: 0.16%.
@@ -315,6 +325,35 @@ private:
         const float keepBelow = 1.05f * sourceTop, moveAbove = 1.4f * sourceTop;
 
 
+        // On voiced frames the move above 4 times the pitch reads a plain cepstral envelope: the log spectrum with every quefrency
+        // under 0.6 of the period kept as it is. The envelope through the harmonic tips, and a lifter that tapers, are smoother than
+        // that, and a smoother envelope moves less of a formant's shape: a move of a few percent (the width points) came out about
+        // 0.6 of the way the tube says on real vocals, against 0.8 for a plain mover. Unvoiced frames keep the tips envelope, whose
+        // steadiness Throat Precision sets.
+        float voicedShare = 0.0f;
+        if (! identityMap && f0 > 60.0f)
+        {
+            const float v = juce::jlimit (0.0f, 1.0f, (voicing - 0.3f) / 0.3f);
+            voicedShare = v * v * (3.0f - 2.0f * v);
+        }
+        if (voicedShare > 0.0f)
+        {
+            float top = 0.0f;
+            for (int k = 0; k <= analysisHalf; ++k) top = std::max (top, power[(size_t) k]);
+            const float floorPower = std::max (top * 1.0e-9f, 1.0e-16f);
+            std::fill (cepstrumWork.begin(), cepstrumWork.end(), 0.0f);
+            for (int k = 0; k <= analysisHalf; ++k)
+                cepstrumWork[(size_t) (2 * k)] = 0.5f * std::log (std::max (power[(size_t) k], floorPower));
+            cepstrumFft->performRealOnlyInverseTransform (cepstrumWork.data());
+            const int cut = std::max (8, (int) (0.6f * (float) sr / f0));
+            for (int q = cut; q <= analysisSize - cut; ++q)
+                cepstrumWork[(size_t) q] = 0.0f;
+            std::fill (cepstrumWork.begin() + analysisSize, cepstrumWork.end(), 0.0f);
+            cepstrumFft->performRealOnlyForwardTransform (cepstrumWork.data());
+            for (int k = 0; k <= analysisHalf; ++k)
+                voicedEnvelope[(size_t) k] = cepstrumWork[(size_t) (2 * k)];
+        }
+
         float biggest = 0.0f;
         for (int k = 0; k <= synthHalf; ++k)
         {
@@ -345,6 +384,11 @@ private:
             const float reference = m[2 * k] + resynthesis * (flat[2 * k] - m[2 * k]);
             // What the flattened envelope itself, read at the same place, says this bin should get.
             float shift = flat[a] + (at - (float) a) * (flat[a + 1] - flat[a]) - flat[2 * k];
+            if (voicedShare > 0.0f)
+            {
+                const float* c = voicedEnvelope.data();
+                shift += voicedShare * (c[a] + (at - (float) a) * (c[a + 1] - c[a]) - c[2 * k] - shift);
+            }
             if (tilting)
                 shift += tiltNepers * tiltCurve ((float) (k * binHz), corner);
             // Where many harmonics sit on each formant (from 4 times the pitch up, fully from 8 times), the envelope through them shows
@@ -363,7 +407,6 @@ private:
             }
             const float g = juce::jlimit (-maxLogGain, maxLogGain, gRaw);
             envelopeShift[(size_t) k] = juce::jlimit (-maxLogGain, maxLogGain, shift);
-            modelGain[(size_t) k] = juce::jlimit (-maxLogGain, maxLogGain, w - m[2 * k]);
             logGain[(size_t) k] = std::isfinite (g) ? g : 0.0f;
             wantedOnSynthGrid[(size_t) k] = heard[2 * k] + logGain[(size_t) k];
             biggest = std::max (biggest, std::abs (logGain[(size_t) k]));
@@ -444,25 +487,47 @@ private:
         }
 
         // Moving formants must not change the level. This takes two steps.
-        // A quicker one, over about 150 ms, compares the model's energy before and after, with the source's fall on it, so each sound keeps its own level from
-        // one moment to the next. It knows nothing of where the harmonics are, so it does not iron out what a harmonic does as it crosses
-        // a formant.
-        // A slow one, over about two seconds, then compares the frame's real spectrum before and after, plus the breath to be added.
-        // How much energy really passes depends on where the harmonics fall, which the model cannot say. It is too slow to pump.
+        // A quicker one, over about 150 ms, compares the input's envelope before and after the gain this frame really gets, so each
+        // sound keeps its own level from one moment to the next. The envelope is smooth between harmonics, so this does not iron out
+        // what a harmonic does as it crosses a formant. (Up to 0.6.0 it read the formant model instead, which can be far off: on a real
+        // vocal at Lips 0.60 the moved first formant landed on the strong second harmonic, the frame really went up 13 dB, and the
+        // model said nothing changed.)
+        // A slow one, over about two seconds, then compares the frame's real spectrum before and after, plus the breath to be added,
+        // against what the quick step wants for this frame, so it only holds what the envelope cannot see (where the harmonics fall).
+        // It is too slow to pump.
+        // At a phrase start both are too slow: the first 200 ms of a phrase came out up to 10 dB over or 5 dB under the dry, which
+        // moved the phrase's onset by 20 to 100 ms. So for 320 ms after the level rises 6 dB over where it was 43 ms before, the quick
+        // step reads each frame's real spectrum and goes half way to it every frame (about 10 ms). The same while a control moves,
+        // and for 320 ms after it stops: the slow step only holds what the quick one cannot see, so the quick one has to keep up. All the way every frame moved the
+        // first harmonic of speech by 2.1 cents (limit 2), because the gain then changed too much from one frame to the next.
         levelAmount += 0.3f * ((target.levelMatch ? 1.0f : 0.0f) - levelAmount);
         float fastWanted = 0.0f, slowWanted = 0.0f;
         if ((biggest >= 1.0e-6f || breathing) && levelAmount > 1.0e-3f)
         {
             const int low = (int) (60.0 / binHz), high = std::min (synthHalf, (int) (16000.0 / binHz));
-            double modelIn = 1.0e-30, modelOut = 1.0e-30;
-            for (int k = low; k <= high; ++k)
+            const int lowBin = (int) (60.0 / (binHz * 0.5)), highBin = std::min (analysisHalf - 1, (int) (16000.0 / (binHz * 0.5)));
+            const float noiseWeight = noiseToVoice * gate * gate;
+            const auto spectrumWithGain = [&] (double& in, double& out)
             {
-                const float source = heard[2 * k] - flat[2 * k];
-                const float before = 2.0f * (m[2 * k] + source);
-                modelIn += std::exp (before);
-                modelOut += std::exp (before + 2.0f * modelGain[(size_t) k]);
-            }
-            fastWanted = juce::jlimit (-1.4f, 1.4f, (float) (0.5 * std::log (modelIn / modelOut)));
+                for (int j = lowBin; j <= highBin; ++j)
+                {
+                    const int k = j / 2;
+                    const float g = (j & 1) == 0 ? logGain[(size_t) k] : 0.5f * (logGain[(size_t) k] + logGain[(size_t) k + 1]);
+                    in += power[(size_t) j];
+                    out += power[(size_t) j] * std::exp (2.0f * g) * (1.0f + (breathing ? noiseWeight * breathShape[(size_t) k] : 0.0f));
+                }
+            };
+            double quickIn = 1.0e-30, quickOut = 1.0e-30;
+            if (framesSinceStart < quickFrames)
+                spectrumWithGain (quickIn, quickOut);
+            else
+                for (int k = low; k <= high; ++k)
+                {
+                    const float before = 2.0f * heard[2 * k];
+                    quickIn += std::exp (before);
+                    quickOut += std::exp (before + 2.0f * logGain[(size_t) k]);
+                }
+            fastWanted = juce::jlimit (-1.4f, 1.4f, (float) (0.5 * std::log (quickIn / quickOut)));
 
             // Both steps are paced for a voice moving through a fixed setting. When the setting itself moves (a control dragged or
             // automated, a preset chosen while audio plays) the gain changes within 40 ms, and the slow step still held the two
@@ -472,24 +537,24 @@ private:
             // is the same to the last bit.
             if (framesSinceControlMoved < 2)
                 slowEnergyIn = slowEnergyOut = 0.0;
-            const int lowBin = (int) (60.0 / (binHz * 0.5)), highBin = std::min (analysisHalf - 1, (int) (16000.0 / (binHz * 0.5)));
-            const float noiseWeight = noiseToVoice * gate * gate;
-            const float afterFast = std::exp (2.0f * levelAmount * fastLevelFix);
             double energyIn = 0.0, energyOut = 0.0;
-            for (int j = lowBin; j <= highBin; ++j)
-            {
-                const int k = j / 2;
-                const float g = (j & 1) == 0 ? logGain[(size_t) k] : 0.5f * (logGain[(size_t) k] + logGain[(size_t) k + 1]);
-                energyIn += power[(size_t) j];
-                energyOut += power[(size_t) j] * std::exp (2.0f * g) * afterFast * (1.0f + (breathing ? noiseWeight * breathShape[(size_t) k] : 0.0f));
-            }
+            spectrumWithGain (energyIn, energyOut);
+            energyOut *= std::exp (2.0f * levelAmount * fastWanted);
             // The slow step holds a two second average, weighted by energy, so the loud vowels of one phrase decide it. On real vocals
             // the next phrase then started with the last phrase's correction: its first 30 ms came out 2 dB quieter (median) at
-            // settings that lower the formants, 5 dB at worst. So a frame that stands 10 dB or more over the last 100 ms, which is
-            // how a phrase starts after a pause, begins its own average. Inside a phrase nothing changes.
-            if (energyIn > 10.0 * recentEnergyIn)
+            // settings that lower the formants, 5 dB at worst. So a frame that stands 10 dB or more over the 100 ms level as it was
+            // 43 ms before, which is how a phrase starts after a pause, begins its own average. (Against the level of the frame
+            // before, a start that rises over 30 ms was missed.) Inside a phrase nothing changes.
+            const double before = recentHistory[(size_t) ((recentPos + 1) % startLookback)];
+            if (energyIn > phraseRise * before)
                 slowEnergyIn = slowEnergyOut = 0.0;
+            if (energyIn > startRise * before || framesSinceControlMoved < 2)
+                framesSinceStart = 0;
+            else if (framesSinceStart < 1000)
+                ++framesSinceStart;
             recentEnergyIn += recentCoef * (energyIn - recentEnergyIn);
+            recentPos = (recentPos + 1) % startLookback;
+            recentHistory[(size_t) recentPos] = recentEnergyIn;
             slowEnergyIn += levelTimeCoef * (energyIn - slowEnergyIn);
             slowEnergyOut += levelTimeCoef * (energyOut - slowEnergyOut);
             slowWanted = slowEnergyIn > 1.0e-12 ? juce::jlimit (-1.0f, 1.0f, (float) (0.5 * std::log ((slowEnergyIn + 1.0e-20) / (slowEnergyOut + 1.0e-20)))) : slowLevelFix;
@@ -498,7 +563,7 @@ private:
         {
             slowEnergyIn = slowEnergyOut = 0.0;
         }
-        fastLevelFix += 0.04f * (fastWanted - fastLevelFix);
+        fastLevelFix += (framesSinceStart < quickFrames ? 0.5f : 0.04f) * (fastWanted - fastLevelFix);
         slowLevelFix += 0.5f * (slowWanted - slowLevelFix);
         if (std::abs (fastLevelFix) < 1.0e-6f && fastWanted == 0.0f) fastLevelFix = 0.0f;
         if (std::abs (slowLevelFix) < 1.0e-6f && slowWanted == 0.0f) slowLevelFix = 0.0f;
@@ -631,7 +696,7 @@ private:
     double sr = 48000.0;
     int numChannels = 2, synthSize = 1024, synthHalf = 512, hop = 256, analysisSize = 2048, analysisHalf = 1024, latency = 1536;
     int writePos = 0, overlapPos = 0, samplesUntilFrame = 256;
-    std::unique_ptr<juce::dsp::FFT> synthFft, analysisFft;
+    std::unique_ptr<juce::dsp::FFT> synthFft, analysisFft, cepstrumFft;
     SpectralEnvelope envelope;
     TractModel tract;
     Controls target, current;
@@ -639,10 +704,11 @@ private:
     float levelFix = 0.0f, fastLevelFix = 0.0f, slowLevelFix = 0.0f, levelAmount = 1.0f, tiltVoicing = 0.0f;
     double slowEnergyIn = 0.0, slowEnergyOut = 0.0, levelTimeCoef = 0.03, recentEnergyIn = 0.0, recentCoef = 0.05;
     bool mapIsCurrent = false, identityMap = true, frameIsSilent = true;
-    int framesSinceControlMoved = 1000;
+    int framesSinceControlMoved = 1000, framesSinceStart = 1000, recentPos = 0;
+    std::array<double, startLookback> recentHistory {};
     std::array<std::vector<float>, maxChannels> inputRing, overlap;
     std::vector<juce::dsp::Complex<float>> analysisIn, analysisOut;
-    std::vector<float> synthWindow, analysisWindow, power, spectrum, noiseSpectrum, logGain, wanted, finerEnvelope, readHz, breathShape, wantedOnSynthGrid, modelGain, envelopeShift;
+    std::vector<float> logPower, voicedEnvelope, cepstrumWork, synthWindow, analysisWindow, power, spectrum, noiseSpectrum, logGain, wanted, finerEnvelope, readHz, breathShape, wantedOnSynthGrid, envelopeShift;
     std::array<std::array<float, 2>, phaseTableSize> phaseTable {};
     std::array<float, maxChannels> channelShare { 1.0f, 1.0f };
     std::array<float, SpectralEnvelope::maxTips> harmonicIn {}, harmonicOut {}, harmonicBin {};

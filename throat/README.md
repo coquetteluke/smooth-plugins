@@ -35,7 +35,7 @@ Ratios read as plain numbers, where 1.00 is the singer's own. Between 0.80 and 1
 - **Throat Precision** (Subtle, Medium, Extreme, default Medium): how narrow the model's formant peaks can be. Move to Extreme for big changes or if you hear whistling.
 - **Mix** (0 to 100 %, default 100): blend with the dry signal, delayed to match. The wet path has no phase change, so it blends without combing.
 - **Output Gain** (-24 to +12 dB, default 0).
-- **Level Match** (on or off, default on): holds the level steady as formants and the voice type change. About 150 ms from the model, then about 2 s from the real spectrum.
+- **Level Match** (on or off, default on): holds the level steady as formants and the voice type change. About 150 ms from the input's envelope with the gain each frame gets, then about 2 s from the real spectrum. For 320 ms after a phrase starts it follows each frame's real spectrum, so a phrase starts at its own level (since 0.7.0).
 - **Bypass**: fades to the input, delayed by the same amount. Takes Output Gain out too. A host that switches its own bypass gets the same fade, with no gap.
 - **Peak Guard** (on or off, default off): moving formants changes the shape of the wave, so a peak can come out higher than it went in at the same level. On, the output is held at or under the highest peak the input has had since playback started (times Output Gain): the gain drops at once on a sample that would pass it and comes back over about 100 ms. A take that did not clip going in then cannot clip coming out. Off, nothing is added and the sound is as before. No preset changes it.
 
@@ -65,10 +65,10 @@ input > clean bad samples > dry delay (same length as the engine) --------------
 - The map is computed at every frequency instead of at tracked formants. There is no formant tracker to lose its place on a consonant.
 - The model is an all-pole curve fitted to the harmonics themselves on voiced sound (discrete all-pole fitting), and to a smoothed envelope on unvoiced sound.
 - The further a frequency moves, the more its harmonics take their level from the model. That removes the ghost of the old formant, which simple filtering leaves behind.
-- From 4 times the pitch up (fully from 8 times), where many harmonics sit on each formant, the move reads the envelope through the harmonics instead of the model, which is smoother than the voice there. On real vocals that moves formants the whole way the tube says (since 0.6.0; before, about 0.7 to 0.8 of the way).
+- From 4 times the pitch up (fully from 8 times), where many harmonics sit on each formant, the move reads the envelope through the harmonics instead of the model, which is smoother than the voice there. On real vocals that moves formants the whole way the tube says (since 0.6.0; before, about 0.7 to 0.8 of the way). On voiced frames that envelope is a plain cepstral one, every quefrency under 0.6 of the period kept, so small moves such as the width points carry the formant's whole shape (since 0.7.0).
 - Above 6 kHz the gain is never more than 8 dB over what moving the envelope itself would give (11 dB in 0.4.1). The all-pole fit can make a peak at the top of its band that the voice does not have, and before 0.4.1 that came out as a burst of hiss on some sung vowels.
 - No harmonic from 500 Hz up stands out from its neighbours by more than 8 dB, or 2 dB more than the input's most prominent one, so the voice does not whistle (since 0.5.0; since 0.6.0 the harmonics are read at whole multiples of the pitch).
-- A phrase that starts after a pause gets its own Level Match average, so its first 30 ms are not turned down by the phrase before (since 0.5.0).
+- A phrase that starts after a pause gets its own Level Match average, so its first 30 ms are not turned down by the phrase before (since 0.5.0). A start is judged against the level 43 ms before, so one that rises over 30 ms is found too (since 0.7.0).
 
 ## For other plug-ins
 

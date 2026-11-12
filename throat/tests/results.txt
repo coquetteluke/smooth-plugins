@@ -70,7 +70,7 @@ PASS  Neutral: impulse arrives at the reported latency, Hz 96000.00 = 3072.000 s
 PASS  Length 1.3: impulse arrives at the reported latency, Hz 96000.00 = 3072.000 samples
 PASS  Bypass keeps the same latency and the sample unchanged, Hz 96000.00 = 3072.000 samples
 PASS  Host bypass call keeps the latency = 1536.000 samples
-PASS  Host bypass switched on under audio: quietest 5 ms of the next 60 ms against the delayed input = -3.541 dB
+PASS  Host bypass switched on under audio: quietest 5 ms of the next 60 ms against the delayed input = -4.357 dB
 PASS  Host bypass switched on under audio: delayed input from 100 ms after, difference = -328.996 dB
 PASS  A reset 40 ms after Bypass went on clears the delay, peak after it = 0.000 
 PASS  A reset with Bypass off clears the delay, peak after it = 0.000 
@@ -78,191 +78,191 @@ PASS  Neutral settings on a synthetic voice, difference from the input = -142.35
 PASS  Neutral settings on speech (samantha), difference from the input = -142.273 dB
 PASS  Neutral settings on speech (daniel), difference from the input = -142.229 dB
 PASS  Source and Model Voice Type the same, difference from the input = -142.358 dB
-INFO  male neutral vowel Length 0.70: in 498 1495 2495 3492  out 705 2135 3555 4980  expected 711 2136 3564 4989
-PASS  male neutral vowel, Length 0.70: worst formant error from F/L, F1 to F4 = 0.804 %
-INFO  male neutral vowel Length 0.85: in 498 1495 2495 3492  out 580 1755 2938 4105  expected 585 1759 2935 4109
-PASS  male neutral vowel, Length 0.85: worst formant error from F/L, F1 to F4 = 0.905 %
-INFO  male neutral vowel Length 1.20: in 498 1495 2495 3492  out 430 1250 2078 2905  expected 415 1246 2079 2910
-PASS  male neutral vowel, Length 1.20: worst formant error from F/L, F1 to F4 = 3.719 %
-INFO  male neutral vowel Length 1.50: in 498 1495 2495 3492  out 330 992 1658 2330  expected 332 997 1663 2328
-PASS  male neutral vowel, Length 1.50: worst formant error from F/L, F1 to F4 = 0.418 %
-PASS  male neutral vowel, Length 1.50: formant within 3.5 harmonics of the pitch, error = 1.667 Hz
-INFO  male ah Length 0.70: in 732 1080 2438 3388  out 1068 1532 3472 4838  expected 1046 1543 3482 4839
-PASS  male ah, Length 0.70: worst formant error from F/L, F1 to F4 = 2.014 %
-INFO  male ah Length 0.85: in 732 1080 2438 3388  out 855 1258 2865 3988  expected 862 1271 2868 3985
-PASS  male ah, Length 0.85: worst formant error from F/L, F1 to F4 = 1.030 %
-INFO  male ah Length 1.20: in 732 1080 2438 3388  out 625 885 2028 2820  expected 610 900 2031 2823
-PASS  male ah, Length 1.20: worst formant error from F/L, F1 to F4 = 2.389 %
-INFO  male ah Length 1.50: in 732 1080 2438 3388  out 490 715 1622 2258  expected 488 720 1625 2258
+INFO  male neutral vowel Length 0.70: in 498 1495 2495 3492  out 710 2135 3550 4928  expected 711 2136 3564 4989
+PASS  male neutral vowel, Length 0.70: worst formant error from F/L, F1 to F4 = 1.238 %
+INFO  male neutral vowel Length 0.85: in 498 1495 2495 3492  out 590 1755 2932 4102  expected 585 1759 2935 4109
+PASS  male neutral vowel, Length 0.85: worst formant error from F/L, F1 to F4 = 0.804 %
+INFO  male neutral vowel Length 1.20: in 498 1495 2495 3492  out 422 1248 2078 2902  expected 415 1246 2079 2910
+PASS  male neutral vowel, Length 1.20: worst formant error from F/L, F1 to F4 = 1.910 %
+INFO  male neutral vowel Length 1.50: in 498 1495 2495 3492  out 325 998 1652 2328  expected 332 997 1663 2328
+PASS  male neutral vowel, Length 1.50: worst formant error from F/L, F1 to F4 = 0.651 %
+PASS  male neutral vowel, Length 1.50: formant within 3.5 harmonics of the pitch, error = 6.667 Hz
+INFO  male ah Length 0.70: in 732 1080 2438 3388  out 1070 1500 3465 4805  expected 1046 1543 3482 4839
+PASS  male ah, Length 0.70: worst formant error from F/L, F1 to F4 = 2.778 %
+INFO  male ah Length 0.85: in 732 1080 2438 3388  out 840 1245 2862 3982  expected 862 1271 2868 3985
+PASS  male ah, Length 0.85: worst formant error from F/L, F1 to F4 = 2.526 %
+INFO  male ah Length 1.20: in 732 1080 2438 3388  out 625 870 2028 2818  expected 610 900 2031 2823
+PASS  male ah, Length 1.20: worst formant error from F/L, F1 to F4 = 3.333 %
+INFO  male ah Length 1.50: in 732 1080 2438 3388  out 488 715 1620 2258  expected 488 720 1625 2258
 PASS  male ah, Length 1.50: worst formant error from F/L, F1 to F4 = 0.694 %
-INFO  male ee Length 0.70: in 278 2252 3008 3690  out 375 3218 4300 5258  expected 396 3218 4296 5271
-PASS  male ee, Length 0.70: worst formant error from F/L, F1 to F4 = 0.264 %
-PASS  male ee, Length 0.70: formant within 3.5 harmonics of the pitch, error = 21.429 Hz
-INFO  male ee Length 0.85: in 278 2252 3008 3690  out 350 2655 3542 4342  expected 326 2650 3538 4341
-PASS  male ee, Length 0.85: worst formant error from F/L, F1 to F4 = 0.189 %
-PASS  male ee, Length 0.85: formant within 3.5 harmonics of the pitch, error = 23.529 Hz
-INFO  male ee Length 1.20: in 278 2252 3008 3690  out 250 1882 2508 3062  expected 231 1877 2506 3075
-PASS  male ee, Length 1.20: worst formant error from F/L, F1 to F4 = 0.407 %
-PASS  male ee, Length 1.20: formant within 3.5 harmonics of the pitch, error = 18.750 Hz
-INFO  male ee Length 1.50: in 278 2252 3008 3690  out 168 1505 2010 2455  expected 185 1502 2005 2460
-PASS  male ee, Length 1.50: worst formant error from F/L, F1 to F4 = 0.249 %
-PASS  male ee, Length 1.50: formant within 3.5 harmonics of the pitch, error = 17.500 Hz
-INFO  female ah Length 0.70: in 855 1208 2808 3790  out 1220 1655 3995 5405  expected 1221 1725 4011 5414
-PASS  female ah, Length 0.70: worst formant error from F/L, F1 to F4 = 4.058 %
-INFO  female ah Length 0.85: in 855 1208 2808 3790  out 985 1430 3298 4448  expected 1006 1421 3303 4459
-PASS  female ah, Length 0.85: worst formant error from F/L, F1 to F4 = 2.076 %
-INFO  female ah Length 1.20: in 855 1208 2808 3790  out 722 998 2338 3145  expected 712 1006 2340 3158
-PASS  female ah, Length 1.20: worst formant error from F/L, F1 to F4 = 0.870 %
-PASS  female ah, Length 1.20: formant within 3.5 harmonics of the pitch, error = 10.000 Hz
-INFO  female ah Length 1.50: in 855 1208 2808 3790  out 580 792 1870 2530  expected 570 805 1872 2527
-PASS  female ah, Length 1.50: worst formant error from F/L, F1 to F4 = 1.553 %
-PASS  female ah, Length 1.50: formant within 3.5 harmonics of the pitch, error = 10.000 Hz
-PASS  Pitch stays put across Length, Width and voice settings, voice at Hz 110.00, worst = 0.002 cents
-PASS  Pitch stays put across Length, Width and voice settings, voice at Hz 220.00, worst = 0.000 cents
-INFO  Vocal Cords width 0.5 F1: tube +13.8%, plug-in +12.6%
-INFO  Vocal Cords width 0.5 F2: tube +10.9%, plug-in +10.5%
-INFO  Vocal Cords width 0.5 F3: tube +5.0%, plug-in +4.7%
-INFO  Vocal Cords width 2.0 F1: tube -21.0%, plug-in -18.6%
-INFO  Vocal Cords width 2.0 F2: tube -8.7%, plug-in -8.0%
-INFO  Vocal Cords width 2.0 F3: tube -1.4%, plug-in -1.1%
-INFO  Throat width 0.5 F1: tube +16.5%, plug-in +15.1%
+INFO  male ee Length 0.70: in 278 2252 3008 3690  out 395 3220 4300 5372  expected 396 3218 4296 5271
+PASS  male ee, Length 0.70: worst formant error from F/L, F1 to F4 = 1.917 %
+PASS  male ee, Length 0.70: formant within 3.5 harmonics of the pitch, error = 1.429 Hz
+INFO  male ee Length 0.85: in 278 2252 3008 3690  out 308 2652 3542 4338  expected 326 2650 3538 4341
+PASS  male ee, Length 0.85: worst formant error from F/L, F1 to F4 = 0.121 %
+PASS  male ee, Length 0.85: formant within 3.5 harmonics of the pitch, error = 18.971 Hz
+INFO  male ee Length 1.20: in 278 2252 3008 3690  out 255 1885 2510 3060  expected 231 1877 2506 3075
+PASS  male ee, Length 1.20: worst formant error from F/L, F1 to F4 = 0.488 %
+PASS  male ee, Length 1.20: formant within 3.5 harmonics of the pitch, error = 23.750 Hz
+INFO  male ee Length 1.50: in 278 2252 3008 3690  out 185 1508 2008 2452  expected 185 1502 2005 2460
+PASS  male ee, Length 1.50: worst formant error from F/L, F1 to F4 = 0.388 %
+PASS  male ee, Length 1.50: formant within 3.5 harmonics of the pitch, error = 0.000 Hz
+INFO  female ah Length 0.70: in 855 1208 2808 3790  out 1222 1650 3958 5190  expected 1221 1725 4011 5414
+PASS  female ah, Length 0.70: worst formant error from F/L, F1 to F4 = 4.348 %
+INFO  female ah Length 0.85: in 855 1208 2808 3790  out 990 1425 3275 4438  expected 1006 1421 3303 4459
+PASS  female ah, Length 0.85: worst formant error from F/L, F1 to F4 = 1.579 %
+INFO  female ah Length 1.20: in 855 1208 2808 3790  out 712 1030 2335 3118  expected 712 1006 2340 3158
+PASS  female ah, Length 1.20: worst formant error from F/L, F1 to F4 = 2.360 %
+PASS  female ah, Length 1.20: formant within 3.5 harmonics of the pitch, error = 0.000 Hz
+INFO  female ah Length 1.50: in 855 1208 2808 3790  out 572 810 1875 2522  expected 570 805 1872 2527
+PASS  female ah, Length 1.50: worst formant error from F/L, F1 to F4 = 0.621 %
+PASS  female ah, Length 1.50: formant within 3.5 harmonics of the pitch, error = 2.500 Hz
+PASS  Pitch stays put across Length, Width and voice settings, voice at Hz 110.00, worst = 0.013 cents
+PASS  Pitch stays put across Length, Width and voice settings, voice at Hz 220.00, worst = 0.009 cents
+INFO  Vocal Cords width 0.5 F1: tube +13.8%, plug-in +14.1%
+INFO  Vocal Cords width 0.5 F2: tube +10.9%, plug-in +10.0%
+INFO  Vocal Cords width 0.5 F3: tube +5.0%, plug-in +4.3%
+INFO  Vocal Cords width 2.0 F1: tube -21.0%, plug-in -19.1%
+INFO  Vocal Cords width 2.0 F2: tube -8.7%, plug-in -7.5%
+INFO  Vocal Cords width 2.0 F3: tube -1.4%, plug-in -0.8%
+INFO  Throat width 0.5 F1: tube +16.5%, plug-in +17.1%
 INFO  Throat width 0.5 F2: tube -17.3%, plug-in -16.7%
-INFO  Throat width 0.5 F3: tube -2.4%, plug-in -2.0%
-INFO  Throat width 2.0 F1: tube -24.5%, plug-in -24.6%
-INFO  Throat width 2.0 F2: tube +8.9%, plug-in +8.2%
-INFO  Throat width 2.0 F3: tube +11.4%, plug-in +11.0%
-INFO  Back of Mouth width 0.5 F1: tube -8.1%, plug-in -6.5%
-INFO  Back of Mouth width 0.5 F2: tube -6.2%, plug-in -5.9%
-INFO  Back of Mouth width 0.5 F3: tube +9.2%, plug-in +8.7%
+INFO  Throat width 0.5 F3: tube -2.4%, plug-in -2.1%
+INFO  Throat width 2.0 F1: tube -24.5%, plug-in -23.1%
+INFO  Throat width 2.0 F2: tube +8.9%, plug-in +7.2%
+INFO  Throat width 2.0 F3: tube +11.4%, plug-in +10.9%
+INFO  Back of Mouth width 0.5 F1: tube -8.1%, plug-in -5.0%
+INFO  Back of Mouth width 0.5 F2: tube -6.2%, plug-in -6.2%
+INFO  Back of Mouth width 0.5 F3: tube +9.2%, plug-in +8.6%
 INFO  Back of Mouth width 2.0 F1: tube -12.7%, plug-in -9.0%
 INFO  Back of Mouth width 2.0 F2: tube +4.9%, plug-in +4.0%
-INFO  Back of Mouth width 2.0 F3: tube -2.0%, plug-in -1.5%
-INFO  Roof of Mouth width 0.5 F1: tube -25.0%, plug-in -25.1%
-INFO  Roof of Mouth width 0.5 F2: tube +17.4%, plug-in +15.9%
-INFO  Roof of Mouth width 0.5 F3: tube +3.4%, plug-in +2.5%
-INFO  Roof of Mouth width 2.0 F1: tube +14.5%, plug-in +13.1%
-INFO  Roof of Mouth width 2.0 F2: tube -18.3%, plug-in -16.9%
-INFO  Roof of Mouth width 2.0 F3: tube +4.3%, plug-in +4.2%
-INFO  Lips width 0.5 F1: tube -23.1%, plug-in -19.6%
-INFO  Lips width 0.5 F2: tube -7.3%, plug-in -6.0%
-INFO  Lips width 0.5 F3: tube +0.1%, plug-in +0.2%
-INFO  Lips width 2.0 F1: tube +16.6%, plug-in +14.1%
-INFO  Lips width 2.0 F2: tube +11.3%, plug-in +10.4%
-INFO  Lips width 2.0 F3: tube +2.9%, plug-in +2.2%
+INFO  Back of Mouth width 2.0 F3: tube -2.0%, plug-in -1.6%
+INFO  Roof of Mouth width 0.5 F1: tube -25.0%, plug-in -24.1%
+INFO  Roof of Mouth width 0.5 F2: tube +17.4%, plug-in +15.6%
+INFO  Roof of Mouth width 0.5 F3: tube +3.4%, plug-in +2.2%
+INFO  Roof of Mouth width 2.0 F1: tube +14.5%, plug-in +15.6%
+INFO  Roof of Mouth width 2.0 F2: tube -18.3%, plug-in -16.6%
+INFO  Roof of Mouth width 2.0 F3: tube +4.3%, plug-in +4.0%
+INFO  Lips width 0.5 F1: tube -23.1%, plug-in -21.1%
+INFO  Lips width 0.5 F2: tube -7.3%, plug-in -6.2%
+INFO  Lips width 0.5 F3: tube +0.1%, plug-in +0.1%
+INFO  Lips width 2.0 F1: tube +16.6%, plug-in +15.6%
+INFO  Lips width 2.0 F2: tube +11.3%, plug-in +10.0%
+INFO  Lips width 2.0 F3: tube +2.9%, plug-in +2.1%
 PASS  Each Width point moves F1 to F3 the way the exact tube does, shifts of 1.5% or more that agree = 28.000 of those measured
 INFO  Width shifts measured against the exact tube = 28.000 
 PASS  Width points: worst distance from the exact tube's shift, in percent points = 3.614 %
 PASS  ah shaped tube: Width direction agrees with the exact tube, shifts of 3% or more = 80.952 %
-PASS  ee shaped tube: Width direction agrees with the exact tube, shifts of 3% or more = 95.000 %
-INFO  Position 2 low to high with width 0.5, F1: tube -8.5%, plug-in -9.0%
-INFO  Position 2 low to high with width 0.5, F2: tube -8.7%, plug-in -9.0%
-INFO  Position 2 low to high with width 0.5, F3: tube +9.4%, plug-in +8.6%
+PASS  ee shaped tube: Width direction agrees with the exact tube, shifts of 3% or more = 90.000 %
+INFO  Position 2 low to high with width 0.5, F1: tube -8.5%, plug-in -9.5%
+INFO  Position 2 low to high with width 0.5, F2: tube -8.7%, plug-in -9.2%
+INFO  Position 2 low to high with width 0.5, F3: tube +9.4%, plug-in +8.5%
 PASS  Position 2: sliding it moves formants the way the exact tube does, shifts of 1% or more that agree = 3.000 
-INFO  Position 3 low to high with width 0.5, F1: tube -4.7%, plug-in -2.5%
-INFO  Position 3 low to high with width 0.5, F2: tube +10.4%, plug-in +8.9%
+INFO  Position 3 low to high with width 0.5, F1: tube -4.7%, plug-in -3.5%
+INFO  Position 3 low to high with width 0.5, F2: tube +10.4%, plug-in +7.5%
 INFO  Position 3 low to high with width 0.5, F3: tube -12.3%, plug-in -11.5%
 PASS  Position 3: sliding it moves formants the way the exact tube does, shifts of 1% or more that agree = 3.000 
-INFO  Position 4 low to high with width 0.5, F1: tube -3.4%, plug-in -0.5%
-INFO  Position 4 low to high with width 0.5, F2: tube -10.2%, plug-in -10.0%
-INFO  Position 4 low to high with width 0.5, F3: tube +12.4%, plug-in +11.3%
+INFO  Position 4 low to high with width 0.5, F1: tube -3.4%, plug-in -1.5%
+INFO  Position 4 low to high with width 0.5, F2: tube -10.2%, plug-in -10.5%
+INFO  Position 4 low to high with width 0.5, F3: tube +12.4%, plug-in +11.2%
 PASS  Position 4: sliding it moves formants the way the exact tube does, shifts of 1% or more that agree = 3.000 
-PASS  Position 5 changes F1 when the lips are narrowed = 57.500 Hz
-PASS  Throat Width 0.50: F1 to F3 follow the mouth end correction, worst distance = 1.902 %
+PASS  Position 5 changes F1 when the lips are narrowed = 52.500 Hz
+PASS  Throat Width 0.50: F1 to F3 follow the mouth end correction, worst distance = 2.404 %
 INFO  Throat Width 0.50 expected formant ratio = 1.034 
-PASS  Throat Width 0.50: wider means narrower formants, F2 height over its valley changes = -4.330 dB
-PASS  Throat Width 2.00: F1 to F3 follow the mouth end correction, worst distance = 0.658 %
+PASS  Throat Width 0.50: wider means narrower formants, F2 height over its valley changes = -4.933 dB
+PASS  Throat Width 2.00: F1 to F3 follow the mouth end correction, worst distance = 2.668 %
 INFO  Throat Width 2.00 expected formant ratio = 0.938 
-PASS  Throat Width 2.00: wider means narrower formants, F2 height over its valley changes = 2.915 dB
+PASS  Throat Width 2.00: wider means narrower formants, F2 height over its valley changes = 2.621 dB
 PASS  Test voice is clean before Breathiness, harmonics to noise = 48.330 dB
 PASS  Breathiness 50.00, harmonics to noise above the high pass, wanted 12 = 11.379 dB
 PASS  Breathiness 100.00, harmonics to noise above the high pass, wanted -6 = -6.922 dB
 PASS  Breathiness 25 to 75 lowers harmonics to noise = 18.100 dB
-PASS  Breath High Pass Hz 600.00: voice is cleaner below it than above it by = 21.369 dB
+PASS  Breath High Pass Hz 600.00: voice is cleaner below it than above it by = 21.367 dB
 PASS  Breath High Pass Hz 3000.00: voice is cleaner below it than above it by = 20.291 dB
-PASS  Breathiness 70 changes the level by = 0.175 dB
+PASS  Breathiness 70 changes the level by = 0.183 dB
 PASS  Breathiness 50 on a voice at Hz 90.00, harmonics to noise = 9.638 dB
 PASS  Breathiness 50 on a voice at Hz 300.00, harmonics to noise = 12.983 dB
 PASS  Breathiness adds nothing to silence, peak = 0.000 
 PASS  Mix 0 equals the input at the reported delay, difference = -141.244 dB
-PASS  Mix 50 is exactly half wet plus half delayed dry, difference = -143.594 dB
-PASS  Mix 50 shows no comb notches: lowest it falls below both paths = 0.000 dB
-PASS  white noise, Length 1.35: extra short-time level movement = 0.002 dB
-PASS  white noise, Length 1.35: level change = -0.011 dB
+PASS  Mix 50 is exactly half wet plus half delayed dry, difference = -143.597 dB
+PASS  Mix 50 shows no comb notches: lowest it falls below both paths = 0.140 dB
+PASS  white noise, Length 1.35: extra short-time level movement = 0.001 dB
+PASS  white noise, Length 1.35: level change = -0.010 dB
 PASS  white noise, Length 0.75: extra short-time level movement = 0.003 dB
 PASS  white noise, Length 0.75: level change = -0.012 dB
 PASS  white noise, narrow throat and lips: extra short-time level movement = 0.000 dB
-PASS  white noise, narrow throat and lips: level change = -0.000 dB
-PASS  sh like hiss, Length 1.35: extra short-time level movement = 0.077 dB
-PASS  sh like hiss, Length 1.35: level change = 0.029 dB
-PASS  sh like hiss, Length 0.75: extra short-time level movement = -0.029 dB
-PASS  sh like hiss, Length 0.75: level change = -0.069 dB
+PASS  white noise, narrow throat and lips: level change = 0.000 dB
+PASS  sh like hiss, Length 1.35: extra short-time level movement = 0.072 dB
+PASS  sh like hiss, Length 1.35: level change = -0.006 dB
+PASS  sh like hiss, Length 0.75: extra short-time level movement = -0.032 dB
+PASS  sh like hiss, Length 0.75: level change = -0.017 dB
 PASS  sh like hiss, narrow throat and lips: extra short-time level movement = 0.005 dB
-PASS  sh like hiss, narrow throat and lips: level change = -0.006 dB
-PASS  s like hiss, Length 1.35: extra short-time level movement = 0.011 dB
-PASS  s like hiss, Length 1.35: level change = 0.019 dB
-PASS  s like hiss, Length 0.75: extra short-time level movement = -0.004 dB
-PASS  s like hiss, Length 0.75: level change = -0.012 dB
+PASS  sh like hiss, narrow throat and lips: level change = 0.000 dB
+PASS  s like hiss, Length 1.35: extra short-time level movement = 0.008 dB
+PASS  s like hiss, Length 1.35: level change = -0.016 dB
+PASS  s like hiss, Length 0.75: extra short-time level movement = -0.005 dB
+PASS  s like hiss, Length 0.75: level change = -0.021 dB
 PASS  s like hiss, narrow throat and lips: extra short-time level movement = 0.003 dB
-PASS  s like hiss, narrow throat and lips: level change = 0.002 dB
-PASS  Plosive burst: anything more than 5 ms ahead of it = -78.180 dB
-PASS  Plosive burst: anything more than 10 ms behind it = -99.497 dB
-PASS  Plosive burst: level kept = 1.186 dB
-PASS  Vowel and hiss in turn, Length 1.35: output against input level swings by = 1.071 dB
-PASS  Vowel and hiss in turn, Length 0.75: output against input level swings by = 0.287 dB
-PASS  Steady male vowel, Length 0.80: short-time level movement beyond a real voice with those formants = 0.110 dB
-INFO  Steady male vowel, Length 0.80: short-time level movement = 0.541 dB
-PASS  Steady male vowel, Length 0.80: extra level movement in the upper formants = 0.131 dB
-PASS  Steady male vowel, Length 1.25: short-time level movement beyond a real voice with those formants = -0.018 dB
-INFO  Steady male vowel, Length 1.25: short-time level movement = 0.378 dB
-PASS  Steady male vowel, Length 1.25: extra level movement in the upper formants = 0.007 dB
-PASS  Male vowel with vibrato, Length 0.80: short-time level movement beyond a real voice with those formants = -0.282 dB
-INFO  Male vowel with vibrato, Length 0.80: short-time level movement = 0.461 dB
-PASS  Male vowel with vibrato, Length 0.80: extra level movement in the upper formants = -0.104 dB
-PASS  Male vowel with vibrato, Length 1.25: short-time level movement beyond a real voice with those formants = -0.091 dB
-INFO  Male vowel with vibrato, Length 1.25: short-time level movement = 0.381 dB
-PASS  Male vowel with vibrato, Length 1.25: extra level movement in the upper formants = -0.147 dB
-PASS  Female vowel with vibrato, Length 0.80: short-time level movement beyond a real voice with those formants = -0.130 dB
-INFO  Female vowel with vibrato, Length 0.80: short-time level movement = 0.925 dB
-PASS  Female vowel with vibrato, Length 0.80: extra level movement in the upper formants = -0.401 dB
-PASS  Female vowel with vibrato, Length 1.25: short-time level movement beyond a real voice with those formants = 0.920 dB
-INFO  Female vowel with vibrato, Length 1.25: short-time level movement = 1.328 dB
-PASS  Female vowel with vibrato, Length 1.25: extra level movement in the upper formants = 0.260 dB
+PASS  s like hiss, narrow throat and lips: level change = -0.000 dB
+PASS  Plosive burst: anything more than 5 ms ahead of it = -78.181 dB
+PASS  Plosive burst: anything more than 10 ms behind it = -99.494 dB
+PASS  Plosive burst: level kept = 1.173 dB
+PASS  Vowel and hiss in turn, Length 1.35: output against input level swings by = 0.426 dB
+PASS  Vowel and hiss in turn, Length 0.75: output against input level swings by = 0.221 dB
+PASS  Steady male vowel, Length 0.80: short-time level movement beyond a real voice with those formants = 0.109 dB
+INFO  Steady male vowel, Length 0.80: short-time level movement = 0.540 dB
+PASS  Steady male vowel, Length 0.80: extra level movement in the upper formants = 0.138 dB
+PASS  Steady male vowel, Length 1.25: short-time level movement beyond a real voice with those formants = -0.028 dB
+INFO  Steady male vowel, Length 1.25: short-time level movement = 0.368 dB
+PASS  Steady male vowel, Length 1.25: extra level movement in the upper formants = 0.026 dB
+PASS  Male vowel with vibrato, Length 0.80: short-time level movement beyond a real voice with those formants = -0.217 dB
+INFO  Male vowel with vibrato, Length 0.80: short-time level movement = 0.526 dB
+PASS  Male vowel with vibrato, Length 0.80: extra level movement in the upper formants = 0.075 dB
+PASS  Male vowel with vibrato, Length 1.25: short-time level movement beyond a real voice with those formants = -0.018 dB
+INFO  Male vowel with vibrato, Length 1.25: short-time level movement = 0.454 dB
+PASS  Male vowel with vibrato, Length 1.25: extra level movement in the upper formants = -0.114 dB
+PASS  Female vowel with vibrato, Length 0.80: short-time level movement beyond a real voice with those formants = -0.156 dB
+INFO  Female vowel with vibrato, Length 0.80: short-time level movement = 0.900 dB
+PASS  Female vowel with vibrato, Length 0.80: extra level movement in the upper formants = -0.425 dB
+PASS  Female vowel with vibrato, Length 1.25: short-time level movement beyond a real voice with those formants = 0.948 dB
+INFO  Female vowel with vibrato, Length 1.25: short-time level movement = 1.356 dB
+PASS  Female vowel with vibrato, Length 1.25: extra level movement in the upper formants = 0.285 dB
 PASS  samantha speech, Length 0.80: long-term spectrum moved by, as a ratio = 1.242 
-PASS  samantha speech, Length 0.80: median move of the first harmonic in voiced frames = 0.334 cents
+PASS  samantha speech, Length 0.80: median move of the first harmonic in voiced frames = 0.534 cents
 INFO  samantha voiced frames compared = 557.000 
-INFO  samantha autocorrelation tracker median difference = 2.580 cents
-PASS  samantha speech, Length 0.80: output against input level swings by = 1.132 dB
-PASS  samantha speech, Length 0.80: overall level change = 0.096 dB
-PASS  samantha speech consonants, Length 0.80: 5 ms level movement, output over input = 0.947 
-PASS  samantha speech, Length 1.25: long-term spectrum moved by, as a ratio = 0.782 
-PASS  samantha speech, Length 1.25: median move of the first harmonic in voiced frames = 0.385 cents
+INFO  samantha autocorrelation tracker median difference = 2.560 cents
+PASS  samantha speech, Length 0.80: output against input level swings by = 0.751 dB
+PASS  samantha speech, Length 0.80: overall level change = -0.040 dB
+PASS  samantha speech consonants, Length 0.80: 5 ms level movement, output over input = 0.941 
+PASS  samantha speech, Length 1.25: long-term spectrum moved by, as a ratio = 0.788 
+PASS  samantha speech, Length 1.25: median move of the first harmonic in voiced frames = 0.603 cents
 INFO  samantha voiced frames compared = 557.000 
-INFO  samantha autocorrelation tracker median difference = 2.306 cents
-PASS  samantha speech, Length 1.25: output against input level swings by = 0.821 dB
-PASS  samantha speech, Length 1.25: overall level change = -0.081 dB
-PASS  samantha speech consonants, Length 1.25: 5 ms level movement, output over input = 1.016 
-PASS  samantha speech, Breathiness 60: level change = 0.025 dB
+INFO  samantha autocorrelation tracker median difference = 2.310 cents
+PASS  samantha speech, Length 1.25: output against input level swings by = 0.557 dB
+PASS  samantha speech, Length 1.25: overall level change = 0.066 dB
+PASS  samantha speech consonants, Length 1.25: 5 ms level movement, output over input = 1.029 
+PASS  samantha speech, Breathiness 60: level change = 0.024 dB
 PASS  daniel speech, Length 0.80: long-term spectrum moved by, as a ratio = 1.233 
-PASS  daniel speech, Length 0.80: median move of the first harmonic in voiced frames = 0.985 cents
+PASS  daniel speech, Length 0.80: median move of the first harmonic in voiced frames = 1.848 cents
 INFO  daniel voiced frames compared = 357.000 
-INFO  daniel autocorrelation tracker median difference = 3.915 cents
-PASS  daniel speech, Length 0.80: output against input level swings by = 2.942 dB
-PASS  daniel speech, Length 0.80: overall level change = 0.298 dB
+INFO  daniel autocorrelation tracker median difference = 3.445 cents
+PASS  daniel speech, Length 0.80: output against input level swings by = 1.470 dB
+PASS  daniel speech, Length 0.80: overall level change = 0.325 dB
 PASS  daniel speech consonants, Length 0.80: 5 ms level movement, output over input = 0.655 
 PASS  daniel speech, Length 1.25: long-term spectrum moved by, as a ratio = 0.794 
-PASS  daniel speech, Length 1.25: median move of the first harmonic in voiced frames = 1.224 cents
+PASS  daniel speech, Length 1.25: median move of the first harmonic in voiced frames = 1.780 cents
 INFO  daniel voiced frames compared = 357.000 
-INFO  daniel autocorrelation tracker median difference = 4.344 cents
-PASS  daniel speech, Length 1.25: output against input level swings by = 2.520 dB
-PASS  daniel speech, Length 1.25: overall level change = -0.615 dB
-PASS  daniel speech consonants, Length 1.25: 5 ms level movement, output over input = 0.977 
-PASS  daniel speech, Breathiness 60: level change = 0.003 dB
-PASS  Model Voice Type Intense, spectral slope change, wanted 5.00 = 4.616 dB per octave
-PASS  Model Voice Type Loud, spectral slope change, wanted 2.50 = 2.311 dB per octave
-PASS  Model Voice Type Soft, spectral slope change, wanted -3.0 = -2.777 dB per octave
-PASS  Source Soft, Model Loud, spectral slope change, wanted 5.50 = 5.077 dB per octave
-PASS  Glottal Pulse Width +100, spectral slope change, wanted -4.5 = -4.167 dB per octave
-PASS  Glottal Pulse Width -100, spectral slope change, wanted 4.50 = 4.156 dB per octave
+INFO  daniel autocorrelation tracker median difference = 3.392 cents
+PASS  daniel speech, Length 1.25: output against input level swings by = 1.154 dB
+PASS  daniel speech, Length 1.25: overall level change = 0.006 dB
+PASS  daniel speech consonants, Length 1.25: 5 ms level movement, output over input = 0.973 
+PASS  daniel speech, Breathiness 60: level change = 0.007 dB
+PASS  Model Voice Type Intense, spectral slope change, wanted 5.00 = 4.655 dB per octave
+PASS  Model Voice Type Loud, spectral slope change, wanted 2.50 = 2.319 dB per octave
+PASS  Model Voice Type Soft, spectral slope change, wanted -3.0 = -2.784 dB per octave
+PASS  Source Soft, Model Loud, spectral slope change, wanted 5.50 = 5.124 dB per octave
+PASS  Glottal Pulse Width +100, spectral slope change, wanted -4.5 = -4.175 dB per octave
+PASS  Glottal Pulse Width -100, spectral slope change, wanted 4.50 = 4.186 dB per octave
 PASS  Glottal Pulse Width +100 on a hiss, level change = -0.000 dB
 PASS  Vocal Range Soprano: pitch reading on a voice at 620 Hz = 632.398 Hz
 PASS  Vocal Range Alto Tenor: pitch reading on a voice at 260 Hz = 265.167 Hz
@@ -270,73 +270,73 @@ PASS  Vocal Range Bass Baritone: pitch reading on a voice at 82 Hz = 83.636 Hz
 PASS  Vocal Range Auto: pitch reading on a voice at 150 Hz = 152.982 Hz
 PASS  Vocal Range Soprano does not lock onto an 82 Hz voice, reading = 0.000 Hz
 PASS  Formant reading for the window, worst of F1 to F3 on a clean voice = 0.258 %
-INFO  Precision Subtle: gain wander on noise = 0.731 dB
-INFO  Precision Extreme: gain wander on noise = 0.510 dB
+INFO  Precision Subtle: gain wander on noise = 0.730 dB
+INFO  Precision Extreme: gain wander on noise = 0.509 dB
 PASS  Throat Precision Extreme steadies the gain on noise compared with Subtle, ratio = 0.697 
-INFO  44.1 kHz voice Length 0.70: in 498 1495 2492 3492  out 705 2138 3558 4982  expected 711 2136 3561 4989
-PASS  44.1 kHz voice, Length 0.70: worst formant error from F/L, F1 to F4 = 0.804 %
-INFO  44.1 kHz voice Length 0.85: in 498 1495 2492 3492  out 580 1755 2935 4108  expected 585 1759 2932 4109
-PASS  44.1 kHz voice, Length 0.85: worst formant error from F/L, F1 to F4 = 0.905 %
-INFO  44.1 kHz voice Length 1.20: in 498 1495 2492 3492  out 432 1250 2078 2908  expected 415 1246 2077 2910
-PASS  44.1 kHz voice, Length 1.20: worst formant error from F/L, F1 to F4 = 4.322 %
-INFO  44.1 kHz voice Length 1.50: in 498 1495 2492 3492  out 340 995 1658 2328  expected 332 997 1662 2328
-PASS  44.1 kHz voice, Length 1.50: worst formant error from F/L, F1 to F4 = 0.251 %
-PASS  44.1 kHz voice, Length 1.50: formant within 3.5 harmonics of the pitch, error = 8.333 Hz
-INFO  96 kHz voice Length 0.70: in 498 1495 2495 3490  out 705 2135 3555 4962  expected 711 2136 3564 4986
-PASS  96 kHz voice, Length 0.70: worst formant error from F/L, F1 to F4 = 0.804 %
-INFO  96 kHz voice Length 0.85: in 498 1495 2495 3490  out 578 1755 2935 4105  expected 585 1759 2935 4106
-PASS  96 kHz voice, Length 0.85: worst formant error from F/L, F1 to F4 = 1.332 %
-INFO  96 kHz voice Length 1.20: in 498 1495 2495 3490  out 432 1250 2078 2905  expected 415 1246 2079 2908
-PASS  96 kHz voice, Length 1.20: worst formant error from F/L, F1 to F4 = 4.322 %
-INFO  96 kHz voice Length 1.50: in 498 1495 2495 3490  out 328 992 1658 2330  expected 332 997 1663 2327
-PASS  96 kHz voice, Length 1.50: worst formant error from F/L, F1 to F4 = 0.418 %
-PASS  96 kHz voice, Length 1.50: formant within 3.5 harmonics of the pitch, error = 4.167 Hz
-PASS  Block size 32 against 4096, same result, difference = -333.678 dB
-PASS  Preparing again clears all state, difference from a fresh start = -333.678 dB
+INFO  44.1 kHz voice Length 0.70: in 498 1495 2492 3492  out 720 2135 3550 4938  expected 711 2136 3561 4989
+PASS  44.1 kHz voice, Length 0.70: worst formant error from F/L, F1 to F4 = 1.307 %
+INFO  44.1 kHz voice Length 0.85: in 498 1495 2492 3492  out 592 1758 2932 4102  expected 585 1759 2932 4109
+PASS  44.1 kHz voice, Length 0.85: worst formant error from F/L, F1 to F4 = 1.231 %
+INFO  44.1 kHz voice Length 1.20: in 498 1495 2492 3492  out 425 1248 2075 2900  expected 415 1246 2077 2910
+PASS  44.1 kHz voice, Length 1.20: worst formant error from F/L, F1 to F4 = 2.513 %
+INFO  44.1 kHz voice Length 1.50: in 498 1495 2492 3492  out 338 1000 1650 2325  expected 332 997 1662 2328
+PASS  44.1 kHz voice, Length 1.50: worst formant error from F/L, F1 to F4 = 0.702 %
+PASS  44.1 kHz voice, Length 1.50: formant within 3.5 harmonics of the pitch, error = 5.833 Hz
+INFO  96 kHz voice Length 0.70: in 498 1495 2495 3490  out 710 2132 3548 4902  expected 711 2136 3564 4986
+PASS  96 kHz voice, Length 0.70: worst formant error from F/L, F1 to F4 = 1.669 %
+INFO  96 kHz voice Length 0.85: in 498 1495 2495 3490  out 590 1755 2932 4102  expected 585 1759 2935 4106
+PASS  96 kHz voice, Length 0.85: worst formant error from F/L, F1 to F4 = 0.804 %
+INFO  96 kHz voice Length 1.20: in 498 1495 2495 3490  out 422 1248 2075 2902  expected 415 1246 2079 2908
+PASS  96 kHz voice, Length 1.20: worst formant error from F/L, F1 to F4 = 1.910 %
+INFO  96 kHz voice Length 1.50: in 498 1495 2495 3490  out 325 995 1652 2328  expected 332 997 1663 2327
+PASS  96 kHz voice, Length 1.50: worst formant error from F/L, F1 to F4 = 0.651 %
+PASS  96 kHz voice, Length 1.50: formant within 3.5 harmonics of the pitch, error = 6.667 Hz
+PASS  Block size 32 against 4096, same result, difference = -333.352 dB
+PASS  Preparing again clears all state, difference from a fresh start = -333.352 dB
 PASS  A panned voice keeps its stereo balance, change = -0.000 dB
-PASS  Level Match on: Length 0.7 and 1.5, biggest level change = 0.695 dB
-PASS  Level Match on: Model Voice Type Intense, level change = 0.042 dB
+PASS  Level Match on: Length 0.7 and 1.5, biggest level change = 0.242 dB
+PASS  Level Match on: Model Voice Type Intense, level change = 0.003 dB
 PASS  Level Match off leaves the raw change from Intense = 3.154 dB
 PASS  Output Gain +6 dB measures = 6.000 dB
 PASS  Output Level reads a -12 dB sine as = -12.055 dBFS
-PASS  Preset Giant chosen under audio and Neutral chosen again: highest 10 ms frame over the input = 1.853 dB
-PASS  Preset Giant chosen under audio and Neutral chosen again: lowest 10 ms frame under the input = 1.033 dB
-PASS  Preset Tiny chosen under audio and Neutral chosen again: highest 10 ms frame over the input = 1.706 dB
-PASS  Preset Tiny chosen under audio and Neutral chosen again: lowest 10 ms frame under the input = 0.936 dB
-PASS  Preset Big Chest chosen under audio and Neutral chosen again: highest 10 ms frame over the input = 0.943 dB
-PASS  Preset Big Chest chosen under audio and Neutral chosen again: lowest 10 ms frame under the input = 0.604 dB
-PASS  Preset Rounded Lips chosen under audio and Neutral chosen again: highest 10 ms frame over the input = 0.333 dB
-PASS  Preset Rounded Lips chosen under audio and Neutral chosen again: lowest 10 ms frame under the input = 0.185 dB
-INFO  Hot voice, Length 0.70: peak with Peak Guard off = 0.918 dBFS
+PASS  Preset Giant chosen under audio and Neutral chosen again: highest 10 ms frame over the input = 1.891 dB
+PASS  Preset Giant chosen under audio and Neutral chosen again: lowest 10 ms frame under the input = 1.000 dB
+PASS  Preset Tiny chosen under audio and Neutral chosen again: highest 10 ms frame over the input = 1.566 dB
+PASS  Preset Tiny chosen under audio and Neutral chosen again: lowest 10 ms frame under the input = 0.955 dB
+PASS  Preset Big Chest chosen under audio and Neutral chosen again: highest 10 ms frame over the input = 0.878 dB
+PASS  Preset Big Chest chosen under audio and Neutral chosen again: lowest 10 ms frame under the input = 0.566 dB
+PASS  Preset Rounded Lips chosen under audio and Neutral chosen again: highest 10 ms frame over the input = 0.207 dB
+PASS  Preset Rounded Lips chosen under audio and Neutral chosen again: lowest 10 ms frame under the input = 0.678 dB
+INFO  Hot voice, Length 0.70: peak with Peak Guard off = 2.103 dBFS
 PASS  Hot voice, Length 0.70: Peak Guard on, output peak against the input's = -0.000 dB
 PASS  Hot voice, Length 0.70: Peak Guard on, samples over 0 dBFS = 0.000 
-PASS  Hot voice, Length 0.70: Peak Guard lowers the level by (it took 1.01 dB off the peak) = 0.591 dB
-INFO  Hot voice, Length 1.30: peak with Peak Guard off = -0.862 dBFS
-PASS  Hot voice, Length 1.30: Peak Guard on, output peak against the input's = -0.976 dB
+PASS  Hot voice, Length 0.70: Peak Guard lowers the level by (it took 2.20 dB off the peak) = 0.533 dB
+INFO  Hot voice, Length 1.30: peak with Peak Guard off = -0.968 dBFS
+PASS  Hot voice, Length 1.30: Peak Guard on, output peak against the input's = -0.868 dB
 PASS  Hot voice, Length 1.30: Peak Guard on, samples over 0 dBFS = 0.000 
-PASS  Hot voice, Length 1.30: Peak Guard lowers the level by (it took 0.00 dB off the peak) = 0.002 dB
-INFO  Hot voice, Length 0.62, Width 0.75, Model Loud: peak with Peak Guard off = 0.851 dBFS
+PASS  Hot voice, Length 1.30: Peak Guard lowers the level by (it took 0.00 dB off the peak) = 0.000 dB
+INFO  Hot voice, Length 0.62, Width 0.75, Model Loud: peak with Peak Guard off = 2.339 dBFS
 PASS  Hot voice, Length 0.62, Width 0.75, Model Loud: Peak Guard on, output peak against the input's = -0.000 dB
 PASS  Hot voice, Length 0.62, Width 0.75, Model Loud: Peak Guard on, samples over 0 dBFS = 0.000 
-PASS  Hot voice, Length 0.62, Width 0.75, Model Loud: Peak Guard lowers the level by (it took 0.95 dB off the peak) = 0.543 dB
+PASS  Hot voice, Length 0.62, Width 0.75, Model Loud: Peak Guard lowers the level by (it took 2.43 dB off the peak) = 0.640 dB
 PASS  Peak Guard on at neutral settings, difference from the input = -136.707 dB
 PASS  Peak Guard on with no peak to hold (Mix 0): difference from Peak Guard off = -341.247 dB
-PASS  Sung vowel with steep highs, Length 1.20: 6 to 12 kHz over the envelope moved the same way = -8.686 dB
-PASS  Sung vowel with steep highs, Length 1.50: 6 to 12 kHz over the envelope moved the same way = -22.949 dB
+PASS  Sung vowel with steep highs, Length 1.20: 6 to 12 kHz over the envelope moved the same way = -7.436 dB
+PASS  Sung vowel with steep highs, Length 1.50: 6 to 12 kHz over the envelope moved the same way = -26.092 dB
 PASS  Preset Neutral on speech, level change = -0.000 dB
-PASS  Preset A Little Longer on speech, level change = -0.035 dB
-PASS  Preset A Little Shorter on speech, level change = 0.059 dB
-PASS  Preset Big Chest on speech, level change = -0.005 dB
-PASS  Preset Small Bright on speech, level change = -0.115 dB
-PASS  Preset Rounded Lips on speech, level change = -0.036 dB
-PASS  Preset Open Smile on speech, level change = 0.043 dB
-PASS  Preset Pinched Throat on speech, level change = -0.183 dB
-PASS  Preset Soft and Airy on speech, level change = 0.024 dB
-PASS  Preset Raspy Edge on speech, level change = 0.020 dB
-PASS  Preset Full Whisper on speech, level change = 0.104 dB
-PASS  Preset Giant on speech, level change = -0.089 dB
-PASS  Preset Tiny on speech, level change = 0.037 dB
-PASS  Preset Subtle Blend on speech, level change = -0.112 dB
-PASS  CPU, neutral, stereo 48 kHz, percent of one core = 1.325 %
-PASS  CPU, everything on, stereo 48 kHz, percent of one core = 1.780 %
+PASS  Preset A Little Longer on speech, level change = 0.021 dB
+PASS  Preset A Little Shorter on speech, level change = -0.009 dB
+PASS  Preset Big Chest on speech, level change = 0.093 dB
+PASS  Preset Small Bright on speech, level change = 0.020 dB
+PASS  Preset Rounded Lips on speech, level change = 0.106 dB
+PASS  Preset Open Smile on speech, level change = -0.003 dB
+PASS  Preset Pinched Throat on speech, level change = 0.004 dB
+PASS  Preset Soft and Airy on speech, level change = -0.080 dB
+PASS  Preset Raspy Edge on speech, level change = 0.414 dB
+PASS  Preset Full Whisper on speech, level change = -0.052 dB
+PASS  Preset Giant on speech, level change = 0.268 dB
+PASS  Preset Tiny on speech, level change = 0.064 dB
+PASS  Preset Subtle Blend on speech, level change = -0.066 dB
+PASS  CPU, neutral, stereo 48 kHz, percent of one core = 2.618 %
+PASS  CPU, everything on, stereo 48 kHz, percent of one core = 3.481 %
 RESULT PASS  0 failures

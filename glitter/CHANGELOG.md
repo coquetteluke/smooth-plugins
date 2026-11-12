@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1, 2026-11-12
+
+Distortion switched on in the middle of a note came in up to 7 dB high or low for a moment, until its new level hold had caught up (on Luke's takes one switch-on step read 1.53 times the voice's own, against 1.5). The hold now reads the level quickly for the first 20 ms of sound after the switch, under the switch's own fade: 0.33 dB at most. Luke left this call to the lead on 2026-11-11.
+
 ## 1.2.0, 2026-11-12
 
 Fixes from Luke's real takes (Rode NT1, 17 songs, 2026-11-10). Luke left this call to the lead on 2026-11-11: the tuner, Vocoder, Distortion and two presets sound different where they were at fault. Every parameter, ID and range is as before, so saved sessions load.

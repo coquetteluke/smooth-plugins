@@ -2610,7 +2610,7 @@ void testUnvoiced()
 // and 40 dB under the note is under anything a listener would pick out right before a note.
 void testNothingBeforeOnset()
 {
-    double worst = -200.0;
+    double worst = -1.0e9;
     std::string worstName;
     for (auto* v : { &voice::vowelA, &voice::vowelE, &voice::vowelO })
         for (double hz : { 110.0, 223.8, 330.0, 560.0 })
@@ -2630,6 +2630,14 @@ void testNothingBeforeOnset()
                 const long delay = p->getLatencySamples(), onset = (long) (0.3 * SR), before = (long) (0.010 * SR);
                 const double pre = toDb (rms (out.data() + delay + onset - before, (int) before) + 1.0e-12f);
                 const double held = toDb (rms (out.data() + delay + onset + (long) (0.5 * SR), (int) (0.5 * SR)) + 1.0e-12f);
+                if (std::getenv ("TUNE_DUMP") != nullptr && hz > 300.0 && v == &voice::vowelE)
+                {
+                    std::printf ("  %s %.0f Hz shift %d delay %ld:", v->name, hz, shift, delay);
+                    for (int k = -12; k <= 3; ++k) std::printf (" %+d:%.0f", k, toDb (rms (out.data() + delay + onset + k * 48, 48) + 1.0e-12f));
+                    std::printf (" | in");
+                    for (int k = -2; k <= 2; ++k) std::printf (" %+d:%.0f", k, toDb (rms (x.data() + onset + k * 48, 48) + 1.0e-12f));
+                    std::printf ("\n");
+                }
                 if (pre - held > worst) { worst = pre - held; worstName = std::string (v->name) + " " + std::to_string ((int) hz) + " Hz, transpose " + std::to_string (shift); }
             }
     chk (worst <= prolimits::beforeOnsetDb, "nothing before a note starts: the 10 ms before the input's onset against the held note, worst (" + worstName + ")", worst, "dB");

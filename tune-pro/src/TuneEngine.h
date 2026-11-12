@@ -107,6 +107,9 @@ public:
         wetLevel = dryLevel = levelSeen = 0.0;
         passMix = 1.0;
         passStep = 1.0 / (0.003 * sr);
+        inPeak = wetPeak = 0.0;
+        peakFall = std::exp (-1.0 / (0.010 * sr));
+        onsetLookSamples = 0;
         correctingFor = 0;
         levelMemory = (mode == highQuality ? highQualityLevelMemorySeconds : lowLatencyLevelMemorySeconds) * sr;
         matchEase = 1.0 / levelMemory;
@@ -286,6 +289,27 @@ public:
                 {
                     wet[0] = (float) (wet[0] + passMix * (dryOut[0] - wet[0]));
                     wet[1] = (float) (wet[1] + passMix * (dryOut[1] - wet[1]));
+                }
+                // Nothing comes out before the input begins (real take 06 at 5.58 s, High Quality: -34 dBFS for 6 ms over a dry take at -62
+                // to -73 dBFS, just before a sound began). Voicing is decided ahead of the output and the shifters read ahead of it, so where
+                // a sound starts out of silence the corrected sound could be heard before it. The tuned voice may not stand more than
+                // onsetGateDb above the input's own level around that moment (a peak follower on the input at the output's moment, falling
+                // over 10 ms). On a voice the two followers sit within a few dB of each other, so this only ever acts where the input is
+                // near silence; elsewhere the gain is exactly 1 and the output is bit for bit as before.
+                if (onsetGate)
+                {
+                    const long long aheadAt = at + onsetLookSamples;
+                    const float a0 = std::abs (dry[0][(size_t) (aheadAt & last)]), a1 = channels > 1 ? std::abs (dry[1][(size_t) (aheadAt & last)]) : a0;
+                    inPeak = std::max ((double) std::max (a0, a1), inPeak * peakFall);
+                    const double w = std::max (std::abs ((double) wet[0]), channels > 1 ? std::abs ((double) wet[1]) : 0.0);
+                    wetPeak = std::max (w, wetPeak * peakFall);
+                    const double allowed = inPeak * onsetGateRatio;
+                    if (wetPeak > allowed)
+                    {
+                        const double g = allowed / wetPeak;
+                        wet[0] = (float) (wet[0] * g);
+                        wet[1] = (float) (wet[1] * g);
+                    }
                 }
             }
         }
@@ -584,6 +608,11 @@ private:
     long long dryAt = 0;
     std::array<ControlPoint, 128> ring {};
     int ringAt = 0, controlDelayTicks = 0, leadTicks = 0, ahead = 0;
+    static constexpr bool onsetGate = true;
+    static constexpr double onsetGateDb = 12.0;
+    const double onsetGateRatio = std::pow (10.0, onsetGateDb / 20.0);
+    double inPeak = 0.0, wetPeak = 0.0, peakFall = 0.999;
+    long long onsetLookSamples = 48;
     float lastVoicingLimit = -1.0f;
     int correctingFor = 0, voicedHold = 0;
     static constexpr int harmonicHoldTicks = 6;

@@ -239,19 +239,32 @@ namespace phase2
     {
         const auto file = writeWav ("manual.wav", { toneSegments (8, 0.25, 48000.0, 300.0, 170.0) }, 48000.0);
 
-        // cutup-window-r2-1: a host setting Manual gets the default transient slices, window open or not.
+        // cutup-window-r2-1 (round 3): a host setting Manual gets the slices the processor holds, the same with the window
+        // open as closed. Set through the parameter, as a host sets it, on 8 grid slices that differ from the default transient ones.
         {
-            PluginProcessor p;
-            load (p, file);
-            toGrid (p, 4);
-            auto window = openWindow (p);
-            setP (p, "slice_mode", (float) PluginProcessor::modeManual);
-            window->refresh();
-            window->refresh();
-            const bool same = p.getShownTable() == p.getSample()->initialManual;
-            // Not fixed: the 1.0.0 test "picking Manual keeps the markers on show" sets Manual this same way and expects the slices on show.
-            info ("Phase 2: NOT FIXED cutup-window-r2-1, Manual set by the host with the window open adopts the slices on show (1 yes, 0 no)",
-                  same && ! p.isManualEdited() ? 0.0 : 1.0);
+            struct Result { SliceTable table, held; bool edited = false; juce::MemoryBlock state; };
+            const auto hostSetsManual = [&] (bool windowOpen)
+            {
+                PluginProcessor p;
+                load (p, file);
+                toGrid (p, 4);
+                std::unique_ptr<SliceEditor> window;
+                if (windowOpen) window = openWindow (p);
+                setP (p, "slice_mode", (float) PluginProcessor::modeManual);
+                if (window != nullptr)
+                {
+                    window->refresh();
+                    window->refresh();
+                }
+                return Result { p.getShownTable(), p.getSample()->initialManual, p.isManualEdited(), stateOf (p) };
+            };
+            const auto open = hostSetsManual (true), closed = hostSetsManual (false);
+            int differ = std::abs (open.table.count - closed.table.count);
+            for (int i = 0; i <= std::min (open.table.count, closed.table.count); ++i)
+                differ += open.table.start[i] != closed.table.start[i] ? 1 : 0;
+            check (open.table == closed.table && open.edited == closed.edited && open.table == open.held && ! open.edited,
+                   "Phase 2: Manual set by the host gives the slices the processor holds with the window open as closed, slice starts that differ", differ);
+            check (open.state == closed.state, "Phase 2:   and the session saved after it is the same bytes with the window open as closed");
         }
 
         // Picking Manual in the window still starts from the slices on show.

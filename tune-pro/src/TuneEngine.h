@@ -172,6 +172,12 @@ public:
         bothRunning = 0;
         pathFollow = 1.0 - std::exp (-1.0 / (0.1 * sr));
         controlDelayTicks = std::clamp ((int) std::lround (extra / tickSeconds), 0, (int) ring.size() - 1);
+        inLineTicks = std::clamp ((int) std::lround ((double) baseLatency / (double) tickSamples), 0, (int) ring.size() - 1 - controlDelayTicks);
+        ringFresh = true;
+        plainBefore = true;
+        classicFade = 0.0;
+        classicFadeStep = 1.0 / (pathSwitchSeconds * sr);
+        harmonicRestarted = false;
         leadTicks = mode == highQuality ? std::min (controlDelayTicks, (int) std::lround (highQualityLeadSeconds / tickSeconds)) : 0;
     }
 
@@ -258,8 +264,19 @@ public:
                 // so either is ready the moment it is wanted. The harmonic shifter hands back to the input while not voiced, and while a voiced
                 // stretch has not been corrected at all, since then the input is exactly what it would give.
                 bool harmonicPass = false;
-                if (mode == highQuality && ! control.plainGrains)
+                // Classic switched on in High Quality: the plain grains take over from what was being given out over 20 ms, as one path
+                // hands over to the other within High Quality. Up to 1.8.1 they took over in one sample, from grains that had been resting
+                // and had not caught up, so a held high note dropped out for up to 30 ms and then jumped in (Phase 2, 2026-11-13).
+                if (mode == highQuality && control.plainGrains && ! plainBefore)
                 {
+                    classicFade = 1.0;
+                    fadeTrim = levelGain;
+                }
+                plainBefore = control.plainGrains;
+                const float grains[2] = { wet[0], channels < 2 ? wet[0] : wet[1] };
+                if (mode == highQuality && (! control.plainGrains || classicFade > 0.0))
+                {
+                    harmonicRestarted = false;
                     float h[2] = { 0.0f, 0.0f };
                     const bool ok = harmonic.step (harmonicControl, dryOut, h);
                     const double w = harmonicShare;
@@ -296,9 +313,22 @@ public:
                     wet[0] = (float) (w * harmonicMatch * hw[0] + (1.0 - w) * grainsMatch * wet[0]);
                     wet[1] = (float) (w * harmonicMatch * hw[1] + (1.0 - w) * grainsMatch * wet[1]);
                     harmonicPass = w >= 1.0 && (! ok || (control.noCorrection && ! harmonic.hasCorrected()));
+                    if (control.plainGrains)
+                    {
+                        const double a = classicFade * fadeTrim;
+                        wet[0] = (float) (a * wet[0] + (1.0 - classicFade) * grains[0]);
+                        wet[1] = (float) (a * wet[1] + (1.0 - classicFade) * grains[1]);
+                        classicFade = std::max (0.0, classicFade - classicFadeStep);
+                        harmonicPass = false;
+                    }
                 }
-                else if (mode == highQuality)
+                else if (mode == highQuality && ! harmonicRestarted)
+                {
+                    // Classic gives out nothing from the harmonic shifter, so it starts again once, not on every sample: restarting clears
+                    // its 245 KB memory, and every sample that came to 12 GB a second at 48 kHz (Phase 2, 2026-11-13).
                     harmonic.restart();
+                    harmonicRestarted = true;
+                }
                 holdLevel (wet, dryOut);
 
                 // Through a consonant the filters ring on for a few ms from the vowel before it. Nothing is being changed then, so the true input takes over.
@@ -365,7 +395,10 @@ public:
     const PsolaShifter::Control& getControl() const noexcept { return control; }
 
 private:
-    struct ControlPoint { double period = 0.0; HeldNotes held; };
+    // The control for one tick. The pitch is read in line with the audio by pitchInLine; the held MIDI notes and the settings are read one
+    // latency back, from the tick the audio being given out came in at, so a MIDI note or a change of a setting acts on the audio it
+    // came with. Up to 1.8.1 both acted on audio one whole latency earlier (Phase 2, 2026-11-13).
+    struct ControlPoint { double period = 0.0; HeldNotes held; PitchCorrector::Settings settings; bool formantPreserve = true; double throatRate = 1.0; };
 
     // Moving the harmonics changes how many land on a formant, which changes the level on average. This trims that average, over about a second (two in Low Latency) of
     // corrected voice, so a shift does not make a phrase louder or softer. It is too slow to touch the voice's own dynamics. With nothing being
@@ -415,9 +448,17 @@ private:
 
     void tick (const Shared& shared) noexcept
     {
-        ring[(size_t) (ringAt % (int) ring.size())] = { tracker.period(), shared.held };
         const int size = (int) ring.size();
+        if (ringFresh)
+        {
+            // A new start: what was set before it stands for the ticks before it.
+            for (auto& r : ring) { r.held = shared.held; r.settings = shared.settings; r.formantPreserve = shared.formantPreserve; r.throatRate = shared.throatRate; }
+            ringFresh = false;
+        }
+        ring[(size_t) (ringAt % size)] = { tracker.period(), shared.held, shared.settings, shared.formantPreserve, shared.throatRate };
         const auto& point = ring[(size_t) ((ringAt + size - controlDelayTicks) % size)];
+        const auto& inLine = ring[(size_t) ((ringAt + 2 * size - controlDelayTicks - inLineTicks) % size)];
+        const auto& settings = inLine.settings;
 
         // The pitch stays in line with the audio. Only the decision voiced or not comes from further ahead, so a note is treated
         // as a note from its start and a consonant as a consonant from its start.
@@ -435,16 +476,16 @@ private:
             period = pitchInLine (period, (ringAt + size - controlDelayTicks) % size);
         ringAt = (ringAt + 1) % size;
 
-        corrector.update (period, shared.settings, point.held, tickSeconds);
+        corrector.update (period, settings, inLine.held, tickSeconds);
         control.voiced = period > 0.0;
         if (control.voiced)
         {
             control.inputPeriod = period;
-            control.outputPeriod = corrector.outputPeriod (shared.settings);
+            control.outputPeriod = corrector.outputPeriod (settings);
             control.noCorrection = corrector.isIdentity();
             // Formants move in the model, and in the grains as well: what the model did not catch stays in the grains, and it must move with the rest.
-            double scale = shared.throatRate;
-            if (! shared.formantPreserve && control.outputPeriod > 0.0)
+            double scale = inLine.throatRate;
+            if (! inLine.formantPreserve && control.outputPeriod > 0.0)
                 scale *= period / control.outputPeriod;
             envelope.setFormantScale (scale);
             envelope.setShift (control.outputPeriod > 0.0 ? period / control.outputPeriod : 1.0);
@@ -456,7 +497,7 @@ private:
             control.grainRate = 1.0;
             control.noCorrection = true;
         }
-        control.plainGrains = shared.settings.classic;
+        control.plainGrains = settings.classic;
         // The tracker can flicker between voiced and not for a period or two where a voice starts. Each flicker would hand over to the
         // input and back, and the harmonic shifter's timing sits up to half a period from the input's, so the two would partly cancel.
         // Gaps up to 6 ms or a period, whichever is longer, are bridged. High Quality decides voicing 10 ms ahead, so an S after a vowel
@@ -507,7 +548,7 @@ private:
         // 280 Hz stop entirely, and below 190 Hz the harmonic shifter only listens, so its memory of the voiced stretch is kept. Each wakes
         // when the pitch comes back inside that, and is only switched to once it has been awake long enough to give out something whole:
         // the grains a latency's worth, the harmonic shifter 30 ms.
-        if (mode == highQuality && ! shared.settings.classic)
+        if (mode == highQuality && ! settings.classic)
         {
             if (control.voiced)
             {
@@ -557,10 +598,16 @@ private:
             harmonicAwake = harmonicIdle ? 0 : std::min (harmonicAwake + 1, 1 << 20);
         }
         else
+        {
+            // Classic switched on while the grains rest (High Quality on a high note): they start again from now, a clean pass of the input
+            // that their grains take over from, rather than working through the time they rested one grain spacing a sample, silent.
+            if (grainsIdle)
+                shifter.restart();
             grainsIdle = harmonicIdle = false;
+        }
         harmonic.setQuiet (harmonicIdle);
         // Classic has plain grains, so it needs no filters. The harmonic shifter needs none either, but High Quality's grains do.
-        envelope.setStrength (shared.settings.classic || grainsIdle ? 0.0 : 1.0);
+        envelope.setStrength (settings.classic || grainsIdle ? 0.0 : 1.0);
     }
 
     // The grains give out the input one whole latency late: 1.33 times the Input Type's longest period, so that even its lowest note has
@@ -580,6 +627,10 @@ private:
         const double lowLatencyAge = grainsOnMarksLowLatency && ! control.plainGrains ? grainOnMarksPitchAge : grainPitchAge;
         double age = mode != highQuality ? lowLatencyAge : (harmonicShare > 0.5 && ! control.plainGrains ? harmonicPitchAge : highQualityGrainPitchAge);
         // On long periods the reading is a little younger, counted in periods: 1.77 to 1.88 on the test voice at 71 to 124 Hz (testTiming 1b).
+        // The thresholds are periods at 48 kHz and are compared with periods at the rate in use, so at 96 kHz notes from 282 Hz down get the
+        // low-note age (Phase 2 hunt, tunepro-dsp-r3-5). Left as it is: read at 48 kHz's periods, Low Male at 196 Hz moves from 0.16 ms early
+        // to 0.13 ms late against 48 kHz (PluginTest phase2), so that is one of two offsets of about the same size at 96 kHz, and alone it
+        // brings 96 kHz no nearer to 48 kHz while changing the pinned 96 kHz null case.
         if (mode != highQuality && readAheadOnLowNotes)
             age -= (age - lowNotePitchAge) * std::clamp ((period - lowNoteAgeFrom) / (lowNoteAgeTo - lowNoteAgeFrom), 0.0, 1.0);
         const double lead = ((double) baseLatency - age * period) / (double) tickSamples;
@@ -654,7 +705,9 @@ private:
     int drySize = 16384;
     long long dryAt = 0;
     std::array<ControlPoint, 128> ring {};
-    int ringAt = 0, controlDelayTicks = 0, leadTicks = 0, ahead = 0;
+    int ringAt = 0, controlDelayTicks = 0, leadTicks = 0, ahead = 0, inLineTicks = 0;
+    bool ringFresh = true, plainBefore = true, harmonicRestarted = false;
+    double classicFade = 0.0, classicFadeStep = 0.001, fadeTrim = 1.0;
     static constexpr bool onsetGate = true;
     static constexpr double onsetGateDb = 0.0, onsetRiseDb = 20.0, onsetReleaseDb = 10.0, onsetPauseDb = 20.0;
     const double onsetGateRatio = std::pow (10.0, onsetGateDb / 20.0), onsetRiseRatio = std::pow (10.0, onsetRiseDb / 20.0), onsetReleaseRatio = std::pow (10.0, onsetReleaseDb / 20.0);

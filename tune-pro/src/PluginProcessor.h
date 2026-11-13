@@ -12,11 +12,12 @@ class ReadingParameter final : public juce::AudioProcessorParameterWithID
 {
 public:
     using Formatter = juce::String (*) (float);
+    using Parser = float (*) (const juce::String&);   // its own text back to a value; null reads the number at the start
 
-    ReadingParameter (const char* id, const char* name, const char* label, float lowest, float highest, float initial, Formatter f)
+    ReadingParameter (const char* id, const char* name, const char* label, float lowest, float highest, float initial, Formatter f, Parser parse = nullptr)
         : juce::AudioProcessorParameterWithID (juce::ParameterID { id, 1 }, name,
                                                juce::AudioProcessorParameterWithIDAttributes().withLabel (label).withAutomatable (false)),
-          low (lowest), high (highest), start (initial), formatter (f)
+          low (lowest), high (highest), start (initial), formatter (f), parser (parse)
     {
         value.store (initial, std::memory_order_relaxed);
     }
@@ -28,17 +29,24 @@ public:
     void setValue (float) override {}
     float getDefaultValue() const override { return juce::jlimit (0.0f, 1.0f, (start - low) / (high - low)); }
     juce::String getText (float normalised, int) const override { return formatter (low + normalised * (high - low)); }
-    float getValueForText (const juce::String& text) const override { return juce::jlimit (0.0f, 1.0f, (text.getFloatValue() - low) / (high - low)); }
+    // Since 1.8.2 a reading's own text reads back as itself: "no note" and "A3" for Target Note, "B Locrian" for Active Key (HostStress
+    // paramtext: "no note" read back as C-1, every key name as C Chromatic).
+    float getValueForText (const juce::String& text) const override
+    {
+        const float v = parser != nullptr ? parser (text) : text.getFloatValue();
+        return juce::jlimit (0.0f, 1.0f, (v - low) / (high - low));
+    }
 
 private:
     float low, high, start;
     Formatter formatter;
+    Parser parser;
     std::atomic<float> value { 0.0f };
 };
 
 // Advanced automatic vocal tuning. Tracker, shifter and corrector live in their own files and TuneEngine ties them together.
 // This class holds the parameters and MIDI notes, runs two engines when one must hand over to the other, and looks after latency, bypass and the key file.
-class PluginProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater
+class PluginProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     struct Options
@@ -66,13 +74,14 @@ public:
     double getTailLengthSeconds() const override { return 0.0; }
 
     int getNumPrograms() override;
-    int getCurrentProgram() override { return currentProgram; }
+    int getCurrentProgram() override { return currentProgram; }   // -1: no preset chosen, or not known (a session from before 1.8.2)
     void setCurrentProgram (int) override;
     const juce::String getProgramName (int) override;
     void changeProgramName (int, const juce::String&) override {}
 
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
+    void reset() override;
 
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
 
@@ -81,13 +90,14 @@ public:
     {
         float centsOffTarget = 0.0f, detectedHz = 0.0f, correctionCents = 0.0f;
         float outputHz = 0.0f;
-        int targetNote = -1, activeKey = 0, activeScale = 0, activeEngine = 0;
+        int targetNote = -1, activeKey = 0, activeScale = 0, activeEngine = 0;   // targetNote: the note that comes out, Transpose included
         bool voiced = false;
+        bool following = false;   // Follow Key is on and a key from the key file is in use
     };
     Readings getReadings() const noexcept;
 
     // The last few seconds of pitch, one point every 5 ms, for a graph. Read newest back from getPitchHistoryCount() - 1.
-    struct PitchPoint { std::atomic<float> inputNote { 0.0f }, outputNote { 0.0f }, targetNote { 0.0f }; };
+    struct PitchPoint { std::atomic<float> inputNote { 0.0f }, outputNote { 0.0f }, targetNote { 0.0f }; std::atomic<bool> bypassed { false }; };
     static constexpr int pitchHistorySize = 2048;
     const PitchPoint& getPitchPoint (long long index) const noexcept { return pitchHistory[(size_t) (index & (pitchHistorySize - 1))]; }
     long long getPitchHistoryCount() const noexcept { return pitchHistoryCount.load (std::memory_order_relaxed); }
@@ -95,8 +105,9 @@ public:
     // Latency in samples for an Input Type and Engine at a sample rate.
     static int latencyFor (int inputType, int engine, double sampleRate) noexcept;
 
-    // The note modes in force right now, for the window: bit per pitch class from C.
-    std::uint16_t getInScaleMask() const noexcept { return (std::uint16_t) inScaleNow.load (std::memory_order_relaxed); }
+    // The scale in force right now, for the window: bit per pitch class from C. Worked out from the Key and Scale controls, or the key
+    // file while it is followed, when asked, so it is right with no audio running too (up to 1.8.1 it changed only while the host played).
+    std::uint16_t getInScaleMask() const noexcept;
 
     // The window. Its size and whether Advanced is open are the only things it adds to a session.
     static constexpr int minWindowWidth = 840, defaultWindowWidth = 1120, maxWindowWidth = 1680;
@@ -118,6 +129,8 @@ private:
     void readSettings() noexcept;
     void manageEngines() noexcept;
     void handleAsyncUpdate() override;
+    void parameterChanged (const juce::String&, float) override;
+    void clearState() noexcept;
 
     std::atomic<float>* keyParam = nullptr, *scaleParam = nullptr, *retune = nullptr, *humanize = nullptr, *flex = nullptr,
                        *inputType = nullptr, *followKey = nullptr, *naturalVibrato = nullptr, *transpose = nullptr,
@@ -151,10 +164,15 @@ private:
     std::array<PitchPoint, pitchHistorySize> pitchHistory;
     std::atomic<long long> pitchHistoryCount { 0 };
 
-    std::atomic<int> voicedNow { 0 }, activeEngineNow { 0 }, inScaleNow { 0x0FFF };
+    std::atomic<int> voicedNow { 0 }, activeEngineNow { 0 }, followingNow { 0 };
     std::atomic<double> preparedRate { 0.0 };
     bool hostLatencyUpdates = true;
-    int currentProgram = 0;
+    int currentProgram = -1;
+    int offlineKeySamples = 0;   // an offline render reads the key file every 0.3 s of audio, see process()
+    // JUCE's AU wrapper resets straight after the host turns its own bypass on. That one reset is left out, so the voice fades to the
+    // input over 20 ms instead of being cut. It is the next reset within a quarter second, with no audio block in between.
+    std::atomic<bool> bypassJustSwitchedOn { false }, bypassWasOn { false };
+    std::atomic<juce::uint32> bypassSwitchedAtMs { 0 };
     std::unique_ptr<Worker> worker;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)

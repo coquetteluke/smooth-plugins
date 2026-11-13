@@ -15,6 +15,8 @@ public:
 
     /** One display frame, from the editor. Returns false when nothing on screen moved. */
     bool advance (double dtSeconds);
+    /** Set by the editor when no audio has arrived for a while: nothing is shown as being sung then. */
+    void setStale (bool s) noexcept  { stale = s; }
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -40,6 +42,7 @@ private:
     bool laneStateChanged();
     void bringRingUpToDate (float pixelScale);
     void drawColumns (juce::Graphics&, long long fromX, long long toX, long long count);
+    void drawPoints (juce::Graphics&, long long firstPoint, long long lastPoint, long long count, bool bypassed);
     void strokeLine (juce::Graphics&, long long firstPoint, long long lastPoint, float (*read) (const PluginProcessor::PitchPoint&) noexcept, juce::Colour, float width);
 
     /** Which line is which, with the live pitch beside each. Opaque and apart from the trace, so its text is only drawn when the numbers change. */
@@ -87,7 +90,7 @@ private:
     long long lastSeenCount = -1;
     int voicedOnScreen = 0;
     int targetShown = -1;
-    bool bypassedNow = false;
+    bool bypassedNow = false, stale = false;
     double readoutClock = 1.0;
     int paintCount = 0;
 

@@ -28,6 +28,9 @@ namespace
         bool classicOn;
         int engine;             // -1 leaves it where it is
         float addedVibrato;
+        // Since 1.8.2 every preset sets the added vibrato's rate and delay too, so Flat Then Sung Vibrato always sounds the same; up to
+        // 1.8.1 they were whatever the instance had. All are the defaults, which is what a new instance played.
+        float vibratoRate = 5.5f, vibratoDelay = 300.0f;
     };
     constexpr Preset presets[] = {
         { "Natural Pop",          30.0f,  35.0f, 10.0f,    0.0f, false, -1,  0.0f },
@@ -58,6 +61,34 @@ namespace
     {
         const int packed = juce::jlimit (0, 12 * numScales - 1, juce::roundToInt (v));
         return juce::String (noteNames[packed % 12]) + " " + scaleNames[packed / 12];
+    }
+
+    // The readings' own texts back to values (HostStress paramtext). Anything else is read as the number it starts with, as before.
+    int pitchClassOf (const juce::String& name)
+    {
+        for (int i = 11; i >= 0; --i)   // C# before C
+            if (name.startsWith (noteNames[i])) return i;
+        return -1;
+    }
+    float noteValue (const juce::String& text)
+    {
+        const auto t = text.trim();
+        if (t.equalsIgnoreCase ("no note")) return -1.0f;
+        const int pc = pitchClassOf (t);
+        if (pc < 0) return t.getFloatValue();
+        const auto octave = t.substring ((int) std::strlen (noteNames[pc])).trim();
+        if (octave.isEmpty() || ! octave.containsOnly ("-0123456789")) return t.getFloatValue();
+        return (float) (pc + 12 * (octave.getIntValue() + 1));
+    }
+    float keyValue (const juce::String& text)
+    {
+        const auto t = text.trim();
+        const int pc = pitchClassOf (t);
+        if (pc < 0) return t.getFloatValue();
+        const auto scale = t.substring ((int) std::strlen (noteNames[pc])).trim();
+        for (int i = 0; i < numScales; ++i)
+            if (scale.equalsIgnoreCase (scaleNames[i])) return (float) (pc + 12 * i);
+        return t.getFloatValue();
     }
 
     constexpr int warmExtraMs = 60, crossfadeMs = 12;
@@ -179,8 +210,8 @@ PluginProcessor::PluginProcessor (const Options& options)
     addParameter (hzReading = new ReadingParameter ("detectedPitch", "Detected Pitch", "Hz", 0.0f, 2000.0f, 0.0f, hzText));
     addParameter (outputReading = new ReadingParameter ("outputPitch", "Output Pitch", "Hz", 0.0f, 8000.0f, 0.0f, hzText));
     addParameter (correctionReading = new ReadingParameter ("correctionApplied", "Correction Applied", "cents", -4800.0f, 4800.0f, 0.0f, centsText));
-    addParameter (noteReading = new ReadingParameter ("targetNote", "Target Note", "", -1.0f, 127.0f, -1.0f, noteText));
-    addParameter (keyReading = new ReadingParameter ("activeKey", "Active Key", "", 0.0f, (float) (12 * numScales - 1), 0.0f, keyText));
+    addParameter (noteReading = new ReadingParameter ("targetNote", "Target Note", "", -1.0f, 127.0f, -1.0f, noteText, noteValue));
+    addParameter (keyReading = new ReadingParameter ("activeKey", "Active Key", "", 0.0f, (float) (12 * numScales - 1), 0.0f, keyText, keyValue));
     addParameter (latencyReading = new ReadingParameter ("latencyMs", "Latency", "ms", 0.0f, 200.0f, 0.0f, msText));
 
     char path[PATH_MAX] {};
@@ -195,14 +226,63 @@ PluginProcessor::PluginProcessor (const Options& options)
     reportedLatencyWanted.store (initial, std::memory_order_relaxed);
     latencyReading->set ((float) (initial * 1000.0 / 48000.0));
 
+    bypassWasOn.store (bypass->get(), std::memory_order_relaxed);
+    apvts.addParameterListener ("bypass", this);
+
     worker = std::make_unique<Worker> (*this);
     worker->startThread (juce::Thread::Priority::low);
 }
 
 PluginProcessor::~PluginProcessor()
 {
+    apvts.removeParameterListener ("bypass", this);
     worker->stopThread (2000);
     cancelPendingUpdate();
+}
+
+void PluginProcessor::parameterChanged (const juce::String& id, float value)
+{
+    if (id != "bypass")
+        return;
+    const bool on = value > 0.5f;
+    const bool was = bypassWasOn.exchange (on, std::memory_order_relaxed);
+    if (on && ! was)
+        bypassSwitchedAtMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+    bypassJustSwitchedOn.store (on && ! was, std::memory_order_relaxed);
+}
+
+// The host's Reset (a jump in the song, a stop): everything prepareToPlay clears, cleared again, with nothing allocated. Up to 1.8.1 a
+// Reset did nothing, so the delay lines, the tracker and the corrector carried the last place's sound into the next (Phase 2, 2026-11-13,
+// as Velvet Rope 0.8.1 and Duo 0.4.3).
+void PluginProcessor::reset()
+{
+    // The reset that comes with the host's bypass switching on is left out: clearing then would cut the voice off at once, not fade it.
+    if (bypassJustSwitchedOn.exchange (false, std::memory_order_relaxed)
+        && juce::Time::getMillisecondCounter() - bypassSwitchedAtMs.load (std::memory_order_relaxed) < 250)
+        return;
+    if (preparedRate.load (std::memory_order_relaxed) <= 0.0)
+        return;   // not prepared yet: there is nothing to clear
+    const juce::ScopedLock lock (getCallbackLock());   // the AU wrapper renders under this lock, so a reset never lands mid block
+    clearState();
+    reportedLatencyWanted.store (engines[0].getLatency(), std::memory_order_relaxed);
+}
+
+void PluginProcessor::clearState() noexcept
+{
+    activeEngine = 0;
+    handover = Handover::none;
+    const int type = juce::jlimit (0, numInputTypes - 1, (int) inputType->load());
+    const int engine = juce::jlimit (0, 1, (int) engineParam->load());
+    engines[0].configure (type, inputRanges[(size_t) type].lowHz, inputRanges[(size_t) type].highHz, engine, inputRanges[(size_t) type].belowHz);
+    historyPhase = 0;
+    mixNow = mix->load() * 0.01f;
+    bypassMix = bypass->get() ? 0.0f : 1.0f;
+    keysDown.clear();
+    pedalHeld.clear();
+    pedalDown = false;
+    offlineKeySamples = 0;
+    shared = {};
+    readSettings();
 }
 
 int PluginProcessor::latencyFor (int type, int engine, double sampleRate) noexcept
@@ -223,24 +303,11 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     const int channels = juce::jmax (1, getTotalNumOutputChannels());
     for (auto& e : engines)
         e.prepare (sr, channels);
-    activeEngine = 0;
-    handover = Handover::none;
     crossfadeLength = juce::jmax (16, juce::roundToInt (sr * crossfadeMs * 0.001));
-    const int type = juce::jlimit (0, numInputTypes - 1, (int) inputType->load());
-    const int engine = juce::jlimit (0, 1, (int) engineParam->load());
-    engines[0].configure (type, inputRanges[(size_t) type].lowHz, inputRanges[(size_t) type].highHz, engine, inputRanges[(size_t) type].belowHz);
-
     historyTicks = juce::jmax (1, juce::roundToInt (sr * 0.005));
-    historyPhase = 0;
     mixStep = (float) (1.0 / (0.01 * sr));
     bypassStep = (float) (1.0 / (0.02 * sr));
-    mixNow = mix->load() * 0.01f;
-    bypassMix = bypass->get() ? 0.0f : 1.0f;
-    keysDown.clear();
-    pedalHeld.clear();
-    pedalDown = false;
-    shared = {};
-    readSettings();
+    clearState();
     const int latency = engines[0].getLatency();
     setLatencySamples (latency);
     reportedLatencyWanted.store (latency, std::memory_order_relaxed);
@@ -260,6 +327,7 @@ void PluginProcessor::readSettings() noexcept
     }
     activeKeyNow = root;
     activeScaleNow = scale;
+    followingNow.store (followKey->load (std::memory_order_relaxed) >= 0.5f && follower.has() ? 1 : 0, std::memory_order_relaxed);
 
     auto& s = shared.settings;
     const std::uint16_t inScale = scaleMask (root, scale);
@@ -278,7 +346,6 @@ void PluginProcessor::readSettings() noexcept
     }
     s.allowed = allowed;
     s.passed = passed;
-    inScaleNow.store (inScale, std::memory_order_relaxed);
 
     s.retuneMs = retune->load (std::memory_order_relaxed);
     s.humanize = humanize->load (std::memory_order_relaxed) * 0.01;
@@ -314,17 +381,26 @@ void PluginProcessor::handleMidi (const juce::MidiMessage& m) noexcept
     }
     else if (m.isSustainPedalOn())
     {
+        // Only where the pedal goes down. A pedal already down that sends another on value (a continuous or half pedal streams 64 to 127)
+        // kept only the keys down at that moment up to 1.8.1, so the notes it held were dropped while it was still down.
+        if (! pedalDown)
+            pedalHeld = keysDown;
         pedalDown = true;
-        pedalHeld = keysDown;
     }
     else if (m.isSustainPedalOff())
     {
         pedalDown = false;
         pedalHeld.clear();
     }
-    else if (m.isAllNotesOff() || m.isAllSoundOff() || m.isResetAllControllers())
+    else if (m.isAllNotesOff() || m.isAllSoundOff())
     {
         keysDown.clear();
+        pedalHeld.clear();
+        pedalDown = false;
+    }
+    else if (m.isResetAllControllers())
+    {
+        // Controllers only, the pedal among them: keys still down stay targets (the MIDI spec's Reset All Controllers ends no notes).
         pedalHeld.clear();
         pedalDown = false;
     }
@@ -372,6 +448,19 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     const int numSamples = buffer.getNumSamples();
     if (numCh <= 0)
         return;
+
+    // Follow Key in an offline bounce or freeze: the worker reads the key file every 0.3 s of wall time, which in a render faster than real
+    // time is many seconds of song, so a key change came in later in a bounce than in playback. Offline the file is read here, every
+    // 0.3 s of audio; nothing waits on this thread then (key file readers, Phase 2, 2026-11-13, as Choir Loft).
+    if (isNonRealtime() && followKey->load (std::memory_order_relaxed) >= 0.5f)
+    {
+        if (offlineKeySamples <= 0)
+        {
+            pollKeyFileNow();
+            offlineKeySamples = juce::roundToInt (0.3 * sr);
+        }
+        offlineKeySamples -= numSamples;
+    }
 
     readSettings();
     manageEngines();
@@ -453,7 +542,8 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             auto& point = pitchHistory[(size_t) (at & (pitchHistorySize - 1))];
             point.inputNote.store (voiced ? (float) e.getCorrector().inputPitch() : 0.0f, std::memory_order_relaxed);
             point.outputNote.store (voiced ? (float) e.getCorrector().outputPitch() : 0.0f, std::memory_order_relaxed);
-            point.targetNote.store ((float) e.getCorrector().targetNote(), std::memory_order_relaxed);
+            point.targetNote.store ((float) e.getCorrector().targetNoteOut(), std::memory_order_relaxed);
+            point.bypassed.store (bypassTarget < 0.5f, std::memory_order_relaxed);
             pitchHistoryCount.store (at + 1, std::memory_order_relaxed);
         }
     }
@@ -469,11 +559,12 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     hzReading->set (voiced ? (float) (sr / e.getControl().inputPeriod) : 0.0f);
     outputReading->set (voiced && e.getControl().outputPeriod > 0.0 ? (float) (sr / e.getControl().outputPeriod) : 0.0f);
     correctionReading->set (voiced ? (float) juce::jlimit (-4800.0, 4800.0, corrector.correctionCents()) : 0.0f);
-    noteReading->set ((float) corrector.targetNote());
+    noteReading->set ((float) corrector.targetNoteOut());
     keyReading->set ((float) (activeKeyNow + 12 * activeScaleNow));
     latencyReading->set ((float) (e.getLatency() * 1000.0 / sr));
     voicedNow.store (voiced ? 1 : 0, std::memory_order_relaxed);
     activeEngineNow.store (e.getMode(), std::memory_order_relaxed);
+    bypassJustSwitchedOn.store (false, std::memory_order_relaxed);   // only the reset that comes with the switch is left out
 }
 
 PluginProcessor::Readings PluginProcessor::getReadings() const noexcept
@@ -489,7 +580,15 @@ PluginProcessor::Readings PluginProcessor::getReadings() const noexcept
     r.activeScale = packed / 12;
     r.activeEngine = activeEngineNow.load (std::memory_order_relaxed);
     r.voiced = voicedNow.load (std::memory_order_relaxed) != 0;
+    r.following = followingNow.load (std::memory_order_relaxed) != 0;
     return r;
+}
+
+std::uint16_t PluginProcessor::getInScaleMask() const noexcept
+{
+    if (followKey->load (std::memory_order_relaxed) >= 0.5f && follower.has())
+        return scaleMask (follower.key(), follower.minor() ? scaleMinor : scaleMajor);
+    return scaleMask ((int) keyParam->load (std::memory_order_relaxed), (int) scaleParam->load (std::memory_order_relaxed));
 }
 
 void PluginProcessor::pollKeyFileNow()
@@ -534,6 +633,8 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("naturalVibrato", presets[i].vibrato);
     set ("classic", presets[i].classicOn ? 1.0f : 0.0f);
     set ("vibratoAmount", presets[i].addedVibrato);
+    set ("vibratoRate", presets[i].vibratoRate);
+    set ("vibratoDelay", presets[i].vibratoDelay);
     if (presets[i].engine >= 0)
         set ("engine", (float) presets[i].engine);
 }
@@ -544,6 +645,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         xml->setAttribute ("windowWidth", windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute ("advancedOpen", advancedOpen.load (std::memory_order_relaxed));
+        if (currentProgram >= 0)
+            xml->setAttribute ("program", currentProgram);   // since 1.8.2: the preset last chosen, left out when none is known
         copyXmlToBinary (*xml, dest);
     }
 }
@@ -556,8 +659,13 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             if (xml->hasAttribute ("windowWidth"))
                 windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute ("windowWidth", defaultWindowWidth)), std::memory_order_relaxed);
             advancedOpen.store (xml->getBoolAttribute ("advancedOpen", false), std::memory_order_relaxed);
+            // Which preset was chosen, only to name it: its values are already in the state and are not applied again. A session saved
+            // before 1.8.2 does not say, so it names none rather than a wrong one (up to 1.8.1 every session read Natural Pop). A damaged
+            // number is kept in range.
+            currentProgram = xml->hasAttribute ("program") ? juce::jlimit (0, getNumPrograms() - 1, xml->getIntAttribute ("program", 0)) : -1;
             xml->removeAttribute ("windowWidth");
             xml->removeAttribute ("advancedOpen");
+            xml->removeAttribute ("program");
             applySafeState (apvts, *xml);
         }
 }

@@ -241,6 +241,25 @@ namespace tuneui
         attachment = std::make_unique<juce::ButtonParameterAttachment> (param, *this);
     }
 
+    // A double-click puts the switch back to its default, as on every other control. Its second click no longer switches it back again
+    // (up to 1.8.1 a double-click switched it twice and left it where it was: Bypass on stayed on, after a moment off).
+    void ParamToggle::mouseUp (const juce::MouseEvent& e)
+    {
+        if (e.getNumberOfClicks() >= 2)
+        {
+            setState (isMouseOver() ? buttonOver : buttonNormal);
+            return;
+        }
+        juce::ToggleButton::mouseUp (e);
+    }
+
+    void ParamToggle::mouseDoubleClick (const juce::MouseEvent&)
+    {
+        param.beginChangeGesture();
+        param.setValueNotifyingHost (param.getDefaultValue());
+        param.endChangeGesture();
+    }
+
     bool ParamToggle::isChanged() const
     {
         return std::abs (param.getValue() - param.getDefaultValue()) > 0.5f;
@@ -293,16 +312,23 @@ namespace tuneui
         repaint();
     }
 
+    // A double-click on the segment already chosen puts it back to the default. A double-click on another one chooses it once: up to 1.8.1
+    // its first click chose it and the double-click then reset it, two changes (for Engine, two hand overs and two latency changes).
     void ParamSegments::mouseDown (const juce::MouseEvent& e)
     {
+        if (e.getNumberOfClicks() >= 2)
+            return;
         const int hit = segmentAt (e.position);
-        if (hit != selected)
+        firstClickChose = hit != selected;
+        if (firstClickChose)
             attachment.setValueAsCompleteGesture ((float) hit);
     }
 
     void ParamSegments::mouseDoubleClick (const juce::MouseEvent&)
     {
-        attachment.setValueAsCompleteGesture (param.convertFrom0to1 (param.getDefaultValue()));
+        if (! firstClickChose)
+            attachment.setValueAsCompleteGesture (param.convertFrom0to1 (param.getDefaultValue()));
+        firstClickChose = false;
     }
 
     void ParamSegments::paint (juce::Graphics& g)
@@ -439,10 +465,11 @@ namespace tuneui
         const auto hit = zoneAt (e.position.x);
         const int count = processor.getNumPrograms();
 
+        const int now = processor.getCurrentProgram();
         if (hit == previous)
-            choose ((processor.getCurrentProgram() + count - 1) % count);
+            choose (now < 0 ? count - 1 : (now + count - 1) % count);
         else if (hit == next)
-            choose ((processor.getCurrentProgram() + 1) % count);
+            choose (now < 0 ? 0 : (now + 1) % count);
         else
         {
             juce::PopupMenu menu;
@@ -459,9 +486,12 @@ namespace tuneui
         }
     }
 
+    // With no preset chosen (a new instance, or a session from before 1.8.2) the box says so, in the muted colour, rather than naming
+    // Natural Pop over settings that are not Natural Pop's.
     juce::String PresetBox::text() const
     {
-        return processor.getProgramName (processor.getCurrentProgram());
+        const int now = processor.getCurrentProgram();
+        return juce::isPositiveAndBelow (now, processor.getNumPrograms()) ? processor.getProgramName (now) : juce::String ("Choose a preset");
     }
 
     void PresetBox::paint (juce::Graphics& g)
@@ -470,7 +500,7 @@ namespace tuneui
         g.setColour (zone == name ? tone::raised.brighter (0.25f) : tone::raised);
         g.fillRoundedRectangle (b, 5.0f);
 
-        g.setColour (tone::white);
+        g.setColour (juce::isPositiveAndBelow (processor.getCurrentProgram(), processor.getNumPrograms()) ? tone::white : tone::muted);
         g.setFont (font (Weight::regular, 13.5f));
         g.drawText (text(), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
 

@@ -19,6 +19,7 @@ namespace
     float inputOf (const PluginProcessor::PitchPoint& p) noexcept  { return p.inputNote.load (std::memory_order_relaxed); }
     float outputOf (const PluginProcessor::PitchPoint& p) noexcept { return p.outputNote.load (std::memory_order_relaxed); }
     float targetOf (const PluginProcessor::PitchPoint& p) noexcept { return p.targetNote.load (std::memory_order_relaxed); }
+    bool bypassedAt (const PluginProcessor::PitchPoint& p) noexcept { return p.bypassed.load (std::memory_order_relaxed); }
 }
 
 PitchView::PitchView (PluginProcessor& p) : processor (p)
@@ -68,12 +69,20 @@ void PitchView::followPitch (long long count)
     // By share of what is on screen, not the very top and bottom, so one wild tracker reading or a slide at the end of a word cannot push the voice off the display.
     int histogram[128] {};
     int voiced = 0;
+    // Both lines that are drawn count: the voice as sung, and where it was not bypassed the corrected voice. Up to 1.8.1 only the
+    // corrected voice counted, so with Transpose the voice as sung could sit off screen, and bypassed it was the only line drawn.
     for (int k = 0; k < pointsShown && k < count; ++k)
     {
-        const float n = outputOf (processor.getPitchPoint (count - 1 - k));
-        if (n > 0.0f)
+        const auto& point = processor.getPitchPoint (count - 1 - k);
+        const float in = inputOf (point), out = outputOf (point);
+        if (in > 0.0f)
         {
-            ++histogram[juce::jlimit (0, 127, juce::roundToInt (n))];
+            ++histogram[juce::jlimit (0, 127, juce::roundToInt (in))];
+            ++voiced;
+        }
+        if (out > 0.0f && ! bypassedAt (point))
+        {
+            ++histogram[juce::jlimit (0, 127, juce::roundToInt (out))];
             ++voiced;
         }
     }
@@ -146,7 +155,9 @@ bool PitchView::advance (double dtSeconds)
         gutter.repaint();
     }
 
-    const auto r = processor.getReadings();
+    auto r = processor.getReadings();
+    if (stale)
+        r.voiced = false;
     bypassedNow = bypassParam->load (std::memory_order_relaxed) > 0.5f;
     const int target = r.voiced && ! bypassedNow ? r.targetNote : -1;
     if (target != targetShown)
@@ -164,8 +175,12 @@ bool PitchView::advance (double dtSeconds)
         readoutClock = 0.0;
         const auto voice = r.voiced ? juce::String (r.detectedHz, 1) + " Hz" : juce::String();
         const auto corrected = r.voiced ? juce::String (r.outputHz, 1) + " Hz" : juce::String();
+        // Follow Key on names the key it follows only once there is one from the key file. Up to 1.8.1 it named the Key and Scale menus'
+        // own key, as if it came from the file (and could name Chromatic, which the Key plug-in never gives).
         const bool following = followKeyParam->load (std::memory_order_relaxed) > 0.5f;
-        const auto follow = following ? juce::String ("Following ") + noteNames[juce::jlimit (0, 11, r.activeKey)] + " " + scaleNames[juce::jlimit (0, numScales - 1, r.activeScale)] : juce::String();
+        const auto follow = ! following ? juce::String()
+                          : r.following ? juce::String ("Following ") + noteNames[juce::jlimit (0, 11, r.activeKey)] + " " + scaleNames[juce::jlimit (0, numScales - 1, r.activeScale)]
+                                        : juce::String ("No key from the key file yet");
         const bool bypassed = bypassedNow;
 
         if (voice != legend.voice || corrected != legend.corrected || follow != legend.follow || bypassed != legend.bypassed)
@@ -249,8 +264,20 @@ void PitchView::drawColumns (juce::Graphics& g, long long fromX, long long toX, 
     if (lastPoint < firstPoint)
         return;
 
-    // Bypassed, what you hear is the voice as sung, so that is all that gets drawn from here on.
-    if (bypassedNow)
+    // Each stretch as it was heard: bypassed, the voice as sung is all there was, so that is all that is drawn there. Each point keeps
+    // whether it was bypassed, so drawing the whole display again keeps it (up to 1.8.1 the live Bypass switch decided for all 8 s).
+    long long runStart = firstPoint;
+    for (auto k = firstPoint + 1; k <= lastPoint + 1; ++k)
+        if (k > lastPoint || bypassedAt (processor.getPitchPoint (k)) != bypassedAt (processor.getPitchPoint (runStart)))
+        {
+            drawPoints (g, runStart, k - 1, count, bypassedAt (processor.getPitchPoint (runStart)));
+            runStart = k;
+        }
+}
+
+void PitchView::drawPoints (juce::Graphics& g, long long firstPoint, long long lastPoint, long long count, bool bypassed)
+{
+    if (bypassed)
     {
         strokeLine (g, firstPoint, lastPoint, inputOf, tone::white, 1.6f * ringScale * typeScale);
         return;

@@ -71,7 +71,7 @@ public:
     void reset() noexcept
     {
         correction = 0.0; target = -1; pendingTarget = -1; pastFor = 0.0; farFor = 0.0; evidence = 0.0; recentCount = 0; recentAt = 0; recent.fill (0.0); haveAverage = false; steadyFor = 0.0; holdAverage = 0.0; age = 0.0; slowPitch = 0.0; output = 0.0; input = 0.0;
-        offCents = 0.0; identity = true; hasPitch = false; silentFor = 0.0; vibratoPhase = 0.0;
+        offCents = 0.0; identity = true; hasPitch = false; silentFor = 0.0; vibratoPhase = 0.0; freshSlow = true; shaping = 0.0;
     }
 
     // period in input samples, 0 when not voiced. tickSeconds is the time since the last call. held only matters with midiTargets.
@@ -128,16 +128,33 @@ public:
         else
             correction += (1.0 - std::exp (-tickSeconds / tau)) * (wanted - correction);
 
-        // Natural Vibrato works on what is left once the note centre is taken out.
+        // Natural Vibrato works on the vibrato that is left after correction, once the note centre is taken out. Up to 1.8.1 it worked on
+        // the voice as sung, so where the correction had already taken the vibrato out, -100 put it back upside down: Robot Flat (Retune 0,
+        // Natural Vibrato -100) kept 92% of a +/-40 cent vibrato, inverted (Phase 2, 2026-11-13; Tune 1.2.1 fixed its own copy the same way).
+        // Its average also started at 0 semitones whenever no note had been chosen, so with no target it bent the voice by up to 6
+        // semitones at the start of every phrase: a new note, and a new phrase, start it where the voice comes out.
+        // The parameter holds its 0 as 1.5e-6 % (its 0.1 step does not land on 0 exactly), which moves the pitch by under 1e-6 cents. That
+        // keeps 1.8.1's arithmetic, so the default and every preset without Natural Vibrato come out bit for bit as before.
+        const bool naturalVibratoOn = s.naturalVibrato != 0.0 && ! s.classic;
+        const bool asItWas = std::abs (s.naturalVibrato) < 1.0e-6;
         double vibrato = 0.0;
-        if (s.naturalVibrato != 0.0 && ! s.classic)
+        if (naturalVibratoOn && asItWas)
         {
             slowPitch += (1.0 - std::exp (-tickSeconds / 0.1)) * (p - slowPitch);
             vibrato = s.naturalVibrato * (p - slowPitch) * smoothstep (0.08, 0.25, age);
+            freshSlow = true;
+        }
+        else if (naturalVibratoOn)
+        {
+            const double corrected = p + correction;
+            if (freshSlow) { slowPitch = corrected; freshSlow = false; }
+            slowPitch += (1.0 - std::exp (-tickSeconds / 0.1)) * (corrected - slowPitch);
+            vibrato = s.naturalVibrato * (corrected - slowPitch) * smoothstep (0.08, 0.25, age);
         }
         else
         {
             slowPitch = p;
+            freshSlow = true;
         }
 
         // The vibrato generator fades in over 150 ms after its delay, as a singer's would.
@@ -155,7 +172,24 @@ public:
             vibratoPhase = 0.0;
         }
 
+        // A voice with nothing to tune to (MIDI Targets with no notes held, every note removed) and a note on Bypass are left as sung, so
+        // neither vibrato touches them either. Up to 1.8.1 both still bent them. The shaping lets go as the correction does, at the Retune
+        // Speed (at once when that is instant), and comes back at once with a note to tune, where each vibrato fades in by itself.
+        const bool leftAsSung = ! haveTarget || (! s.midiTargets && isPassed (target, s.passed));
+        if (! leftAsSung)
+            shaping = 1.0;
+        else if (tau < 0.0005)
+            shaping = 0.0;
+        else
+            shaping += (1.0 - std::exp (-tickSeconds / tau)) * (0.0 - shaping);
+        if (shaping < 1.0)
+        {
+            if (! asItWas) vibrato *= shaping;
+            added *= shaping;
+        }
+
         output = p + correction + vibrato + added + s.transpose;
+        transposeNow = (int) std::lround (s.transpose);
         identity = std::abs (output - p) < 0.001;
     }
 
@@ -172,6 +206,8 @@ public:
     double centsOffTarget() const noexcept { return hasPitch && target >= 0 ? offCents : 0.0; }
     double correctionCents() const noexcept { return (output - input) * 100.0; }
     int targetNote() const noexcept { return hasPitch ? target : -1; }
+    // The note that comes out: the target with Transpose on it (Phase 2: the window showed the target before Transpose, away from the line).
+    int targetNoteOut() const noexcept { return hasPitch && target >= 0 ? target + transposeNow : -1; }
     double inputPitch() const noexcept { return input; }
     double outputPitch() const noexcept { return output; }
 
@@ -330,11 +366,15 @@ private:
         farFor = 0.0;
         age = 0.0;
         slowPitch = p;
+        freshSlow = true;
         noteMean = p;
     }
 
     double sr = 48000.0;
     double correction = 0.0, age = 0.0, slowPitch = 0.0, output = 0.0, input = 0.0, offCents = 0.0, silentFor = 0.0, vibratoPhase = 0.0;
+    double shaping = 0.0;     // how much of both vibratos is given: 1 with a note to tune, 0 where the voice is left as sung
+    bool freshSlow = true;    // Natural Vibrato's average starts where the voice comes out
+    int transposeNow = 0;
     int target = -1, pendingTarget = -1;
     double pastFor = 0.0, farFor = 0.0, evidence = 0.0;
 #ifndef TARGET_EVIDENCE

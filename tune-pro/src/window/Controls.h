@@ -61,6 +61,8 @@ namespace tuneui
     public:
         ParamToggle (Apvts&, const juce::String& paramId, const juce::String& labelText, const juce::String& hintText, juce::Colour onColour, juce::Colour onText);
         void paintButton (juce::Graphics&, bool isOver, bool isDown) override;
+        void mouseUp (const juce::MouseEvent&) override;
+        void mouseDoubleClick (const juce::MouseEvent&) override;
         void setForcedHover (bool shouldShow)  { forcedHover = shouldShow; repaint(); }
         bool isChanged() const;
 
@@ -93,6 +95,7 @@ namespace tuneui
         juce::RangedAudioParameter& param;
         const juce::StringArray choices;
         int selected = 0, hovered = -1;
+        bool firstClickChose = false;   // the first click of this double-click chose a segment that was not selected
         juce::ParameterAttachment attachment;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ParamSegments)

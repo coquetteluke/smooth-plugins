@@ -10,6 +10,8 @@ public:
 
     /** One display frame, from the editor. Repaints only keys that changed. */
     void advance();
+    /** Set by the editor when no audio has arrived for a while: nothing is shown as being sung then. */
+    void setStale (bool s) noexcept  { stale = s; }
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -36,6 +38,7 @@ private:
     int modeOf (int pitchClass) const noexcept;
     void openMenu (int pitchClass);
     void setHovered (int);
+    void sayHint();
     void paintKey (juce::Graphics&, int pitchClass);
 
     PluginProcessor& processor;
@@ -43,6 +46,7 @@ private:
     std::atomic<float>* bypassParam = nullptr;
     float typeScale = 1.0f;
     int hovered = -1, litShown = -1;
+    bool stale = false;
     int modesShown[12] {};
     std::uint16_t scaleShown = 0x0FFF;
 

@@ -77,9 +77,11 @@ public:
         words.setBounds (column.removeFromTop (getHeight() / 2 + 2).withTrimmedTop (4));
     }
 
-    void advance (double dt)
+    void advance (double dt, bool stale)
     {
-        const auto r = processor.getReadings();
+        auto r = processor.getReadings();
+        if (stale)
+            r.voiced = false;
         const bool bypassed = bypassParam->load (std::memory_order_relaxed) > 0.5f;
         const float target = r.voiced && ! bypassed ? juce::jlimit (-100.0f, 100.0f, r.correctionCents) : 0.0f;
         shownCents += (target - shownCents) * (1.0f - std::exp (-(float) dt / 0.035f));
@@ -102,9 +104,14 @@ public:
         if (clock >= 0.2)
         {
             clock = 0.0;
-            const int cents = juce::roundToInt (r.correctionCents);
-            words.setText (bypassed ? juce::String ("Bypassed") : ! r.voiced ? juce::String ("No pitch") : std::abs (cents) < 1 ? juce::String ("On pitch")
-                           : juce::String (cents > 0 ? "Moved up " : "Moved down ") + juce::String (std::abs (cents)) + " cents");
+            // Nothing moved is not the same as on pitch: a voice left alone (Flex Tune, a note on Bypass, nothing to tune to) says how far
+            // from the note it was sung. Up to 1.8.1 all of those read On pitch.
+            const int cents = juce::roundToInt (r.correctionCents), off = juce::roundToInt (r.centsOffTarget);
+            words.setText (bypassed ? juce::String ("Bypassed") : ! r.voiced ? juce::String ("No pitch")
+                           : std::abs (cents) >= 1 ? juce::String (cents > 0 ? "Moved up " : "Moved down ") + juce::String (std::abs (cents)) + " cents"
+                           : r.targetNote < 0 ? juce::String ("Left as sung")
+                           : std::abs (off) >= 1 ? juce::String ("Left as sung, ") + juce::String (std::abs (off)) + (off > 0 ? " cents sharp" : " cents flat")
+                           : juce::String ("On pitch"));
         }
     }
 
@@ -423,8 +430,10 @@ void TuneEditor::setAdvancedOpen (bool shouldBeOpen, bool animate)
     }
     else
     {
+        // Frames start, and the first one moves it by the time since the click. Up to 1.8.1 this ran a whole 0.2 s step at once, which put
+        // Advanced 98% open before the first frame (and moved everything else on by 0.2 s).
         stillFor = 0.0;
-        timerCallback();
+        startFrames();
     }
 }
 
@@ -495,9 +504,23 @@ int TuneEditor::getNumControls() const noexcept
 
 void TuneEditor::tick (double dtSeconds)
 {
+    // The readings are what the last block left. When blocks stop coming they are old, and nothing is shown as being sung; up to 1.8.1
+    // the last voiced block stayed up, key lit and Moved up N cents, for as long as the host was stopped.
+    const auto count = processor.getPitchHistoryCount();
+    if (count != historySeen) { historySeen = count; quietFor = 0.0; }
+    else quietFor += dtSeconds;
+    const bool stale = quietFor >= staleAfterSeconds;
+    pitch.setStale (stale);
+    keyboard.setStale (stale);
+
+    // A session loaded while the window is open sets its size too (up to 1.8.1 only the next opening did).
+    const int wantWidth = processor.windowWidth.load (std::memory_order_relaxed);
+    if (wantWidth != getWidth() && ! isMouseButtonDownAnywhere())
+        setSize (wantWidth, juce::roundToInt (wantWidth * (double) designHeight / (double) designWidth));
+
     bool moved = pitch.advance (dtSeconds);
     keyboard.advance();
-    reading->advance (dtSeconds);
+    reading->advance (dtSeconds, stale);
     panel.presets.refresh();
 
     // Advanced glides open and shut, in about a fifth of a second.
@@ -529,7 +552,11 @@ void TuneEditor::timerCallback()
 {
     // Nothing has been moving, so look only a few times a second. Move again as soon as there is something to show.
     tick (0.2);
+    startFrames();
+}
 
+void TuneEditor::startFrames()
+{
     if (stillFor < 1.0 && vblank == nullptr)
     {
         stopTimer();

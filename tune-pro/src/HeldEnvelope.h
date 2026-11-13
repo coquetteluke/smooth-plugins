@@ -25,6 +25,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <vector>
 
 namespace heldenv
 {
@@ -87,6 +90,8 @@ public:
     FormantFit()
     {
         for (int j = 0; j < gridN; ++j) gridHz[(size_t) j] = gridLowHz * std::pow (gridHighHz / gridLowHz, (double) j / (gridN - 1));
+        costs.resize ((size_t) costSlots);
+        descents.resize ((size_t) descentSlots);
     }
 
     double bandwidth (double hz) const noexcept
@@ -130,10 +135,21 @@ public:
         for (int m = 0; m < minima; ++m) previous[(size_t) m] = found[(size_t) m];
         minima = 0;
         if (heard < 3) return false;
+        // The sums over the heard harmonics that every shape's cost shares, in the order cost() always added them.
+        fitSx = fitSxx = fitCnt = 0.0;
+        for (int h = 1; h <= n; ++h)
+        {
+            if (! good[(size_t) h]) continue;
+            fitSx += x[(size_t) h]; fitSxx += x[(size_t) h] * x[(size_t) h]; fitCnt += 1.0;
+        }
+        // What was worked out for the last fit belongs to its levels: start both caches again.
+        if (++generation >= (1u << generationBits)) { generation = 1; for (auto& c : costs) c.tag = 0; for (auto& d : descents) d.tag = 0; }
         // Each resonance's level at each harmonic, for every place on the grid. Kept while the pitch holds within 0.2%: a harmonic
         // misplaced by that is well inside any resonance's bandwidth.
         if (n != tableCount || sr != tableRate || settings.bandwidthScale != tableScale || std::abs (f0 / tableF0 - 1.0) > 0.002)
         {
+            std::array<Trig, maxH + 1> trig {};
+            for (int h = 1; h <= n; ++h) trig[(size_t) h].set (2.0 * M_PI * h * f0 / sr);
             for (int j = 0; j < gridN; ++j)
             {
                 const double F = gridHz[(size_t) j], B = bandwidth (F), r = std::exp (-M_PI * B / sr);
@@ -142,11 +158,7 @@ public:
                 one.rr[0] = r * r;
                 one.b0[0] = 1.0 - one.c[0] + r * r;
                 for (int h = 1; h <= n; ++h)
-                {
-                    Trig t;
-                    t.set (2.0 * M_PI * h * f0 / sr);
-                    table[(size_t) j][(size_t) h] = 10.0 * one.powerOne (t);
-                }
+                    table[(size_t) j][(size_t) h] = 10.0 * one.powerOne (trig[(size_t) h]);
             }
             for (int l = 0; l < lowPasses; ++l)
                 for (int h = 1; h <= n; ++h) lowTable[(size_t) l][(size_t) h] = lowPassDb (h * f0, lowPassHz[(size_t) l], sr);
@@ -156,7 +168,7 @@ public:
         for (int m = 0; m < previousCount; ++m)
         {
             Shape s = previous[(size_t) m];
-            s.cost = cost (s);
+            s.cost = cachedCost (s);
             descend (s);
             keep (s);
         }
@@ -175,7 +187,7 @@ public:
                     if (s.j[3] <= s.j[2] + 8) s.j[3] = std::min (gridN - 2, s.j[2] + 10);
                     if (s.j[4] <= s.j[3] + 8) s.j[4] = std::min (gridN - 1, s.j[3] + 10);
                     s.lp = 0;
-                    s.cost = cost (s);
+                    s.cost = cachedCost (s);
                     descend (s);
                     keep (s);
                 }
@@ -228,6 +240,26 @@ public:
         }
     }
 
+    // Tests: walk and cost exactly as up to 1.8.1 (no caches, cost() as it was written), to prove the faster fit gives the same answer.
+    bool asBefore = false;
+    long shapesCostedDifferently (int count) const noexcept
+    {
+        long differ = 0;
+        unsigned r = 12345u;
+        for (int k = 0; k < count; ++k)
+        {
+            Shape t;
+            for (int i = 0; i < formants; ++i) { r = r * 1103515245u + 12345u; t.j[(size_t) i] = (int) ((r >> 8) % gridN); }
+            std::sort (t.j.begin(), t.j.end());
+            r = r * 1103515245u + 12345u;
+            t.lp = (int) ((r >> 8) % lowPasses);
+            const double a = cost (t), b = costAsBefore (t);
+            if (std::memcmp (&a, &b, sizeof a) != 0) ++differ;
+        }
+        return differ;
+    }
+    const Shape& shapeFound (int m) const noexcept { return found[(size_t) m]; }
+
     const Shape& bestShape() const noexcept
     {
         int b = 0;
@@ -265,6 +297,54 @@ private:
     double cost (const Shape& s) const noexcept
     {
         if (! valid (s)) return 1.0e30;
+        // The same operations as up to 1.8.1, in the same order, so the same answer to the last bit; laid out so the processor can do the
+        // per harmonic parts side by side (Phase 2, 2026-11-13). sx, sxx and cnt do not depend on the shape: the same sums in the same
+        // order are worked out once a fit (fit()). Only the sums that run across the harmonics stay one after the other.
+        const double* lo = lowTable[(size_t) s.lp].data();
+        const double* r0 = table[(size_t) s.j[0]].data();
+        const double* r1 = table[(size_t) s.j[1]].data();
+        const double* r2 = table[(size_t) s.j[2]].data();
+        const double* r3 = table[(size_t) s.j[3]].data();
+        const double* r4 = table[(size_t) s.j[4]].data();
+        double y[maxH + 1];
+        for (int h = 1; h <= n; ++h)
+        {
+            double m = lo[h];
+            m += r0[h]; m += r1[h]; m += r2[h]; m += r3[h]; m += r4[h];
+            y[h] = db[(size_t) h] - m;
+        }
+        double sy = 0.0, sxy = 0.0;
+        for (int h = 1; h <= n; ++h)
+        {
+            if (! good[(size_t) h]) continue;
+            sy += y[h]; sxy += x[(size_t) h] * y[h];
+        }
+        const double sx = fitSx, sxx = fitSxx, cnt = fitCnt;
+        const double tw = settings.tiltWeight, t0 = settings.tiltDb;
+        const double a11 = cnt, a12 = sx, a22 = sxx + tw, b1 = sy, b2 = sxy + tw * t0;
+        const double det = a11 * a22 - a12 * a12;
+        const double slope = std::clamp ((a11 * b2 - a12 * b1) / std::max (1.0e-9, det), -24.0, 6.0);
+        const double level = (sy - slope * sx) / std::max (1.0, cnt);
+        double e[maxH + 1];
+        for (int h = 1; h <= n; ++h)
+            e[h] = y[h] - level - slope * x[(size_t) h];
+        double c = tw * (slope - t0) * (slope - t0);
+        for (int h = 1; h <= n; ++h)
+        {
+            if (good[(size_t) h]) c += e[h] * e[h];
+            else
+            {
+                const double over = db[(size_t) h] - e[h] - cap[(size_t) h];
+                if (over > 0.0) c += over * over;
+            }
+        }
+        return c;
+    }
+
+    // cost() as it was written up to 1.8.1, kept to prove the one above gives the same answer (PluginTest fitexact).
+    double costAsBefore (const Shape& s) const noexcept
+    {
+        if (! valid (s)) return 1.0e30;
         std::array<double, maxH + 1> y {};
         double sx = 0.0, sy = 0.0, sxx = 0.0, sxy = 0.0, cnt = 0.0;
         for (int h = 1; h <= n; ++h)
@@ -294,21 +374,48 @@ private:
         return c;
     }
 
-    void descend (Shape& s) const noexcept
+    // Walks downhill from s. The same walk as up to 1.8.1, step for step, with the same answer; only work already done in this fit is not
+    // done again (Phase 2, 2026-11-13). A full fit walked from about 120 starting shapes and costed up to 34,000 shapes, half of them more
+    // than once, and the walks from different starts run into each other after a few moves: that one fit took about 0.8 ms inside one
+    // output sample (AuBench's worst single block 37% of a 128 sample block, in High Quality on a held note). Now each shape is costed
+    // once a fit (cachedCost), and a walk that reaches a place another walk of this fit has already gone on from, at the same step size
+    // and with as many moves left, takes that walk's end at once: from there the rest of the walk is the same whichever way it came.
+    void descend (Shape& s) noexcept
     {
-        for (int step : { 8, 4, 2, 1 })
+        static constexpr int steps[4] = { 8, 4, 2, 1 };
+        struct Visit { std::uint64_t key; int stepIndex, guard; };
+        std::array<Visit, 4 * 64> path {};
+        std::array<int, 4> lastGuard { 0, 0, 0, 0 };
+        std::array<bool, 4> cut { false, false, false, false };
+        int visits = 0, jumpStep = -1;
+        bool jumpClean = true;
+        for (int stepIndex = 0; stepIndex < 4 && jumpStep < 0; ++stepIndex)
         {
+            const int step = steps[stepIndex];
             bool moved = true;
             int guard = 0;
             while (moved && ++guard < 64)
             {
+                const std::uint64_t here = keyOf (s);
+                if (const auto* d = asBefore ? nullptr : findDescent (here, stepIndex); d != nullptr && guard + d->moves - 1 < 64)
+                {
+                    // The walk from here was walked before in this fit and ended normally within the guard it has left.
+                    s = d->result;
+                    lastGuard[(size_t) stepIndex] = guard + d->moves - 1;
+                    jumpStep = stepIndex;
+                    jumpClean = true;
+                    moved = false;
+                    break;
+                }
+                path[(size_t) visits++] = { here, stepIndex, guard };
+                lastGuard[(size_t) stepIndex] = guard;
                 moved = false;
                 for (int i = 0; i < formants; ++i)
                     for (int dir : { -1, 1 })
                     {
                         Shape t = s;
                         t.j[(size_t) i] += dir * step;
-                        const double c = cost (t);
+                        const double c = cachedCost (t);
                         if (c < s.cost) { t.cost = c; s = t; moved = true; }
                     }
                 for (int l = 0; l < lowPasses; ++l)
@@ -316,10 +423,76 @@ private:
                     if (l == s.lp) continue;
                     Shape t = s;
                     t.lp = l;
-                    const double c = cost (t);
+                    const double c = cachedCost (t);
                     if (c < s.cost) { t.cost = c; s = t; moved = true; }
                 }
             }
+            if (moved) cut[(size_t) stepIndex] = true;   // stopped by the guard: what follows depends on how it got here
+        }
+        // Every place this walk went on from, with where the walk ended and how many moves of its own step it took from there.
+        bool cleanAfter = jumpClean;
+        int v = visits - 1;
+        for (int stepIndex = jumpStep >= 0 ? jumpStep : 3; stepIndex >= 0; --stepIndex)
+        {
+            cleanAfter = cleanAfter && ! cut[(size_t) stepIndex];
+            for (; v >= 0 && path[(size_t) v].stepIndex == stepIndex; --v)
+                if (cleanAfter && ! asBefore)
+                    storeDescent (path[(size_t) v].key, stepIndex, lastGuard[(size_t) stepIndex] - path[(size_t) v].guard + 1, s);
+        }
+    }
+
+    static std::uint64_t keyOf (const Shape& s) noexcept
+    {
+        std::uint64_t k = 0;
+        for (int i = 0; i < formants; ++i) k = (k << 8) | (std::uint64_t) (std::uint8_t) s.j[(size_t) i];
+        return (k << 3) | (std::uint64_t) s.lp;
+    }
+    static std::uint64_t slotOf (std::uint64_t key) noexcept { return (key * 0x9E3779B97F4A7C15ull) >> 40; }
+
+    // cost(), worked out once per shape per fit. A shape off the grid is never kept (its key would not be its own).
+    double cachedCost (const Shape& s) noexcept
+    {
+        if (asBefore) return costAsBefore (s);
+        if (! valid (s)) return 1.0e30;
+        const std::uint64_t key = keyOf (s), tag = (key << generationBits) | generation;
+        std::uint64_t at = slotOf (key) & (costSlots - 1);
+        for (int probe = 0; probe < 8; ++probe, at = (at + 1) & (costSlots - 1))
+        {
+            auto& slot = costs[(size_t) at];
+            if (slot.tag == tag) return slot.cost;
+            if ((slot.tag & generationMask) != generation)
+            {
+                const double c = cost (s);
+                slot.tag = tag;
+                slot.cost = c;
+                return c;
+            }
+        }
+        return cost (s);
+    }
+
+    struct Descent { std::uint64_t tag = 0; int moves = 0; Shape result; };
+    const Descent* findDescent (std::uint64_t key, int stepIndex) const noexcept
+    {
+        const std::uint64_t full = (key << 2) | (std::uint64_t) stepIndex, tag = (full << generationBits) | generation;
+        std::uint64_t at = slotOf (full) & (descentSlots - 1);
+        for (int probe = 0; probe < 8; ++probe, at = (at + 1) & (descentSlots - 1))
+        {
+            const auto& d = descents[(size_t) at];
+            if (d.tag == tag) return &d;
+            if ((d.tag & generationMask) != generation) return nullptr;
+        }
+        return nullptr;
+    }
+    void storeDescent (std::uint64_t key, int stepIndex, int moves, const Shape& result) noexcept
+    {
+        const std::uint64_t full = (key << 2) | (std::uint64_t) stepIndex, tag = (full << generationBits) | generation;
+        std::uint64_t at = slotOf (full) & (descentSlots - 1);
+        for (int probe = 0; probe < 8; ++probe, at = (at + 1) & (descentSlots - 1))
+        {
+            auto& d = descents[(size_t) at];
+            if (d.tag == tag) return;
+            if ((d.tag & generationMask) != generation) { d.tag = tag; d.moves = moves; d.result = result; return; }
         }
     }
 
@@ -346,6 +519,14 @@ private:
     std::array<Coefficients, maxMinima> coefficients {};
     int n = 0, minima = 0, previousCount = 0;
     double sr = 48000.0;
+    // The caches. A key is 43 bits (five grid places and a low pass), 45 with the step size; the generation fills the rest of the tag.
+    static constexpr int generationBits = 18, costSlots = 1 << 15, descentSlots = 1 << 13;
+    double fitSx = 0.0, fitSxx = 0.0, fitCnt = 0.0;
+    static constexpr std::uint64_t generationMask = (std::uint64_t (1) << generationBits) - 1;
+    struct CostSlot { std::uint64_t tag = 0; double cost = 0.0; };
+    std::vector<CostSlot> costs;
+    std::vector<Descent> descents;
+    std::uint64_t generation = 0;
 };
 
 // Straight lines in dB through the harmonics, flat outside them.

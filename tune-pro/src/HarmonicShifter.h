@@ -73,7 +73,12 @@ public:
 
     void reset() noexcept
     {
-        std::fill (stored.begin(), stored.end(), 0.0);
+        // The table is 245 KB. High Quality restarts the harmonic shifter on every output sample while Classic is on, and on every unvoiced
+        // sample once its frames have run out, so it was cleared up to 48,000 times a second whether anything was in it or not. It is
+        // cleared now only when something was stored since it was last cleared: the same table either way (Phase 2, 2026-11-13).
+        if (! storedClear)
+            std::fill (stored.begin(), stored.end(), 0.0);
+        storedClear = true;
         std::fill (sigma.begin(), sigma.end(), 0.0);
         std::fill (linked.begin(), linked.end(), 0);
         for (int k = 0; k < maxK; ++k) group[(size_t) k] = k;
@@ -121,6 +126,7 @@ public:
                     confirmed = -1.0;
                     louder = 0.0;
                     std::fill (stored.begin(), stored.end(), 0.0);
+                    storedClear = true;
                     fifoCount = 0;
                     anything = false;
                     std::fill (linked.begin(), linked.end(), 0);
@@ -219,6 +225,7 @@ private:
                 const double w = weightAt (at) + a;
                 level[at] += (float) ((p.level[(size_t) k] - level[at]) * a / std::max (1.0e-6, w));
                 stored[at] = std::min (w, 4.0) / decay;
+                storedClear = false;
             }
         anything = true;
     }
@@ -351,7 +358,7 @@ private:
     int fifoHead = 0, fifoCount = 0;
     double reference = 0.0, now = 0.0, decay = 1.0, lastSolve = -1.0;
     double louder = 0.0, confirmed = -1.0;   // dB this moment is over what was stored at its pitch, from the last moment that could tell
-    bool anything = false;
+    bool anything = false, storedClear = false;
 };
 
 class HarmonicShifter

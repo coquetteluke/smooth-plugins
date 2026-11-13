@@ -60,6 +60,9 @@ void KeyboardView::setNote (int pc, int mode)
     parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) mode));
     parameter->endChangeGesture();
     advance();
+    // The line under the mouse says what the key does now (up to 1.8.1 it kept describing the mode before the click).
+    if (pc == hovered)
+        sayHint();
 }
 
 void KeyboardView::cycleNote (int pc)
@@ -107,22 +110,23 @@ void KeyboardView::setHovered (int pc)
     hovered = pc;
     if (juce::isPositiveAndBelow (hovered, 12))
         repaint (keyBounds (hovered).getSmallestIntegerContainer());
+    sayHint();
+}
 
-    if (onHint)
+void KeyboardView::sayHint()
+{
+    if (! onHint)
+        return;
+    if (hovered < 0)
     {
-        if (pc < 0)
-        {
-            onHint ({});
-        }
-        else
-        {
-            const auto mode = modeOf (pc);
-            const char* now = mode == noteRemove ? " is removed, the tuner avoids it. Click to bypass it."
-                            : mode == noteBypass ? " is bypassed, it passes untouched. Click to tune it."
-                                                 : " is tuned. Click to remove it, click again to bypass it.";
-            onHint (juce::String (noteNames[pc]) + now);
-        }
+        onHint ({});
+        return;
     }
+    const auto mode = modeOf (hovered);
+    const char* now = mode == noteRemove ? " is removed, the tuner avoids it. Click to bypass it."
+                    : mode == noteBypass ? " is bypassed, it passes untouched. Click to tune it."
+                                         : " is tuned. Click to remove it, click again to bypass it.";
+    onHint (juce::String (noteNames[hovered]) + now);
 }
 
 void KeyboardView::mouseMove (const juce::MouseEvent& e) { setHovered (noteAt (e.position)); }
@@ -132,7 +136,7 @@ void KeyboardView::advance()
 {
     const auto r = processor.getReadings();
     const bool bypassed = bypassParam->load (std::memory_order_relaxed) > 0.5f;
-    const int lit = r.voiced && ! bypassed && r.targetNote >= 0 ? r.targetNote % 12 : -1;
+    const int lit = r.voiced && ! stale && ! bypassed && r.targetNote >= 0 ? r.targetNote % 12 : -1;
 
     if (lit != litShown)
     {

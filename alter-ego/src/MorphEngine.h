@@ -81,6 +81,7 @@ public:
         formantSmooth = smooth (0.030);
         blendSmooth = smooth (0.040);
         fadeSmooth = smooth (0.015);
+        airFall = smooth (0.003);
         rangeSmooth = smooth (0.150);
         learnRate = smooth (1.5);
         breathRate = 1.0 - std::exp (-1.0 / (0.006 * sr));
@@ -101,6 +102,8 @@ public:
         history.assign ((size_t) historySize, 0);
         periodHistory.assign ((size_t) historySize, 0.0);
         spacingSmooth = smooth (0.002);
+        leapHold = std::max (1, (int) std::lround (0.020 * tickRate));
+        settingTrusted = std::max (1, (int) std::lround (0.5 * tickRate));
         reset();
     }
 
@@ -127,6 +130,11 @@ public:
         std::fill (periodHistory.begin(), periodHistory.end(), 0.0);
         smoothedPeriod = 0.0;
         wasVoicedOut = false;
+        leapTicks = 0;
+        airWasVoiced = false;
+        airStartLeft = 0;
+        settingHeldTicks = 0;
+        lastSettingKey = 0.0;
         historyAt = 0;
         learned = 0.0;
         learnedFrames = 0;
@@ -189,7 +197,7 @@ public:
             // and they alone move when formants do. The de-emphasis after the filter puts the tilt back.
             const float tilted = mono - (float) tilt * lastMono;
             lastMono = mono;
-            envelope.push (tilted, formantRatio, control.voiced ? sharpen : 1.0, control.voiced && control.inputPeriod > 0.0 ? sr / control.inputPeriod : 0.0, ! control.noCorrection);
+            envelope.push (tilted, formantRatio, control.voiced ? sharpen : 1.0, control.voiced && control.inputPeriod > 0.0 ? sr / control.inputPeriod : 0.0, ! control.noCorrection, tracker.isVoiced(), fullEnvelope);
 
             // Input and dry paths
             const int writeAt = (int) (input & (long long) (delaySize - 1));
@@ -541,6 +549,13 @@ private:
 
         const double wantPitch = s.pitchSemitones + amount * c.pitchSemitones;
         const double wantFormant = s.formantSemitones + amount * c.formantSemitones;
+        fullEnvelope = std::abs (wantFormant) >= 2.0;
+        {
+            // How long the setting asked for has held, for the air share at starts below
+            const double key = wantPitch + 3.1 * wantFormant + 7.7 * amount * c.robot + 13.3 * amount * c.monster + 17.9 * s.whisper + 23.3 * s.vibratoCents;
+            settingHeldTicks = key == lastSettingKey ? std::min (settingHeldTicks + 1, 1 << 20) : 0;
+            lastSettingKey = key;
+        }
         if (! started)
         {
             // Nothing has played yet, so the settings can apply at once.
@@ -609,9 +624,23 @@ private:
         // stretch starts on its own period, and a jump of over a semitone is taken at once: gliding there from the last stretch's
         // period hands the envelope, for a frame or two, pitches that are not in the sound, and the fit to their "harmonics" made a
         // burst 20 dB over the voice on a real take (1.2.0).
-        const bool glide = control.voiced && wasVoicedOut && smoothedPeriod > 0.0 && std::abs (thenPeriod / smoothedPeriod - 1.0) < 0.06;
-        smoothedPeriod = glide ? smoothedPeriod + spacingSmooth * (thenPeriod - smoothedPeriod) : thenPeriod;
-        wasVoicedOut = control.voiced;
+        // A voice does not leap more than an octave and a bit up inside one stretch. Where a note ends or breaks the tracker can land on a
+        // period near 1 kHz for a few ms (take 01: 108 > 883 to 978 Hz at 100.27 s, 175 > 938 Hz at 21.67 s), and the grains and the
+        // envelope's fit followed it: the output 13 to 23 dB over the dry there. Through such a leap the grains keep the period of the note
+        // it came from until the leap has held for 20 ms (1.2.5). Passing the input through instead left notes unshifted where the voice
+        // went on (Male To Female, low notes unshifted 0.74 > 1.00%, limit 1).
+        const bool leapUp = control.voiced && wasVoicedOut && smoothedPeriod > 0.0 && thenPeriod < 0.45 * smoothedPeriod;
+        const bool leaping = leapUp && leapTicks < leapHold;
+        if (leaping)
+            ++leapTicks;
+        else if (! leapUp)
+            leapTicks = 0;
+        if (! leaping)
+        {
+            const bool glide = control.voiced && wasVoicedOut && smoothedPeriod > 0.0 && std::abs (thenPeriod / smoothedPeriod - 1.0) < 0.06;
+            smoothedPeriod = glide ? smoothedPeriod + spacingSmooth * (thenPeriod - smoothedPeriod) : thenPeriod;
+            wasVoicedOut = control.voiced;
+        }
         control.inputPeriod = smoothedPeriod;
         const double fromInput = (smoothedPeriod > 0.0 ? std::log2 (sr / smoothedPeriod) : 0.0) + (current.pitch + rangeNow) / 12.0;
         const double fromRobot = std::log2 (std::max (s.robotHz, 20.0)) + current.userPitch / 12.0;
@@ -622,7 +651,19 @@ private:
         readingOutHz = std::pow (2.0, fromInput + current.robot * (fromRobot - fromInput) + vibrato / 1200.0);
         wantedOutputPeriod = sr / readingOutHz;
         pulseGate += fadeSmooth * ((control.voiced ? 1.0 : 0.0) - pulseGate);
-        airShare += fadeSmooth * (std::clamp (((double) tracker.difference() - 0.05) / 0.15, 0.0, 1.0) - airShare);
+        // How much of the sound is noise, gliding over 15 ms. In the first 30 ms after a voiced start it falls in 3 ms instead: the voice is
+        // periodic at once, and while the share glided down from the silence before it the level match was held back for the first 30 ms
+        // of every phrase, which with formants moved by the bigger fit came out 1 to 2 dB short (1.2.5). Not with Whisper on: there the start
+        // took Old Singer's peak 0.8 dB higher (2.37 > 3.17 dB over the input's, limit 3). Nor in the half second after the setting
+        // changes, while the gain remembered from the old setting is still the start's guess: a start 190 ms after a move into Monster
+        // came out 3.1 dB over the voice (limit 3).
+        const double airWanted = std::clamp (((double) tracker.difference() - 0.05) / 0.15, 0.0, 1.0);
+        if (control.voiced && ! airWasVoiced && current.whisper <= 0.0 && settingHeldTicks > settingTrusted)
+            airStartLeft = (int) std::lround (0.030 * sr / tickEvery);
+        airWasVoiced = control.voiced;
+        airShare += (airStartLeft > 0 && airWanted < airShare ? airFall : fadeSmooth) * (airWanted - airShare);
+        if (airStartLeft > 0)
+            --airStartLeft;
         control.noCorrection = std::abs (current.pitch + rangeNow) < 1.0e-3 && current.robot <= 0.0 && current.monster <= 0.0 && std::abs (current.vibrato) <= 0.0;
         control.neutral = control.noCorrection && std::abs (current.formant) < 1.0e-3 && current.whisper < 1.0e-6;
         control.alternate = 0.10 * current.monster;
@@ -655,6 +696,11 @@ private:
     std::vector<uint8_t> history;
     std::vector<double> periodHistory;
     double spacingSmooth = 0.1, smoothedPeriod = 0.0;
+    int leapTicks = 0, leapHold = 30, airStartLeft = 0;
+    bool airWasVoiced = false, fullEnvelope = false;
+    int settingHeldTicks = 0, settingTrusted = 750;
+    double lastSettingKey = 0.0;
+    double airFall = 0.1;
     bool wasVoicedOut = false;
 
     Settings wanted;

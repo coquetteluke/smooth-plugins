@@ -21,7 +21,7 @@ namespace smoothmorph
 class EnvelopeEngine
 {
 public:
-    static constexpr int maxOrder = 80;
+    static constexpr int maxOrder = 96;
     static constexpr int updateEvery = 8; // samples between refreshed filter coefficients
     static constexpr int numBands = 64;   // readout for a later window: dB per band, up to 12 kHz
 
@@ -34,7 +34,12 @@ public:
         while ((1 << logN) < (int) std::lround (sr * 0.0213)) ++logN;
         N = 1 << logN;
         hop = N / 8;
-        order = std::clamp ((int) std::lround (sr / 1000.0), 16, maxOrder);
+        // Two poles per kHz of the band was too few: part of the vocal tract stayed in the whitened excitation and went back on unmoved,
+        // so Formant Shift moved formants only about 60% of the way (in dB) and a third of real frames read as not moved at all
+        // (Formant Shift -3 on a real take: 25% of frames, 77% of the notes under 120 Hz). Four per kHz at 48 kHz (1.2.5). From 88.2 kHz
+        // up the order stays 80, as before, so the CPU there stays where 1.2.4 put it.
+        order = sr < 80000.0 ? std::clamp ((int) std::lround (sr / 500.0), 16, maxOrder) : 80;
+        lineOrder = std::clamp ((int) std::lround (sr / 1000.0), 16, maxOrder); // the order up to 1.2.4
 
         if (setup != nullptr) vDSP_destroy_fftsetupD (setup);
         setup = vDSP_create_fftsetupD ((vDSP_Length) logN, kFFTRadix2);
@@ -83,12 +88,15 @@ public:
 
     // One mono sample, already pre-emphasised. ratio scales formants on frequency. sharpen above 1 makes peaks stand further
     // above valleys. pitchHz is the pitch if the sound is voiced, otherwise 0: it is what keeps harmonics out of the envelope.
-    void push (float x, double ratio, double sharpen, double pitchHz, bool shifted) noexcept
+    // inputVoiced is the tracker's word on the newest input, which is what this frame hears; pitchHz follows the voice at the output.
+    // fullOrder: the setting moves formants by 2 semitones or more (decided on the setting asked for, so the order does not change half
+    // way through a move).
+    void push (float x, double ratio, double sharpen, double pitchHz, bool shifted, bool inputVoiced = true, bool fullOrder = false) noexcept
     {
         input[(size_t) (count & (long long) (N - 1))] = (double) x;
         ++count;
         if (count >= N && ((count - N) & (long long) (hop - 1)) == 0)
-            analyse ((count - N) / hop, ratio, sharpen, pitchHz, shifted);
+            analyse ((count - N) / hop, ratio, sharpen, pitchHz, shifted, inputVoiced, fullOrder);
     }
 
     // Filter coefficients for one input index. Both use the same index grid, so a matched pair really does cancel.
@@ -106,6 +114,8 @@ private:
         std::array<double, maxOrder + 1> wantedLags {};
         double gain = 1.0, level = 0.0, leftover = 1.0;
         bool plain = true;
+        int order = 48;
+        bool lines = false;
     };
     static constexpr int numFrames = 64;
 
@@ -157,18 +167,19 @@ private:
     }
 
     // Levinson recursion to reflection coefficients. Returns the prediction error, in the units of the lags.
-    double levinson (double* lags, double* k) const noexcept
+    // p is the order of this fit; the stages past it stay 0.
+    double levinson (double* lags, double* k, int p) const noexcept
     {
         std::array<double, maxOrder + 1> a {};
         std::fill (k, k + order, 0.0);
         if (! (lags[0] > 0.0) || ! std::isfinite (lags[0]))
             return 0.0;
-        for (int l = 1; l <= order; ++l)
+        for (int l = 1; l <= p; ++l)
             lags[l] *= lagWindow[(size_t) l];
         lags[0] *= 1.0 + floorAmount; // a floor, 50 dB under the total, so a pure tone cannot make an endless resonance
         double error = lags[0];
         a[0] = 1.0;
-        for (int i = 1; i <= order; ++i)
+        for (int i = 1; i <= p; ++i)
         {
             double acc = lags[i];
             for (int j = 1; j < i; ++j)
@@ -185,9 +196,20 @@ private:
         return error;
     }
 
-    void analyse (long long frameIndex, double ratio, double sharpen, double pitchHz, bool shifted) noexcept
+    void analyse (long long frameIndex, double ratio, double sharpen, double pitchHz, bool shifted, bool inputVoiced, bool fullOrder) noexcept
     {
         Frame& f = frames[(size_t) (frameIndex & (numFrames - 1))];
+        // The full order only where formants are moved: there the part of the vocal tract a smaller fit leaves in the excitation goes back
+        // on unmoved (1.2.5). Where nothing moves it, the analysis and the filter that goes back on are the same shape whatever the order,
+        // and the order up to 1.2.4 is kept, so those settings are unchanged.
+        // The setting decides (fullOrder: a formant move of 2 semitones or more): smaller moves gain little, and Ghost Whisper (+1), Old
+        // Singer (-0.5), Deep Double (-1.8) and Robot keep their 1.2.4 envelope (with the bigger fit Deep Double peaked 3.7 dB over the
+        // input, limit 3, and Peak Guard clicked at Robot). Decided on the setting asked for, not on the gliding ratio, so a move does
+        // not change order half way. Not over 400 Hz: a voice that high has too few harmonics for more poles to help, and where the
+        // tracker lands near 1 kHz on a breath the bigger fit put the noise 20 dB over the dry. Voiced frames only: moved more exactly,
+        // the faint "pitch" the real vocal check reads in an S moved with the formants and counted as wrong notes.
+        frameOrder = fullOrder && pitchHz > 0.0 && pitchHz < highestFullOrderHz ? order : std::min (order, lineOrder);
+        f.order = frameOrder;
         const long long start = count - N;
         double energy = 0.0;
         for (int i = 0; i < N; ++i)
@@ -232,11 +254,15 @@ private:
             toLags (held, lags.data());
             // Not for a Robot: its one note lands on the envelope anywhere, and a fit that follows the harmonics of a voice in motion
             // moves with them, which at that note shows as wobble.
-            const bool useLines = pitchHz >= lowestLinesHz && sharpen == 1.0 && findLines (pitchHz);
+            // At the full order, only on a frame the tracker hears as voiced: the pitch handed in follows the output, a whole delay behind,
+            // and a fit through "harmonics" of the room noise after a note left the bottom of the band free, so the noise came out 15 to
+            // 20 dB too loud there (1.2.5).
+            const bool useLines = pitchHz >= lowestLinesHz && sharpen == 1.0 && (frameOrder <= lineOrder || inputVoiced) && findLines (pitchHz);
+            f.lines = useLines;
             if (useLines)
                 fitToLines (1.0, lags.data(), 1.0, true);
             const double heldLevel = lags[0];
-            const double errorHeld = levinson (lags.data(), f.analysis.data());
+            const double errorHeld = levinson (lags.data(), f.analysis.data(), frameOrder);
             f.leftover = heldLevel > 0.0 ? errorHeld / (heldLevel * (1.0 + floorAmount)) : 1.0;
             f.level = heldLevel;
 
@@ -324,7 +350,9 @@ private:
     // two harmonics and holds them down. The second fit of the frame (the filter that goes back on) is handed the same places.
     void fitToLines (double ratio, double* lags, double sharpen, bool findPlaces) noexcept
     {
-        const int p = order;
+        int p = frameOrder;
+        const bool midLines = frameOrder > lineOrder;
+        const int fitLimit = midLines ? maxFitLines : 2 * maxLines; // up to 1.2.4 the limit was 2 x maxLines, and frames at that order keep it
         if (findPlaces)
             numHeld = 0;
         std::array<double, maxOrder + 1> r {};
@@ -342,25 +370,37 @@ private:
             ++used;
         };
 
+        int voiceAdded = 0;
         for (int k = 0; k < numLines; ++k)
         {
             const double w = lineFrequency[(size_t) k] * ratio;
             if (w >= M_PI) break;
-            addLine (w, sharpen != 1.0 ? top * std::pow (linePower[(size_t) k] / top, sharpen) : linePower[(size_t) k]);
+            ++voiceAdded;
+            const double pk = sharpen != 1.0 ? top * std::pow (linePower[(size_t) k] / top, sharpen) : linePower[(size_t) k];
+            // Between two harmonics a fit with many poles is free to wander, and a moved formant then puts the wandering where the
+            // harmonics land. A point half way, at the two harmonics' mean level in dB, keeps it to the line between them (1.2.5).
+            if (midLines && k > 0 && used > 0)
+            {
+                const double wm = 0.5 * (w + lineFitFrequency[(size_t) used - 1]);
+                addLine (wm, std::sqrt (pk * lineFitPower[(size_t) used - 1]));
+            }
+            addLine (w, pk);
         }
         // Squeezed lines stop short of the top of the band. Carry on at their level, or the fit is free to do anything up there.
-        if (used >= 2 && used == numLines)
+        // Not with the points between the lines (the squeezed top is then left free): carried on with them as well, Formant Shift -3
+        // on the suite's made up 330 Hz voice wobbled 5.1 cents (limit 2) (measured while building 1.2.5).
+        if (! midLines && used >= 2 && voiceAdded == numLines)
         {
             const double spacing = lineFitFrequency[(size_t) used - 1] - lineFitFrequency[(size_t) used - 2];
             // One line up there is mostly noise, so take the level from several.
             double logLast = 0.0;
-            const int tail = std::min (used, 12);
-            for (int k = used - tail; k < used; ++k)
+            const int tail = std::min (numLines, 12);
+            for (int k = numLines - tail; k < numLines; ++k)
                 logLast += std::log (linePower[(size_t) k]);
             const double level = std::exp (logLast / tail);
             const double last = sharpen != 1.0 ? top * std::pow (level / top, sharpen) : level;
             double w = lineFitFrequency[(size_t) used - 1] + spacing;
-            while (w < M_PI && used < maxFitLines)
+            while (w < M_PI && used < fitLimit)
             {
                 addLine (w, last);
                 w += spacing;
@@ -368,13 +408,17 @@ private:
         }
         walkLines (0, used);
         addLines (r.data(), 0, used);
+        // The poles a fit through lines uses follow the number of lines (with the points half way between them, about 0.35 poles a line),
+        // from the order up to 1.2.4 (one per kHz) on a high voice up to the full order on a low one; the rest of the filter stays flat
+        // (its stages are 0). More, and the made up voices of the suite read formants moved by up to 6.9% (limit 5%) (1.2.5).
+        p = std::clamp ((int) (0.35 * used), std::min (frameOrder, lineOrder), frameOrder);
         if (used <= p + 2 || ! (r[0] > 0.0))
             return; // too few harmonics, or the top of the voice would go over the top of the band: keep the ordinary fit
         const int voiceLines = used;
         const std::array<double, maxOrder + 1> sums = r;
         std::array<double, maxOrder + 1> a {}, target {}, startLags {}, startK {};
         if (! findPlaces)
-            for (int k = 0; k < numHeld && used < maxFitLines; ++k)
+            for (int k = 0; k < numHeld && used < fitLimit; ++k)
             {
                 const double w = heldAt[(size_t) k] * ratio;
                 if (w >= M_PI) continue;
@@ -426,7 +470,7 @@ private:
         {
             a.fill (0.0);
             startLags = r;
-            const double startError = levinson (startLags.data(), startK.data());
+            const double startError = levinson (startLags.data(), startK.data(), frameOrder);
             if (! (startError > 0.0))
                 return;
             a[0] = 1.0;
@@ -486,7 +530,7 @@ private:
         };
         double atLine = modelAt (lineFitFrequency[0]);
         const double holdTop = 2.0 * M_PI * holdTopHz / sr;
-        for (int k = 0; k + 1 < voiceLines && used < maxFitLines && numHeld < maxHeld; ++k)
+        for (int k = 0; k + 1 < voiceLines && used < fitLimit && numHeld < maxHeld; ++k)
         {
             const double w0 = lineFitFrequency[(size_t) k], w1 = lineFitFrequency[(size_t) k + 1];
             if (w1 > holdTop)
@@ -543,16 +587,18 @@ private:
         out[0] = lags[0];
         double e = out[0];
         up[0] = 1.0;
-        for (int m = 1; m <= p; ++m)
+        for (int m = 1; m <= order; ++m)
         {
+            // Past the fit's own order the stages are 0, and this carries the curve's autocorrelation on.
+            const double km = m <= p ? ks[(size_t) m] : 0.0;
             double acc = 0.0;
             for (int j = 1; j < m; ++j) acc += up[(size_t) j] * out[(size_t) (m - j)];
-            out[(size_t) m] = -ks[(size_t) m] * e - acc;
-            stepUp (up.data(), m, ks[(size_t) m]);
-            up[(size_t) m] = ks[(size_t) m];
-            e *= 1.0 - ks[(size_t) m] * ks[(size_t) m];
+            out[(size_t) m] = -km * e - acc;
+            stepUp (up.data(), m, km);
+            up[(size_t) m] = km;
+            e *= 1.0 - km * km;
         }
-        for (int l = 0; l <= p; ++l) lags[l] = out[(size_t) l];
+        for (int l = 0; l <= order; ++l) lags[l] = out[(size_t) l];
     }
 
     // Each line's rotating pair, cos and sin of l times its frequency for l = 0 to order, as the fit has always walked it. Eight lines
@@ -760,17 +806,25 @@ private:
             return;
         }
         std::array<double, maxOrder + 1> sum {};
+        int p = 0;
         for (long long k = -lead; k <= lead; ++k)
         {
             const long long at = m + k;
             if (at < 0) continue;
             const Frame& other = frames[(size_t) (at & (numFrames - 1))];
+            // At the full order a frame fitted through harmonics and one fitted the ordinary way are not averaged together: the
+            // ordinary fit of room noise next to a note stands 30 dB over the harmonics' fit at the bottom of the band, and averaged
+            // over both, the filter lifted the noise by 15 to 20 dB (1.2.5).
+            if (f.order > lineOrder && k != 0 && other.lines != f.lines)
+                continue;
+            p = std::max (p, other.order);
             const double weight = (double) (lead + 1 - std::abs (k));
             for (int l = 0; l <= order; ++l)
                 sum[(size_t) l] += weight * other.wantedLags[(size_t) l];
         }
         const double total = sum[0];
-        const double error = levinson (sum.data(), f.synthesis.data());
+        p = std::max (std::min (p, f.order), std::min (order, lineOrder)); // this frame's own order: an ordinary frame next to a note keeps its own
+        const double error = levinson (sum.data(), f.synthesis.data(), p);
         const double leftoverOut = total > 0.0 ? error / (total * (1.0 + floorAmount)) : 1.0;
         const double wanted = std::max (f.wantedLags[0], 0.0);
         f.gain = f.level > 0.0 && f.leftover > 0.0 ? std::clamp (std::sqrt (leftoverOut * wanted / (f.leftover * f.level)), 0.1, 10.0) : 1.0;
@@ -799,12 +853,13 @@ private:
     }
 
     double sr = 48000.0;
+    int lineOrder = 48, frameOrder = 48;
     int logN = 10, N = 1024, hop = 128, order = 48;
     long long count = 0;
     FFTSetupD setup = nullptr;
     std::vector<double> input, frame, window, real, imag, power, warped, held, lagWindow;
     static constexpr int maxLines = 192;
-    static constexpr int maxFitLines = 2 * maxLines;
+    static constexpr int maxFitLines = 3 * maxLines; // the voice's lines, a point between each two, the top carried on, held places
     std::array<double, maxLines> lineFrequency {}, linePower {};
     std::array<double, maxFitLines> lineFitFrequency {}, lineFitCos {}, lineFitSin {}, lineFitPower {};
     static constexpr int rowStride = maxOrder + 1;
@@ -819,6 +874,7 @@ private:
     int numLines = 0;
     static constexpr int fitRounds = 3;
     static constexpr int heldRounds = 1;
+    static constexpr double highestFullOrderHz = 400.0;
     static constexpr double lowestLinesHz = 150.0; // below this a 21 ms window does not see separate harmonics
     static constexpr double gainRise = 2.0;         // 6 dB over the recent average
     double gainMean = 1.0;

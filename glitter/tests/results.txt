@@ -212,7 +212,7 @@ PASS  Pitch -1 octaves 0 semitones on A3, 95th percentile against the wanted not
 PASS  Pitch 0 octaves 5 semitones on A3, 95th percentile against the wanted note = 0.009 cents
 PASS  Pitch 0 octaves -7 semitones on A3, 95th percentile against the wanted note = 0.005 cents
 PASS  Pitch 1 octaves -5 semitones on A3, 95th percentile against the wanted note = 0.010 cents
-PASS  Pitch -2 octaves 0 semitones on A3, 95th percentile against the wanted note = 0.013 cents
+PASS  Pitch -2 octaves 0 semitones on A3, 95th percentile against the wanted note = 0.003 cents
 PASS  Pitch 0 octaves 12 semitones on A3, 95th percentile against the wanted note = 0.016 cents
 PASS  Pitch off with Octave 2 stays on A3, offset = 1.732 cents
 PASS  A3 +30 cents, tuned and shifted up 3: on C4, 95th percentile = 0.006 cents
@@ -373,10 +373,10 @@ INFO  Throat steady step 0.00377, switching step 0.00377, steady bend 0.000111, 
 PASS  Throat on and off does not click, biggest step = 0.004 
 INFO  Motion steady step 0.00962, switching step 0.00901, steady bend 0.000363, switching bend 0.000363
 PASS  Motion on and off does not click, biggest step = 0.009 
-INFO  Harmony steady step 0.00658, switching step 0.00657, steady bend 0.000253, switching bend 0.000251
-PASS  Harmony on and off does not click, biggest step = 0.007 
-INFO  Doubler steady step 0.00538, switching step 0.00511, steady bend 0.000271, switching bend 0.000224
-PASS  Doubler on and off does not click, biggest step = 0.005 
+INFO  Harmony steady step 0.00786, switching step 0.00785, steady bend 0.000326, switching bend 0.000322
+PASS  Harmony on and off does not click, biggest step = 0.008 
+INFO  Doubler steady step 0.00722, switching step 0.00677, steady bend 0.000445, switching bend 0.000362
+PASS  Doubler on and off does not click, biggest step = 0.007 
 INFO  Vocoder steady step 0.00935, switching step 0.01690, steady bend 0.006226, switching bend 0.006806
 PASS  Vocoder on and off does not click, biggest step = 0.017 
 INFO  Distortion steady step 0.00447, switching step 0.00458, steady bend 0.000126, switching bend 0.000199
@@ -392,8 +392,8 @@ PASS  Reverb on and off does not click, biggest step = 0.006
 PASS  Pitch on, on a say voice: difference from off = 2.915 dB
 PASS  Throat on, on a say voice: difference from off = -13.156 dB
 PASS  Motion on, on a say voice: difference from off = 2.895 dB
-PASS  Harmony on, on a say voice: difference from off = -5.713 dB
-PASS  Doubler on, on a say voice: difference from off = -9.099 dB
+PASS  Harmony on, on a say voice: difference from off = -2.615 dB
+PASS  Doubler on, on a say voice: difference from off = -3.078 dB
 PASS  Vocoder on, on a say voice: difference from off = 0.349 dB
 PASS  Distortion on, on a say voice: difference from off = -15.861 dB
 PASS  Filter on, on a say voice: difference from off = 2.245 dB
@@ -409,7 +409,7 @@ PASS    both sides have signal = -17.951 dBFS
 PASS    and the same as mono in, mono out, difference = -240.000 dB
 PASS  mono in, stereo out is an accepted layout
 PASS  mono in, stereo out, all on: finite
-PASS  mono in, stereo out, all on: side against left = -1.451 dB
+PASS  mono in, stereo out, all on: side against left = -1.474 dB
 PASS  stereo in: a 12 dB louder left stays 12 dB louder = 12.041 dB
 PASS  all on: no playhead against a playhead from bar 1 at 120 BPM, difference = -240.000 dB
 PASS  all on: a playhead with no tempo falls back to 120 BPM, difference = -240.000 dB
@@ -418,8 +418,8 @@ PASS  all on: block 32 against 137, difference = -240.000 dB
 PASS  all on: prepareToPlay again gives the same output, difference = -240.000 dB
 PASS  all on: state saved and loaded gives the same output, difference = -240.000 dB
 PASS  all on: recovers after NaN, infinity and huge input, peak in the last second = 0.519 
-PASS  all on at 44100 Hz: finite, with signal, level = -18.496 dBFS
-PASS  all on at 96000 Hz: finite, with signal, level = -17.004 dBFS
+PASS  all on at 44100 Hz: finite, with signal, level = -18.509 dBFS
+PASS  all on at 96000 Hz: finite, with signal, level = -16.762 dBFS
 PASS  readings send nothing to the host while audio runs, parameter changes = 0.000 
 PASS  a reading is not automatable
 PASS  Detected Pitch reads the voice = 222.003 Hz
@@ -501,9 +501,9 @@ PASS  the smallest saved size lays out = 481.000
 PASS  Advanced saved open stays open
 PASS  window open and drawing against no window, must be exact zero, difference = -240.000 dB
 PASS  20 windows opened and closed with no audio
-PASS  40 windows opened, drawn and closed with audio running, blocks processed = 368.000 
-INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 1.830 %
-PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 3.189 %
+PASS  40 windows opened, drawn and closed with audio running, blocks processed = 385.000 
+INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 1.867 %
+PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 3.193 %
 PASS  Alto/Tenor, held notes under its range, 78 to 92 Hz, output pitch error at instant speed, worst 95th percentile = 0.004 cents
 INFO    worst case is at = 92.499 Hz
 PASS  Alto/Tenor, 87 Hz with vibrato +/-30 cents and breath, output pitch error at instant speed, 95th percentile = 1.328 cents
@@ -558,4 +558,72 @@ PASS  tracker on a held 220 Hz voice whose every other period is weaker: reading
 PASS  tracker on Luke's take 01 from 8.30 to 8.60 s (held notes at 200 to 215 Hz): readings an octave off, 1 ms each = 0.000 
 PASS  tracker on Luke's take 01 from 12.40 to 12.70 s (held notes at 200 to 215 Hz): readings an octave off, 1 ms each = 0.000 
 PASS  tracker on Luke's take 01 from 71.60 to 71.90 s (held notes at 200 to 215 Hz): readings an octave off, 1 ms each = 0.000 
+PASS  Reverb switched on after one 5 sample block: its tail after the burst, level = -30.084 dBFS
+PASS  Reverb switched on after one 5 sample block: RT60 at Decay 2 s = 1.760 s
+PASS  Reverb switched on in 137 sample blocks: its tail after the burst, level = -30.172 dBFS
+PASS  Reverb switched on in 137 sample blocks: RT60 at Decay 2 s = 1.720 s
+PASS  Pitch -2 octaves on A3 sung 30 cents sharp: on A1, 95th percentile = 0.002 cents
+PASS  Harmony -24 on A3 sung 30 cents sharp: the added voice on A1, off by = 0.000 cents
+PASS  Pitch +2 octaves +7 on A3: E5, the most two octaves reach, in tune, 95th percentile = 0.037 cents
+PASS  Reverb Pre-Delay jumping 0 to 103 ms while playing, biggest step (steady 0.0122) = 0.013 
+PASS  Filter Riser to Dub Throw: Delay on at 1/8 Dotted throughout, states a block could have started on that were wrong = 0.000 
+PASS  Phone Line again: Filter, Distortion and +10.8 dB throughout, states a block could have started on that were wrong = 0.000 
+PASS  Doubler Timing jumping 5 to 60 ms, Detune 0: the doubled side's pitch over the next 150 ms, worst = 19.753 cents
+PASS  Doubler Timing jumping 60 to 5 ms, Detune 0: the doubled side's pitch over the next 150 ms, worst = 18.396 cents
+PASS  Doubler Timing jumping 22 to 40 ms, Detune 0: the doubled side's pitch over the next 150 ms, worst = 7.799 cents
+PASS  Input Type Alto/Tenor to Low Male with the Doubler on: biggest step 10 to 30 ms after (steady 0.0065) = 0.007 
+PASS  mono in and out: the doubles at Width 100 against Width 0 = 0.000 dB
+PASS  mono in and out: two Harmony voices at Width 80 against Width 0 = 0.000 dB
+PASS  Follow Key: the audio thread reads the followed key in one load, reads in readSettings = 1.000 
+INFO  Follow Key stress: blocks read while the file flips between C major and A minor = 384354.000 
+INFO  Follow Key stress: blocks that read a key neither file holds (C minor or A major) = 0.000 
+PASS  Harmony Interval +7 to -5 set in a pause: the next phrase's first 10 ms against -5, worst = 0.000 semitones
+PASS  Reset after Delay at Feedback 90 and Reverb: peak of the 2 s after = -240.000 dBFS
+PASS  a note on still in the latency queue at a Reset is dropped, notes held after = 0.000 
+PASS  Reset allocates nothing, allocations = 0.000 
+PASS  all on: play, Reset, play against a new instance, difference = -240.000 dB
+PASS  Reset before prepareToPlay is safe
+PASS  the Reset that comes with bypass switching on changes nothing, difference = -240.000 dB
+PASS  a later Reset while bypassed clears the tails, peak after = -240.000 dBFS
+INFO  Filter Cutoff 20 Hz to 20 kHz, fastest move of the cutoff in 16 samples = 0.165 octaves
+PASS  Filter Sweep Depth 0 to 4 at the top of the sweep: fastest move in 16 samples = 0.066 octaves
+PASS  Filter Sweep Rate 1 Bar to 1/4 mid sweep: fastest move in 16 samples = 0.020 octaves
+PASS  reading targetNote: its text reads back as itself, values that did not, of 129 = 0.000 
+PASS  reading activeKey: its text reads back as itself, values that did not, of 132 = 0.000 
+PASS  offline bounce: a Key change is taken within 0.4 s of audio, active key after (E is 4) = 4.000 
+PASS  a Manual key from Key 1.7.2 (listening false) is followed, active key (E is 4) = 4.000 
+PASS  a Manual key written 239 s ago is still followed (A minor)
+PASS  a Locked key from a Key that has closed (listening false, old time) is followed, active key = 2.000 
+PASS  Dub Throw chosen, saved and loaded: the preset named = 8.000 
+INFO  1.2.4 session v1.2.4-octave-monster: against what the installed 1.2.4 played, -240.0 dB
+INFO  1.2.4 session v1.2.4-dub-throw: against what the installed 1.2.4 played, -240.0 dB
+INFO  1.2.4 session v1.2.4-synth-voice: against what the installed 1.2.4 played, -240.0 dB
+INFO  1.2.4 session v1.2.4-filter-riser: against what the installed 1.2.4 played, -240.0 dB
+INFO  1.2.4 session v1.2.4-robot-stack: against what the installed 1.2.4 played, -240.0 dB
+INFO  1.2.4 session v1.2.4-alien-ring: against what the installed 1.2.4 played, -240.0 dB
+INFO  1.2.4 session v1.2.4-wide-double: against what the installed 1.2.4 played, -240.0 dB
+INFO  1.2.4 session v1.2.4-power-harmony: against what the installed 1.2.4 played, -240.0 dB
+INFO  1.2.4 session v1.2.4-default: against what the installed 1.2.4 played, -240.0 dB
+PASS  sessions saved by 1.2.4 name no preset (Choose a preset), sessions = 9.000 
+PASS  sessions saved by 1.2.4 play what the installed 1.2.4 played, worst difference = -240.000 dB
+PASS  Advanced open, no audio: frames where the hidden module picture still says it moved, of 10 = 0.000 
+PASS  the strip asks to be drawn when the last voiced point leaves it (1 yes, 0 no) = 1.000 
+PASS  the Advanced button with 13 changes: 'Advanced (13)' fits in 128 px, width = 93.835 px
+PASS  the header names the plug-in: Glitter
+PASS  the header's name fits its 110 px
+PASS  the Harmony picture after Motion showed A3 and E4 is sung: the same as a new window's (E4)
+PASS  Advanced at the click (glides) and fully open 0.4 s later, open at the click = 0.000 
+PASS  a state with Advanced open on Ring loaded into an open window: the module shown (8 wanted) = 8.000 
+PASS  closing Advanced then shows Ring's tab = 8.000 
+PASS  the strip's picture placed by the count it was drawn to, paints that were not, of 3000 = 0.000 
+PASS  the footer hint ends before 'Adds 13.7 ms', overlap = -12.000 px
+PASS  bypassed with Pitch +12 on: the correction bar's reach = 0.000 px
+PASS  Band Pass at Resonance 100, the dot dropped on the drawn peak: Resonance after = 100.000 %
+PASS  typing '2.5k Hz' gives 2500 Hz = 2500.000 Hz
+PASS  typing '1.2 kHz' gives 1200 Hz = 1200.000 Hz
+PASS  Harmony +24: the output note (A3, 57) inside the strip's range, lowest shown = 47.500 
+PASS  Follow Key on with no key file: the header says ''
+PASS  Follow Key on with a Custom scale: the header says ''
+PASS  Follow Key on with a good key file: the header says 'Following D Major'
+PASS  Advanced closing: frames where its page covered Output Gain, of 12 = 0.000 
 RESULT PASS  0 failures

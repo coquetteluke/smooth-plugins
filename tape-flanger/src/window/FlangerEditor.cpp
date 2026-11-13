@@ -34,6 +34,13 @@ public:
         hint = "Starting points. Click the name for the full list.";
         setComponentID ("presets");
         setTitle ("Presets");
+        refresh();
+    }
+
+    // What the box reads. With no preset known (a new instance, or a session saved before 1.2.7) it names none, in the muted colour.
+    juce::String shownName() const
+    {
+        return shown >= 0 ? processor.getProgramName (shown) : juce::String ("Choose a preset");
     }
 
     void refresh()
@@ -41,6 +48,7 @@ public:
         if (processor.getCurrentProgram() != shown)
         {
             shown = processor.getCurrentProgram();
+            setDescription (shownName());   // what the box reads, for screen readers and the window tests
             repaint();
         }
     }
@@ -50,9 +58,9 @@ public:
         const auto b = getLocalBounds().toFloat();
         g.setColour (zone != none ? tone::raisedLit : tone::raised);
         g.fillRect (b);
-        g.setColour (tone::text);
+        g.setColour (shown >= 0 ? tone::text : tone::muted);
         g.setFont (font (Weight::regular, 14.0f));
-        g.drawText (processor.getProgramName (processor.getCurrentProgram()), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
+        g.drawText (shownName(), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
 
         const auto chevron = [&] (float cx, float direction, bool lit)
         {
@@ -79,7 +87,7 @@ public:
 
         if (hit == previous)
         {
-            processor.setCurrentProgram ((current + count - 1) % count);
+            processor.setCurrentProgram (current < 0 ? count - 1 : (current + count - 1) % count);   // from no preset, the last one
         }
         else if (hit == next)
         {
@@ -125,7 +133,7 @@ private:
 
     PluginProcessor& processor;
     Zone zone = none;
-    int shown = -1;
+    int shown = -2; // nothing drawn yet
 };
 
 // ---- the big number: where the wet deck is right now ------------------------------------------------------------
@@ -383,10 +391,10 @@ public:
           saturation (p.apvts, "saturation", "Saturation", "Tape grit going onto the wet deck, inside the feedback.", ParamCell::Size::main, ParamCell::Unit::percent),
           toneCell (p.apvts, "tone", "Tone", "Brighter or darker wet, above 4 kHz.", ParamCell::Size::main, ParamCell::Unit::signedDb),
           spread (p.apvts, "spread", "Spread", "Puts the right side's sweep ahead of the left, the second line in the field. LFO only.", ParamCell::Size::main, ParamCell::Unit::degrees),
-          mix (p.apvts, "mix", "Mix", "Dry and wet. 50% gives the deepest notches.", ParamCell::Size::main, ParamCell::Unit::percent),
+          mix (p.apvts, "mix", "Mix", "Dry and wet. 50% gives the deepest notches. Mix 0 is not a bypass: use Bypass for that.", ParamCell::Size::main, ParamCell::Unit::percent),
           sync (p.apvts, "sync", "Sync", "Take the sweep speed from the song's tempo."),
           invert (p.apvts, "invert", "Invert phase", "Flips the wet. At Mix 50 the sound cancels right at the crossing."),
-          bypass (p.apvts, "bypass", "Bypass", "Fades the wet out and keeps the same delay."),
+          bypass (p.apvts, "bypass", "Bypass", "Passes the input through untouched and in time. Input and Output Gain drop out too."),
           advancedButton ("Advanced", "Sweep shape, tape drift and cuts on the wet."),
           sweepPicture (p.apvts),
           lfoShape (p.apvts, "lfoshape", "Shape", "Triangle at 0, Sine at 50, Square at 100.", ParamCell::Size::compact, ParamCell::Unit::words),
@@ -514,13 +522,23 @@ public:
         ParamCell* row[] = { manual ? &flange : (synced ? &division : &rate), manual ? &fade : &depth, &feedback, &mix, &saturation, &toneCell, &spread };
         const int count = (int) std::size (row);
         const int gap = 26;
+        const int syncWidth = 44;
         const int cellWidth = (contentRight - margin - gap * (count - 1)) / count;
 
-        for (int i = 0; i < count; ++i)
-            row[i]->setBounds (margin + i * (cellWidth + gap), cellsTop, cellWidth, cellsHeight);
+        // In LFO the first cell carries the Sync pill. When the row is narrow (Advanced open) it gets room for its name beside the pill,
+        // Rate or Length, whichever is longer so the row does not move when Sync changes, and the other six share what is left.
+        // Up to 1.2.6 Length was cut to "Len" there.
+        const int firstWidth = manual ? cellWidth : juce::jmax (cellWidth, (int) std::ceil (juce::jmax (rate.labelWidth(), division.labelWidth())) + 6 + syncWidth);
+        const int otherWidth = firstWidth == cellWidth ? cellWidth : (contentRight - margin - gap * (count - 1) - firstWidth) / (count - 1);
 
-        const int syncWidth = 44;
-        sync.setBounds (margin + cellWidth - syncWidth, cellsTop, syncWidth, 20);
+        for (int i = 0, x = margin; i < count; ++i)
+        {
+            const int w = i == 0 ? firstWidth : otherWidth;
+            row[i]->setBounds (x, cellsTop, w, cellsHeight);
+            x += w + gap;
+        }
+
+        sync.setBounds (margin + firstWidth - syncWidth, cellsTop, syncWidth, 20);
         rate.setHeaderInset (syncWidth);
         division.setHeaderInset (syncWidth);
 

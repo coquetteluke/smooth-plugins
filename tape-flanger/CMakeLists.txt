@@ -8,7 +8,7 @@ set(SP_NAME    "Tape Flanger")
 set(SP_CODE    STfl)
 set(SP_BUNDLE  "com.lukegarito.smoothtapeflanger")
 set(SP_DESC    "Through-zero tape style flanger")
-set(SP_VERSION 1.2.6)
+set(SP_VERSION 1.2.7)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice

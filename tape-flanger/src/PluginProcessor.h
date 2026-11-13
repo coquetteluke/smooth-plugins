@@ -8,13 +8,19 @@
 
 // Through-zero flanger. The dry path sits on a fixed delay and a swept copy moves to either side of it,
 // so the wet to dry delay crosses zero and goes negative. The fixed delay is the reported latency.
-class PluginProcessor final : public juce::AudioProcessor
+class PluginProcessor final : public juce::AudioProcessor,
+                              private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     PluginProcessor();
+    ~PluginProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
+    /** The host's Reset (a stop, a locate) puts everything where prepareToPlay does: empty delay lines, the feedback tail and filters at
+        rest, the sweep and drift back at their start, every control where it is set, and the next start snaps to the bar. Allocates
+        nothing. Up to 1.2.6 it did nothing at all. */
+    void reset() override;
     bool isBusesLayoutSupported (const BusesLayout&) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -28,6 +34,8 @@ public:
     double getTailLengthSeconds() const override { return 4.0; } // feedback ring out at the top setting, with Delay at its longest
 
     int getNumPrograms() override;
+    /** The preset last chosen, saved with the session since 1.2.7. -1 for none: a new instance (the defaults are no preset), or a
+        session saved before 1.2.7, which does not say. */
     int getCurrentProgram() override { return currentProgram; }
     void setCurrentProgram (int) override;
     const juce::String getProgramName (int) override;
@@ -66,6 +74,7 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
 
     void configure (double sampleRate, int samplesPerBlock);
+    void parameterChanged (const juce::String&, float) override;
     void snapToParameters();
     void readTargets();
     void followHostTransport();
@@ -155,7 +164,13 @@ private:
     double correctionTick = 0, loopMinSamples = 0, loopLowDelay = 0;
     float loopLowCoeff = 0, loopHighCoeff = 0;
 
-    int currentProgram = 0;
+    int currentProgram = -1;
+
+    // JUCE's AU wrapper resets straight after the host turns its own bypass on. That one Reset is skipped, so the 20 ms fade to the
+    // input plays out from the running effect (a Reset clears the kept input too). Only a Reset within 50 ms of the switch, with no
+    // block played more than 5 ms after it, counts. As in Tape Chorus 0.6.0.
+    std::atomic<double> bypassOnAt { -1.0e9 };
+    std::atomic<bool> bypassWasOn { false };
 
     std::atomic<float> readDeck[2], readGate { 1.0f }, readIn[2], readOut[2];
     std::array<std::array<std::atomic<float>, (size_t) outputTapSize>, 2> outputTap {};

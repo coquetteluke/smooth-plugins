@@ -44,4 +44,18 @@ PASS  A damaged window size goes back in range  1560.000
 PASS  An older session opens at the default size  0.000 
 PASS  Opened and closed 30 times under audio  0.000 
 PASS  Opened and closed 30 times with no audio and no prepare  0.000 
-46 passed, 0 failed
+PASS  Length: typing 'quarter' (no choice) leaves 1/4, index  8.000 
+PASS  Length: typing '4 bars x' leaves 1/4, index  8.000 
+PASS  Length: typing '1 Bar' picks 1 bar, index  3.000 
+PASS  a new instance's preset box reads 'Choose a preset', reads 'Choose a preset'  0.000 
+PASS  after choosing Hollow Inverted it reads 'Hollow Inverted'  0.000 
+PASS  LFO: Shift drag further out on the early side raises Depth a little, from 3.000 to  3.060 ms
+PASS  LFO: Shift drag further out on the late side raises Depth a little, from 3.000 to  3.060 ms
+PASS  every control's name fits, Sync on, Advanced open, names cut off  0.000 
+PASS  every control's name fits, Sync on, Advanced shut, names cut off  0.000 
+PASS  the violet ramp is premultiplied once, worst channel off by  1.000 of 255
+PASS  the Bypass hint says the input passes untouched: 'Passes the input through untouched and in time. Input and Output Gain drop out too.'  0.000 
+PASS  the Mix hint says Mix 0 is not a bypass: 'Dry and wet. 50% gives the deepest notches. Mix 0 is not a bypass: use Bypass for that.'  0.000 
+PASS  both hints fit the hint line without shrinking, too long  0.000 
+PASS  no em dash in either hint  0.000 
+60 passed, 0 failed

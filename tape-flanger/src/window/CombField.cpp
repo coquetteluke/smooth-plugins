@@ -103,8 +103,7 @@ namespace ui
             const float f = (t - stops[s2].at) / (stops[s2 + 1].at - stops[s2].at);
             const auto c = stops[s2].colour.interpolatedWith (stops[s2 + 1].colour, f);
             const float a = stops[s2].alpha + f * (stops[s2 + 1].alpha - stops[s2].alpha);
-            wakeColours[(size_t) i] = premultiplied (c, a);
-            wakeColours[(size_t) i].premultiply();
+            wakeColours[(size_t) i] = premultiplied (c, a);   // once: up to 1.2.6 it was premultiplied a second time here, so quiet sound darkened the picture
         }
 
         settings = readSettings();
@@ -894,9 +893,13 @@ namespace ui
                 fineDrag = true;
                 fineAnchorX = x;
                 fineAnchorValue = manual ? flangeRaw->load() : depthRaw->load();
+                // In LFO either side sets Depth, so the fine drag measures from the side the hand is on. Up to 1.2.6 it always took the
+                // late side, and on the early side Shift turned the drag round.
+                if (! manual && x < xOfMs (settings.delay))
+                    fineAnchorValue = -fineAnchorValue;
             }
 
-            const float at = xOfMs (settings.delay + (manual ? fineAnchorValue : fineAnchorValue));
+            const float at = xOfMs (settings.delay + fineAnchorValue);
             x = at + (x - fineAnchorX) * 0.2f;
         }
         else

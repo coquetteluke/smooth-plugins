@@ -258,12 +258,19 @@ namespace
     struct TestHead : juce::AudioPlayHead
     {
         double bpm = 120.0, ppq = 0.0; bool playing = true, tempoKnown = true;
+        int numerator = 0, denominator = 4; // added in 1.2.7: a time signature and the last bar start, as Logic reports them. 0 reports none.
         juce::Optional<PositionInfo> getPosition() const override
         {
             PositionInfo info;
             if (tempoKnown) info.setBpm (bpm);
             info.setPpqPosition (ppq);
             info.setIsPlaying (playing);
+            if (numerator > 0)
+            {
+                const double bar = 4.0 * numerator / denominator;
+                info.setTimeSignature (TimeSignature { numerator, denominator });
+                info.setPpqPositionOfLastBarStart (std::floor (ppq / bar + 1.0e-9) * bar);
+            }
             return info;
         }
     };
@@ -1838,41 +1845,457 @@ static void testBypassSwitchClicks()
     }
 }
 
+// ---- Added in 1.2.7, Phase 2. Each was written and run on 1.2.6 first. -----------------------------------------------------------
+
+// The wet to dry delay on the left after each host block, read the way the window reads it.
+static std::vector<float> deckTrace (PluginProcessor& p, const std::vector<float>& in, int block, std::function<void (int)> beforeBlock)
+{
+    std::vector<float> trace;
+    render (p, in, block, nullptr, [&] (int idx)
+    {
+        if (idx > 0) trace.push_back (p.getReadings().deckOffsetMs[0]);
+        if (beforeBlock) beforeBlock (idx);
+    });
+    trace.push_back (p.getReadings().deckOffsetMs[0]);
+    return trace;
+}
+
+// tape-flanger-r2-1. A Logic cycle region that jumps back by a whole number of sweeps must leave the sweep where it is. The lock works on
+// a pair of cycles (for Swing), and 1.2.6 raced through a whole cycle in about 150 ms at every loop point when the jump was an odd
+// number of cycles. Against a playhead that never jumps, which wants the same place in the sweep.
+// Limit: the delay stays within 0.05 ms of it from 20 ms after the jump to 1 s after (a race through the sweep is the full Depth).
+static void testSyncLoopJump()
+{
+    const double sr = 48000.0;
+    const int block = 128;
+    struct Case { int division; double loopBeats; const char* name; };
+    for (const auto& c : { Case { 3, 4.0, "1 bar sweep, 1 bar cycle region" }, Case { 3, 12.0, "1 bar sweep, 3 bar cycle region" },
+                           Case { 0, 32.0, "8 bar sweep, 8 bar cycle region" }, Case { 8, 1.0, "1/4 sweep, one beat cycle region" } })
+    {
+        Settings s; s.sync = true; s.division = c.division; s.depth = 2.5f; s.mix = 50.0f; s.feedback = 30.0f;
+        const auto in = noiseSignal ((int) (sr * 2.0), 0.1, 61);
+        const int jumpAt = (int) (sr * 1.0) / block;
+        const double start = c.loopBeats - 2.0; // 1 s before the end of the region at 120 BPM
+        TestHead headA, headB;
+        auto jumped = makeProc (s, sr, 2, block), steady = makeProc (s, sr, 2, block);
+        jumped->setPlayHead (&headA);
+        steady->setPlayHead (&headB);
+        const auto a = deckTrace (*jumped, in, block, [&] (int idx) { headA.ppq = start + idx * (double) block / sr * 2.0 - (idx >= jumpAt ? c.loopBeats : 0.0); });
+        const auto b = deckTrace (*steady, in, block, [&] (int idx) { headB.ppq = start + idx * (double) block / sr * 2.0; });
+        double worst = 0.0;
+        for (size_t i = (size_t) jumpAt + (size_t) (0.02 * sr / block); i < a.size(); ++i)
+            worst = std::max (worst, (double) std::abs (a[i] - b[i]));
+        check (worst <= 0.05, std::string ("synced, Swing 0, ") + c.name + ": after the loop jump the sweep stays where it was, biggest difference", worst, "ms");
+    }
+
+    // With Swing the two cycles of the pair differ, so a jump of one cycle must still bring the long and short cycles back in order: one
+    // second later the sweep is where a playhead that started at that point puts it. Passes on 1.2.6 too; it holds the fix to the case
+    // where nothing changes.
+    {
+        Settings s; s.sync = true; s.division = 3; s.depth = 2.5f; s.swing = 50.0f;
+        const auto in = noiseSignal ((int) (sr * 3.0), 0.1, 62);
+        const int jumpAt = (int) (sr * 1.0) / block;
+        TestHead headA, headB;
+        auto jumped = makeProc (s, sr, 2, block), fresh = makeProc (s, sr, 2, block);
+        jumped->setPlayHead (&headA);
+        fresh->setPlayHead (&headB);
+        const auto a = deckTrace (*jumped, in, block, [&] (int idx) { headA.ppq = 2.0 + idx * (double) block / sr * 2.0 - (idx >= jumpAt ? 4.0 : 0.0); });
+        // The fresh one starts playing at the jump target and snaps there, as at the start of playback.
+        std::vector<float> b;
+        {
+            std::vector<float> rest (in.begin() + jumpAt * block, in.end());
+            b = deckTrace (*fresh, rest, block, [&] (int idx) { headB.ppq = 2.0 + jumpAt * (double) block / sr * 2.0 - 4.0 + idx * (double) block / sr * 2.0; });
+        }
+        double worst = 0.0;
+        for (size_t i = (size_t) jumpAt + (size_t) (1.0 * sr / block); i < a.size() && i - (size_t) jumpAt < b.size(); ++i)
+            worst = std::max (worst, (double) std::abs (a[i] - b[i - (size_t) jumpAt]));
+        check (worst <= 0.05, "synced, Swing 50, 1 bar sweep, one cycle jump: one second later the pair is back in order, biggest difference", worst, "ms");
+    }
+}
+
+// tape-flanger-r1-3. A bar is as long as the host's time signature says. 1.2.6 took every bar as 4 quarter notes.
+// Limits as for the 4/4 sync checks: rate within 1 %, lock rms error under 0.1 ms.
+static void testTimeSignature()
+{
+    const double sr = 48000.0;
+    struct Case { int num, den, division; double bars; const char* name; };
+    for (const auto& c : { Case { 3, 4, 3, 1.0, "1 bar in 3/4" }, Case { 6, 8, 3, 1.0, "1 bar in 6/8" }, Case { 5, 4, 3, 1.0, "1 bar in 5/4" }, Case { 3, 4, 2, 2.0, "2 bars in 3/4" } })
+    {
+        Settings s; s.sync = true; s.division = c.division; s.depth = 2.0f;
+        TestHead head; head.numerator = c.num; head.denominator = c.den;
+        const double expected = 120.0 / (60.0 * c.bars * 4.0 * c.num / c.den);
+        auto p = makeProc (s, sr);
+        const int n = (int) (sr * std::max (3.5 / expected, 1.5));
+        auto in = softNoiseSignal (n, sr);
+        auto out = renderWithHead (*p, head, in, 512, sr, 0.0);
+        const double got = crossingRate (relSeries (in, out.getReadPointer (0), n, p->getLatencySamples(), sr, s.depth, (int) (0.006 * sr), (int) (0.003 * sr)));
+        check (std::abs (got - expected) / expected <= 0.01, std::string ("synced ") + c.name + " at 120 BPM, expected " + juce::String (expected, 3).toStdString() + " Hz, measures", got, "Hz");
+    }
+
+    // Locks to the bar lines of 3/4. Start half way through a bar, as the 4/4 lock check does.
+    {
+        Settings s; s.sync = true; s.division = 3; s.depth = 2.0f;
+        auto p = makeProc (s, sr);
+        const int n = (int) (sr * 4.0);
+        auto in = softNoiseSignal (n, sr);
+        TestHead head; head.numerator = 3; head.denominator = 4;
+        auto out = renderWithHead (*p, head, in, 512, sr, 1.5);
+        const auto series = relSeries (in, out.getReadPointer (0), n, p->getLatencySamples(), sr, 2.0, 512, 960);
+        double sum = 0;
+        for (size_t i = 0; i < series.t.size(); ++i)
+        {
+            const double expected = 2.0 * std::sin (juce::MathConstants<double>::twoPi * (1.5 + series.t[i] * 2.0) / 3.0);
+            sum += (series.rel[i] - expected) * (series.rel[i] - expected);
+        }
+        const double err = std::sqrt (sum / (double) series.t.size());
+        check (err <= 0.1, "1 bar sweep locks to the bar lines of 3/4, rms error", err, "ms");
+    }
+
+    // 4/4 reported is the same as no time signature. Passes on 1.2.6 too.
+    for (int division : { 3, 0, 8 })
+    {
+        Settings s; s.sync = true; s.division = division; s.depth = 3.0f; s.feedback = 40.0f; s.mix = 50.0f;
+        auto in = noiseSignal ((int) sr * 3);
+        auto a = makeProc (s, sr), b = makeProc (s, sr);
+        TestHead plain, four; four.numerator = 4; four.denominator = 4;
+        auto outA = renderWithHead (*a, plain, in, 512, sr, 5.0);
+        auto outB = renderWithHead (*b, four, in, 512, sr, 5.0);
+        const double db = nullDb (outA.getReadPointer (0), outB.getReadPointer (0), outA.getNumSamples(), rms (outA.getReadPointer (0), outA.getNumSamples()));
+        check (db <= -120.0, "synced, 4/4 reported, same as no time signature, division " + std::to_string (division), db, "dB");
+    }
+}
+
+// tape-flanger-r3-1, not fixed (see CHANGELOG 1.2.7): the lock follows the playhead of the input, so after the host's latency
+// compensation a synced sweep is heard one reported latency early. Shown here at 1/16, where it is largest, as the 1 bar lock check
+// reads it. Fixing it would break "same output with a playhead at 120 BPM or none, synced".
+static void testSyncLatencyInfo()
+{
+    const double sr = 48000.0;
+    Settings s; s.sync = true; s.division = 13; s.depth = 2.0f;
+    auto p = makeProc (s, sr);
+    const int n = (int) (sr * 4.0);
+    auto in = softNoiseSignal (n, sr);
+    TestHead head;
+    auto out = renderWithHead (*p, head, in, 512, sr, 2.0);
+    const auto series = relSeries (in, out.getReadPointer (0), n, p->getLatencySamples(), sr, 2.0, 96, 48);
+    double sum = 0;
+    for (size_t i = 0; i < series.t.size(); ++i)
+    {
+        const double expected = 2.0 * std::sin (juce::MathConstants<double>::twoPi * (2.0 + series.t[i] * 2.0) / 0.25);
+        sum += (series.rel[i] - expected) * (series.rel[i] - expected);
+    }
+    info ("synced 1/16 at 120 BPM against the timeline after latency compensation, rms error (not fixed, r3-1)", std::sqrt (sum / (double) series.t.size()), "ms");
+}
+
+// tape-flanger-r1-1. LFO Phase is a circle: from 359 to 1 degree the sweep moves 2 degrees. 1.2.6 glided back through the whole cycle.
+// Against a plug-in that had the new phase from the start. Limit: within 0.1 ms over the 400 ms after the move (2 degrees of a
+// 2.5 ms sweep is at most 0.09 ms; the long way round is the full sweep).
+static void testLfoPhaseWrap()
+{
+    const double sr = 48000.0;
+    const int block = 32;
+    for (const auto& mv : { std::pair<float, float> { 359.0f, 1.0f }, std::pair<float, float> { 1.0f, 359.0f }, std::pair<float, float> { 350.0f, 10.0f } })
+    {
+        Settings s; s.depth = 2.5f; s.lfoPhase = mv.first;
+        auto moved = makeProc (s, sr, 2, block);
+        s.lfoPhase = mv.second;
+        auto still = makeProc (s, sr, 2, block);
+        const auto in = noiseSignal ((int) (sr * 1.4), 0.1, 63);
+        const int at = (int) sr / block;
+        const auto a = deckTrace (*moved, in, block, [&] (int idx) { if (idx == at) setParam (*moved, "lfophase", mv.second); });
+        const auto b = deckTrace (*still, in, block, nullptr);
+        double worst = 0.0;
+        for (size_t i = (size_t) at; i < a.size(); ++i)
+            worst = std::max (worst, (double) std::abs (a[i] - b[i]));
+        check (worst <= 0.1, "LFO Phase moved from " + std::to_string ((int) mv.first) + " to " + std::to_string ((int) mv.second) + " deg while playing goes the short way, biggest difference", worst, "ms");
+    }
+}
+
+// tape-flanger-r1-2. The host's Reset puts the plug-in where prepareToPlay does. 1.2.6 had no reset(), so it did nothing.
+static void testHostReset()
+{
+    const double sr = 48000.0;
+    const int block = 256;
+    const auto silence = std::vector<float> ((size_t) (0.1 * sr), 0.0f);
+
+    // Limit: under -120 dBFS of old tail after the Reset.
+    {
+        Settings s; s.feedback = 95.0f; s.delay = 20.0f; s.mix = 50.0f;
+        auto p = makeProc (s, sr, 2, block);
+        render (*p, noiseSignal ((int) sr, 1.0, 64), block);
+        p->reset();
+        const auto out = render (*p, silence, block);
+        double worst = 0.0;
+        for (int ch = 0; ch < 2; ++ch) worst = std::max (worst, peak (out.getReadPointer (ch), out.getNumSamples()));
+        check (toDb (worst) <= -120.0, "after a host Reset, silence in gives silence out (Feedback 95, Delay 20), peak", toDb (worst), "dBFS");
+    }
+
+    // Limit: identical samples to a new instance (null -240 dB), with the drift running, a control moved just before, in mono, and
+    // synced with a playing host (the next start snaps to the bar, as after a prepare).
+    struct Case { const char* name; int channels; bool synced; const char* moveId; float moveTo; };
+    for (const auto& c : { Case { "drift and wow", 2, false, nullptr, 0.0f }, Case { "Mix moved to 80 just before", 2, false, "mix", 80.0f },
+                           Case { "mono", 1, false, nullptr, 0.0f }, Case { "synced 1/4, host playing", 2, true, nullptr, 0.0f } })
+    {
+        Settings s; s.randomDepth = 1.0f; s.wowDepth = 0.5f; s.flutterDepth = 0.1f; s.feedback = 60.0f; s.mix = 50.0f; s.spread = 90.0f;
+        s.sync = c.synced; s.division = 8;
+        auto p = makeProc (s, sr, c.channels, block);
+        TestHead head;
+        const auto first = noiseSignal ((int) (sr * 1.3), 0.25, 65), second = noiseSignal ((int) (sr * 2.0), 0.25, 66);
+        if (c.synced) renderWithHead (*p, head, first, block, sr, 0.0); else render (*p, first, block);
+        if (c.moveId != nullptr) setParam (*p, c.moveId, c.moveTo);
+        p->reset();
+        auto q = makeProc (s, sr, c.channels, block);
+        if (c.moveId != nullptr) { setParam (*q, c.moveId, c.moveTo); q->prepareToPlay (sr, block); }
+        const auto a = c.synced ? renderWithHead (*p, head, second, block, sr, 7.25) : render (*p, second, block);
+        const auto b = c.synced ? renderWithHead (*q, head, second, block, sr, 7.25) : render (*q, second, block);
+        double worst = -400.0;
+        for (int ch = 0; ch < c.channels; ++ch)
+            worst = std::max (worst, nullDb (a.getReadPointer (ch), b.getReadPointer (ch), a.getNumSamples(), rms (b.getReadPointer (ch), b.getNumSamples())));
+        check (worst <= -240.0, std::string ("play, host Reset, play: the second part equals a new instance, ") + c.name, worst, "dB");
+    }
+
+    // Limit: no allocation.
+    {
+        Settings s;
+        auto p = makeProc (s, sr, 2, block);
+        render (*p, noiseSignal ((int) (sr * 0.2)), block);
+        const long before = allocs.load();
+        p->reset();
+        const long made = allocs.load() - before;
+        check (made == 0, "a host Reset allocates nothing, allocations", (double) made);
+    }
+
+    // JUCE's AU wrapper calls Reset straight after the host turns its own bypass on. That one Reset is skipped, so the 20 ms fade to the
+    // input plays out from the running effect. Limit: identical to the same switch with no Reset. Passes on 1.2.6 too, where Reset did
+    // nothing; it holds the fix to that.
+    {
+        Settings s; s.feedback = 60.0f; s.mix = 50.0f;
+        auto p = makeProc (s, sr, 2, block), q = makeProc (s, sr, 2, block);
+        const auto in = noiseSignal ((int) (sr * 1.0), 0.25, 67);
+        const int at = (int) (0.5 * sr) / block;
+        const auto a = render (*p, in, block, nullptr, [&] (int idx) { if (idx == at) { setParam (*p, "bypass", 1.0f); p->reset(); } });
+        const auto b = render (*q, in, block, nullptr, [&] (int idx) { if (idx == at) setParam (*q, "bypass", 1.0f); });
+        const double db = nullDb (a.getReadPointer (0), b.getReadPointer (0), a.getNumSamples(), rms (b.getReadPointer (0), b.getNumSamples()));
+        check (db <= -240.0, "the Reset that comes with the host's bypass switching on changes nothing", db, "dB");
+    }
+
+    // A Reset later on, while bypassed, is a real one: the effect underneath is cleared. Limit as above, -120 dBFS of old tail when
+    // Bypass goes off again on silence.
+    {
+        Settings s; s.feedback = 95.0f; s.delay = 20.0f; s.mix = 50.0f;
+        auto p = makeProc (s, sr, 2, block);
+        render (*p, noiseSignal ((int) sr, 1.0, 68), block);
+        setParam (*p, "bypass", 1.0f);
+        render (*p, std::vector<float> ((size_t) (0.1 * sr), 0.0f), block);
+        juce::Thread::sleep (60);
+        p->reset();
+        setParam (*p, "bypass", 0.0f);
+        const auto out = render (*p, std::vector<float> ((size_t) (0.2 * sr), 0.0f), block);
+        double worst = 0.0;
+        for (int ch = 0; ch < 2; ++ch) worst = std::max (worst, peak (out.getReadPointer (ch), out.getNumSamples()));
+        check (toDb (worst) <= -120.0, "a host Reset while bypassed still clears the effect underneath, peak when Bypass goes off", toDb (worst), "dBFS");
+    }
+}
+
+// The 1.0.0 state used by testOldSessions: the ten original IDs, Depth 4.
+static juce::MemoryBlock oldState()
+{
+    const std::pair<const char*, float> old[] = { { "rate", 0.25f }, { "sync", 0.0f }, { "division", 3.0f }, { "depth", 4.0f }, { "feedback", 30.0f }, { "saturation", 20.0f }, { "tone", 0.0f }, { "spread", 45.0f }, { "mix", 50.0f }, { "bypass", 0.0f } };
+    juce::XmlElement xml ("STATE");
+    for (const auto& o : old)
+    {
+        auto* e = xml.createNewChildElement ("PARAM");
+        e->setAttribute ("id", o.first);
+        e->setAttribute ("value", juce::String (o.second));
+    }
+    juce::MemoryBlock st;
+    juce::AudioProcessor::copyXmlToBinary (xml, st);
+    return st;
+}
+
+// tape-flanger-r2-2, which the hunt kept but is not real here. A state loaded onto a plug-in already in use (Logic's Settings menu, a pasted
+// setting) gives every control it does not name, or names with a damaged value, its default. The hunt said 1.2.6 kept the values the plug-in
+// had before. It does not: when JUCE's replaceState adds the missing control's entry to the state, its own valueTreeChildAdded listener
+// sets the control from that entry, which has no value, so it takes the default. These pass on 1.2.6 and hold that.
+static void testOldStateOntoRunning()
+{
+    const char* original[] = { "rate", "sync", "division", "depth", "feedback", "saturation", "tone", "spread", "mix", "bypass" };
+    {
+        PluginProcessor q;
+        q.setCurrentProgram (9); // Off Zero Double: Delay 14, Wow 0.3, Low Cut 150
+        prepare (q, 2, 48000.0, 512);
+        const auto st = oldState();
+        q.setStateInformation (st.getData(), (int) st.getSize());
+        int notDefault = 0;
+        for (auto* prm : q.getParameters())
+            if (auto* w = dynamic_cast<juce::AudioProcessorParameterWithID*> (prm))
+            {
+                bool isOriginal = false;
+                for (auto* id : original) isOriginal = isOriginal || w->paramID == id;
+                if (! isOriginal && std::abs (prm->getValue() - prm->getDefaultValue()) > 1.0e-3f) { ++notDefault; std::printf ("  not default: %s\n", w->paramID.toRawUTF8()); }
+            }
+        check (notDefault == 0, "a 1.0.0 state loaded onto Off Zero Double leaves every newer control at its default, controls left over", (double) notDefault);
+        check (std::abs (q.apvts.getRawParameterValue ("depth")->load() - 4.0f) < 1.0e-3f, "and restores what it names, Depth", q.apvts.getRawParameterValue ("depth")->load(), "ms");
+    }
+    {
+        PluginProcessor q;
+        setParam (q, "delay", 14.0f);
+        juce::MemoryBlock st;
+        q.getStateInformation (st);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (st.getData(), (int) st.getSize());
+        for (auto* e : xml->getChildIterator())
+            if (e->getStringAttribute ("id") == "delay") e->setAttribute ("value", "nan");
+        juce::MemoryBlock damaged;
+        juce::AudioProcessor::copyXmlToBinary (*xml, damaged);
+        q.setStateInformation (damaged.getData(), (int) damaged.getSize());
+        const float d = q.apvts.getRawParameterValue ("delay")->load();
+        check (std::abs (d) < 1.0e-6f, "a damaged Delay (nan) loaded onto Delay 14 goes to its default 0", d, "ms");
+    }
+}
+
+// tape-flanger-r1-6 and the shared preset pattern: the chosen preset is saved with the session as an attribute (not a parameter). A new
+// instance, and a session saved before 1.2.7, name no preset. Nothing is applied again on load.
+static void testPresetSaved()
+{
+    PluginProcessor fresh;
+    check (fresh.getCurrentProgram() == -1, "a new instance names no preset (its controls are no preset's), program", fresh.getCurrentProgram());
+
+    PluginProcessor a;
+    a.setCurrentProgram (3);
+    setParam (a, "depth", 1.0f); // edited after choosing; the edit is kept, the name too
+    juce::MemoryBlock st;
+    a.getStateInformation (st);
+    PluginProcessor b;
+    b.setStateInformation (st.getData(), (int) st.getSize());
+    check (b.getCurrentProgram() == 3, "a session saved after choosing Hollow Inverted reopens naming it, program", b.getCurrentProgram());
+    check (std::abs (b.apvts.getRawParameterValue ("depth")->load() - 1.0f) < 1.0e-3f, "the preset is not applied again on load, Depth", b.apvts.getRawParameterValue ("depth")->load(), "ms");
+
+    for (const char* bad : { "99", "-5", "x" })
+    {
+        auto xml = juce::AudioProcessor::getXmlFromBinary (st.getData(), (int) st.getSize());
+        xml->setAttribute ("program", bad);
+        juce::MemoryBlock d;
+        juce::AudioProcessor::copyXmlToBinary (*xml, d);
+        PluginProcessor c;
+        c.setStateInformation (d.getData(), (int) d.getSize());
+        check (juce::isPositiveAndBelow (c.getCurrentProgram(), c.getNumPrograms()), std::string ("a damaged preset number '") + bad + "' is kept in range, program", c.getCurrentProgram());
+    }
+
+    const auto dir = juce::File (__FILE__).getSiblingFile ("baseline").getChildFile ("v1.2.6");
+    for (const char* name : { "default", "off-zero-double" })
+    {
+        juce::MemoryBlock old;
+        dir.getChildFile (juce::String (name) + ".state").loadFileAsData (old);
+        PluginProcessor c;
+        c.setCurrentProgram (5);
+        c.setStateInformation (old.getData(), (int) old.getSize());
+        check (old.getSize() > 0 && c.getCurrentProgram() == -1, std::string ("a session saved by 1.2.6 (") + name + ") names no preset, program", c.getCurrentProgram());
+    }
+}
+
+// Old sessions sound the same. States saved by the installed 1.2.6 Audio Unit (tests/baseline/v1.2.6, made by tests/baseline/capture.mm
+// before 1.2.7 was installed), loaded into a new instance before prepare as a host restores a session, and rendered here against what
+// 1.2.6 itself rendered from them. Limit: identical samples.
+static void testSaved126()
+{
+    const auto dir = juce::File (__FILE__).getSiblingFile ("baseline").getChildFile ("v1.2.6");
+    const auto readFloats = [] (const juce::File& f)
+    {
+        juce::MemoryBlock m;
+        f.loadFileAsData (m);
+        std::vector<float> v (m.getSize() / sizeof (float));
+        std::memcpy (v.data(), m.getData(), v.size() * sizeof (float));
+        return v;
+    };
+    const auto in = readFloats (dir.getChildFile ("input.f32"));
+    for (const char* name : { "default", "off-zero-double", "one-bar-swirl", "phase-flip-thin" })
+    {
+        juce::MemoryBlock st;
+        dir.getChildFile (juce::String (name) + ".state").loadFileAsData (st);
+        const auto ref = readFloats (dir.getChildFile (juce::String (name) + ".f32"));
+        PluginProcessor p;
+        p.setStateInformation (st.getData(), (int) st.getSize());
+        prepare (p, 2, 48000.0, 512);
+        const auto out = render (p, in, 512);
+        const int n = (int) in.size();
+        long differ = (long) ref.size() == 2L * n ? 0 : -1;
+        for (int ch = 0; ch < 2 && differ >= 0; ++ch)
+            for (int i = 0; i < n; ++i)
+                if (out.getSample (ch, i) != ref[(size_t) (ch * n + i)]) ++differ;
+        check (differ == 0, std::string ("a session saved by 1.2.6 (") + name + ") plays the same samples as 1.2.6 played it, samples that differ", (double) differ);
+    }
+}
+
+// tape-flanger-r1-5. Sync Division reads its choice names whatever their case, and text that is no choice is not taken for 8 bars.
+static void testDivisionText()
+{
+    PluginProcessor p;
+    auto* d = p.apvts.getParameter ("division");
+    const auto index = [&] (const char* text) { return juce::roundToInt (d->convertFrom0to1 (d->getValueForText (text))); };
+    check (index ("1 Bar") == 3 && index ("1/4 Dotted") == 7 && index (" 4 bars ") == 1, "Sync Division reads '1 Bar', '1/4 Dotted' and ' 4 bars ', index of 1 Bar", index ("1 Bar"));
+    check (index ("8 bars") == 0 && index ("1/16") == 13, "and its own names, index of 1/16", index ("1/16"));
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
-    GenericOptions opt;
-    opt.minPresets = 4;
-    runGenericChecks ([] { return std::make_unique<PluginProcessor>(); }, opt);
-    testLatency();
-    testThroughZero();
-    testNotches();
-    testRate();
-    testDepth();
-    testFeedback();
-    testSaturation();
-    testTone();
-    testSpread();
-    testMix();
-    testGeneralBehaviour();
-    testSameSoundAsFirstVersion();
-    testOldSessions();
-    testManualMode();
-    testInvertPhase();
-    testDelayControl();
-    testLfoShape();
-    testLfoSymmetry();
-    testLfoPhase();
-    testLfoSwing();
-    testTapeDrift();
-    testGains();
-    testCuts();
-    testFeedbackCompensation();
-    testReadings();
-    testNewControlsRepeat();
-    testBypassIsTheDelayedInput();
-    testBypassSwitchClicks();
-    testMovedControlsLand();
-    testPresetPickedWhilePlaying();
+    // TAPE_FLANGER_ONLY=testHostReset,testSyncLoopJump runs only those (and "generic" for the shared checks), to iterate on one fault.
+    const char* only = std::getenv ("TAPE_FLANGER_ONLY");
+    const auto wanted = [only] (const char* name)
+    {
+        if (only == nullptr) return true;
+        juce::StringArray names;
+        names.addTokens (only, ",", "");
+        names.trim();
+        return names.contains (name);
+    };
+#define RUN(t) if (wanted (#t)) t()
+    if (wanted ("generic"))
+    {
+        GenericOptions opt;
+        opt.minPresets = 4;
+        runGenericChecks ([] { return std::make_unique<PluginProcessor>(); }, opt);
+    }
+    RUN (testLatency);
+    RUN (testThroughZero);
+    RUN (testNotches);
+    RUN (testRate);
+    RUN (testDepth);
+    RUN (testFeedback);
+    RUN (testSaturation);
+    RUN (testTone);
+    RUN (testSpread);
+    RUN (testMix);
+    RUN (testGeneralBehaviour);
+    RUN (testSameSoundAsFirstVersion);
+    RUN (testOldSessions);
+    RUN (testManualMode);
+    RUN (testInvertPhase);
+    RUN (testDelayControl);
+    RUN (testLfoShape);
+    RUN (testLfoSymmetry);
+    RUN (testLfoPhase);
+    RUN (testLfoSwing);
+    RUN (testTapeDrift);
+    RUN (testGains);
+    RUN (testCuts);
+    RUN (testFeedbackCompensation);
+    RUN (testReadings);
+    RUN (testNewControlsRepeat);
+    RUN (testBypassIsTheDelayedInput);
+    RUN (testBypassSwitchClicks);
+    RUN (testMovedControlsLand);
+    RUN (testPresetPickedWhilePlaying);
+    // Added in 1.2.7
+    RUN (testSyncLoopJump);
+    RUN (testTimeSignature);
+    RUN (testSyncLatencyInfo);
+    RUN (testLfoPhaseWrap);
+    RUN (testHostReset);
+    RUN (testOldStateOntoRunning);
+    RUN (testPresetSaved);
+    RUN (testSaved126);
+    RUN (testDivisionText);
+#undef RUN
     return finish();
 }

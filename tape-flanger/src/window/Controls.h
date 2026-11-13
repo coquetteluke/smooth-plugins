@@ -27,6 +27,10 @@ namespace ui
 
         void setForcedHover (bool shouldShow) { forcedHover = shouldShow; repaint(); }
         void setHeaderInset (int pixels) { headerInset = pixels; }
+        /** For the window tests: whether the name fits beside whatever sits at the right of the header, at the size it is drawn. */
+        bool labelFits() const;
+        /** How wide the name is drawn, at the design size. The window gives the cell that carries the Sync pill room for it. */
+        float labelWidth() const;
 
         /** The value in two parts, so the unit can be smaller. */
         void valueParts (juce::String& number, juce::String& unitText) const;

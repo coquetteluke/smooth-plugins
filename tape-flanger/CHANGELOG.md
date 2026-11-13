@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.7, 2026-11-13
+
+Phase 2 bug fixes. The default and every preset play the same samples as 1.2.6, and sessions load as before. No control, preset, ID or AU code changed, and latency is the same. No sound call was needed.
+
+- Tempo Sync in a cycle region: when the region was one sweep long (One Bar Swirl on a 1 bar loop, 8 bars on an 8 bar loop) or any odd number of sweeps, the sweep raced through a whole extra cycle in about 150 ms at every loop point, a pitch swoop on the wet. With Swing at 0 a jump of whole sweeps now leaves it where it is. With Swing the long and short cycles still have to be put back in order, so that case still moves.
+- Tempo Sync follows the time signature: the bar values (8, 4, 2 and 1 bar) are bars of the song's meter, so 1 bar in 3/4 is 3 quarter notes, and the lock keeps to the host's bar lines. 1.2.6 took every bar as 4/4. With no time signature from the host, or in 4/4, nothing changes.
+- LFO Phase glides the short way round: from 359 to 1 degree it moves 2 degrees. 1.2.6 swept back through the whole cycle in about a quarter second.
+- The host's Reset (a stop or a locate) now does what a prepare does: empty delay lines, no old feedback tail, the sweep and drift back at their start, and the next start snaps to the bar. 1.2.6 ignored it, so a Feedback 90 tail could ring into the next start. The Reset JUCE sends straight after the host's own bypass switches on is skipped, so Bypass still fades.
+- The preset box names the preset last chosen, and the session keeps it. A new instance, and a session saved before 1.2.7, read "Choose a preset" (1.2.6 named Slow Zero Crossing, which they were not). The arrows go from there to the first or last preset.
+- Typing a Length matches the names in any case ("1 Bar"), and text that is no Length is ignored. 1.2.6 took any slip for 8 bars.
+- Window: Length is no longer cut to "Len" beside the Sync pill with Advanced open (the first cell gets room for its name). Holding Shift to fine tune Depth on the early side of the field no longer turns the drag round. Quiet sound now lights the comb picture instead of darkening it (the violet was premultiplied twice). The Bypass hint said "Fades the wet out", which has not been true since 1.2.2; it now says the input passes untouched. The Mix hint says Mix 0 is not a bypass.
+- Checked and not changed: a state loaded onto a plug-in in use (a Logic user preset, pasted settings) already gives every control it does not name its default; the hunt said it kept the old values, and a test now holds that it does not. Not fixed: a synced sweep is heard one reported latency early after the host's latency compensation (6.75 ms at 48 kHz); fixing it would break "same output with a playhead or none", so it is in the README for Luke.
+- Tests: 41 new checks and 1 INFO line in `tests/results.txt` (448 pass), 14 new in `tests/window_results.txt` (60 pass). The 407 old lines and the 46 old window lines print the same numbers as 1.2.6.
+
 ## 1.2.6, 2026-11-12
 
 Quarter Note Wobble no longer plays quieter than the rest. Luke left this call to the lead on 2026-11-11, and the lead chose it.

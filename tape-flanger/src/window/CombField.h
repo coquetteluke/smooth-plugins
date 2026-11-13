@@ -50,6 +50,10 @@ namespace ui
         double getLastRebuildMs() const noexcept { return lastRebuildMs; }
         int getRebuildCount() const noexcept { return rebuildCount; }
 
+        /** For the window tests: where a delay sits across the field, and one entry of the violet ramp as it is written into the picture. */
+        float xForMs (float ms) const noexcept { return xOfMs (ms); }
+        juce::PixelARGB getWakeColour (int level) const noexcept { return wakeColours[(size_t) juce::jlimit (0, 255, level)]; }
+
         static constexpr int axisHeight = 30;
 
     private:

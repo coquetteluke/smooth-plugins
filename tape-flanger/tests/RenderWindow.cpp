@@ -474,6 +474,17 @@ int main (int argc, char** argv)
         s.saveBoth (folder, "synced-hovered");
     }
 
+    if (want ("synced-advanced"))
+    {
+        // Added in 1.2.7: Sync on with Advanced open, where 1.2.6 cut Length to "Len", with the mouse on Mix to show its hint.
+        Session s;
+        s.editor->setAdvancedOpen (true, false);
+        s.processor.setCurrentProgram (4);   // One Bar Swirl
+        s.frames (voice, 180);
+        s.editor->previewHover ("mix");
+        s.saveBoth (folder, "synced-advanced");
+    }
+
     if (want ("dry"))
     {
         // Manual Ride, sitting on 0: dry only.

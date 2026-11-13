@@ -186,7 +186,20 @@ namespace ui
 
         double value = 0.0;
 
-        if (unit == Unit::words || (unit == Unit::frequencyOrOff && text.startsWith ("off")))
+        if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (&param))
+        {
+            // A choice takes one of its own names, whatever the case and spacing. Anything else is ignored: 1.2.6 took it for the first
+            // choice, so a slip in typing a Length gave 8 bars.
+            const auto wanted = text.removeCharacters (" ");
+            int found = -1;
+            for (int i = 0; i < choice->choices.size() && found < 0; ++i)
+                if (choice->choices[i].toLowerCase().removeCharacters (" ") == wanted)
+                    found = i;
+            if (found < 0)
+                return;
+            value = (double) found;
+        }
+        else if (unit == Unit::words || (unit == Unit::frequencyOrOff && text.startsWith ("off")))
         {
             // The parameter's own reader knows Triangle, Sine, Square, Off and the sync divisions.
             value = param.convertFrom0to1 (param.getValueForText (typed.trim()));
@@ -209,6 +222,16 @@ namespace ui
         param.beginChangeGesture();
         setValue (value, juce::sendNotificationSync);
         param.endChangeGesture();
+    }
+
+    float ParamCell::labelWidth() const
+    {
+        return juce::GlyphArrangement::getStringWidth (font (Weight::regular, size == Size::main ? 13.0f : 12.0f), label);
+    }
+
+    bool ParamCell::labelFits() const
+    {
+        return labelWidth() <= (float) (getWidth() - headerInset);
     }
 
     void ParamCell::buildText (float scale, bool lit)

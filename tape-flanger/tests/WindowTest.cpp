@@ -458,6 +458,130 @@ int main()
         check (true, "Opened and closed 30 times with no audio and no prepare");
     }
 
+    // ---- Added in 1.2.7, Phase 2. Each was run on 1.2.6 (with only the test hooks added) first. ----
+
+    // tape-flanger-r1-5. Typing a Length that is a choice in another case picks it; text that is no choice is ignored, not 8 bars.
+    {
+        PluginProcessor p;
+        prepared (p);
+        std::unique_ptr<FlangerEditor> e (dynamic_cast<FlangerEditor*> (p.createEditor()));
+        auto* division = p.apvts.getParameter ("division");
+        division->setValueNotifyingHost (division->convertTo0to1 (8.0f)); // 1/4
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+        auto* cell = dynamic_cast<ui::ParamCell*> (e->getPanel().findChildWithID ("division"));
+        const auto index = [&] { return juce::roundToInt (division->convertFrom0to1 (division->getValue())); };
+        cell->applyTyped ("quarter");
+        check (index() == 8, "Length: typing 'quarter' (no choice) leaves 1/4, index", index());
+        cell->applyTyped ("4 bars x");
+        check (index() == 8, "Length: typing '4 bars x' leaves 1/4, index", index());
+        cell->applyTyped ("1 Bar");
+        check (index() == 3, "Length: typing '1 Bar' picks 1 bar, index", index());
+    }
+
+    // tape-flanger-r1-6. The preset box names no preset when none is loaded: a new instance, whose controls are no preset's.
+    {
+        PluginProcessor p;
+        prepared (p);
+        std::unique_ptr<FlangerEditor> e (dynamic_cast<FlangerEditor*> (p.createEditor()));
+        e->tick (1.0 / 30.0);
+        auto* box = e->getPanel().findChildWithID ("presets");
+        check (box->getDescription() == "Choose a preset", "a new instance's preset box reads 'Choose a preset', reads '" + box->getDescription() + "'");
+        p.setCurrentProgram (3);
+        e->tick (1.0 / 30.0);
+        check (box->getDescription() == "Hollow Inverted", "after choosing Hollow Inverted it reads '" + box->getDescription() + "'");
+    }
+
+    // tape-flanger-r2-3. Shift's fine drag in LFO keeps going the way the hand goes, on the early side of the field too.
+    {
+        PluginProcessor p;
+        prepared (p);
+        std::unique_ptr<FlangerEditor> e (dynamic_cast<FlangerEditor*> (p.createEditor()));
+        auto* depth = p.apvts.getParameter ("depth");
+        depth->setValueNotifyingHost (depth->convertTo0to1 (2.0f));
+        e->tick (1.0 / 30.0);
+        auto& field = e->getField();
+        const float y = 80.0f;
+        for (const float side : { -1.0f, 1.0f })
+        {
+            const juce::Point<float> start (field.xForMs (0.0f) + side * 30.0f, y), at3 (field.xForMs (3.0f * side), y), further (at3.x + side * 20.0f, y);
+            field.mouseDown (mouseAt (field, start, juce::ModifierKeys::leftButtonModifier, start, false));
+            field.mouseDrag (mouseAt (field, at3, juce::ModifierKeys::leftButtonModifier, start, true));
+            const float before = depth->convertFrom0to1 (depth->getValue());
+            // Shift goes down where the hand is (the fine drag measures from there), then the hand moves on.
+            const juce::ModifierKeys fine (juce::ModifierKeys::leftButtonModifier | juce::ModifierKeys::shiftModifier);
+            field.mouseDrag (mouseAt (field, at3, fine, start, true));
+            field.mouseDrag (mouseAt (field, further, fine, start, true));
+            const float after = depth->convertFrom0to1 (depth->getValue());
+            field.mouseUp (mouseAt (field, further, {}, start, true));
+            check (after > before && after < before + 0.5f, juce::String ("LFO: Shift drag further out on the ") + (side < 0 ? "early" : "late") + " side raises Depth a little, from " + juce::String (before, 3) + " to", after, "ms");
+        }
+    }
+
+    // tape-flanger-r2-4. Every name fits beside the Sync pill, with Advanced open and Sync on, and with it shut.
+    {
+        PluginProcessor p;
+        prepared (p);
+        std::unique_ptr<FlangerEditor> e (dynamic_cast<FlangerEditor*> (p.createEditor()));
+        p.apvts.getParameter ("sync")->setValueNotifyingHost (1.0f);
+        for (bool open : { true, false })
+        {
+            e->setAdvancedOpen (open, false);
+            for (int i = 0; i < 3; ++i) e->tick (1.0 / 30.0);
+            int cut = 0;
+            for (auto* c : e->getPanel().getChildren())
+                if (auto* cell = dynamic_cast<ui::ParamCell*> (c))
+                    if (cell->isVisible() && ! cell->labelFits()) { ++cut; std::printf ("  cut off: %s, %d wide\n", cell->getComponentID().toRawUTF8(), cell->getWidth()); }
+            check (cut == 0, juce::String ("every control's name fits, Sync on, Advanced ") + (open ? "open" : "shut") + ", names cut off", cut);
+        }
+    }
+
+    // tape-flanger-r3-2. The violet ramp is premultiplied once: each entry's colour is its own colour times its alpha, not times alpha
+    // twice. Limit: within 1 of 255 on every channel of every entry.
+    {
+        PluginProcessor p;
+        prepared (p);
+        std::unique_ptr<FlangerEditor> e (dynamic_cast<FlangerEditor*> (p.createEditor()));
+        auto& field = e->getField();
+        // The ramp's own stops, as in CombField.cpp, unpremultiplied.
+        struct Stop { float at; juce::Colour colour; float alpha; };
+        const Stop stops[] = { { 0.00f, juce::Colour (0xff2b1f73), 0.0f }, { 0.26f, juce::Colour (0xff4a35b8), 0.30f }, { 0.50f, juce::Colour (0xff7a56ee), 0.88f },
+                               { 0.78f, juce::Colour (0xffb49dff), 1.0f }, { 1.00f, juce::Colour (0xfff3eeff), 1.0f } };
+        int worst = 0;
+        for (int i = 0; i < 256; ++i)
+        {
+            const float t = (float) i / 255.0f;
+            int s2 = 0;
+            while (s2 < 3 && t > stops[s2 + 1].at) ++s2;
+            const float f = (t - stops[s2].at) / (stops[s2 + 1].at - stops[s2].at);
+            const auto c = stops[s2].colour.interpolatedWith (stops[s2 + 1].colour, f);
+            const float a = stops[s2].alpha + f * (stops[s2 + 1].alpha - stops[s2].alpha);
+            const auto got = field.getWakeColour (i);
+            const int alpha = juce::roundToInt (a * 255.0f);
+            for (const auto pair : { std::pair<int, int> { got.getRed(), c.getRed() }, std::pair<int, int> { got.getGreen(), c.getGreen() }, std::pair<int, int> { got.getBlue(), c.getBlue() } })
+                worst = std::max (worst, std::abs (pair.first - (pair.second * alpha + 127) / 255));
+            worst = std::max (worst, std::abs ((int) got.getAlpha() - alpha));
+        }
+        check (worst <= 1, "the violet ramp is premultiplied once, worst channel off by", worst, "of 255");
+    }
+
+    // tape-flanger-r3-3 and the Phase 2 improvement. The Bypass hint says what Bypass does since 1.2.2, and the Mix hint says Mix 0 is no bypass.
+    {
+        PluginProcessor p;
+        prepared (p);
+        std::unique_ptr<FlangerEditor> e (dynamic_cast<FlangerEditor*> (p.createEditor()));
+        const auto hintOf = [&] (const char* id) { auto* h = dynamic_cast<ui::Hinted*> (e->getPanel().findChildWithID (id)); return h != nullptr ? h->hint : juce::String(); };
+        const auto bypassHint = hintOf ("bypass"), mixHint = hintOf ("mix");
+        check (! bypassHint.contains ("wet out") && bypassHint.contains ("untouched"), "the Bypass hint says the input passes untouched: '" + bypassHint + "'");
+        check (mixHint.contains ("Mix 0") && mixHint.contains ("Bypass"), "the Mix hint says Mix 0 is not a bypass: '" + mixHint + "'");
+        int tooLong = 0;
+        for (auto* c : e->getPanel().getChildren())
+            if (auto* line = dynamic_cast<juce::Label*> (c))
+                for (const auto& h : { bypassHint, mixHint })
+                    if (juce::GlyphArrangement::getStringWidth (line->getFont(), h) > (float) line->getWidth() - 6.0f) ++tooLong;
+        check (tooLong == 0, "both hints fit the hint line without shrinking, too long", tooLong);
+        check (! bypassHint.containsChar ((juce::juce_wchar) 0x2014) && ! mixHint.containsChar ((juce::juce_wchar) 0x2014), "no em dash in either hint");
+    }
+
     std::printf ("%d passed, %d failed\n", passes, failures);
     return failures == 0 ? 0 : 1;
 }

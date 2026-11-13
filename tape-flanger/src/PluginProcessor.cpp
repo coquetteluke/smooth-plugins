@@ -20,8 +20,11 @@ namespace
     constexpr double kTwoPi = 6.283185307179586476925286766559;
     const juce::Identifier kWindowWidth { "windowWidth" };
     const juce::Identifier kAdvancedOpen { "advancedOpen" };
+    const juce::Identifier kProgram { "program" };
 
-    // Length of one LFO cycle in quarter notes
+    // Length of one LFO cycle in quarter notes. The first four are bars, which follow the host's time signature since 1.2.7
+    // (kDivisionBars); these are their length in 4/4, used when the host reports none.
+    constexpr double kDivisionBars[] = { 8.0, 4.0, 2.0, 1.0 };
     constexpr double kDivisionBeats[] = { 32.0, 16.0, 8.0, 4.0, 3.0, 2.0, 4.0 / 3.0, 1.5, 1.0, 2.0 / 3.0, 0.75, 0.5, 1.0 / 3.0, 0.25 };
     const char* const kDivisionNames[] = { "8 bars", "4 bars", "2 bars", "1 bar", "1/2 dotted", "1/2", "1/2 triplet", "1/4 dotted", "1/4", "1/4 triplet", "1/8 dotted", "1/8", "1/8 triplet", "1/16" };
 
@@ -66,7 +69,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     StringArray names;
     for (auto* n : kDivisionNames)
         names.add (n);
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "division", 1 }, "Sync Division", names, 3));
+    // Typed text matches a name whatever its case and spacing. Text that is no name gives -1, which the window ignores (1.2.6 took it for 8 bars).
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "division", 1 }, "Sync Division", names, 3,
+        AudioParameterChoiceAttributes().withValueFromStringFunction ([names] (const String& t)
+        {
+            const auto wanted = t.trim().toLowerCase().removeCharacters (" ");
+            for (int i = 0; i < names.size(); ++i)
+                if (names[i].toLowerCase().removeCharacters (" ") == wanted)
+                    return i;
+            return -1;
+        })));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "depth", 1 }, "Depth", NormalisableRange<float> (0.0f, (float) kMaxDepthMs, 0.01f), 2.5f, AudioParameterFloatAttributes().withLabel ("ms")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "feedback", 1 }, "Feedback", NormalisableRange<float> (-95.0f, 95.0f, 0.1f), 30.0f, AudioParameterFloatAttributes().withLabel ("%")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "saturation", 1 }, "Saturation", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 20.0f, AudioParameterFloatAttributes().withLabel ("%")));
@@ -173,6 +185,35 @@ PluginProcessor::PluginProcessor()
     for (auto* a : { &readDeck[0], &readDeck[1], &readIn[0], &readIn[1], &readOut[0], &readOut[1] })
         a->store (0.0f);
     configure (48000.0, 512); // so a host that asks for the latency before preparing gets a true figure
+    apvts.addParameterListener ("bypass", this);
+}
+
+PluginProcessor::~PluginProcessor()
+{
+    apvts.removeParameterListener ("bypass", this);
+}
+
+void PluginProcessor::parameterChanged (const juce::String& id, float value)
+{
+    if (id != "bypass")
+        return;
+    const bool on = value > 0.5f;
+    if (on && ! bypassWasOn.exchange (true, std::memory_order_relaxed))
+        bypassOnAt.store (juce::Time::getMillisecondCounterHiRes(), std::memory_order_relaxed);
+    else if (! on)
+        bypassWasOn.store (false, std::memory_order_relaxed);
+}
+
+void PluginProcessor::reset()
+{
+    // The Reset that comes with the host's own bypass switching on is skipped (see bypassOnAt). JUCE calls it within microseconds.
+    const double since = juce::Time::getMillisecondCounterHiRes() - bypassOnAt.exchange (-1.0e9, std::memory_order_relaxed);
+    if (since >= 0.0 && since < 50.0)
+        return;
+
+    const juce::ScopedLock lock (getCallbackLock());   // the AU wrapper renders under this lock, so a Reset never lands mid block
+    oversampler->reset();
+    snapToParameters();
 }
 
 bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -347,8 +388,8 @@ double PluginProcessor::relativeDelaySamples (int ch, double cyclePos, double tr
 void PluginProcessor::followHostTransport()
 {
     using flanger::swingCycle;
-    double bpm = 120.0, ppq = 0.0;
-    bool playing = false, havePpq = false;
+    double bpm = 120.0, ppq = 0.0, barBeats = 4.0, barStart = 0.0;
+    bool playing = false, havePpq = false, haveMeter = false, haveBarStart = false;
     if (auto* head = getPlayHead())
         if (auto pos = head->getPosition())
         {
@@ -362,6 +403,19 @@ void PluginProcessor::followHostTransport()
                     ppq = *q;
                     havePpq = true;
                 }
+            // A bar is as long as the host's time signature says (1.2.6 always took 4 quarter notes). With none reported, 4/4.
+            if (auto ts = pos->getTimeSignature())
+                if (ts->numerator > 0 && ts->denominator > 0)
+                {
+                    barBeats = juce::jlimit (0.25, 64.0, 4.0 * ts->numerator / ts->denominator);
+                    haveMeter = true;
+                    if (auto b = pos->getPpqPositionOfLastBarStart())
+                        if (std::isfinite (*b))
+                        {
+                            barStart = *b;
+                            haveBarStart = true;
+                        }
+                }
         }
 
     if (! sync->get())
@@ -372,13 +426,17 @@ void PluginProcessor::followHostTransport()
         return;
     }
 
-    const double beats = kDivisionBeats[juce::jlimit (0, (int) std::size (kDivisionBeats) - 1, division->getIndex())];
+    const int index = juce::jlimit (0, (int) std::size (kDivisionBeats) - 1, division->getIndex());
+    const bool inBars = haveMeter && index < (int) std::size (kDivisionBars);
+    const double beats = inBars ? kDivisionBars[index] * barBeats : kDivisionBeats[index];
     increment = 0.5 * bpm / (60.0 * beats * osRate);
 
     if (playing && havePpq)
     {
-        // Lock to the bar. A transport jump is slewed so the delay never jumps.
-        const double target = wrapTurns (0.5 * ppq / beats);
+        // Lock to the bar. A transport jump is slewed so the delay never jumps. In bars, the position counts from the host's last bar
+        // line, so the sweep keeps to the bar lines after a change of time signature too.
+        const double position = inBars && haveBarStart ? std::round (barStart / barBeats) * barBeats + (ppq - barStart) : ppq;
+        const double target = wrapTurns (0.5 * position / beats);
         if (firstBlock)
         {
             phase = target;
@@ -397,6 +455,11 @@ void PluginProcessor::followHostTransport()
             double error = wrapTurns (target - now);
             if (error > 0.5)
                 error -= 1.0;
+            // With no Swing the two cycles of the pair are the same, so a jump of a whole number of cycles (a cycle region one or three
+            // sweeps long) needs no correction. Up to 1.2.6 it raced through a whole cycle at every loop point. With Swing the pair must
+            // be put back in order, so it still does.
+            if (swingTarget == 0.5f && swingNow == 0.5f)
+                error -= 0.5 * std::round (2.0 * error);
             correction = error;
         }
     }
@@ -419,7 +482,22 @@ void PluginProcessor::controlTick() noexcept
     smoothTo (modeNow, modeTarget, slowTickDepth);
     smoothTo (shapeNow, shapeTarget, slowTickDepth);
     smoothTo (riseNow, riseTarget, slowTickDepth);
-    smoothTo (offsetNow, offsetTarget, slowTickSpread);
+    // LFO Phase is a circle, so it glides the short way round: 359 to 1 degree moves 2 degrees, not back through the whole sweep.
+    if (offsetNow != offsetTarget)
+    {
+        float aim = offsetTarget;
+        if (aim - offsetNow > 0.5f)
+            aim -= 1.0f;
+        else if (aim - offsetNow < -0.5f)
+            aim += 1.0f;
+        smoothTo (offsetNow, aim, slowTickSpread);
+        if (offsetNow == aim)
+            offsetNow = offsetTarget;   // landed: the same place on the circle
+        else if (offsetNow < 0.0f)
+            offsetNow += 1.0f;
+        else if (offsetNow >= 1.0f)
+            offsetNow -= 1.0f;
+    }
     smoothTo (swingNow, swingTarget, slowTickDepth);
     smoothTo (wowNow, wowTarget, slowTickDepth);
     smoothTo (flutterNow, flutterTarget, slowTickDepth);
@@ -551,6 +629,10 @@ void PluginProcessor::renderOversampled (juce::dsp::AudioBlock<float>& block) no
 
 void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
 {
+    // A block played well after the host's bypass switched on: a Reset from now on is a real one. Not cleared at once, because the audio
+    // thread can play a block between JUCE setting the bypass and calling Reset on the host's thread.
+    if (juce::Time::getMillisecondCounterHiRes() - bypassOnAt.load (std::memory_order_relaxed) > 5.0)
+        bypassOnAt.store (-1.0e9, std::memory_order_relaxed);
     const int numCh = juce::jmin (getTotalNumOutputChannels(), buffer.getNumChannels(), 2);
     const int total = buffer.getNumSamples();
     if (numCh <= 0 || total <= 0)
@@ -734,6 +816,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         xml->setAttribute (kWindowWidth, windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute (kAdvancedOpen, advancedOpen.load (std::memory_order_relaxed));
+        if (currentProgram >= 0)
+            xml->setAttribute (kProgram, currentProgram);   // since 1.2.7: the preset last chosen, left out when none is known
         copyXmlToBinary (*xml, dest);
     }
 }
@@ -747,8 +831,12 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             if (xml->hasAttribute (kWindowWidth))
                 windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (kWindowWidth, defaultWindowWidth)), std::memory_order_relaxed);
             advancedOpen.store (xml->getBoolAttribute (kAdvancedOpen, false), std::memory_order_relaxed);
+            // Which preset was chosen, only to name it: its values are in the state already and are not applied again. A session saved
+            // before 1.2.7 does not say, so it names none rather than a wrong one. A damaged number is kept in range.
+            currentProgram = xml->hasAttribute (kProgram) ? juce::jlimit (0, getNumPrograms() - 1, xml->getIntAttribute (kProgram, 0)) : -1;
             xml->removeAttribute (kWindowWidth);
             xml->removeAttribute (kAdvancedOpen);
+            xml->removeAttribute (kProgram);
             applySafeState (apvts, *xml);
         }
 }

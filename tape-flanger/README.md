@@ -20,7 +20,7 @@ The big picture is the comb filter. Across is where the wet deck sits against th
 
 Riding: set Mode to Manual and drag across the picture. Right is late, left is early. The square on the rail is where your hand has put Flange, and the line catches up with it. Near the middle it lands on 0, which takes the wet out after the Fade time. Hold Shift to slow your hand to a fifth. Double-click goes back to 0. In LFO, the same drag sets Depth.
 
-Double-click any control to reset it. Click a value to type it: "4k" on a cut and "Square" on Shape work. Drag the corner to resize. Advanced holds the sweep shape, tape drift and wet cuts. Depth and Rate swap with Flange and Fade when Mode changes, and Rate swaps with Length when Sync is on.
+Double-click any control to reset it. Click a value to type it: "4k" on a cut, "Square" on Shape and "1 Bar" on Length work. Text that is not a Length is ignored. Drag the corner to resize. Advanced holds the sweep shape, tape drift and wet cuts. Depth and Rate swap with Flange and Fade when Mode changes, and Rate swaps with Length when Sync is on.
 
 Pictures are in `docs/window/`. `RenderWindow` makes them from real speech through the real processor.
 
@@ -29,8 +29,8 @@ Pictures are in `docs/window/`. `RenderWindow` makes them from real speech throu
 | Control | Range | What it does |
 |---|---|---|
 | Rate | 0.01 to 10 Hz | Sweep speed when Tempo Sync is off. |
-| Tempo Sync | off, on | Takes the sweep speed from the host tempo. With no tempo from the host it uses 120 BPM. While the host plays, the sweep locks to the bar. |
-| Sync Division | 8 bars to 1/16, with dotted and triplet values | Length of one sweep when Tempo Sync is on. |
+| Tempo Sync | off, on | Takes the sweep speed from the host tempo. With no tempo from the host it uses 120 BPM. While the host plays, the sweep locks to the bar. A cycle region that jumps back by a whole number of sweeps leaves it where it is (with Swing 0). |
+| Sync Division | 8 bars to 1/16, with dotted and triplet values | Length of one sweep when Tempo Sync is on. The bar values follow the host's time signature (a bar of 3/4 is 3 quarter notes), 4/4 if it reports none. The others are note values. |
 | Depth | 0 to 5 ms | How far the wet path moves to each side of the dry path. 2.5 ms means from 2.5 ms early to 2.5 ms late. |
 | Feedback | -95 to +95 % | Lifts the comb peaks. Negative values also flip the wet polarity, so the comb stays deep on that side and the sound hollows out at the crossing. Moving past 0 is therefore a change of character, and it fades over about 15 ms rather than clicking. |
 | Saturation | 0 to 100 % | Soft tape style saturation on the signal going to the delay line, inside the feedback loop. 0 is a straight wire. Level at -18 dBFS stays within 0.5 dB. |
@@ -44,7 +44,7 @@ Pictures are in `docs/window/`. `RenderWindow` makes them from real speech throu
 | Delay | 0 to 20 ms | Moves the whole sweep later. 0 is through zero. Delay 8 with Depth 3 sweeps 5 to 11 ms and never crosses, a classic flanger or a short double. No added latency. The feedback loop follows it. |
 | LFO Shape | Triangle (0) to Sine (50) to Square (100) | Morphs the sweep. Reads as Triangle, Sine or Square at those points, and a percentage between. |
 | LFO Symmetry | -100 to +100 % | Share of each cycle spent rising. 0 is even, +100 rises for 95 % of the cycle, -100 for 5 %. |
-| LFO Phase | 0 to 360 degrees | Moves where the sweep starts. When synced, it moves the sweep against the bar, so the crossing can land on a chosen beat. |
+| LFO Phase | 0 to 360 degrees | Moves where the sweep starts. When synced, it moves the sweep against the bar, so the crossing can land on a chosen beat. A change glides the short way round: 359 to 1 moves 2 degrees. |
 | LFO Swing | -100 to +100 % | Makes every other cycle longer and the one after shorter. +100 is 1.5 and 0.5 cycles. Average speed stays put. |
 | Wow Depth, Wow Rate | 0 to 2 ms, 0.1 to 5 Hz | Slow tape speed drift on the wet deck. |
 | Flutter Depth, Flutter Rate | 0 to 0.3 ms, 5 to 30 Hz | Quicker tape speed wobble on the wet deck. |
@@ -72,6 +72,8 @@ Pictures are in `docs/window/`. `RenderWindow` makes them from real speech throu
 - **Wandering Tape:** no sweep, only wow, flutter and unsynced random drift.
 - **Square Flip:** synced square flips the wet from early to late on half notes.
 - **Phase Flip Thin:** Invert Phase with a narrow slow sweep, thin and hollow near the crossing. Spread is 0 since 1.2.4, so it stays whole in mono; it has no stereo width of its own.
+
+The box at the top names the preset last chosen, and the session keeps it (since 1.2.7). A new instance, whose controls are no preset's, and a session saved before 1.2.7 read "Choose a preset". Editing a control after choosing keeps the name.
 
 The first seven are unchanged from version 1.0.0, except that Quarter Note Wobble sets Output Gain to +1.1 dB since 1.2.6. Loading any preset sets every control, and puts Input Gain and the drift rates back to their defaults. Output Gain is 0 dB except in Quarter Note Wobble (+1.1 dB), Triangle Jet (+1.5 dB), Square Flip (+3 dB) and Phase Flip Thin (+3 dB), which thin a voice by 3.6 to 5.6 dB without it.
 
@@ -119,8 +121,19 @@ Every number is from `tests/PluginTest.cpp` and saved in `tests/results.txt`. De
 - Spread: 45, 90, 135 and 180 degrees measure within 0.01 degree.
 - Mix: matches a straight blend of dry and wet to -145 dB. Mix 0 is within 0.002 dB of the input and nulls 73 dB or more against it.
 - Same output with a playhead at 120 BPM or with none, at block size 64 or 1024, and after a second prepare.
+- Known, not fixed: the sweep follows the playhead of the audio coming in, so after the host's latency compensation a synced sweep is heard one reported latency early (6.75 ms at 48 kHz: 1 degree of a 1 bar sweep at 120 BPM, 19 degrees of a 1/16). Moving it would break the line above. LFO Phase can trim it by ear.
 - Phase Flip Thin near the crossing: the inverted wet has cancelled almost all of the voice there, so the take's own sharp sounds (consonant edges, mouth ticks) stand out. On Luke's 11 working takes the 176 such spots the click rule flags (177 with the newer rule) are each the comb at that exact delay, sample for sample, not a click from crossing: residual -38 dB or lower against the comb stopped at that delay.
 - A control moved while playing lands exactly where it is set: a second later the output is what it is with the control there from the start, -207 dB or identical samples. Invert Phase switched on while playing at Depth 0, Mix 50 cancels by 167.6 dB. A preset picked while playing matches the same preset set before the plug-in started at -157 dB or better.
+
+Added in 1.2.7, Phase 2. Each check failed on 1.2.6 first:
+
+- Loop jumps: a cycle region one sweep long (1 bar, 8 bars, a beat) or three, synced at Swing 0, leaves the sweep where it was, 0.000 ms from a playhead that never jumps (1.2.6 raced through a whole sweep at every loop point, 2.4 to 3.0 ms off). With Swing 50 the long and short cycles are back in order a second after the jump.
+- Time signature: 1 bar in 3/4, 6/8 and 5/4 and 2 bars in 3/4 measure 0.667, 0.667, 0.400 and 0.333 Hz at 120 BPM (1.2.6: 0.500 and 0.250). The 1 bar sweep locks to the bar lines of 3/4 at 0.037 ms rms. 4/4 reported is identical to none.
+- LFO Phase moved from 359 to 1, 1 to 359 and 350 to 10 degrees while playing stays within 0.077 ms of having been there from the start (1.2.6: 4.9 to 5.0 ms, the whole sweep backwards).
+- Host Reset: silence after it is silent at Feedback 95, Delay 20 (1.2.6: -2.4 dBFS of old tail); what plays after it is identical to a new instance, with the drift running, a control moved just before, in mono and synced with the host playing; it allocates nothing. The Reset JUCE sends as the host's own bypass switches on is skipped, so the 20 ms fade plays out; a later Reset while bypassed still clears the effect underneath.
+- Sessions saved by the installed 1.2.6 (default, Off Zero Double, One Bar Swirl, Phase Flip Thin, `tests/baseline/v1.2.6`) play the same samples as 1.2.6 played them, and name no preset. A session saved after choosing a preset reopens naming it, without applying it again.
+- Sync Division reads "1 Bar", "1/4 Dotted" and " 4 bars " (1.2.6 took them for 8 bars).
+- In the window (`tests/window_results.txt`): Length fits beside the Sync pill with Advanced open, Shift's fine drag in LFO keeps its direction on the early side, the violet is premultiplied once (1.2.6: 52 of 255 off, so quiet sound darkened the picture), and the Bypass and Mix hints say what Bypass is and that Mix 0 is not one.
 
 Added in 1.1.0, limits set before the first run:
 

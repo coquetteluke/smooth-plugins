@@ -126,6 +126,10 @@ public:
     bool removeMarker (int index);
     void adoptAsManual (const slicecore::SliceTable&); // for when Manual is picked before any edit: start from what was on show
 
+    // Tests only, empty otherwise: runs inside a marker edit after the table and its sample were read and before the edit is written,
+    // so a test can put a newly loaded sample in that gap.
+    std::function<void()> testHookInMarkerEdit;
+
     void selectSlice (int index);                     // moves the Selected Slice parameter, as a user gesture
     int getSelectedIndex() const noexcept;
     void audition (int index) noexcept { auditionRequest.store (index, std::memory_order_release); }

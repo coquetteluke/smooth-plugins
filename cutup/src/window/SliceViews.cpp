@@ -106,6 +106,18 @@ juce::Point<float> SliceWaveform::startHandlePosition() const
     return startTab().getCentre();
 }
 
+double SliceWaveform::timeStepSeconds() const
+{
+    if (sample == nullptr || sample->isEmpty())
+        return 1.0;
+    const double seconds = (double) (viewTo - viewFrom) / juce::jmax (1.0, sample->rate);
+    const double wanted = seconds / juce::jmax (1.0, (double) getWidth() / 110.0);
+    double step = 60.0;
+    for (double s : { 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0 })
+        if (s >= wanted) { step = s; break; }
+    return step;
+}
+
 void SliceWaveform::update (const slicecore::SliceTable& t, int newSelected, bool zoomed)
 {
     auto s = processor.getSample();
@@ -385,10 +397,7 @@ void SliceWaveform::drawLayer (juce::Graphics& g, float scale, bool lit)
 
     // The time scale.
     const double seconds = (double) (viewTo - viewFrom) / juce::jmax (1.0, sample->rate);
-    const double wanted = seconds / juce::jmax (1.0, (double) w / 110.0);
-    double step = 60.0;
-    for (double s : { 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0 })
-        if (s >= wanted) { step = s; break; }
+    const double step = timeStepSeconds();
 
     const double firstSecond = (double) viewFrom / sample->rate;
     g.setFont (font (Weight::regular, 11.0f, true));

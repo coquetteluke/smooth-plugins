@@ -36,6 +36,7 @@ public:
     int markerNearX (float x) const;
     float xForFrame (int frame) const;
     juce::Point<float> startHandlePosition() const;
+    double timeStepSeconds() const;   // the time scale's step at the current view and width
     bool isDraggingSomething() const noexcept  { return dragging >= 0 || draggingStart; }
     int getRebuildCount() const noexcept  { return rebuilds; }
 

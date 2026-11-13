@@ -233,6 +233,8 @@ public:
         hint = "Min Slice, Transpose, Bend Range and what the plug-in is reading right now.";
     }
 
+    const juce::String& getSummary() const noexcept { return summary; }
+
     void setSummary (const juce::String& text)
     {
         if (text != summary)
@@ -750,6 +752,8 @@ void SliceEditor::timerCallback()
 }
 
 juce::Component& SliceEditor::getStepperComponent() noexcept { return *stepper; }
+juce::Component& SliceEditor::getAdvancedHeader() noexcept { return *advancedHeader; }
+juce::String SliceEditor::getAdvancedSummary() const { return advancedHeader->getSummary(); }
 juce::Point<float> SliceEditor::stepperNextArrow() const { return stepper->nextZone().getCentre(); }
 juce::Point<float> SliceEditor::stepperPreviousArrow() const { return stepper->previousZone().getCentre(); }
 

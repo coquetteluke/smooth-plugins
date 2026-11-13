@@ -1078,6 +1078,7 @@ bool PluginProcessor::applyMarkerEdit (const SliceTable& t)
 {
     LoadedSample::Ptr s = getSample();
     if (s == nullptr || ! slicecore::isValid (t, s->frames()) || t.count == 0) return false;
+    if (testHookInMarkerEdit != nullptr) testHookInMarkerEdit();
     {
         const juce::ScopedLock l (stateLock);
         manualTable = t;

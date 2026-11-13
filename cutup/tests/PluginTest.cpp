@@ -2050,6 +2050,8 @@ static void testCpu()
     juce::ignoreUnused (out);
 }
 
+#include "Phase2Tests.h"
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -2060,6 +2062,22 @@ int main (int argc, char** argv)
     {
         testVocalCutsInARoom();
         return finish();
+    }
+
+    // Only the Phase 2 tests.
+    if (argc > 1 && juce::String (argv[1]) == "phase2")
+    {
+        phase2::run();
+        tempDir().deleteRecursively();
+        return finish();
+    }
+
+    // Writes the seed sessions the baseline capture starts from (tests/baseline/capture.mm).
+    if (argc > 2 && juce::String (argv[1]) == "seedstates")
+    {
+        phase2::writeSeeds (juce::File (argv[2]));
+        tempDir().deleteRecursively();
+        return 0;
     }
 
     if (argc > 1 && juce::String (argv[1]) == "fingerprints")
@@ -2123,6 +2141,7 @@ int main (int argc, char** argv)
     testReadingsAndPresets();
     testControlClicksWithSound();
     testCpu();
+    phase2::run();
 
     // A saved state for tests/AUStateCheck.cpp, which plays it through the real installed component.
     const auto statePath = juce::SystemStats::getEnvironmentVariable ("SMOOTH_SLICE_WRITE_STATE", {});

@@ -42,6 +42,8 @@ public:
     void setZoomed (bool);
     void previewHint (const juce::String& componentId);
     bool isFastTimer() const noexcept { return fast; }
+    juce::String getAdvancedSummary() const;      // what the closed Advanced header shows
+    juce::Component& getAdvancedHeader() noexcept;
 
     // The arrows that step through the slots, for a test to click.
     juce::Component& getStepperComponent() noexcept;

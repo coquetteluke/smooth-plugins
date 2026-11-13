@@ -86,3 +86,13 @@ namespace entrylimits
     constexpr double instantMedianMs = 20.0, instantP90Ms = 40.0;   // Retune Speed 0
     constexpr double defaultMedianMs = 60.0, defaultP90Ms = 100.0;  // the default, Retune 20 and Humanize 30
 }
+
+// Added 2026-11-13, before any of these tests was run: the faults the Phase 2 hunt kept (Bug Fixing/smooth-plugins/fix/tune.json and
+// key-readers.md), PluginTest phase2.
+namespace phase2limits
+{
+    constexpr double outputSitsCents = 5.0;           // where the readings say the output sits, against where it does, a voice tuned onto its note
+    constexpr double bypassedNoteVibratoKept = 0.95;  // a Custom note on Bypass keeps its vibrato whatever Natural Vibrato is
+    constexpr double tailUncorrectedMs = 2.0;         // the end of a corrected vowel going straight into an S, played as sung (two ticks)
+    constexpr double bounceKeySeconds = 0.5;          // an offline bounce takes up a Follow Key change within this much song time
+}

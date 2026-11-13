@@ -73,6 +73,8 @@ namespace ui
         int getSelected() const noexcept  { return selected; }
         void choose (int index)  { attachment.setValueAsCompleteGesture ((float) index); }
         void resetToDefault();
+        /** What the field says now. Read only, for the tests. */
+        juce::String shownText() const  { return insteadText.isNotEmpty() ? insteadText : choices[selected]; }
 
     private:
         void timerCallback() override;
@@ -158,6 +160,8 @@ namespace ui
         void mouseExit (const juce::MouseEvent&) override;
         void mouseDown (const juce::MouseEvent&) override;
         void choose (int index);
+        /** What the box says now. Read only, for the tests. */
+        const juce::String& text() const noexcept  { return shown; }
 
     private:
         enum Zone { none, previous, name, next };

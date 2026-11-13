@@ -189,6 +189,9 @@ public:
     void mouseExit (const juce::MouseEvent&) override   { repaint(); }
     void mouseDown (const juce::MouseEvent&) override   { owner.setAdvancedOpen (! owner.isAdvancedOpen()); }
 
+    const juce::String& getSummary() const noexcept  { return summary; }
+    float summaryRoom() const noexcept  { return (float) getWidth() - 16.0f - 64.0f - 8.0f; }
+
 private:
     TuneEditor& owner;
     juce::String summary;
@@ -437,6 +440,9 @@ void TuneEditor::resized()
     display.setBounds (r);
     repaint();
 }
+
+juce::String TuneEditor::advancedSummaryShown() const  { return advancedHeader->getSummary(); }
+float TuneEditor::advancedSummaryRoom() const          { return advancedHeader->summaryRoom(); }
 
 bool TuneEditor::isAdvancedOpen() const noexcept
 {

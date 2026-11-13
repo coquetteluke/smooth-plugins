@@ -599,9 +599,14 @@ void PitchDisplay::paintNote (juce::Graphics& g)
     g.drawSingleLineText (juce::String (shownNote / 12 - 1), sideX, baseline);
 }
 
+float PitchDisplay::readoutValueSize() const noexcept
+{
+    return juce::jlimit (30.0f, 44.0f, noteSize * 0.27f);
+}
+
 void PitchDisplay::paintSung (juce::Graphics& g)
 {
-    const float valueSize = juce::jlimit (30.0f, 44.0f, noteSize * 0.27f);
+    const float valueSize = readoutValueSize();
     const int valueHeight = juce::roundToInt (valueSize * 1.28f);
     const auto l = leftArea.translated (0, 26);
 
@@ -615,7 +620,7 @@ void PitchDisplay::paintSung (juce::Graphics& g)
 
 void PitchDisplay::paintCorrection (juce::Graphics& g)
 {
-    const float valueSize = juce::jlimit (30.0f, 44.0f, noteSize * 0.27f);
+    const float valueSize = readoutValueSize();
     const int valueHeight = juce::roundToInt (valueSize * 1.28f);
     const auto r = rightArea.translated (0, 26);
     const bool fixing = ! bypassed && fixValue != "0 cents";

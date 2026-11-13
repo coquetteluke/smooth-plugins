@@ -22,6 +22,14 @@ public:
     /** The ruler's map from cents to a position, 0 to 1. Exposed for the tests. */
     static float positionForCents (float cents) noexcept;
 
+    // Read only, for the tests: the four readout texts joined by |, whether the note is lime, where the lime mark is in cents, and the
+    // readouts' type size against the narrower of the two sides they sit in.
+    juce::String shownText() const  { return sungValue + "|" + sungSub + "|" + fixValue + "|" + fixSub; }
+    bool isNoteLit() const noexcept  { return locked; }
+    float outMarkCents() const noexcept  { return outCents; }
+    float readoutValueSize() const noexcept;
+    int readoutRoom() const noexcept  { return juce::jmin (leftArea.getWidth(), rightArea.getWidth()); }
+
 private:
     void rebuildStatic (float scale);
     void prepareTrace (float scale);

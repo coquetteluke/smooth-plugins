@@ -2182,6 +2182,8 @@ void testEntries()
     }
 }
 
+#include "Phase2Tests.h"
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -2245,5 +2247,6 @@ int main (int argc, char** argv)
     if (want ("onset") || only == "rode") testNothingBeforeOnset();
     if (want ("entry") || only == "rode") testEntries();
     if (want ("robot") || only == "rode") testRobotFlat();
+    if (want ("phase2")) phase2::run();
     return finish();
 }

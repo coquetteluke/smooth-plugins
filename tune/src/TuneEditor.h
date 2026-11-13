@@ -39,6 +39,14 @@ public:
 
     static constexpr int drawerHeight = 66;
 
+    // Read only, for the tests: what the preset box and the Key and Scale fields say, and what the closed Advanced row says with
+    // the room it has for it.
+    juce::String presetText() const  { return presets.text(); }
+    juce::String keyShown() const    { return key.shownText(); }
+    juce::String scaleShown() const  { return scale.shownText(); }
+    juce::String advancedSummaryShown() const;
+    float advancedSummaryRoom() const;
+
 private:
     class NoteCell;
     class AdvancedHeader;

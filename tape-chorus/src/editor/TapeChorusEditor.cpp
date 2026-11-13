@@ -64,9 +64,9 @@ public:
         g.setColour (tone::mint.withAlpha (zone != none ? 0.13f : 0.08f));
         g.fillRoundedRectangle (b, b.getHeight() * 0.5f);
 
-        g.setColour (tone::mint);
+        g.setColour (processor.getCurrentProgram() >= 0 ? tone::mint : tone::muted);
         g.setFont (font (Weight::medium, 13.5f));
-        g.drawText (processor.getProgramName (processor.getCurrentProgram()), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
+        g.drawText (nameFor (processor), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
 
         const auto chevron = [&] (float cx, float direction, bool lit)
         {
@@ -90,12 +90,20 @@ public:
         const auto hit = zoneAt (e.position.x);
         const int count = processor.getNumPrograms();
 
+        // From no preset (a session saved before 0.6.0), the arrows go to the last or the first.
+        const int now = processor.getCurrentProgram();
         if (hit == previous)
-            choose ((processor.getCurrentProgram() + count - 1) % count);
+            choose (now < 0 ? count - 1 : (now + count - 1) % count);
         else if (hit == next)
-            choose ((processor.getCurrentProgram() + 1) % count);
+            choose (now < 0 ? 0 : (now + 1) % count);
         else
             openMenu();
+    }
+
+    /** The preset's name, or a neutral label when none is known. */
+    static juce::String nameFor (PluginProcessor& p)
+    {
+        return p.getCurrentProgram() >= 0 ? p.getProgramName (p.getCurrentProgram()) : juce::String ("Choose a preset");
     }
 
 private:
@@ -235,7 +243,8 @@ TapeChorusEditor::Panel::Panel (TapeChorusEditor& e, PluginProcessor& p)
       highCut (p.apvts, "highCut", "High Cut", "Darkens the voices, and every repeat a little more.", small (ParamStrip::Unit::highCut)),
       unsync (p.apvts, "unsync", "Unsync", "On: left and right wander on their own, which widens the sound.", ParamSwitch::Kind::column),
       noiseGate (p.apvts, "noiseGate", "Noise Gate", "On: the hiss fades out when the input goes quiet.", ParamSwitch::Kind::column),
-      clean (p.apvts, "clean", "Clean", "On: no fold back from Saturation, steady level, no grain in Wow and Flutter.", ParamSwitch::Kind::column)
+      clean (p.apvts, "clean", "Clean", "On: no fold back from Saturation, steady level, no grain in Wow and Flutter.", ParamSwitch::Kind::column),
+      monoSafe (p.apvts, "monoSafe", "Mono Safe", "On: Spread keeps its width, and summed to mono the voices sound as at Spread 0, so none cancel.", ParamSwitch::Kind::column)
 {
     setOpaque (true);
     presets = std::make_unique<PresetBox> (p);
@@ -250,7 +259,7 @@ TapeChorusEditor::Panel::Panel (TapeChorusEditor& e, PluginProcessor& p)
     for (juce::Component* c : std::initializer_list<juce::Component*> { &inputGain, &voices, &rate, &depth, &delay, &feedback, &spread, &mix, &outputGain, &inputLevel, &pitchSwing, &outputLevel })
         addAndMakeVisible (c);
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &wow, &wowRate, &flutter, &flutterRate, &random, &randomRate, &unsync, &saturation, &clean, &degrade, &degradeRate, &noise, &noiseGate, &tone, &lowCut, &highCut })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &wow, &wowRate, &flutter, &flutterRate, &random, &randomRate, &unsync, &monoSafe, &saturation, &clean, &degrade, &degradeRate, &noise, &noiseGate, &tone, &lowCut, &highCut })
         addChildComponent (c);
 
     hintLine.setFont (font (Weight::medium, 12.5f));
@@ -295,7 +304,7 @@ int TapeChorusEditor::Panel::countAdvancedChanges() const
 {
     int changed = 0;
 
-    for (const char* id : { "wow", "wowRate", "flutter", "flutterRate", "random", "randomRate", "unsync", "saturation", "clean", "degrade", "degradeRate", "noise", "noiseGate", "tone", "lowCut", "highCut" })
+    for (const char* id : { "wow", "wowRate", "flutter", "flutterRate", "random", "randomRate", "unsync", "monoSafe", "saturation", "clean", "degrade", "degradeRate", "noise", "noiseGate", "tone", "lowCut", "highCut" })
     {
         const auto* prm = processor.apvts.getParameter (id);
         changed += std::abs (prm->getValue() - prm->getDefaultValue()) > 1.0e-4f ? 1 : 0;
@@ -338,7 +347,7 @@ void TapeChorusEditor::Panel::layoutColumns()
     place (wow, 0, rowOne);        place (wowRate, 0, rowTwo);
     place (flutter, 1, rowOne);    place (flutterRate, 1, rowTwo);
     place (random, 2, rowOne);     place (randomRate, 2, rowTwo);
-    place (unsync, 3, rowOne);
+    place (unsync, 3, rowOne);     place (monoSafe, 3, rowTwo);
     place (saturation, 4, rowOne); place (clean, 4, rowTwo);
     place (degrade, 5, rowOne);    place (degradeRate, 5, rowTwo);
     place (noise, 6, rowOne);      place (noiseGate, 6, rowTwo);
@@ -391,12 +400,15 @@ void TapeChorusEditor::Panel::refreshReadings()
     inputLevel.setText (levelText (in), in > 0.0f);
     outputLevel.setText (levelText (out), out > 0.0f);
 
-    // With no audio running the reading has nothing to go on, so work out what Rate and Depth will do. The same sum as the engine's.
+    // With no audio running the reading has nothing to go on, so work out what Rate and Depth will do. The same sums as the engine's,
+    // the shrink at short Delay Times included (up to 0.5.1 it was left out, and Delay 3, Depth 8 showed 85 cents where the voice bends 13).
     float cents = processor.getPitchSwing()->get();
     if (! view.hasAudioRun())
     {
-        const auto slope = juce::MathConstants<float>::twoPi * processor.apvts.getRawParameterValue ("rate")->load() * processor.apvts.getRawParameterValue ("depth")->load() * 0.001f;
-        cents = 1200.0f * std::log2 (1.0f + slope);
+        const auto value = [this] (const char* id) { return processor.apvts.getRawParameterValue (id)->load(); };
+        const double scale = TapeChorusEngine::fitScale (juce::roundToInt (value ("voices")), value ("spread"), value ("depth"), value ("wow"), value ("flutter"),
+                                                         value ("random"), value ("delay"), processor.getMinDelayMs());
+        cents = (float) TapeChorusEngine::pitchSwingCents (value ("rate"), value ("depth") * scale);
     }
     pitchSwing.setText (juce::String::fromUTF8 ("\xc2\xb1") + juce::String (cents, cents < 99.5f ? 1 : 0) + " cents", false);
 }
@@ -442,8 +454,12 @@ void TapeChorusEditor::attachScreen()
     sinceDrawn = 0.0;
 
     // At most one frame per screen refresh, and never over the cap on faster screens.
+    lettingGo = false;
     vblank = std::make_unique<juce::VBlankAttachment> (this, [this] (double timestampSeconds)
     {
+        if (lettingGo)
+            return;
+
         const double elapsed = lastFrameTime > 0.0 ? timestampSeconds - lastFrameTime : 1.0 / 60.0;
         lastFrameTime = timestampSeconds;
         sinceDrawn += elapsed;
@@ -460,10 +476,11 @@ void TapeChorusEditor::attachScreen()
 
         stillFrames = tick (step) ? 0 : stillFrames + 1;
 
-        // Nothing has moved for a second. Let go of the screen's refresh and just look in now and then.
+        // Nothing has moved for a second. Let go of the screen's refresh and just look in now and then. The attachment is dropped by the
+        // timer, not here: up to 0.5.1 this callback deleted the attachment that holds it, closure and all, while it was still running.
         if (stillFrames > 30)
         {
-            vblank.reset();
+            lettingGo = true;
             startTimerHz (8);
         }
     });
@@ -471,6 +488,12 @@ void TapeChorusEditor::attachScreen()
 
 void TapeChorusEditor::timerCallback()
 {
+    if (lettingGo)
+    {
+        vblank.reset();
+        lettingGo = false;
+    }
+
     if (tick (1.0 / 8.0))
         attachScreen();
 }
@@ -509,7 +532,7 @@ void TapeChorusEditor::setAdvancedOpen (bool shouldBeOpen, bool animate)
         panel.advancedToggle->setState (panel.advancedAmount, panel.countAdvancedChanges());
         panel.repaint();
     }
-    else if (vblank == nullptr)
+    else if (vblank == nullptr || lettingGo)
     {
         attachScreen();
     }
@@ -540,6 +563,11 @@ bool TapeChorusEditor::tick (double dtSeconds)
     }
 
     return moved;
+}
+
+juce::String TapeChorusEditor::getPresetText() const
+{
+    return PresetBox::nameFor (processorRef);
 }
 
 void TapeChorusEditor::previewHover (const juce::String& paramId)

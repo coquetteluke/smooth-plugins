@@ -61,23 +61,22 @@ public:
         bool unsync = false, noiseGate = true;
         // Added in 0.4.0. Off is the sound of every version before it, sample for sample.
         bool clean = false;
+        // Added in 0.6.0. Off is the sound of 0.5.1, sample for sample.
+        bool monoSafe = false;
     };
 
     void prepare (double sampleRate, const Params& p)
     {
         sr = sampleRate;
-        // At 96 kHz, 2x already puts the clip stage at 192 kHz.
+        // At 96 kHz, 2x already puts the clip stage at 192 kHz. The filters delay the voices by a fixed number of samples (59.5 at 4x), so
+        // below about 21 kHz that is longer than the shortest Delay Time and a voice set to 3 ms sits further back (3.97 ms at 16 kHz).
+        // One stage would not hold it either below about 17.7 kHz (49 samples), and none would break Clean's filters. Logic runs at 44.1
+        // kHz and up, where this never happens.
         const size_t stages = sr < 60000.0 ? 2u : 1u;
         os = std::make_unique<FastOversampler> (2, stages, false);
         os->initProcessing ((size_t) tickLen);
-        os->reset();
         wetLatency = (double) os->getLatencyInSamples();
         cleanOs.prepare (1 << (int) stages, wetLatency, 2, tickLen);
-        cleanOs.reset();
-        fading = false; cutMoving = false;
-        cleanAmt = cleanAmtNext = p.clean ? 1.0f : 0.0f;
-        cleanRunning = p.clean; standardRunning = ! p.clean; cleanWarm = 0;
-        wowSmoothA = wowSmoothB = flutSmoothA = flutSmoothB = 0.0;
         minDelayMs = std::max (1.0, (wetLatency + 4.0) * 1000.0 / sr);
 
         const auto maxMs = 40.0 + 8.0 + maxWowMs + maxFlutterMs + maxRandomMs + maxOffsetMs + maxSpreadOffsetMs + 2.0;
@@ -86,7 +85,25 @@ public:
         while (size < needed) size *= 2;
         mask = size - 1;
         for (auto& l : line) l.assign ((size_t) size, 0.0f);
+        restart (p);
+    }
+
+    // Everything prepare sets after it has made its buffers: the state of a new instance at these settings, with an empty tape, the
+    // filters and the feedback loop at rest and every control already where it is set. The host's Reset (a stop, a locate, the start
+    // of a bounce) comes here. Allocates nothing.
+    void restart (const Params& p)
+    {
+        os->reset();
+        cleanOs.reset();
+        fading = false; cutMoving = false;
+        cleanAmt = cleanAmtNext = p.clean ? 1.0f : 0.0f;
+        cleanRunning = p.clean; standardRunning = ! p.clean; cleanWarm = 0;
+        monoAim = monoAmt = monoAmtNext = p.monoSafe ? 1.0f : 0.0f;
+        monoRunning = p.monoSafe; centreFresh = true;
+        wowSmoothA = wowSmoothB = flutSmoothA = flutSmoothB = 0.0;
+        for (auto& l : line) std::fill (l.begin(), l.end(), 0.0f);
         writeIndex = 0;
+        tapeMost = 0.0f;
 
         tickSec = tickLen / sr;
         // Smoothers run once per tick.
@@ -162,9 +179,13 @@ public:
         tapSum = tapSumNext;
         tapShare = tapShareNext;
         toneGNext = toneG; driveNext = drive;
+        centreGain = centreGainNext;
         target = p;
-        computeDelays (delayNext);
+        computeDelays (delayNext, monoRunning ? &centreNext : nullptr);
         delayCur = delayNext;
+        centreCur = centreNext;
+        centreStep.fill (0.0);
+        centreFresh = ! monoRunning;
         for (auto& side : delayStep) side.fill (0.0);
         tickLeft = 0;
         traceTicks = std::max (1, juce::roundToInt (sr / (double) tickLen / 250.0));
@@ -187,6 +208,28 @@ public:
     uint32_t getTraceCount() const noexcept { return traceCount.load (std::memory_order_acquire); }
     float getTraceHz() const noexcept { return traceHz.load (std::memory_order_relaxed); }
     const TraceRow& getTraceRow (uint32_t index) const noexcept { return (*trace)[(size_t) (index & (traceRows - 1))]; }
+
+    // The largest pitch movement a sweep of this rate and depth gives, in cents. The read head runs at 1 - slope of tape speed, so the
+    // pitch goes up by 1 + s while the delay shrinks and down by 1 - s while it grows; down is always the larger. Up to 0.5.1 this gave
+    // the upward bend only: 13.0 at the default where the voice bends 13.1, 668 at Rate 10, Depth 7.5 where it bends 1103.
+    static double pitchSwingCents (double rateHz, double depthMs)
+    {
+        const double slope = juce::MathConstants<double>::twoPi * rateHz * depthMs * 0.001;
+        return -1200.0 * std::log2 (1.0 - std::min (slope, 0.999));
+    }
+
+    // How far the modulation shrinks to fit when Delay Time is too short to hold it, 1 when it fits: the sum computeDelays makes, for a
+    // window working out what a setting will do while no audio runs. Leaves out nothing the engine counts.
+    static double fitScale (int numVoices, float spreadPct, float depthMs, float wowPct, float flutterPct, float randomPct, float delayMs, double minDelay)
+    {
+        const int n = juce::jlimit (1, maxVoices, numVoices);
+        float reachMs = 0.0f;
+        for (int v = 0; v < n; ++v) reachMs = std::max (reachMs, std::abs (offsetFor (n, v)));
+        const double excursion = (double) reachMs + spreadPct * 0.01f * maxSpreadOffsetMs + depthMs + wowPct * 0.01f * maxWowMs
+                               + flutterPct * 0.01f * maxFlutterMs + randomPct * 0.01f * maxRandomMs;
+        const double room = delayMs - minDelay;
+        return excursion > room ? (excursion > 0.0 ? std::max (room, 0.0) / excursion : 0.0) : 1.0;
+    }
 
     // The layout of the voices, for a window drawing what a setting will do while no audio runs.
     static float voiceOffsetMs (int numVoices, int voice) { return offsetFor (numVoices, voice); }
@@ -256,6 +299,7 @@ private:
             const double c = std::cos (th), sn = std::sin (th);
             sideGainNext[0][v] = voiceGainNext[v] * dip[v] * (float) (c - sn);
             sideGainNext[1][v] = voiceGainNext[v] * dip[v] * (float) (c + sn);
+            centreGainNext[v] = voiceGainNext[v] * dip[v];   // the gain at Spread 0, for Mono Safe; nothing else reads it
         }
         for (size_t s = 0; s < 2; ++s)
         {
@@ -358,8 +402,7 @@ private:
     {
         readInPeak.store ((float) inPeak, std::memory_order_relaxed);
         readOutPeak.store ((float) outPeak, std::memory_order_relaxed);
-        const double slope = juce::MathConstants<double>::twoPi * rate * depth * scaleNow * 0.001;
-        readPitchSwing.store ((float) (1200.0 * std::log2 (1.0 + slope)), std::memory_order_relaxed);
+        readPitchSwing.store ((float) pitchSwingCents (rate, depth * scaleNow), std::memory_order_relaxed);
         for (size_t s = 0; s < 2; ++s)
             for (size_t v = 0; v < maxVoices; ++v)
                 readDelayMs[s][v].store (voiceGainNext[v] > 0.0f ? (float) ((delayNext[s][v] + wetLatency) * 1000.0 / sr) : 0.0f, std::memory_order_relaxed);
@@ -373,12 +416,15 @@ private:
         return rngState;
     }
 
-    void computeDelays (std::array<std::array<double, maxVoices>, 2>& dest)
+    // centreDest, for Mono Safe only: each voice's head as it would sit at Spread 0, halfway between the two sides' Random when Unsync
+    // is on. Worked out with side 0, whose sweep is the one Spread leaves where it is.
+    void computeDelays (std::array<std::array<double, maxVoices>, 2>& dest, std::array<double, maxVoices>* centreDest = nullptr)
     {
         const double excursion = (double) reach + spread * maxSpreadOffsetMs + depth + wow + flutter + random;
         const double room = centre - minDelayMs;
         // Everything shrinks together when the delay is too short to hold it, so the read head never reaches the write head.
-        const double scale = excursion > room ? std::max (room, 0.0) / excursion : 1.0;
+        // With nothing moving (excursion 0) and no room, that was 0/0 up to 0.5.1: a NaN below about 21 kHz, where room can be negative.
+        const double scale = excursion > room ? (excursion > 0.0 ? std::max (room, 0.0) / excursion : 0.0) : 1.0;
         scaleNow = scale;
 
         // The irregular part of Wow and Flutter is noise through one filter pole, which leaves a little of it at every speed up to the
@@ -404,6 +450,12 @@ private:
                 const double rn = randomVal[0][(size_t) v] + (double) unsyncAmt * side * (randomVal[1][(size_t) v] - randomVal[0][(size_t) v]);
                 const double ms = centre + scale * (voiceOffset[(size_t) v] + sideOffset + depth * l + wow * w + flutter * f + random * rn);
                 dest[(size_t) side][(size_t) v] = std::max (ms * 0.001 * sr - wetLatency, 3.0); // the read head never reaches the write head
+                if (side == 0 && centreDest != nullptr)
+                {
+                    const double rc = randomVal[0][(size_t) v] + 0.5 * (double) unsyncAmt * (randomVal[1][(size_t) v] - randomVal[0][(size_t) v]);
+                    const double mc = centre + scale * (voiceOffset[(size_t) v] + depth * l + wow * w + flutter * f + random * rc);
+                    (*centreDest)[(size_t) v] = std::max (mc * 0.001 * sr - wetLatency, 3.0);
+                }
             }
         }
     }
@@ -523,16 +575,36 @@ private:
         }
 
         sideGain = sideGainNext;
+        centreGain = centreGainNext;
         tapSum = tapSumNext;
         tapShare = tapShareNext;
         computeSideGains();
 
+        // Mono Safe fades in and out over 30 ms, in two stages as Mix glides, so the fade starts and ends with no corner. Its own cuts start
+        // from the main ones' state, so they join in step.
+        monoAmt = monoAmtNext;
+        if (target.monoSafe && ! monoRunning)
+        {
+            monoRunning = true; centreFresh = true;
+            for (auto& st : chan) { st.lowY = st.low; st.highY = st.high; }
+        }
+        slew (monoAim, target.monoSafe ? 1.0f : 0.0f, gainSlew);
+        smooth (monoAmtNext, monoAim, cMixSoft);
+        if (! target.monoSafe && monoAmt <= 0.0f && monoAmtNext <= 0.0f) monoRunning = false;
+
         // Ramps across this tick
         delayCur = delayNext;
-        computeDelays (delayNext);
+        centreCur = centreNext;
+        computeDelays (delayNext, monoRunning ? &centreNext : nullptr);
         for (size_t s = 0; s < 2; ++s)
             for (size_t v = 0; v < maxVoices; ++v)
                 delayStep[s][v] = (delayNext[s][v] - delayCur[s][v]) / tickLen;
+        if (monoRunning)
+        {
+            if (centreFresh) { centreCur = centreNext; centreFresh = false; }   // nothing to glide from on the first tick
+            for (size_t v = 0; v < maxVoices; ++v)
+                centreStep[v] = (centreNext[v] - centreCur[v]) / tickLen;
+        }
 
         drive = driveNext;
         smooth (driveNext, target.satPct * 0.01f * maxSatDrive, cFast);
@@ -748,6 +820,9 @@ private:
         }
 
         const int numOutSides = numOut >= 2 ? 2 : 1;
+        // Mono Safe keeps Spread's side signal (left minus right) exactly and takes the mid (left plus right) from the voices at Spread 0,
+        // so summed to mono Spread changes nothing and no Spread can make the voices cancel. The feedback loop keeps the plain sides.
+        const bool monoOn = monoRunning && numOutSides == 2;
 
         for (int i = 0; i < n; ++i)
         {
@@ -800,7 +875,7 @@ private:
                 tapeMost = std::max (tapeMost, std::abs (onTape));
             }
 
-            std::array<float, 2> wet { 0.0f, 0.0f };
+            std::array<float, 2> wet { 0.0f, 0.0f }, centreWet { 0.0f, 0.0f };
             for (int v = 0; v < maxVoices; ++v)
             {
                 const auto vi = (size_t) v;
@@ -813,7 +888,16 @@ private:
                     const auto& l = line[(size_t) (numLines == 2 ? s : 0)];
                     wet[si] += gain * readInterpolated (l, d);
                 }
+                if (monoOn)
+                {
+                    // The voice as it reads at Spread 0, on each side's own tape.
+                    const float gain = centreGain[vi] + tp * (centreGainNext[vi] - centreGain[vi]);
+                    const double d = centreCur[vi] + centreStep[vi] * (tickPos + i);
+                    for (int s = 0; s < numLines; ++s)
+                        centreWet[(size_t) s] += gain * readInterpolated (line[(size_t) s], d);
+                }
             }
+            if (monoOn && numLines < 2) centreWet[1] = centreWet[0];
 
             const float tg = toneG + tp * (toneGNext - toneG);
             float dg = dryGain + tp * (dryGainNext - dryGain);
@@ -846,6 +930,17 @@ private:
                 st.loopHp += loopHpA * (st.loopLp - st.loopHp);
                 tap = softLimit (st.loopLp - st.loopHp);
                 feedbackRing[(size_t) s][(size_t) ringPos] = (float) tap;
+
+                if (monoOn)
+                {
+                    const double mid = 0.5 * ((double) centreWet[0] + (double) centreWet[1]), side = 0.5 * ((double) wet[0] - (double) wet[1]);
+                    double y = s == 0 ? mid + side : mid - side;
+                    const double yhp = st.lowY.high (y, cutMoving ? CutCoefs::between (lowCoefPrev, lowCoef, tp) : lowCoef);
+                    y += (double) lowNow * (yhp - y);
+                    const double ylp = st.highY.low (y, cutMoving ? CutCoefs::between (highCoefPrev, highCoef, tp) : highCoef);
+                    y += (double) highNow * (ylp - y);
+                    x += (double) (monoAmt + tp * (monoAmtNext - monoAmt)) * (y - x);
+                }
 
                 const double vv = (x - st.toneZ) * toneA;
                 const double lp = vv + st.toneZ;
@@ -880,14 +975,20 @@ private:
     }
 
     // Filters here are the only state with feedback of their own. Input is clean and the loop is limited, so this is a last guard.
+    // Since 0.6.0 it also looks at the tone filter and the other per channel states, and clears the tape with them: up to 0.5.1 a NaN
+    // that reached the tone filter (or the tape, through the loop) stayed there for good.
     void clearIfBad()
     {
+        bool bad = false;
         for (auto& st : chan)
-            if (! st.low.isFinite() || ! st.high.isFinite() || ! std::isfinite (st.loopLp) || ! std::isfinite (st.loopHp))
-            {
-                st.low = {}; st.high = {}; st.loopLp = st.loopHp = 0.0;
-                for (auto& side : feedbackRing) side.fill (0.0f);
-            }
+            bad = bad || ! st.low.isFinite() || ! st.high.isFinite() || ! st.lowY.isFinite() || ! st.highY.isFinite() || ! std::isfinite (st.loopLp) || ! std::isfinite (st.loopHp)
+                      || ! std::isfinite (st.toneZ) || ! std::isfinite (st.tapeLow) || ! std::isfinite (st.dcY) || ! std::isfinite (st.dcYClean)
+                      || ! std::isfinite (st.deOut) || ! std::isfinite (st.pre);
+        if (! bad)
+            return;
+        for (auto& st : chan) st = {};
+        for (auto& side : feedbackRing) side.fill (0.0f);
+        for (auto& l : line) std::fill (l.begin(), l.end(), 0.0f);
     }
 
     // 6 point Lagrange: keeps the top end steady as the read head moves between samples. delay must be at least 3 samples.
@@ -946,6 +1047,7 @@ private:
     {
         double pre = 0, deIn = 0, deOut = 0, dcX = 0, dcY = 0, dcYClean = 0, toneZ = 0, loopLp = 0, loopHp = 0, tapeLow = 0;
         Cut low, high;
+        Cut lowY, highY;   // Mono Safe's own Low Cut and High Cut, on what it sends out (the loop keeps low and high)
     };
 
     static constexpr double gateOpenLevel = 0.00178, gateCloseLevel = 0.001; // -55 and -60 dBFS, so it does not chatter on a held quiet note
@@ -959,6 +1061,10 @@ private:
     bool fading = false;
     float cleanAmt = 0.0f, cleanAmtNext = 0.0f;
     bool cleanRunning = false, standardRunning = true;
+    float monoAim = 0.0f, monoAmt = 0.0f, monoAmtNext = 0.0f;
+    bool monoRunning = false, centreFresh = true;
+    std::array<float, maxVoices> centreGain {}, centreGainNext {};
+    std::array<double, maxVoices> centreCur {}, centreNext {}, centreStep {};
     int cleanWarm = 0;
     double wowSmoothC = 0.0, flutSmoothC = 0.0, wowSmoothA = 0.0, wowSmoothB = 0.0, flutSmoothA = 0.0, flutSmoothB = 0.0;
     std::array<std::vector<float>, 2> line;

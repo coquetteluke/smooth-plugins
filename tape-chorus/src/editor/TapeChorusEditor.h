@@ -26,6 +26,9 @@ public:
     void setAdvancedOpen (bool shouldBeOpen, bool animate);
     bool isAdvancedOpen() const noexcept;
 
+    /** What the preset box shows. For the tests. */
+    juce::String getPresetText() const;
+
     ui::TapeView& getView() noexcept      { return panel.view; }
     juce::Component& getPanel() noexcept  { return panel; }
 
@@ -62,7 +65,7 @@ private:
         ui::Readout inputLevel, pitchSwing, outputLevel;
 
         ui::ParamStrip wow, wowRate, flutter, flutterRate, random, randomRate, saturation, degrade, degradeRate, noise, tone, lowCut, highCut;
-        ui::ParamSwitch unsync, noiseGate, clean;
+        ui::ParamSwitch unsync, noiseGate, clean, monoSafe;
 
         juce::Label hintLine;
         float advancedAmount = 0.0f;   // 0 closed, 1 open
@@ -79,7 +82,7 @@ private:
     Panel panel;
     double lastFrameTime = 0.0, frameBudget = 0.0, sinceDrawn = 0.0;
     int slowCountdown = 0, stillFrames = 0;
-    bool constructed = false;
+    bool constructed = false, lettingGo = false;
     std::unique_ptr<juce::VBlankAttachment> vblank;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TapeChorusEditor)

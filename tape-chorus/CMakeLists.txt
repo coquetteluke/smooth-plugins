@@ -8,7 +8,7 @@ set(SP_NAME    "Tape Chorus")
 set(SP_CODE    STch)
 set(SP_BUNDLE  "com.lukegarito.smoothtapechorus")
 set(SP_DESC    "Tape style chorus with 1 to 8 voices, feedback, wow, flutter and saturation")
-set(SP_VERSION 0.5.1)
+set(SP_VERSION 0.6.0)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice
@@ -86,7 +86,7 @@ enable_testing()
 juce_add_console_app(PluginTest PRODUCT_NAME "PluginTest")
 target_sources(PluginTest PRIVATE ${SP_SOURCES} tests/PluginTest.cpp)
 target_include_directories(PluginTest PRIVATE src tests)
-target_compile_definitions(PluginTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0)
+target_compile_definitions(PluginTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0 "BASELINE_DIR=\"${CMAKE_SOURCE_DIR}/tests/baseline\"" "SPEECH_DIR=\"${CMAKE_SOURCE_DIR}/tests/speech\"")
 target_link_libraries(PluginTest PRIVATE WindowFonts juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME plugin COMMAND PluginTest)
 

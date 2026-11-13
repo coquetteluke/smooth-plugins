@@ -1,0 +1,28 @@
+identical  all_clean_s48b128
+identical  all_fb90
+differs as it should, in the first 2 s only (mono out starts with Spread at 0 since 0.6.0)  all_m48b256
+identical  all_s44b64
+identical  all_s48b128
+identical  all_s96b512
+identical  bypass
+identical  clean_sat100
+identical  default
+identical  default_clean
+differs as it should, in the first 2 s only (mono out starts with Spread at 0 since 0.6.0)  default_m48b256
+identical  preset0
+identical  preset1
+identical  preset10
+identical  preset11
+identical  preset12
+identical  preset13
+identical  preset14
+identical  preset15
+identical  preset2
+identical  preset3
+identical  preset4
+identical  preset5
+identical  preset6
+identical  preset7
+identical  preset8
+identical  preset9
+from 0.5.1: 25 identical, 2 differ on purpose

@@ -101,6 +101,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     floatParam ("noise", "Noise", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, "%");
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "noiseGate", 1 }, "Noise Gate", true));
 
+    // Added in 0.6.0. Off by default, in every preset and in every older session, where it is the sound of 0.5.1. It sits before Clean
+    // because a test from 0.4.0 holds Clean as the last control. The AU reports its parameters by ID, and an ID comes from its text,
+    // so the place in this list changes no ID and no order a host sees.
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "monoSafe", 1 }, "Mono Safe", false));
+
     // Added in 0.4.0, last. Off is the sound of 0.3.1. On in a new instance since 0.5.0; a session saved before 0.4.0 has no Clean in
     // it and opens with Clean off (see setStateInformation), so it sounds as it did.
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "clean", 1 }, "Clean", true));
@@ -138,6 +143,7 @@ PluginProcessor::PluginProcessor()
     noiseAmount = apvts.getRawParameterValue ("noise");
     noiseGate = apvts.getRawParameterValue ("noiseGate");
     clean = apvts.getRawParameterValue ("clean");
+    monoSafe = apvts.getRawParameterValue ("monoSafe");
 
     // Readings sit outside the value tree: never saved, never automated.
     inputLevel = new Reading ("inputLevel", "Input Level", "dB", -60.0f, 24.0f, 1, "-inf", juce::AudioProcessorParameter::inputMeter);
@@ -146,6 +152,24 @@ PluginProcessor::PluginProcessor()
     addParameter (outputLevel);
     pitchSwing = new Reading ("pitchSwing", "Pitch Swing", "cents", 0.0f, 1200.0f, 1, "0");
     addParameter (pitchSwing);
+
+    apvts.addParameterListener ("bypass", this);
+}
+
+PluginProcessor::~PluginProcessor()
+{
+    apvts.removeParameterListener ("bypass", this);
+}
+
+void PluginProcessor::parameterChanged (const juce::String& id, float value)
+{
+    if (id != "bypass")
+        return;
+    const bool on = value > 0.5f;
+    if (on && ! bypassWasOn.exchange (true, std::memory_order_relaxed))
+        bypassOnAt.store (juce::Time::getMillisecondCounterHiRes(), std::memory_order_relaxed);
+    else if (! on)
+        bypassWasOn.store (false, std::memory_order_relaxed);
 }
 
 double PluginProcessor::getTailLengthSeconds() const
@@ -192,13 +216,37 @@ TapeChorusEngine::Params PluginProcessor::readParams() const
     p.noisePct = noiseAmount->load();
     p.noiseGate = noiseGate->load() > 0.5f;
     p.clean = clean->load() > 0.5f;
+    p.monoSafe = monoSafe->load() > 0.5f;
+    return p;
+}
+
+// The settings the engine starts from. Mono out has no sides, so Spread starts at 0 there, as process() holds it: up to 0.5.1 it
+// started at its control value and glided to 0, which bent the voices for about 0.4 s after every prepare and every mono bounce.
+TapeChorusEngine::Params PluginProcessor::startingParams() const
+{
+    auto p = readParams();
+    if (getTotalNumOutputChannels() < 2)
+        p.spreadPct = 0.0f;
     return p;
 }
 
 void PluginProcessor::prepareToPlay (double sampleRate, int)
 {
-    engine.prepare (sampleRate, readParams());
+    engine.prepare (sampleRate, startingParams());
     setLatencySamples (0); // the wet path's filter delay is taken off its read head, so nothing is added, bypassed or not
+    for (auto* r : { inputLevel, outputLevel, pitchSwing })
+        r->set (-1.0e6f);
+}
+
+void PluginProcessor::reset()
+{
+    // The Reset that comes with the host's own bypass switching on is skipped (see bypassOnAt). JUCE calls it within microseconds.
+    const double since = juce::Time::getMillisecondCounterHiRes() - bypassOnAt.exchange (-1.0e9, std::memory_order_relaxed);
+    if (since >= 0.0 && since < 50.0)
+        return;
+
+    const juce::ScopedLock lock (getCallbackLock());   // the AU wrapper renders under this lock, so a Reset never lands mid block
+    engine.restart (startingParams());
     for (auto* r : { inputLevel, outputLevel, pitchSwing })
         r->set (-1.0e6f);
 }
@@ -206,6 +254,10 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
 void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
 {
     juce::ScopedNoDenormals noDenormals;
+    // A block played well after the switch: a Reset from now on is a real one. Not cleared at once, because the audio thread can
+    // play a block between JUCE setting the bypass and calling Reset on the host's thread.
+    if (juce::Time::getMillisecondCounterHiRes() - bypassOnAt.load (std::memory_order_relaxed) > 5.0)
+        bypassOnAt.store (-1.0e9, std::memory_order_relaxed);
     sanitiseInput (buffer); // also protects the dry path, which the engine passes straight through
     const int numIn = juce::jmin (getTotalNumInputChannels(), buffer.getNumChannels());
     const int numOut = juce::jmin (getTotalNumOutputChannels(), buffer.getNumChannels());
@@ -273,6 +325,7 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("noise", pr.noise);
     set ("noiseGate", 1.0f);
     set ("clean", pr.clean ? 1.0f : 0.0f);
+    set ("monoSafe", 0.0f);   // no factory preset has it, so a preset sounds as it did in 0.5.1
     set ("inputGain", 0.0f);
     set ("outputGain", 0.0f);
 }
@@ -283,6 +336,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         xml->setAttribute ("windowWidth", windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute ("advancedOpen", advancedOpen.load (std::memory_order_relaxed));
+        if (currentProgram >= 0)
+            xml->setAttribute ("program", currentProgram);   // since 0.6.0: the preset last chosen, left out when none is known
         copyXmlToBinary (*xml, dest);
     }
 }
@@ -295,8 +350,12 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             // The window's own two values are read here and kept out of the parameter tree. Sessions from before the window have neither.
             windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute ("windowWidth", defaultWindowWidth)), std::memory_order_relaxed);
             advancedOpen.store (xml->getBoolAttribute ("advancedOpen", false), std::memory_order_relaxed);
+            // Which preset was chosen, only to name it: its values are in the state already and are not applied again. A session saved
+            // before 0.6.0 does not say, so it names none rather than a wrong one. A damaged number is kept in range.
+            currentProgram = xml->hasAttribute ("program") ? juce::jlimit (0, getNumPrograms() - 1, xml->getIntAttribute ("program", 0)) : -1;
             xml->removeAttribute ("windowWidth");
             xml->removeAttribute ("advancedOpen");
+            xml->removeAttribute ("program");
             // A session saved before 0.4.0 has no Clean in it. A control missing from a session goes to its default, and Clean's default is
             // on since 0.5.0, so such a session is given Clean off here: it opens with the sound it was saved with.
             bool hasClean = false;

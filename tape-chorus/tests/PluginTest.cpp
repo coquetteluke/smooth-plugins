@@ -2,11 +2,13 @@
 // Pass limits were written before the first run.
 #define SMOOTH_COUNT_ALLOCS
 #include "TestKit.h"
+#include <juce_audio_formats/juce_audio_formats.h>
 #include "PluginProcessor.h"
 #include "editor/TapeChorusEditor.h"
 #include "EngineV010.h"
 #include <algorithm>
 #include <numeric>
+#include <cstring>
 
 using namespace testkit;
 
@@ -2416,6 +2418,526 @@ static void testGainGlide()
     }
 }
 
+// ---- Phase 2 (2026-11-13): faults from the bug hunt, each written first and failing on 0.5.1 ----
+
+namespace
+{
+    double largestDifference (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b, int from = 0)
+    {
+        double most = 0;
+        for (int ch = 0; ch < std::min (a.getNumChannels(), b.getNumChannels()); ++ch)
+            for (int i = from; i < std::min (a.getNumSamples(), b.getNumSamples()); ++i)
+                most = std::max (most, (double) std::abs (a.getSample (ch, i) - b.getSample (ch, i)));
+        return most;
+    }
+
+    double peakAll (const juce::AudioBuffer<float>& b, int from, int len)
+    {
+        double most = 0;
+        for (int ch = 0; ch < b.getNumChannels(); ++ch)
+            most = std::max (most, peak (b.getReadPointer (ch) + from, std::min (len, b.getNumSamples() - from)));
+        return most;
+    }
+
+    juce::File baselineFile (const juce::String& name)
+    {
+       #ifdef BASELINE_DIR
+        return juce::File (juce::String (BASELINE_DIR)).getChildFile (name);
+       #else
+        return juce::File::getCurrentWorkingDirectory().getChildFile ("tests/baseline").getChildFile (name);
+       #endif
+    }
+
+    bool loadState (PluginProcessor& p, const juce::String& file)
+    {
+        juce::MemoryBlock st;
+        if (! baselineFile (file).loadFileAsData (st))
+            return false;
+        p.setStateInformation (st.getData(), (int) st.getSize());
+        return true;
+    }
+}
+
+// The host's Reset (AudioUnitReset: a stop, a locate, the start of a bounce). Up to 0.5.1 it did nothing, so the tape, the feedback
+// loop and the filters kept what was playing before.
+static void testHostReset()
+{
+    const double sr = 48000.0;
+    const int n = 48000;
+    std::vector<float> noiseIn ((size_t) n), toneIn ((size_t) n), silence ((size_t) n, 0.0f);
+    noise (noiseIn.data(), n, 0.25, 3);
+    sine (toneIn.data(), n, 440.0, sr, 0.25);
+    const auto setUp = [] (PluginProcessor& p) { set (p, "feedback", 80.0f); set (p, "noise", 0.0f); };
+
+    {
+        PluginProcessor p;
+        setUp (p);
+        prepare (p, 2, sr, 512);
+        render (p, noiseIn, 512);
+        const long before = allocs.load();
+        p.reset();
+        const long during = allocs.load() - before;
+        auto out = render (p, silence, 512);
+        info ("Feedback 80: first 100 ms after a host Reset, loudest sample", toDb (peakAll (out, 0, 4800)), "dBFS");
+        check (peakAll (out, 0, n) == 0.0, "Feedback 80: after a host Reset, silence in gives silence out, loudest sample", toDb (peakAll (out, 0, n)), "dBFS");
+        check (during == 0, "a host Reset allocates nothing", (double) during);
+    }
+    // A control moving when the Reset comes lands on its setting at once, as in a new instance.
+    for (const bool moving : { false, true })
+    {
+        PluginProcessor p;
+        setUp (p);
+        prepare (p, 2, sr, 512);
+        render (p, noiseIn, 512, nullptr, [&] (int idx) { if (moving && idx == 90) { set (p, "delay", 30.0f); set (p, "voices", 5.0f); set (p, "mix", 70.0f); } });
+        p.reset();
+        auto second = render (p, toneIn, 512);
+        PluginProcessor q;
+        setUp (q);
+        if (moving) { set (q, "delay", 30.0f); set (q, "voices", 5.0f); set (q, "mix", 70.0f); }
+        prepare (q, 2, sr, 512);
+        auto fresh = render (q, toneIn, 512);
+        const double diff = largestDifference (second, fresh);
+        check (diff == 0.0, std::string ("play, host Reset, play") + (moving ? " (Delay, Voices and Mix moved just before)" : "")
+                            + ": the second part equals a new instance, largest difference", toDb (diff), "dB");
+    }
+    // Mono in, mono out and mono in, stereo out too.
+    for (const bool stereoOut : { false, true })
+    {
+        PluginProcessor p, q;
+        setUp (p); setUp (q);
+        prepareLayout (p, juce::AudioChannelSet::mono(), stereoOut ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::mono(), sr, 512);
+        prepareLayout (q, juce::AudioChannelSet::mono(), stereoOut ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::mono(), sr, 512);
+        renderLR (p, noiseIn, nullptr, 512);
+        p.reset();
+        const double diff = largestDifference (renderLR (p, toneIn, nullptr, 512), renderLR (q, toneIn, nullptr, 512));
+        check (diff == 0.0, std::string ("mono in, ") + (stereoOut ? "stereo" : "mono") + " out: play, host Reset, play equals a new instance, largest difference", toDb (diff), "dB");
+    }
+    // JUCE's AU wrapper calls Reset straight after the host turns its own bypass on. That one must not cut the 20 ms fade to dry short.
+    {
+        const auto run = [&] (bool withReset)
+        {
+            PluginProcessor p;
+            set (p, "mix", 50.0f);
+            prepare (p, 2, sr, 128);
+            std::vector<float> tone ((size_t) n);
+            sine (tone.data(), n, 1000.0, sr, 0.25);
+            return render (p, tone, 128, nullptr, [&] (int idx)
+            {
+                if (idx == 150)
+                {
+                    p.getBypassParameter()->setValueNotifyingHost (1.0f);
+                    if (withReset) p.reset();
+                }
+            });
+        };
+        const auto plainSwitch = run (false), withReset = run (true);
+        const double diff = largestDifference (plainSwitch, withReset);
+        check (diff == 0.0, "the Reset that comes with host bypass switching on: the fade to dry plays as it does without it, largest difference", toDb (diff), "dB");
+        const double step = maxJump (withReset.getReadPointer (0) + 150 * 128 - 256, 4096), own = maxJump (withReset.getReadPointer (0) + 128, 4096);
+        check (step <= own * 1.02, "host bypass on with its Reset: biggest step on a 1 kHz tone, against the tone's own " + juce::String (own, 4).toStdString(), step);
+    }
+    // Only the Reset that comes with the switch is skipped: one that comes later, with Bypass on from automation, still clears. Later
+    // means a block played more than 5 ms after the switch, or more than 50 ms gone.
+    for (const bool blockAfter : { true, false })
+    {
+        PluginProcessor p;
+        setUp (p);
+        prepare (p, 2, sr, 512);
+        render (p, noiseIn, 512);
+        p.getBypassParameter()->setValueNotifyingHost (1.0f);
+        std::vector<float> oneBlock (noiseIn.begin(), noiseIn.begin() + 512);
+        render (p, oneBlock, 512);
+        juce::Thread::sleep (blockAfter ? 20 : 60);
+        if (blockAfter) render (p, oneBlock, 512);
+        p.reset();
+        p.getBypassParameter()->setValueNotifyingHost (0.0f);
+        auto out = render (p, silence, 512);
+        check (peakAll (out, 0, n) == 0.0, std::string ("Bypass on from automation, ") + (blockAfter ? "a block 20 ms later" : "60 ms gone")
+                                           + ", then a host Reset and Bypass off: silence gives silence, loudest sample", toDb (peakAll (out, 0, n)), "dBFS");
+    }
+}
+
+// Mono in, mono out has no sides to spread, so Spread does nothing there. Up to 0.5.1 prepare started Spread at its control value and
+// let it glide to 0, which bent the voices and moved their levels for about 0.4 s after every prepare and every mono bounce.
+static void testMonoOutStart()
+{
+    const double sr = 48000.0;
+    const int n = 48000;
+    std::vector<float> in ((size_t) n);
+    noise (in.data(), n, 0.25, 5);
+    for (const float spread : { 70.0f, 100.0f })
+    {
+        const auto run = [&] (float s)
+        {
+            PluginProcessor p;
+            set (p, "mix", 100.0f);
+            set (p, "spread", s);
+            prepareLayout (p, juce::AudioChannelSet::mono(), juce::AudioChannelSet::mono(), sr, 512);
+            return renderLR (p, in, nullptr, 512);
+        };
+        const auto a = run (spread), b = run (0.0f);
+        const double diff = largestDifference (a, b);
+        check (diff == 0.0, "mono in, mono out at Mix 100: Spread " + std::to_string ((int) spread) + " renders as Spread 0 from the first sample, largest difference", toDb (diff), "dB");
+    }
+}
+
+// The chosen preset is saved with the session. It only names the preset: its values are in the state already and are not applied again.
+static void testPresetSaved()
+{
+    {
+        PluginProcessor p;
+        std::vector<float> before;
+        for (auto* prm : p.getParameters()) before.push_back (prm->getValue());
+        p.setCurrentProgram (0);
+        int moved = 0;
+        for (int i = 0; i < p.getParameters().size(); ++i) moved += std::abs (p.getParameters()[i]->getValue() - before[(size_t) i]) > 1.0e-6f ? 1 : 0;
+        check (p.getCurrentProgram() == 0 && moved == 0, "a new instance names " + p.getProgramName (p.getCurrentProgram()).toStdString() + ", and choosing it moves no control", (double) moved);
+    }
+    {
+        PluginProcessor a;
+        a.setCurrentProgram (3);
+        set (a, "depth", 4.0f);
+        juce::MemoryBlock st;
+        a.getStateInformation (st);
+        PluginProcessor b;
+        b.setStateInformation (st.getData(), (int) st.getSize());
+        check (b.getCurrentProgram() == 3, "a session saved after choosing Worn Cassette reopens naming it, program", (double) b.getCurrentProgram());
+        check (std::abs (b.apvts.getRawParameterValue ("depth")->load() - 4.0f) < 1.0e-4f, "and the preset is not applied again: Depth moved after it stays", b.apvts.getRawParameterValue ("depth")->load(), "ms");
+        check (! b.apvts.state.hasProperty ("program"), "the preset number stays out of the parameter tree");
+
+        for (const char* bad : { "99", "-5", "x" })
+        {
+            auto xml = a.getXmlFromBinary (st.getData(), (int) st.getSize());
+            xml->setAttribute ("program", bad);
+            juce::MemoryBlock damaged;
+            a.copyXmlToBinary (*xml, damaged);
+            PluginProcessor c;
+            c.setStateInformation (damaged.getData(), (int) damaged.getSize());
+            check (juce::isPositiveAndBelow (c.getCurrentProgram(), c.getNumPrograms()), std::string ("a damaged preset number '") + bad + "' is kept in range", (double) c.getCurrentProgram());
+        }
+    }
+    // A session saved by 0.5.1 does not say which preset it came from, so it names none rather than a wrong one.
+    {
+        PluginProcessor p;
+        const bool loaded = loadState (p, "v0.5.1-preset3.state");
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+        auto* window = dynamic_cast<TapeChorusEditor*> (ed.get());
+        const auto shown = window != nullptr ? window->getPresetText() : juce::String();
+        check (loaded && p.getCurrentProgram() == -1, "a session saved by 0.5.1 after choosing Worn Cassette names no preset, program", (double) p.getCurrentProgram());
+        check (shown == "Choose a preset", "and the window shows a neutral label: \"" + shown.toStdString() + "\"");
+        check (loaded && std::abs (p.apvts.getRawParameterValue ("spread")->load() - 27.0f) < 0.01f, "it still holds Worn Cassette's values: Spread", p.apvts.getRawParameterValue ("spread")->load(), "%");
+    }
+}
+
+// States saved by the installed 0.5.1 AU (tests/baseline/v0.5.1-*.state, its jucePluginState) render as 0.5.1 rendered them, to the last
+// bit. tests/baseline/renders-0.5.1.txt holds checksums made by the 0.5.1 code with TAPE_CHORUS_SAVE_051=1. Mono in, mono out at Spread 70
+// is compared from 1 s on: the first 0.4 s change on purpose in 0.6.0 (testMonoOutStart).
+static void testSaved051()
+{
+    struct Case { const char* name; bool mono; double fromSec; };
+    const Case cases[] = { { "default", false, 0.0 }, { "preset3", false, 0.0 }, { "all_s48b128", false, 0.0 }, { "default_m48b256", true, 1.0 } };
+    const double sr = 48000.0;
+    const int n = (int) (sr * 3.0);
+    std::vector<float> in ((size_t) n), tone ((size_t) n);
+    noise (in.data(), n, 0.15, 11);
+    sine (tone.data(), n, 220.0, sr, 0.2);
+    for (int i = 0; i < n; ++i) in[(size_t) i] = (i / 24000) % 3 == 2 ? 0.0f : in[(size_t) i] + tone[(size_t) i];
+
+    const bool save = std::getenv ("TAPE_CHORUS_SAVE_051") != nullptr;
+    juce::StringArray lines, saved;
+    saved.addLines (baselineFile ("renders-0.5.1.txt").loadFileAsString());
+    for (const auto& c : cases)
+    {
+        PluginProcessor p;
+        const bool loaded = loadState (p, juce::String ("v0.5.1-") + c.name + ".state");
+        const auto set = c.mono ? juce::AudioChannelSet::mono() : juce::AudioChannelSet::stereo();
+        prepareLayout (p, set, set, sr, 128);
+        auto out = renderLR (p, in, nullptr, 128);
+        uint64_t h = 1469598103934665603ull;
+        for (int ch = 0; ch < out.getNumChannels(); ++ch)
+            for (int i = (int) (c.fromSec * sr); i < n; ++i)
+            {
+                uint32_t bits;
+                const float v = out.getSample (ch, i);
+                std::memcpy (&bits, &v, 4);
+                h = (h ^ bits) * 1099511628211ull;
+            }
+        const auto line = juce::String (c.name) + " " + juce::String::toHexString ((juce::int64) h);
+        lines.add (line);
+        if (! save)
+            check (loaded && saved.contains (line), std::string ("a state saved by 0.5.1 (") + c.name + ") renders as 0.5.1 did, to the last bit" + (c.fromSec > 0.0 ? ", from 1 s" : ""));
+    }
+    if (save)
+        baselineFile ("renders-0.5.1.txt").replaceWithText (lines.joinIntoString ("\n") + "\n");
+}
+
+// Pitch Swing is the largest pitch movement. Up to 0.5.1 it gave the upward bend only (the head reading faster as the delay shrinks);
+// the downward bend, as the delay grows, is always larger. Measured here from the read head itself, one tick at a time.
+static void testPitchSwingBothWays()
+{
+    const double sr = 48000.0;
+    struct Setting { float rate, depth, delay; };
+    for (const auto& s : { Setting { 1.0f, 2.0f, 15.0f }, Setting { 4.5f, 0.5f, 7.0f }, Setting { 10.0f, 7.5f, 40.0f } })
+    {
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "rate", s.rate); set (p, "depth", s.depth); set (p, "delay", s.delay);
+        prepare (p, 2, sr, 32);
+        juce::AudioBuffer<float> b (2, 32);
+        juce::MidiBuffer midi;
+        double last = 0, steepest = 0;
+        const double tickMs = 32.0 / sr * 1000.0;
+        for (int k = 0; k < 3000; ++k)
+        {
+            b.clear();
+            p.processBlock (b, midi);
+            const double d = p.getVoiceDelayMs (0, 0);
+            if (k > 750) steepest = std::max (steepest, std::abs (d - last) / tickMs);
+            last = d;
+        }
+        const double up = 1200.0 * std::log2 (1.0 + steepest), down = -1200.0 * std::log2 (1.0 - steepest);
+        const double measured = std::max (up, down), reading = p.getPitchSwing()->get();
+        check (std::abs (reading - measured) < 0.005 * measured, "Pitch Swing at Rate " + juce::String (s.rate, 1).toStdString() + ", Depth " + juce::String (s.depth, 1).toStdString()
+                   + " reads " + juce::String (reading, 2).toStdString() + " cents; the largest bend measured from the read head (up " + juce::String (up, 2).toStdString() + ")", measured, "cents");
+    }
+}
+
+// With no audio run yet the window works Pitch Swing out itself. It now takes the shrink at short Delay Times into account, as the
+// engine does, so the number does not jump when playback starts.
+static void testPitchSwingWindow()
+{
+    const double sr = 48000.0;
+    struct Setting { float rate, depth, delay; };
+    for (const auto& s : { Setting { 1.0f, 8.0f, 3.0f }, Setting { 0.8f, 1.5f, 15.0f }, Setting { 2.0f, 6.0f, 6.0f } })
+    {
+        const auto setUp = [&] (PluginProcessor& p) { set (p, "rate", s.rate); set (p, "depth", s.depth); set (p, "delay", s.delay); };
+        PluginProcessor p;
+        setUp (p);
+        prepare (p, 2, sr, 512);   // a host prepares the plug-in before its window opens
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+        auto* window = dynamic_cast<TapeChorusEditor*> (ed.get());
+        auto* readout = window != nullptr ? dynamic_cast<ui::Readout*> (window->getPanel().findChildWithID ("pitchSwing")) : nullptr;
+        for (int i = 0; i < 12 && window != nullptr; ++i) window->tick (1.0 / 30.0);
+        const double shown = readout != nullptr ? readout->getText().retainCharacters ("0123456789.").getDoubleValue() : -1.0;
+
+        PluginProcessor q;
+        setUp (q);
+        prepare (q, 2, sr, 512);
+        render (q, std::vector<float> (48000, 0.0f), 512);
+        const double engine = q.getPitchSwing()->get();
+        check (std::abs (shown - engine) < 0.1 * engine, "before any audio, the window's Pitch Swing at Rate " + juce::String (s.rate, 1).toStdString() + ", Depth " + juce::String (s.depth, 1).toStdString()
+                   + ", Delay " + juce::String (s.delay, 0).toStdString() + " shows " + juce::String (shown, 1).toStdString() + " cents; the engine reads", engine, "cents");
+    }
+}
+
+// Below about 21 kHz the oversampling filters' delay is longer than the shortest Delay Time. Up to 0.5.1 one still voice there gave 0/0,
+// a NaN that stayed in the tone filter after the setting changed, and with any modulation the voices sat at about 3.9 ms for a 3 ms Delay.
+static void testLowRates()
+{
+    for (const double sr : { 8000.0, 11025.0, 16000.0, 22050.0, 32000.0, 44100.0, 48000.0, 96000.0 })
+    {
+        PluginProcessor p;
+        prepare (p, 2, sr, 256);
+        info ("oversampling filters' delay at " + std::to_string ((int) sr) + " Hz, samples (the read head's floor in ms after it)", p.getWetLatencySamples(), juce::String (p.getMinDelayMs(), 3).toRawUTF8());
+    }
+    for (const double sr : { 8000.0, 11025.0, 16000.0, 22050.0 })
+    {
+        const auto tag = std::to_string ((int) sr) + " Hz";
+        PluginProcessor p;
+        plain (p, 1);
+        set (p, "delay", 3.0f); set (p, "mix", 50.0f);
+        prepare (p, 2, sr, 256);
+        const int n = (int) sr;
+        std::vector<float> in ((size_t) n);
+        sine (in.data(), n, 500.0, sr, 0.25);
+        auto still = render (p, in, 256);
+        set (p, "depth", 0.5f);
+        auto after = render (p, in, 256);
+        check (countNonFinite (still) == 0, "one still voice at Delay 3 ms, " + tag + ": every sample finite, bad samples", (double) countNonFinite (still));
+        check (countNonFinite (after) == 0, "and after Depth goes to 0.5 ms, bad samples", (double) countNonFinite (after));
+
+        PluginProcessor q;
+        plain (q, 1);
+        set (q, "delay", 3.0f); set (q, "depth", 0.5f);
+        prepare (q, 2, sr, 256);
+        const int m = (int) (sr * 3.0);
+        std::vector<float> tone ((size_t) m);
+        sine (tone.data(), m, 500.0, sr, 0.25);
+        auto out = render (q, tone, 256);
+        const auto d = trackDelayMs (out.getReadPointer (0), m, 500.0, sr, 10, 3.0);
+        const auto sw = analyse (d, sr, 1.0);
+        // Where the filters' delay is longer than 3 ms (below about 21 kHz) a 3 ms voice cannot sit at 3 ms: a reading there, not a check.
+        if (q.getMinDelayMs() < 3.0)
+            check (std::abs (sw.mean - 3.0) < 0.05, "Delay 3 ms, Depth 0.5 ms at " + tag + ": the voice sits at", sw.mean, "ms");
+        else
+            info ("Delay 3 ms, Depth 0.5 ms at " + tag + ", where the filters alone delay the voices " + juce::String (q.getMinDelayMs() - 4000.0 / sr, 2).toStdString()
+                      + " ms: the voice sits at (whole periods of the 500 Hz tone are ambiguous)", sw.mean, "ms");
+    }
+}
+
+namespace
+{
+    std::vector<float> speech (const char* file, int offset, int n)
+    {
+       #ifdef SPEECH_DIR
+        const juce::File f (juce::String (SPEECH_DIR) + "/" + file);
+       #else
+        const juce::File f = juce::File::getCurrentWorkingDirectory().getChildFile ("tests/speech").getChildFile (file);
+       #endif
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatReader> r (wav.createReaderFor (f.createInputStream().release(), true));
+        std::vector<float> out ((size_t) n, 0.0f);
+        if (r == nullptr) return out;
+        juce::AudioBuffer<float> b (1, n);
+        r->read (&b, 0, n, offset, true, false);
+        std::copy_n (b.getReadPointer (0), n, out.begin());
+        return out;
+    }
+
+    // Round 1's mono check on real vocals, on speech: left plus right against the two sides, only where the input is voiced (10 ms frames
+    // within 30 dB of the loudest), in quarter seconds with at least half of them voiced, and in octave bands from 125 Hz to 8 kHz.
+    struct MonoLoss { double worstQuarterDb = 0.0, worstBandDb = 0.0; };
+    MonoLoss monoLoss (const juce::AudioBuffer<float>& out, const std::vector<float>& dry, double sr, int align)
+    {
+        const int n = out.getNumSamples(), frame = (int) (sr * 0.01);
+        std::vector<unsigned char> voiced ((size_t) n, 0);
+        double loudest = 0;
+        for (int f = 0; (f + 1) * frame <= (int) dry.size(); ++f) loudest = std::max (loudest, rms (dry.data() + f * frame, frame));
+        for (int f = 0; (f + 1) * frame <= (int) dry.size(); ++f)
+            if (rms (dry.data() + f * frame, frame) > loudest * 0.0316)
+                for (int i = f * frame + align; i < (f + 1) * frame + align && i < n; ++i) voiced[(size_t) i] = 1;
+        const float* L = out.getReadPointer (0);
+        const float* R = out.getReadPointer (1);
+        MonoLoss m;
+        const int q = (int) (sr * 0.25);
+        for (int s = align; s + q <= n; s += q)
+        {
+            double pm = 0, pl = 0, pr = 0; int v = 0;
+            for (int i = s; i < s + q; ++i)
+                if (voiced[(size_t) i]) { pl += (double) L[i] * L[i]; pr += (double) R[i] * R[i]; pm += 0.25 * ((double) L[i] + R[i]) * ((double) L[i] + R[i]); ++v; }
+            if (v >= q / 2) m.worstQuarterDb = std::min (m.worstQuarterDb, 10.0 * std::log10 (pm / std::max (0.5 * (pl + pr), 1.0e-30)));
+        }
+        for (const double hz : { 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0 })
+        {
+            juce::IIRFilter l1, l2, r1, r2;
+            l1.setCoefficients (juce::IIRCoefficients::makeHighPass (sr, hz / std::sqrt (2.0), 0.707)); r1.setCoefficients (juce::IIRCoefficients::makeHighPass (sr, hz / std::sqrt (2.0), 0.707));
+            l2.setCoefficients (juce::IIRCoefficients::makeLowPass (sr, hz * std::sqrt (2.0), 0.707)); r2.setCoefficients (juce::IIRCoefficients::makeLowPass (sr, hz * std::sqrt (2.0), 0.707));
+            double pm = 0, pl = 0, pr = 0;
+            for (int i = 0; i < n; ++i)
+            {
+                const double a = l2.processSingleSampleRaw (l1.processSingleSampleRaw (L[i])), b = r2.processSingleSampleRaw (r1.processSingleSampleRaw (R[i]));
+                if (! voiced[(size_t) i]) continue;
+                pl += a * a; pr += b * b; pm += 0.25 * (a + b) * (a + b);
+            }
+            m.worstBandDb = std::min (m.worstBandDb, 10.0 * std::log10 (pm / std::max (0.5 * (pl + pr), 1.0e-30)));
+        }
+        return m;
+    }
+}
+
+// Mono Safe (new in 0.6.0, off by default): Spread keeps its width, and summed to mono the voices sound as they do at Spread 0. Round 1
+// measured wet only at Spread 100 summed to mono 9.96 to 13.7 dB under the two sides in the worst voiced quarter second on Luke's takes.
+static void testMonoSafe()
+{
+    const double sr = 48000.0;
+    {
+        PluginProcessor p;
+        bool offEverywhere = p.apvts.getRawParameterValue ("monoSafe")->load() < 0.5f;
+        for (int i = 0; i < p.getNumPrograms(); ++i)
+        {
+            set (p, "monoSafe", 1.0f);
+            p.setCurrentProgram (i);
+            offEverywhere = offEverywhere && p.apvts.getRawParameterValue ("monoSafe")->load() < 0.5f;
+        }
+        PluginProcessor old;
+        const bool loaded = loadState (old, "v0.5.1-all_s48b128.state");
+        check (offEverywhere && loaded && old.apvts.getRawParameterValue ("monoSafe")->load() < 0.5f, "Mono Safe is off in a new instance, in every preset, and in a session saved by 0.5.1");
+    }
+
+    const int n = (int) (sr * 6.0);
+    const auto voice = speech ("samantha.wav", 20000, n), other = speech ("daniel.wav", 30000, n);
+    const auto run = [&] (float spread, bool safe, int voices, float mixPct, float feedback, const std::vector<float>* right)
+    {
+        PluginProcessor p;
+        set (p, "voices", (float) voices); set (p, "spread", spread); set (p, "mix", mixPct); set (p, "feedback", feedback);
+        set (p, "monoSafe", safe ? 1.0f : 0.0f);
+        prepareLayout (p, right != nullptr ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::mono(), juce::AudioChannelSet::stereo(), sr, 512);
+        return renderLR (p, voice, right, 512);
+    };
+    const auto monoOf = [] (const juce::AudioBuffer<float>& b)
+    {
+        juce::AudioBuffer<float> m (1, b.getNumSamples());
+        for (int i = 0; i < b.getNumSamples(); ++i) m.setSample (0, i, 0.5f * (b.getSample (0, i) + b.getSample (1, i)));
+        return m;
+    };
+
+    // At Spread 0 there is nothing to make safe: on renders as off.
+    {
+        const double same = largestDifference (run (0.0f, true, 2, 35.0f, 0.0f, nullptr), run (0.0f, false, 2, 35.0f, 0.0f, nullptr));
+        check (same == 0.0, "Mono Safe at Spread 0, mono in: renders as off, largest difference", toDb (same), "dB");
+        const double sameLR = largestDifference (run (0.0f, true, 2, 35.0f, 0.0f, &other), run (0.0f, false, 2, 35.0f, 0.0f, &other));
+        check (toDb (sameLR) < -130.0, "Mono Safe at Spread 0, two different sides in: renders as off, largest difference", toDb (sameLR), "dBFS");
+    }
+    for (const int voices : { 2, 4, 8 })
+    {
+        const auto tag = std::to_string (voices) + " voices";
+        // Summed to mono, Spread 100 with Mono Safe is Spread 0, to rounding.
+        const double mono = largestDifference (monoOf (run (100.0f, true, voices, 100.0f, 0.0f, nullptr)), monoOf (run (0.0f, false, voices, 100.0f, 0.0f, nullptr)));
+        check (toDb (mono) < -120.0, "Mono Safe, Spread 100, wet only, " + tag + ": the mono sum against Spread 0's, largest difference", toDb (mono), "dBFS");
+        const double monoLR = largestDifference (monoOf (run (100.0f, true, voices, 35.0f, 0.0f, &other)), monoOf (run (0.0f, false, voices, 35.0f, 0.0f, &other)));
+        check (toDb (monoLR) < -120.0, "Mono Safe, Spread 100, Mix 35, two different sides in, " + tag + ": the mono sum against Spread 0's, largest difference", toDb (monoLR), "dBFS");
+
+        const auto off = run (100.0f, false, voices, 100.0f, 0.0f, nullptr), on = run (100.0f, true, voices, 100.0f, 0.0f, nullptr);
+        const auto lossOff = monoLoss (off, voice, sr, 720), lossOn = monoLoss (on, voice, sr, 720);
+        info ("Mono Safe off, Spread 100, wet only, " + tag + ", speech: mono sum in the worst voiced quarter second, against the sides", lossOff.worstQuarterDb, "dB");
+        info ("Mono Safe off, Spread 100, wet only, " + tag + ", speech: mono sum in the worst octave band, against the sides", lossOff.worstBandDb, "dB");
+        check (lossOn.worstQuarterDb > -9.0, "Mono Safe on, Spread 100, wet only, " + tag + ", speech: mono sum in the worst voiced quarter second, against the sides (round 1's limit -9)", lossOn.worstQuarterDb, "dB");
+        check (lossOn.worstBandDb > -6.0, "Mono Safe on, Spread 100, wet only, " + tag + ", speech: mono sum in the worst octave band, against the sides (round 1's limit -6)", lossOn.worstBandDb, "dB");
+        // The width stays: left against right is Spread's own.
+        const double cOff = correlation (off.getReadPointer (0) + 9600, off.getReadPointer (1) + 9600, n - 9600);
+        const double cOn = correlation (on.getReadPointer (0) + 9600, on.getReadPointer (1) + 9600, n - 9600);
+        check (cOn < 0.7, "Mono Safe on, Spread 100, wet only, " + tag + ": left against right correlation stays wide (off reads " + juce::String (cOff, 3).toStdString() + ")", cOn);
+        const double bal = rmsDb (on, 0, 9600) - rmsDb (on, 1, 9600);
+        check (std::abs (bal) < 1.0, "Mono Safe on, Spread 100, " + tag + ": left against right level", bal, "dB");
+        info ("Mono Safe on against off, Spread 100, wet only, " + tag + ": level of the two sides", 0.5 * (rmsDb (on, 0, 9600) + rmsDb (on, 1, 9600)) - 0.5 * (rmsDb (off, 0, 9600) + rmsDb (off, 1, 9600)), "dB");
+    }
+    // Feedback goes round on the plain sides, so the repeats are Spread's own: a reading.
+    {
+        const auto on = run (100.0f, true, 2, 100.0f, 55.0f, nullptr);
+        info ("Mono Safe on, Spread 100, Feedback 55, wet only, speech: mono sum in the worst voiced quarter second", monoLoss (on, voice, sr, 720).worstQuarterDb, "dB");
+        check (countNonFinite (on) == 0 && peakAll (on, 0, n) < 2.0, "Mono Safe on, Feedback 55: finite and in range, peak", peakAll (on, 0, n));
+    }
+    // Switching it on and off during a held tone glides with no tick.
+    {
+        const auto above8k = [&] (bool switching)
+        {
+            PluginProcessor p;
+            set (p, "spread", 100.0f); set (p, "mix", 50.0f); set (p, "saturation", 0.0f); set (p, "wow", 0.0f); set (p, "flutter", 0.0f);
+            prepare (p, 2, sr, 128);
+            const int m = (int) (4.0 * sr), every = (int) (sr / 128.0 / 2.0);
+            std::vector<float> in ((size_t) m);
+            sine (in.data(), m, 1000.0, sr, 0.25);
+            auto out = render (p, in, 128, nullptr, [&] (int idx) { if (switching && idx % every == 0) set (p, "monoSafe", (idx / every) % 2 == 1 ? 1.0f : 0.0f); });
+            double most = 0;
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                juce::IIRFilter hp[6];
+                for (auto& f : hp) f.setCoefficients (juce::IIRCoefficients::makeHighPass (sr, 8000.0));
+                for (int i = 0; i < m; ++i)
+                {
+                    float v = out.getSample (ch, i);
+                    for (auto& f : hp) v = f.processSingleSampleRaw (v);
+                    if (i > m / 8) most = std::max (most, (double) std::abs (v));
+                }
+            }
+            return toDb (most / 0.25);
+        };
+        const double quiet = above8k (false), switched = above8k (true);
+        check (switched < std::max (-90.0, quiet + 3.0), "Mono Safe switched on and off twice a second under a 1 kHz tone: loudest moment above 8 kHz, below the tone (never switched: "
+                                                         + juce::String (quiet, 1).toStdString() + " dB)", switched, "dB");
+    }
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -2466,5 +2988,13 @@ int main()
     if (wanted ("testMixGlide")) testMixGlide();
     if (wanted ("testFeedbackTop")) testFeedbackTop();
     if (wanted ("testGainGlide")) testGainGlide();
+    if (wanted ("testHostReset")) testHostReset();
+    if (wanted ("testMonoOutStart")) testMonoOutStart();
+    if (wanted ("testPresetSaved")) testPresetSaved();
+    if (wanted ("testSaved051")) testSaved051();
+    if (wanted ("testPitchSwingBothWays")) testPitchSwingBothWays();
+    if (wanted ("testPitchSwingWindow")) testPitchSwingWindow();
+    if (wanted ("testLowRates")) testLowRates();
+    if (wanted ("testMonoSafe")) testMonoSafe();
     return finish();
 }

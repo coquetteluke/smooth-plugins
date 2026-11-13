@@ -33,16 +33,29 @@ public:
     void setValue (float) override {}
     float getDefaultValue() const override { return juce::jlimit (0.0f, 1.0f, (start - low) / (high - low)); }
     juce::String getText (float normalised, int) const override { return formatter (low + normalised * (high - low)); }
-    float getValueForText (const juce::String& text) const override { return juce::jlimit (0.0f, 1.0f, (text.getFloatValue() - low) / (high - low)); }
+    // A reading's own text reads back as itself (1.2.5, as Choir Loft 1.6.0 and Key 1.7.2 do): "no note" is no note, not C-1, and "B Custom"
+    // is that key, not C Chromatic. The value whose text matches, among the reading's whole numbers when it shows them by name; a plain number otherwise.
+    float getValueForText (const juce::String& text) const override
+    {
+        const auto wanted = text.trim();
+        if (stepsByName && high - low <= 512.0f)
+            for (int v = (int) std::ceil (low); (float) v <= high; ++v)
+                if (formatter ((float) v).equalsIgnoreCase (wanted))
+                    return juce::jlimit (0.0f, 1.0f, ((float) v - low) / (high - low));
+        return juce::jlimit (0.0f, 1.0f, (wanted.getFloatValue() - low) / (high - low));
+    }
+    // For readings shown by name (a note, a key): their text is looked up instead of read as a number.
+    ReadingParameter* namedSteps() noexcept { stepsByName = true; return this; }
 
 private:
     float low, high, start;
     Formatter formatter;
+    bool stepsByName = false;
     std::atomic<float> value { 0.0f };
 };
 
 // A fast creative vocal tuner with effect modules in a fixed order. The README has the signal flow.
-class PluginProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater
+class PluginProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     struct Options
@@ -57,6 +70,7 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
+    void reset() override;
     bool isBusesLayoutSupported (const BusesLayout&) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -70,7 +84,7 @@ public:
     double getTailLengthSeconds() const override { return 15.0; }
 
     int getNumPrograms() override;
-    int getCurrentProgram() override { return currentProgram; }
+    int getCurrentProgram() override { return currentProgram; }   // -1: a session that does not say which preset it came from
     void setCurrentProgram (int) override;
     const juce::String getProgramName (int) override;
     void changeProgramName (int, const juce::String&) override {}
@@ -86,6 +100,7 @@ public:
         float centsOffTarget = 0.0f, detectedHz = 0.0f, correctionCents = 0.0f;
         int targetNote = -1, activeKey = 0, activeScale = 0, heldNotes = 0;
         bool voiced = false;
+        bool following = false;     // Follow Key is on and a key from the file is in use (none yet, or a Custom scale, and it is not)
     };
     Readings getReadings() const noexcept;
 
@@ -120,6 +135,8 @@ private:
     class Worker;
 
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&, bool forceBypass) noexcept;
+    void clearState() noexcept;
+    void parameterChanged (const juce::String&, float) override;
     void applyInputType (int type) noexcept;
     void readSettings() noexcept;
     void readTempo() noexcept;
@@ -192,6 +209,7 @@ private:
     bool pitchActive = false, throatActive = false, motionActive = false, harmonyActive = false, twoVoices = false, inKey = true,
          doublerActive = false, vocoderActive = false, distActive = false, filterActive = false, ringActive = false, delayActive = false, reverbActive = false,
          formantsFollow = false, wantBypass = false;
+    bool followingNow = false, monoOutput = false;
     double shiftWanted = 0.0, throatRateWanted = 1.0, motionGlideMs = 0.0, detuneCents = 0.0, timingSamples = 0.0;
     int motionPatternNow = 0, motionRateNow = 1, vocoderWaveNow = 0, vocoderOctaveNow = 0, distTypeNow = 0, filterTypeNow = 0, delayBeatsIndex = 7, reverbTypeNow = 0, filterRateIndex = 2;
     std::array<int, 2> intervalNow { 7, 12 };
@@ -202,13 +220,26 @@ private:
     // Slewed on the 1 ms tick
     double pitchShiftNow = 0.0, motionNow = 0.0, throatRateNow = 1.0, voicedGate = 0.0;
     std::array<double, 2> harmonyOffset { 7.0, 12.0 }, wander { 0.0, 0.0 }, wanderTarget { 0.0, 0.0 };
+    std::array<int, 2> intervalSeen { 7, 12 };
     int wanderPhase = 0;
-    double doubleDelayA = 0.0, doubleDelayB = 0.0;
+    double leadShown = 0.0;                         // what Pitch and Motion move the lead by, after the two octave reach
+    std::array<double, 2> harmonyShown { 0.0, 0.0 };  // the same for each added voice, against the tuned note
+    // Doubler Timing: the doubles' read point (before the wander), and a second one it crossfades to when Timing changes
+    double doubleBase = 0.0, doubleNextBase = 0.0;
+    float doubleFade = 0.0f, doubleFadeStep = 0.001f;
+    bool doubleMoving = false;
 
     // Slewed at audio rate or at the 16 sample control rate
     tunefx::Smoother smoothHarmonyLevel, smoothHarmonyWidth, smoothDoublerLevel, smoothDoublerWidth, smoothVocoderMix, smoothDistGain, smoothDistMix,
                      smoothRingMix, smoothDelayFeedback, smoothDelayMix, smoothPingPong, smoothReverbMix, smoothOutput, smoothReverbWet;
-    float filterLogSmooth = 10.0f, filterQSmooth = 1.0f, ringInc = 0.0f;
+    float filterLogSmooth = 10.0f, filterQSmooth = 1.0f, ringInc = 0.0f, filterDepthSmooth = 0.0f;
+    double sweepNow = 0.0;
+    int filterRateShown = 2;
+    bool sweepGliding = false;
+    // Reverb Pre-Delay: the read point, and a second one it crossfades to when Pre-Delay changes
+    int preCurrent = 0, preNext = 0;
+    float preFade = 0.0f, preFadeStep = 0.001f;
+    bool preMoving = false;
     double ringPhase = 0.0;
     std::array<float, 3> filterWeights { 0.0f, 0.0f, 1.0f };
     float filterWeightStep = 0.01f;
@@ -234,12 +265,16 @@ private:
     std::array<PitchPoint, pitchHistorySize> pitchHistory;
     std::atomic<long long> pitchHistoryCount { 0 };
 
-    std::atomic<int> voicedNow { 0 }, motionStepShown { -1 }, scaleShown { 0x0FFF };
+    std::atomic<int> voicedNow { 0 }, motionStepShown { -1 }, scaleShown { 0x0FFF }, followingShown { 0 };
     std::atomic<float> filterHzShown { 800.0f };
     std::atomic<double> preparedRate { 0.0 };
     bool displayBypassed = false;
     bool hostLatencyUpdates = true;
     int currentProgram = 0;
+    bool programKnown = false;        // a preset was chosen here, or the session said which one
+    int offlineKeySamples = 0;        // Follow Key in an offline bounce reads the key file by audio time
+    std::atomic<bool> bypassJustSwitchedOn { false }, bypassWasOn { false };
+    std::atomic<juce::uint32> bypassSwitchedAtMs { 0 };
     std::unique_ptr<Worker> worker;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)

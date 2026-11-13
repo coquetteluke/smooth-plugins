@@ -165,6 +165,9 @@ private:
     };
 
     static constexpr int tapCount = 12, phases = 256, windowSize = 2048, maxGrains = 16;
+    // How far a grain's spacing may go from the voice's period: 2.5 octaves either way (1.2.5; it was exactly two). Glitter shifts by up to
+    // two octaves and the tuner's correction rides on top, which got cut off at two octaves. Up 2.5 octaves, 11 grains overlap, inside maxGrains.
+    static constexpr double shortestPeriodShare = 0.17677669529663687, longestPeriodShare = 5.656854249492381;
 
     void buildTables()
     {
@@ -285,7 +288,7 @@ private:
         else
         {
             const double period = c.inputPeriod;
-            const double wanted = std::clamp (c.outputPeriod > 0.0 ? c.outputPeriod : period, 0.25 * period, 4.0 * period);
+            const double wanted = std::clamp (c.outputPeriod > 0.0 ? c.outputPeriod : period, shortestPeriodShare * period, longestPeriodShare * period);
             spacing = wanted;
             planned = Plan::mapped;
 

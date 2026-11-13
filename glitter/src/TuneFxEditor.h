@@ -46,6 +46,10 @@ public:
     ModuleGraph& getGraph() noexcept;
     juce::Component* findControl (const juce::String& paramId);
     void clickCustomKey (int key);
+    juce::String headerTitle() const;          // the name in the header
+    juce::String advancedLabel() const;        // the words on the Advanced button, and the room they have beside its arrow
+    int advancedLabelRoom() const;
+    int correctionBarPixels() const;           // how far the bar under the note reaches from the middle, in design pixels
 
     /** Whether frames are being driven by the screen right now. Off when nothing has moved for a second. */
     bool isRunningFrames() const noexcept { return vblank != nullptr; }
@@ -59,6 +63,7 @@ private:
     struct AdvancedPage;
 
     void timerCallback() override;
+    void startFrames();
     void placeStrip();
     void showModule (int);
     void showHint (const juce::String&);
@@ -75,7 +80,7 @@ private:
     float advancedAmount = 0.0f;
     double lastFrameTime = 0.0, frameBudget = 0.0, sinceDrawn = 0.0, stillFor = 0.0;
     int slowCountdown = 0;
-    bool constructed = false;
+    bool constructed = false, advancedShown = false;
     std::unique_ptr<juce::VBlankAttachment> vblank;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TuneFxEditor)

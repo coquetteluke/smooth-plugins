@@ -53,7 +53,7 @@ void PitchStrip::resized()
 // Keep what comes out on screen, with the added voices too when there is room. It moves in whole notes, so a held note stays put between moves.
 void PitchStrip::followPitch (long long count)
 {
-    int histogram[128] {};
+    int histogram[128] {}, outputs[128] {};
     int voiced = 0;
     for (int k = 0; k < pointsShown && k < count; ++k)
     {
@@ -62,6 +62,7 @@ void PitchStrip::followPitch (long long count)
         if (n > 0.0f)
         {
             ++histogram[juce::jlimit (0, 127, juce::roundToInt (n))];
+            ++outputs[juce::jlimit (0, 127, juce::roundToInt (n))];
             ++voiced;
             for (const float h : { harmony1Of (point), harmony2Of (point) })
                 if (h > 0.0f)
@@ -75,9 +76,18 @@ void PitchStrip::followPitch (long long count)
 
     // By share of what is on screen, not the very top and bottom, so one wild tracker reading cannot push the voice off the display.
     const int skip = voiced / 25;
+    const auto spread = [skip] (const int* h, int& lowest, int& highest)
+    {
+        lowest = 0;
+        highest = 127;
+        for (int seen = 0; lowest < 127 && (seen += h[lowest]) <= skip; ++lowest) {}
+        for (int seen = 0; highest > 0 && (seen += h[highest]) <= skip; --highest) {}
+    };
     int lowest = 0, highest = 127;
-    for (int seen = 0; lowest < 127 && (seen += histogram[lowest]) <= skip; ++lowest) {}
-    for (int seen = 0; highest > 0 && (seen += histogram[highest]) <= skip; --highest) {}
+    spread (histogram, lowest, highest);
+    // The added voices only when there is room for them as well: otherwise the view centred between them and could lose the voice coming out (1.2.5).
+    if (highest - lowest > span - 3)
+        spread (outputs, lowest, highest);
 
     if ((float) lowest < viewTarget + 1.0f || (float) highest > viewTarget + (float) span - 2.0f)
         viewTarget = std::round (0.5f * (float) (lowest + highest) - 0.5f * (float) (span - 1));
@@ -97,6 +107,7 @@ bool PitchStrip::advance (double dtSeconds)
     const bool newPoints = count != lastSeenCount;
     lastSeenCount = count;
 
+    const int voicedBefore = voicedOnScreen;
     if (newPoints)
         followPitch (count);
 
@@ -139,7 +150,8 @@ bool PitchStrip::advance (double dtSeconds)
     }
 
     // New points only matter if some of what is on screen is a voice. Otherwise the picture is the same empty lanes.
-    if (newPoints && (voicedOnScreen > 0 || drawnCount < 0))
+    // And once more as the last of a voice leaves, so its end goes and the hint comes back (1.2.5; the strip froze on it).
+    if (newPoints && (voicedOnScreen > 0 || voicedBefore > 0 || drawnCount < 0))
     {
         repaint (traceArea());
         moved = true;
@@ -361,7 +373,9 @@ void PitchStrip::paint (juce::Graphics& g)
             g.addTransform (juce::AffineTransform::scale (1.0f / ringScale));
             g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
 
-            const auto count = processor.getPitchHistoryCount();
+            // Placed by the count the ring was drawn to, not a second read that audio may have moved on past the drawn columns (1.2.5).
+            const auto count = drawnCount;
+            placedCount = count;
             const auto newest = columnOf (juce::jmax (0LL, count - 1)) + 1;
             const auto leftColumn = newest - visibleColumns;
             const int ringLeft = (int) (((leftColumn % ringWidth) + ringWidth) % ringWidth);

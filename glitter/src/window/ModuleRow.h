@@ -12,6 +12,7 @@ public:
 
     /** A module picked, or none (-1) while Advanced is showing. */
     void setSelected (int module);
+    int getSelected() const noexcept  { return selected; }
     std::function<void (int)> onSelect;
     std::function<void (const juce::String&)> onHint;
     std::function<void()> onSwitched;

@@ -128,13 +128,22 @@ public:
     void reset() noexcept { std::fill (line.begin(), line.end(), 0.0f); write = 0; }
     float process (float x, float delaySamples) noexcept
     {
+        push (x);
+        return read (delaySamples);
+    }
+    void push (float x) noexcept
+    {
         line[(size_t) write] = x;
-        const int mask = size - 1;
+        write = (write + 1) & (size - 1);
+    }
+    // A read head delaySamples behind the newest sample. Since 1.2.5 the doubler reads a second one while Timing changes.
+    float read (float delaySamples) const noexcept
+    {
+        const int mask = size - 1, newest = (write - 1) & mask;
         const int whole = (int) delaySamples;
         const float f = delaySamples - (float) whole;
-        const float xm = line[(size_t) ((write - whole + 1) & mask)], x0 = line[(size_t) ((write - whole) & mask)],
-                    x1 = line[(size_t) ((write - whole - 1) & mask)], x2 = line[(size_t) ((write - whole - 2) & mask)];
-        write = (write + 1) & mask;
+        const float xm = line[(size_t) ((newest - whole + 1) & mask)], x0 = line[(size_t) ((newest - whole) & mask)],
+                    x1 = line[(size_t) ((newest - whole - 1) & mask)], x2 = line[(size_t) ((newest - whole - 2) & mask)];
         const float c1 = 0.5f * (x1 - xm), c2 = xm - 2.5f * x0 + 2.0f * x1 - 0.5f * x2, c3 = 0.5f * (x2 - xm) + 1.5f * (x0 - x1);
         return x0 + f * (c1 + f * (c2 + f * c3));
     }
@@ -443,6 +452,7 @@ public:
     {
         for (auto& l : lines) std::fill (l.begin(), l.end(), 0.0f);
         write = 0;
+        current = next = 0;    // the next setDelay starts on its time, with no crossfade from an old one (since 1.2.5 a host Reset comes here too)
         moving = false;
         fade = 0.0f;
         for (auto& s : lowState) s = 0.0f;

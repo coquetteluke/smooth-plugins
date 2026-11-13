@@ -30,7 +30,7 @@ Every control is a real AU parameter that a host can find by name.
 | Retune Speed | Time constant of the correction, 0 to 400 ms. Default 0 reads Instant: hard tuning. |
 | Humanize | Slows correction on the sustained part of a note, so a vibrato survives while the start of the note stays quick. Default 0. |
 | Input Type | Voice range, which sets the latency: Soprano 150 Hz up, Alto/Tenor 98 Hz up (and follows notes down to 70 Hz at the same latency), Low Male 65 to 600 Hz, Wide Range 65 Hz up. |
-| Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key, on a background thread. Missing, broken, stale, future dated or low confidence data is ignored: the last good key holds, and with none it uses Key and Scale. A Custom scale stays. |
+| Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key, on a background thread. Missing, broken, stale, future dated or low confidence data is ignored: the last good key holds, and with none it uses Key and Scale. A Custom scale stays. A key set by hand in Key (Manual) or held by Lock is followed like a heard one. In an offline bounce the file is read every 0.3 s of audio, so a key change lands at its place in the song. |
 | MIDI Target | Off, As Played, Any Octave. As Played: the nearest held note in the octave it was played, however far away, so one held note sets the pitch. Any Octave: the nearest held pitch class. With no notes held, the scale rules. |
 | Reference A4 | 415 to 466 Hz. |
 | Tracking | Which sounds count as pitched. 0 is choosy, 100 tunes rough sound too. |
@@ -38,7 +38,7 @@ Every control is a real AU parameter that a host can find by name.
 
 | Module | Controls |
 |---|---|
-| Pitch | Pitch On, Pitch Octave (-2 to +2), Pitch Semitones (-12 to +12), Pitch Moves Formants (off holds the voice's character, on gives the chipmunk or monster sound). |
+| Pitch | Pitch On, Pitch Octave (-2 to +2), Pitch Semitones (-12 to +12), Pitch Moves Formants (off holds the voice's character, on gives the chipmunk or monster sound). A voice moves at most two octaves from what was sung, with the tuning on top: a setting past that (+2 octaves +7, or Harmony on top of Pitch) drops by octaves and keeps its note. |
 | Throat | Throat On, Throat Length (60 to 150%. Above 100 lowers the formants). Only voiced sound changes. |
 | Motion | Motion On, Motion Pattern (Trill Up, Trill Down, Octave Up, Octave Down, Arp Up, Arp Down, Stairs, Ostinato), Motion Rate (1/4 to 1/32), Motion Glide (0 to 200 ms). Walks the note through a 16 step pattern, in scale steps, tied to the song position. |
 | Harmony | Harmony On, Harmony Voices (One or Two), Harmony Interval 1 and 2 (-24 to +24), Harmony In Key (moves an interval to the nearest scale note), Harmony Level, Harmony Width. |
@@ -52,11 +52,11 @@ Every control is a real AU parameter that a host can find by name.
 
 Also Output Gain and Bypass. Tempo comes from the host, and falls back to 120 BPM with none.
 
-Readings, which never write automation: Pitch Off Target, Detected Pitch, Correction Applied, Target Note, Active Key, MIDI Notes Held. The window shows them live.
+Readings, which never write automation: Pitch Off Target, Detected Pitch, Correction Applied, Target Note, Active Key, MIDI Notes Held. The window shows them live. Each reads its own text back as itself, so a host that turns "B Custom" or "no note" into a value gets that value.
 
 ## Presets
 
-Hard Tune, Robot Stack, Octave Monster, Chipmunk Hook, Wide Double, Power Harmony, Phone Line, Filter Riser, Dub Throw, Melody Machine, Alien Ring, Synth Voice. They set Retune Speed, Humanize, every module and Output Gain. They leave Key, Scale, Input Type, Follow Key, MIDI Target, Reference and Tracking alone, so they never fight the song.
+Hard Tune, Robot Stack, Octave Monster, Chipmunk Hook, Wide Double, Power Harmony, Phone Line, Filter Riser, Dub Throw, Melody Machine, Alien Ring, Synth Voice. They set Retune Speed, Humanize, every module and Output Gain. They leave Key, Scale, Input Type, Follow Key, MIDI Target, Reference and Tracking alone, so they never fight the song. Each control is written once, with its final value, so nothing plays a moment of defaults while a preset loads. The preset last chosen is saved with the session; a session from before 1.2.5 says Choose a preset.
 
 ## Latency
 
@@ -94,7 +94,9 @@ All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before
 - **Null:** every module off with its controls thrown to the far ends, every module on then off, and all of them on then off, all give a difference of -240 dB, which means exact zero, once the 15 ms fade is done.
 - **No clicks:** biggest sample step while switching stays within 1.5 times the steady step on a low sine. Every control jumping end to end with all modules on stays under 0.30.
 - **Latency:** the measured delay equals the reported one at every rate and Input Type, and does not move with any module.
-- **Same output** with a playhead or none, at any block size, after `prepareToPlay` again, and after saving and loading state.
+- **Same output** with a playhead or none, at any block size, after `prepareToPlay` again, after the host's Reset, and after saving and loading state. A Reset clears tails, MIDI waiting in the latency and held notes, except the one the host sends as its bypass switches on.
+- **Moving controls:** Delay Time, Doubler Timing and Reverb Pre-Delay crossfade to a new read point over 30 ms, so none bends or clicks. Filter Cutoff, Sweep Depth and a new Sweep Rate glide.
+- **Phase 2 checks** (2026-11-13): `PluginTest phase2`, one for each fault the bug hunt kept, each failing on 1.2.4.
 - **CPU:** see the last lines of `tests/results.txt`. About 3% of one core with all on, about 2% with all off, on a machine busy with other builds.
 
 ## The tuner, and what it shares
@@ -122,8 +124,8 @@ Black, with hot magenta for the voice and one colour per module. PNGs are in `do
 - **Top:** Retune Speed and Humanize set large, the live pitch strip, and the note coming out. On the strip, white is your voice, magenta is what comes out, and Harmony's voices are in Harmony's colour. Pitch and Motion show up as the magenta line moving away from the white one. A flat piano on the right lights the scale and the note.
 - **Middle:** eleven blocks in signal order. A lit block is on. Each says what it is set to, so the row reads at a glance. A click on a block shows its controls, and a click on its switch turns it on or off.
 - **Bottom:** one panel, in the colour of the block it belongs to, with that module's name, a picture drawn from its real settings, and all of its controls. On most modules the picture is a pad, where a dot moves two controls together. Filter's picture is the real response, Distortion's the real curve, Motion's the real pattern in your key, with the step playing right now in white.
-- **Advanced:** rises over the panel. Input Type, MIDI Target, Reference A4, Tracking, and a one octave keyboard for Custom C to Custom B. A click on a key goes round Tune, Remove and Bypass. Picking a module closes it.
-- Double-click resets, click a value to type it (2.5k works), drag the corner to resize. The size, whether Advanced is open and which module is showing are saved with the session. Nothing else was added to saved state.
+- **Advanced:** rises over the panel in a fifth of a second, and stays above the footer. Input Type, MIDI Target, Reference A4, Tracking, and a one octave keyboard for Custom C to Custom B. A click on a key goes round Tune, Remove and Bypass. Picking a module closes it. Closed, its button counts what was changed inside, as Advanced (2).
+- Double-click resets, click a value to type it (2.5k, 2.5 kHz and 2.5k Hz work), drag the corner to resize. The size, whether Advanced is open and which module is showing are saved with the session. Nothing else was added to saved state.
 
 Every control is the same real AU parameter as before, with the same ID, name and range, so hosts still find them all by name. The window only reads and writes those parameters, inside begin and end gestures. No control lives only in the window, and the tests check that every parameter has its place.
 

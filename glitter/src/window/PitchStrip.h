@@ -25,6 +25,8 @@ public:
     float getLowestNote() const noexcept  { return viewLow - 0.5f; }
     float getHighestNote() const noexcept { return viewLow - 0.5f + (float) span; }
     int getPaintCount() const noexcept    { return paintCount; }
+    long long getDrawnCount() const noexcept  { return drawnCount; }    // the history count the ring was last drawn up to
+    long long getPlacedCount() const noexcept { return placedCount; }   // the count the last paint placed the visible window by
 
     /** The newest output note, or -1 with no voice. */
     int getOutputNote() const noexcept    { return outputShown; }
@@ -72,6 +74,7 @@ private:
     long long lastSeenCount = -1;
     int voicedOnScreen = 0, outputShown = -1;
     int paintCount = 0;
+    long long placedCount = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PitchStrip)
 };

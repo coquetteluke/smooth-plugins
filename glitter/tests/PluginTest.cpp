@@ -3096,6 +3096,7 @@ void testEntries()
     }
 }
 
+#include "Phase2Tests.h"
 } // namespace
 
 int main (int argc, char** argv)
@@ -3169,5 +3170,9 @@ int main (int argc, char** argv)
     if (want ("entry") || only == "rode") testEntries();
     if (want ("formant") || only == "rode") testRealFormants();
     if (want ("octave") || only == "rode") testOctaveGuard();
+    if (want ("phase2")) testPhase2();
+    if (only == "phase2dsp") testPhase2Dsp();
+    if (only == "phase2host") testPhase2Host();
+    if (only == "phase2window") testPhase2Window();
     return finish();
 }

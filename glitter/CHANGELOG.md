@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.2.5, 2026-11-13
+
+The Phase 2 bug check: the 28 faults the hunt kept, HostStress's two paramtext FAILs and the key file items, each with a check written first that fails on 1.2.4 (`PluginTest phase2`: 46 failing on 1.2.4, 0 now). Every parameter, ID and range is as before, so saved sessions load, and sessions saved by 1.2.4 play exactly what the installed 1.2.4 played (default and eight presets, -240 dB). Luke left this call to the lead on 2026-11-11: the sound only changes where it was at fault, listed below.
+
+Round 1's real vocal checks were run again on 1.2.5 before it was installed (working set and all 12 presets, same check file): every rule and every number reads as on 1.2.4 (120 rules, the same 36 failing; the presets' rules the same), CPU aside. Those checks render in stereo, so the mono change below does not show there.
+
+Sound:
+- Reverb switched on when a block starts part way into the reverb's 16 sample step (once a single odd sized block had played, at a cycle wrap say, that was every block) stayed silent until the plug-in was prepared again. It now wakes: RT60 1.72 to 1.76 s at Decay 2 s.
+- No voice could move more than two octaves from what was sung: Pitch -2 octaves left a sharp note sharp (30 cents on a note sung 30 cents sharp, now 0.002), Harmony -24 did the same, and Pitch +2 octaves +7 played +2 octaves exactly, out of key. The grains now reach 2.5 octaves, so the correction fits on top of two octaves, and a setting past two octaves drops by octaves into reach and keeps its note (+2 octaves +7 plays E5 from A3).
+- Reverb Pre-Delay, Doubler Timing and a new Filter Sweep Rate no longer jump. Pre-Delay and Timing crossfade to their new read point over 30 ms, as Delay Time does: a Pre-Delay jump stepped 0.271 straight into the wet signal (0.013 now, steady 0.012), and a Timing jump bent the doubles further than the check can read, 2.4 semitones and more (about 20 by the arithmetic; now 20 cents at most, the doubles' own wander). Sweep Depth glides like Cutoff, and a new Sweep Rate glides from where the old one had the cutoff: 4 and 1.2 octaves in 16 samples before, 0.07 and 0.02 now.
+- Preset arrows and the host's preset menu write each control once, with its final value. Every control used to pass through its default first, so a block could play all defaults while a preset loaded (a module on in both presets switched off, Delay Time jumped to 1/4, Output Gain to 0 dB).
+- Input Type changed with the Doubler on no longer clicks in the doubles 16 and 22 ms later (a step of 0.252, now 0.007).
+- Mono in and out: the doubles and two Harmony voices are no longer folded down at half level when panned, so Width no longer sets their loudness (6.0 and 4.4 dB). On a mono track Wide Double, Chipmunk Hook and Power Harmony's added voices are louder by that much; stereo is unchanged.
+- A Harmony Interval changed in a pause moves the added voice straight away, so the next phrase starts on it instead of sliding (4.4 semitones off in its first 10 ms).
+- The host's Reset clears delay and reverb tails, MIDI waiting in the latency and held notes, as preparing does, with no allocation. The Reset that comes with the host's bypass switching on is left out, so the bypass fade stays.
+
+Key file (Key 1.7.2):
+- Follow Key reads the key and major or minor in one load, so a file written in between can never give a key neither file holds.
+- In an offline bounce or freeze the key file is read every 0.3 s of audio, so a Key change lands at its song position (1.2.4 read it every 0.3 s of wall time).
+- A Manual key (written with listening false and rewritten at least every 240 s) and a Locked key from a Key that has closed are followed, as before. Checks guard both.
+
+Host:
+- The readings Target Note and Active Key read their own text back ("no note" was read as C-1, "B Custom" as C Chromatic). HostStress paramtext: 2 FAILs before, none now.
+- The chosen preset is saved with the session. A session from 1.2.4, or one with no preset chosen, says "Choose a preset" instead of Hard Tune, and the arrows go to the first or last preset from there.
+
+Window:
+- The header says Glitter.
+- With Advanced open the module picture underneath said it moved on every frame, so the window never dropped to its idle timer. Advanced now glides open and shut over a fifth of a second (it jumped 98% at the click), and never covers the footer while it moves.
+- The pitch strip clears its last trace and shows its hint again once the voice has scrolled off, places its picture by the count it drew, and keeps the voice coming out on screen when a Harmony voice is two octaves away.
+- The Harmony picture names the note sung now, not one last seen on Motion's panel. The correction bar shows nothing while bypassed. The header says Following only when a key from the file is in use.
+- "Advanced (2)" replaces "Advanced, 2 changed", which lost its last word, and the hint line stops short of the latency reading.
+- On Band Pass the Resonance dot stays on or under the band's drawn peak. Typing "2.5k Hz" gives 2500 Hz (it gave 20).
+
 ## 1.2.4, 2026-11-12
 
 Two fixes from the second pass over Luke's real takes. Luke left this call to the lead on 2026-11-11. Every parameter, ID and range is as before, so saved sessions load.

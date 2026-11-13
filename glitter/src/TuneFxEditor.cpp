@@ -42,19 +42,21 @@ public:
 
     /** It sits over this component but is not a child of it, or every move of it would redraw this one's cached image too. */
     juce::Component& getBar() noexcept  { return bar; }
+    int barPixels() const noexcept       { return bar.pixels; }
     juce::Rectangle<int> barBounds() const  { return getBounds().withTrimmedTop (58).withHeight (12).withTrimmedRight (6); }
 
     bool advance (double dt, int note)
     {
         const auto r = processor.getReadings();
-        const float target = r.voiced ? juce::jlimit (-100.0f, 100.0f, r.correctionCents) : 0.0f;
+        const bool nowBypassed = bypassParam->load (std::memory_order_relaxed) >= 0.5f;
+        // Bypassed, nothing is moved, so the bar says so (1.2.5; it kept showing the correction the processor still works out).
+        const float target = r.voiced && ! nowBypassed ? juce::jlimit (-100.0f, 100.0f, r.correctionCents) : 0.0f;
         shownCents += (target - shownCents) * (1.0f - std::exp (-(float) dt / 0.035f));
 
         const bool barMoved = bar.show (juce::roundToInt (shownCents * 0.5f));
         clock += dt;
 
         juce::String first = lineOne, second = lineTwo;
-        const bool nowBypassed = bypassParam->load (std::memory_order_relaxed) >= 0.5f;
         const bool nowHarmony = harmonyParam->load (std::memory_order_relaxed) >= 0.5f;
 
         // Words change slowly enough to read.
@@ -204,8 +206,12 @@ public:
         b.removeFromRight (22.0f);
 
         g.setFont (font (Weight::medium, 13.5f));
-        g.drawText (changes > 0 && amount < 0.5f ? "Advanced, " + juce::String (changes) + " changed" : juce::String ("Advanced"), b, juce::Justification::centredRight, false);
+        g.drawText (label(), b, juce::Justification::centredRight, false);
     }
+
+    // "Advanced, 2 changed" did not fit beside the arrow at any size and lost its last word (1.2.5).
+    juce::String label() const  { return changes > 0 && amount < 0.5f ? "Advanced (" + juce::String (changes) + ")" : juce::String ("Advanced"); }
+    int labelRoom() const       { return getWidth() - 22; }
 
 private:
     float amount = 0.0f;
@@ -574,20 +580,22 @@ struct TuneFxEditor::AdvancedPage final : public juce::Component
         // What the keys do, and when they count.
         const bool ownScale = processor.apvts.getRawParameterValue ("scale")->load (std::memory_order_relaxed) >= (float) scaleCustom - 0.5f;
         g.setColour (ownScale ? tone::muted : tone::faint);
-        g.drawText (ownScale ? "Click a key: Tune, Remove or Bypass." : "Only used with Scale on Custom.", keysX, getHeight() - pad - 18, graphWidth, 18, juce::Justification::centredLeft, false);
+        g.drawText (ownScale ? "Click a key: Tune, Remove or Bypass." : "Only used with Scale on Custom.", keysX, panelHeight - pad - 18, graphWidth, 18, juce::Justification::centredLeft, false);
     }
 
+    // Laid out for the open panel's full height, from the top: while it glides open or shut it is only as tall as the part showing, so it
+    // never reaches over the footer below the panel (1.2.5).
     void resized() override
     {
         const int keysX = pad + titleWidth + 16;
         keys.setBounds (keysX, pad + 24, graphWidth, 196);
 
         const int x = keysX + graphWidth + gridGap, width = getWidth() - pad - x, cell = (width - gridGap) / 2;
-        const int inner = getHeight() - pad * 2, gap = (inner - 56 - 56 - 64) / 2;
+        const int inner = panelHeight - pad * 2, gap = (inner - 56 - 56 - 64) / 2;
         inputType.setBounds (x, pad, width, 56);
         midiTarget.setBounds (x, pad + 56 + gap, width, 56);
-        reference.setBounds (x, getHeight() - pad - 64, cell, 64);
-        tracking.setBounds (x + cell + gridGap, getHeight() - pad - 64, cell, 64);
+        reference.setBounds (x, panelHeight - pad - 64, cell, 64);
+        tracking.setBounds (x + cell + gridGap, panelHeight - pad - 64, cell, 64);
     }
 
     PluginProcessor& processor;
@@ -646,6 +654,9 @@ struct TuneFxEditor::Panel final : public juce::Component
         quiet (status, juce::Justification::centredRight);
         quiet (latency, juce::Justification::centredRight);
         quiet (hintLine, juce::Justification::centredLeft);
+        status.setComponentID ("status");
+        latency.setComponentID ("latency");
+        hintLine.setComponentID ("hintLine");
         hintLine.setText (defaultHint, juce::dontSendNotification);
     }
 
@@ -653,7 +664,7 @@ struct TuneFxEditor::Panel final : public juce::Component
     {
         g.setColour (tone::white);
         g.setFont (font (Weight::medium, 24.0f));
-        g.drawText ("Tune FX", juce::Rectangle<int> (margin, 0, 110, headerHeight), juce::Justification::centredLeft, false);
+        g.drawText (owner.headerTitle(), juce::Rectangle<int> (margin, 0, 110, headerHeight), juce::Justification::centredLeft, false);
 
         // The panel that belongs to the selected block: its colour's tint, and a solid edge that runs on from the block when it is on.
         if (owner.selected >= 0 && owner.selected < numModules && g.clipRegionIntersects (panelArea()))
@@ -706,14 +717,15 @@ struct TuneFxEditor::Panel final : public juce::Component
         graph.setBounds (area.getX() + pad + titleWidth + 16, area.getY() + pad, graphWidth, area.getHeight() - pad * 2);
 
         const int openHeight = juce::roundToInt ((float) area.getHeight() * amount);
-        advancedPage.setBounds (area.getX(), area.getBottom() - area.getHeight() + (area.getHeight() - openHeight), area.getWidth(), area.getHeight());
+        advancedPage.setBounds (area.getX(), area.getBottom() - openHeight, area.getWidth(), openHeight);
         advancedPage.setVisible (openHeight > 0);
+        graph.setCovered (openHeight >= area.getHeight());
 
         // Footer
         const int footerY = designHeight - footerBottom - footerHeight;
         outputGain.setBounds (margin, footerY, 300, footerHeight);
-        hintLine.setBounds (margin + 324, footerY, 520, footerHeight);
         latency.setBounds (designWidth - margin - 164 - 96, footerY, 92, footerHeight);
+        hintLine.setBounds (margin + 324, footerY, latency.getX() - 12 - (margin + 324), footerHeight);   // ends short of the latency (1.2.5; it ran 32 px into it)
         advancedButton->setBounds (designWidth - margin - 150, footerY, 150, footerHeight);
     }
 
@@ -766,6 +778,7 @@ TuneFxEditor::TuneFxEditor (PluginProcessor& p)
     getConstrainer()->setFixedAspectRatio (ratio);
 
     advancedAmount = isAdvancedOpen() ? 1.0f : 0.0f;
+    advancedShown = isAdvancedOpen();
     showModule (juce::jlimit (0, numModules - 1, p.selectedModule.load (std::memory_order_relaxed)));
     panel->row.setSelected (isAdvancedOpen() ? -1 : selected);
 
@@ -842,6 +855,7 @@ void TuneFxEditor::selectModule (int module)
 void TuneFxEditor::setAdvancedOpen (bool shouldBeOpen, bool animate)
 {
     processor.advancedOpen.store (shouldBeOpen, std::memory_order_relaxed);
+    advancedShown = shouldBeOpen;
     panel->row.setSelected (shouldBeOpen ? -1 : selected);
 
     if (! animate)
@@ -853,8 +867,9 @@ void TuneFxEditor::setAdvancedOpen (bool shouldBeOpen, bool animate)
     }
     else
     {
+        // Frames from the screen do the glide, from the first one. Up to 1.2.4 a 0.2 s step was taken here, which moved it 98% at the click.
         stillFor = 0.0;
-        timerCallback();
+        startFrames();
     }
 }
 
@@ -907,6 +922,11 @@ void TuneFxEditor::clickCustomKey (int key)
     panel->advancedPage.keys.cycle (key);
 }
 
+juce::String TuneFxEditor::headerTitle() const  { return processor.getName(); }   // Glitter (1.2.5; it still said Tune FX after the rename)
+juce::String TuneFxEditor::advancedLabel() const { return panel->advancedButton->label(); }
+int TuneFxEditor::advancedLabelRoom() const      { return panel->advancedButton->labelRoom(); }
+int TuneFxEditor::correctionBarPixels() const    { return panel->reading->barPixels(); }
+
 void TuneFxEditor::previewHover (const juce::String& paramId)
 {
     if (auto* c = findControl (paramId))
@@ -925,6 +945,16 @@ void TuneFxEditor::tick (double dtSeconds)
     bool moved = strip.advance (dtSeconds);
     const int note = strip.getOutputNote();
     moved = panel->reading->advance (dtSeconds, note) || moved;
+    // A state loaded while the window is open (a Logic preset, say) can change the module and Advanced underneath it: follow it (1.2.5).
+    const int wantedModule = juce::jlimit (0, numModules - 1, processor.selectedModule.load (std::memory_order_relaxed));
+    if (wantedModule != selected)
+        showModule (wantedModule);
+    if (isAdvancedOpen() != advancedShown)
+    {
+        advancedShown = isAdvancedOpen();
+        panel->row.setSelected (advancedShown ? -1 : selected);
+    }
+
     moved = panel->row.refresh() || moved;
     moved = panel->graph.refresh() || moved;
     if (panel->advancedPage.keys.advance (note))
@@ -959,7 +989,8 @@ void TuneFxEditor::tick (double dtSeconds)
 
         const auto r = processor.getReadings();
         juce::StringArray bits;
-        if (processor.apvts.getRawParameterValue ("followKey")->load (std::memory_order_relaxed) >= 0.5f)
+        // Only when a key from the file is in use (1.2.5): with none yet, or a Custom scale, the menus' key is in use, and it said Following.
+        if (r.following)
             bits.add (juce::String ("Following ") + noteNames[juce::jlimit (0, 11, r.activeKey)] + " " + scaleNames[juce::jlimit (0, numScales - 1, r.activeScale)]);
         if (r.heldNotes > 0)
             bits.add ("MIDI notes held: " + juce::String (r.heldNotes));
@@ -973,7 +1004,11 @@ void TuneFxEditor::timerCallback()
 {
     // Nothing has been moving, so look only a few times a second. Move again as soon as there is something to show.
     tick (0.2);
+    startFrames();
+}
 
+void TuneFxEditor::startFrames()
+{
     if (stillFor < 1.0 && vblank == nullptr)
     {
         stopTimer();

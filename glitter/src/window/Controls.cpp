@@ -167,7 +167,7 @@ namespace fxui
             value = 0.0;
         else if (! text.containsAnyOf ("0123456789"))
             return;
-        else if (text.endsWith ("k") || text.endsWith ("khz"))
+        else if (text.trimCharactersAtEnd ("hz ").endsWith ("k"))    // 2.5k, 2.5 kHz and, since 1.2.5, 2.5k Hz
             value *= 1000.0;
 
         if (! std::isfinite (value))
@@ -494,11 +494,13 @@ namespace fxui
     {
         const auto hit = zoneAt (e.position.x);
         const int count = processor.getNumPrograms();
+        const int current = processor.getCurrentProgram();
 
+        // From no preset (a session that does not say), the arrows go to the last and the first one.
         if (hit == previous)
-            choose ((processor.getCurrentProgram() + count - 1) % count);
+            choose (current < 0 ? count - 1 : (current + count - 1) % count);
         else if (hit == next)
-            choose ((processor.getCurrentProgram() + 1) % count);
+            choose (current < 0 ? 0 : (current + 1) % count);
         else
         {
             juce::PopupMenu menu;
@@ -523,7 +525,8 @@ namespace fxui
 
         g.setColour (tone::white);
         g.setFont (font (Weight::regular, 13.5f));
-        g.drawText (processor.getProgramName (processor.getCurrentProgram()), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
+        const int current = processor.getCurrentProgram();
+        g.drawText (current >= 0 ? processor.getProgramName (current) : juce::String ("Choose a preset"), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
 
         const auto chevron = [&] (float cx, float direction, bool lit)
         {

@@ -139,6 +139,13 @@ public:
     int key() const noexcept { return packed.load (std::memory_order_relaxed) & 15; }
     bool minor() const noexcept { return (packed.load (std::memory_order_relaxed) & 16) != 0; }
 
+    // The whole key in one load, read with the three below, so a poll in between can never mix one file's key with another's major or
+    // minor (1.2.5). Safe from the audio thread.
+    int snapshot() const noexcept { return packed.load (std::memory_order_relaxed); }
+    static bool hasKey (int snap) noexcept { return (snap & 32) != 0; }
+    static int keyOf (int snap) noexcept { return snap & 15; }
+    static bool isMinor (int snap) noexcept { return (snap & 16) != 0; }
+
 private:
     char path[PATH_MAX] {};
     std::atomic<int> packed { 0 };

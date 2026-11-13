@@ -70,6 +70,9 @@ namespace
     constexpr float filterTopDb = 24.0f, filterBottomDb = -36.0f;
     float filterPeakDb (float resonance01) { return 20.0f * std::log10 (0.707f * std::pow (12.0f, resonance01)); }
     float filterYProportion (float db) { return (filterTopDb - db) / (filterTopDb - filterBottomDb); }
+    // On Band Pass the band peaks at 0 dB whatever Resonance does (the processor scales it there), so its dot is not a peak height: it rises
+    // from 24 dB under the band's top at Resonance 0 to the top itself at 100, never above the drawn curve (1.2.5; it floated up to 18.6 dB over it).
+    constexpr float bandDotLowDb = -24.0f;
 }
 
 ModuleGraph::ModuleGraph (PluginProcessor& p) : processor (p)
@@ -146,6 +149,8 @@ int ModuleGraph::voiceNote() const
 
 bool ModuleGraph::refresh()
 {
+    if (covered)
+        return false;
     bool moved = false;
     for (size_t i = 0; i < watched.size(); ++i)
     {
@@ -157,8 +162,9 @@ bool ModuleGraph::refresh()
         }
     }
 
-    // Motion's roll and Ring's sidebands depend on the note and the scale too. Those change only as often as the notes do.
-    if (module == motion || module == ring)
+    // Motion's roll and Ring's sidebands depend on the note and the scale too, and Harmony names the lead's note (since 1.2.5; it kept a note
+    // last seen on Motion or Ring). Those change only as often as the notes do.
+    if (module == motion || module == ring || module == harmony)
     {
         const int note = voiceNote(), scale = (int) processor.getScaleMask();
         if ((note >= 0 && note != noteSeen) || scale != scaleSeen)
@@ -231,7 +237,7 @@ juce::Point<float> ModuleGraph::handlePosition (const Handle& h) const
             break;
         case filterPeak:
             px = logProportion (h.x->convertFrom0to1 (nx), 20.0, 20000.0);
-            py = filterYProportion (filterPeakDb (ny));
+            py = filterYProportion (juce::roundToInt (raw ("filterType")) == 1 ? bandDotLowDb * (1.0f - ny) : filterPeakDb (ny));
             break;
         case ringFrequency:
             px = logProportion (h.x->convertFrom0to1 (nx), 20.0, 5000.0);
@@ -265,7 +271,8 @@ void ModuleGraph::moveHandle (const Handle& h, juce::Point<float> position)
         {
             nx = h.x->convertTo0to1 (20.0f * std::pow (1000.0f, px));
             const float db = filterTopDb - py * (filterTopDb - filterBottomDb);
-            ny = juce::jlimit (0.0f, 1.0f, (std::log (std::pow (10.0f, db / 20.0f) / 0.707f)) / std::log (12.0f));
+            ny = juce::roundToInt (raw ("filterType")) == 1 ? juce::jlimit (0.0f, 1.0f, 1.0f - db / bandDotLowDb)
+                                                           : juce::jlimit (0.0f, 1.0f, (std::log (std::pow (10.0f, db / 20.0f) / 0.707f)) / std::log (12.0f));
             break;
         }
         case ringFrequency: nx = h.x->convertTo0to1 (20.0f * std::pow (250.0f, px)); break;

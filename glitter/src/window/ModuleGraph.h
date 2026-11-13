@@ -12,6 +12,10 @@ public:
 
     void setModule (int);
 
+    /** Fully under the Advanced page, which is opaque, the picture is never drawn, so it says nothing moved until it is uncovered (1.2.5: it
+        said it moved for ever, and the window never went still). It catches up as soon as the page moves away. */
+    void setCovered (bool isCovered)  { covered = isCovered; }
+
     /** From the editor's frame. Returns true if anything on screen moved. */
     bool refresh();
 
@@ -57,7 +61,7 @@ private:
     int module = 0;
     juce::Image image;
     float imageScale = 0.0f;
-    bool stale = true;
+    bool stale = true, covered = false;
     std::vector<std::atomic<float>*> watched;
     std::vector<float> seen;
     std::vector<Handle> handles;

@@ -36,6 +36,19 @@ namespace
 
     float driveToGain (float percent) noexcept { return std::pow (10.0f, percent * 0.01f * 36.0f / 20.0f); }
 
+    // The grain shifters reach two and a half octaves from the voice either way (PsolaShifter), so the tuner's correction always fits on
+    // top of a two octave shift. A setting that asks for more than two octaves (Pitch +2 octaves +7, or Harmony on top of Pitch) drops by
+    // octaves into reach and keeps its note. Up to 1.2.4 the shifter cut every voice off at exactly two octaves from what was sung, so a
+    // sharp note under Pitch -2 octaves was left sharp, and the cut-off note was out of key. (1.2.5)
+    double reachable (double semitones) noexcept
+    {
+        while (semitones > 24.0) semitones -= 12.0;
+        while (semitones < -24.0) semitones += 12.0;
+        return semitones;
+    }
+
+    const juce::Identifier programAttribute { "program" };   // since 1.2.5: the preset last chosen, left out when none is known
+
     // Presets leave Key, Scale, Input Type, Follow Key, MIDI Target, Reference and Tracking alone, so they never fight the song.
     // Since 1.2.0 Distortion keeps the level of the voice going in; Phone Line and Octave Monster had leant on its old make-up (4.8 and
     // 1.9 dB on say speech), so their Output Gain carries that now and they come out as loud as before.
@@ -313,8 +326,8 @@ PluginProcessor::PluginProcessor (const Options& options)
     addParameter (offReading = new ReadingParameter ("pitchOffTarget", "Pitch Off Target", "cents", -100.0f, 100.0f, 0.0f, offText));
     addParameter (hzReading = new ReadingParameter ("detectedPitch", "Detected Pitch", "Hz", 0.0f, 2000.0f, 0.0f, hzText));
     addParameter (correctionReading = new ReadingParameter ("correctionApplied", "Correction Applied", "cents", -2400.0f, 2400.0f, 0.0f, centsText));
-    addParameter (noteReading = new ReadingParameter ("targetNote", "Target Note", "", -1.0f, 127.0f, -1.0f, noteText));
-    addParameter (keyReading = new ReadingParameter ("activeKey", "Active Key", "", 0.0f, (float) (12 * numScales - 1), 0.0f, keyText));
+    addParameter (noteReading = (new ReadingParameter ("targetNote", "Target Note", "", -1.0f, 127.0f, -1.0f, noteText))->namedSteps());
+    addParameter (keyReading = (new ReadingParameter ("activeKey", "Active Key", "", 0.0f, (float) (12 * numScales - 1), 0.0f, keyText))->namedSteps());
     addParameter (heldReading = new ReadingParameter ("midiNotesHeld", "MIDI Notes Held", "", 0.0f, 128.0f, 0.0f, heldText));
 
     char path[PATH_MAX] {};
@@ -326,6 +339,9 @@ PluginProcessor::PluginProcessor (const Options& options)
     // Prepared values before the host calls prepareToPlay, so asking for the latency early gets a true answer.
     setLatencySamples (latencyFor ((int) inputType->load(), 48000.0));
 
+    bypassWasOn.store (bypass->get(), std::memory_order_relaxed);
+    apvts.addParameterListener ("bypass", this);
+
     worker = std::make_unique<Worker> (*this);
     worker->startThread (juce::Thread::Priority::low);
 }
@@ -334,6 +350,33 @@ PluginProcessor::~PluginProcessor()
 {
     worker->stopThread (2000);
     cancelPendingUpdate();
+    apvts.removeParameterListener ("bypass", this);
+}
+
+// The host's bypass switch, for reset() below. Any thread.
+void PluginProcessor::parameterChanged (const juce::String& id, float value)
+{
+    if (id != "bypass")
+        return;
+    const bool on = value > 0.5f;
+    const bool was = bypassWasOn.exchange (on, std::memory_order_relaxed);
+    if (on && ! was)
+        bypassSwitchedAtMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+    bypassJustSwitchedOn.store (on && ! was, std::memory_order_relaxed);
+}
+
+// The host's Reset (1.2.5; before, a Reset cleared nothing, so delay and reverb tails, queued MIDI and held notes carried on into the next
+// playback or bounce). Clears what prepareToPlay clears and allocates nothing. The Reset the AU wrapper sends as the host's bypass switches on
+// is left out: clearing then would cut the voice off at once instead of the 20 ms fade to the dry voice.
+void PluginProcessor::reset()
+{
+    if (bypassJustSwitchedOn.exchange (false, std::memory_order_relaxed)
+        && juce::Time::getMillisecondCounter() - bypassSwitchedAtMs.load (std::memory_order_relaxed) < 250)
+        return;
+    if (preparedRate.load (std::memory_order_relaxed) <= 0.0)
+        return;   // never prepared: nothing has been played to clear
+    const juce::ScopedLock lock (getCallbackLock());   // the AU wrapper renders under this lock, so a Reset never lands mid block
+    clearState();
 }
 
 int PluginProcessor::latencyFor (int type, double sampleRate) noexcept
@@ -352,11 +395,31 @@ bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 void PluginProcessor::prepareToPlay (double sampleRate, int)
 {
     sr = sampleRate;
+    // Everything that allocates, then the rest from clearState(), which a host Reset runs on its own.
     tracker.prepare (sr);
     shifterA.prepare (sr, 2);
     shifterB.prepare (sr, 2);
     for (auto& s : harmonyShifter) s.prepare (sr, 1);
     for (auto& s : doubleShifter) s.prepare (sr, 1);
+    for (auto& l : doubleLine) l.prepare (sr, 0.09);
+    delay.prepare (sr, maxDelaySeconds);
+    tank.prepare (sr);
+    int preSize = 1;
+    while (preSize < (int) (sr * 0.21)) preSize *= 2;
+    for (auto& l : preDelayLine) l.assign ((size_t) preSize, 0.0f);
+    preDelayMask = preSize - 1;
+
+    clearState();
+    setLatencySamples (latencyNow);
+    preparedRate.store (sr, std::memory_order_relaxed);
+}
+
+// Everything playing leaves behind, back to where prepareToPlay starts. Allocates nothing, so a host Reset can call it too.
+void PluginProcessor::clearState() noexcept
+{
+    tracker.reset();
+    for (auto* s : { &shifterA, &shifterB, &harmonyShifter[0], &harmonyShifter[1], &doubleShifter[0], &doubleShifter[1] })
+        s->reset();
     corrector.prepare (sr);
 
     tickSamples = juce::jmax (1, juce::roundToInt (sr * 0.001));
@@ -381,21 +444,18 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     beat = 0.0;
     bpm = 120.0;
     beatStep = bpm / 60.0 / sr;
+    offlineKeySamples = 0;
 
     // Everything after the tuner.
     matchB.prepare (sr);
     for (auto& m : matchH) m.prepare (sr);
-    for (auto& l : doubleLine) l.prepare (sr, 0.09);
+    for (auto& l : doubleLine) l.reset();
     vocoder.prepare (sr);
     for (auto& d : distortion) d.prepare (sr);
     distLevel.prepare (sr);
     filter.prepare (sr);
-    delay.prepare (sr, maxDelaySeconds);
-    tank.prepare (sr);
-    int preSize = 1;
-    while (preSize < (int) (sr * 0.21)) preSize *= 2;
-    for (auto& l : preDelayLine) l.assign ((size_t) preSize, 0.0f);
-    preDelayMask = preSize - 1;
+    delay.reset();
+    for (auto& l : preDelayLine) std::fill (l.begin(), l.end(), 0.0f);
     preDelayWrite = 0;
     random = {};
     wander = { 0.0, 0.0 };
@@ -408,8 +468,6 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     applyInputType ((int) inputType->load());
     readSettings();
     latencyNow = latencyFor (typeNow, sr);
-    setLatencySamples (latencyNow);
-    preparedRate.store (sr, std::memory_order_relaxed);
 
     // Start every control where it is set, with no glide or fade from an old state.
     const auto start = [this] (ModuleFade& f, bool on) { f.prepare (sr, moduleFadeSeconds, on); };
@@ -437,16 +495,29 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     throatRateNow = throatRateWanted;
     voicedGate = 0.0;
     harmonyOffset = { (double) intervalNow[0], (double) intervalNow[1] };
-    doubleDelayA = timingSamples;
-    doubleDelayB = 0.72 * timingSamples;
+    intervalSeen = intervalNow;
+    leadShown = 0.0;
+    harmonyShown = { 0.0, 0.0 };
+    doubleBase = doubleNextBase = timingSamples;
+    doubleFade = 0.0f;
+    doubleFadeStep = (float) (1.0 / (0.03 * sr));
+    doubleMoving = false;
     filterLogSmooth = filterLogHz;
     filterQSmooth = filterQNow;
+    filterDepthSmooth = filterDepthNow;
+    filterRateShown = filterRateIndex;
+    sweepNow = 0.0;
+    sweepGliding = false;
     filterWeights = { filterTypeNow == 2 ? 1.0f : 0.0f, filterTypeNow == 1 ? 1.0f : 0.0f, filterTypeNow == 0 ? 1.0f : 0.0f };
     filter.set (std::pow (2.0, (double) filterLogSmooth), filterQSmooth);
     ringInc = (float) (ringHzNow / sr);
     for (auto& d : distortion) d.setTone (distToneNow);
     delay.setTone (delayToneNow);
     delay.setDelay (juce::roundToInt (juce::jlimit (0.001, maxDelaySeconds, delayBeats[delayBeatsIndex] * 60.0 / bpm) * sr));
+    preCurrent = preNext = juce::jlimit (0, preDelayMask, (int) reverbPreSamples);
+    preFade = 0.0f;
+    preFadeStep = (float) (1.0 / (0.03 * sr));
+    preMoving = false;
 
     reverbDecaySmooth = reverbDecayNow;
     tank.configure (reverbTypeNow, 1.0f, reverbDecaySmooth, 0.5f);
@@ -486,10 +557,14 @@ void PluginProcessor::readSettings() noexcept
 
     int root = (int) load (keyParam);
     int scale = (int) load (scaleParam);
-    if (on (followKey) && follower.has() && scale != scaleCustom)
+    // One load of the followed key (1.2.5): key, major or minor, and whether there is one are read together, so a file written in between
+    // can never give a key that neither file holds.
+    const int followed = follower.snapshot();
+    followingNow = on (followKey) && KeyFollower::hasKey (followed) && scale != scaleCustom;
+    if (followingNow)
     {
-        root = follower.key();
-        scale = follower.minor() ? scaleMinor : scaleMajor;
+        root = KeyFollower::keyOf (followed);
+        scale = KeyFollower::isMinor (followed) ? scaleMinor : scaleMajor;
     }
     activeKeyNow = root;
     activeScaleNow = scale;
@@ -729,8 +804,15 @@ void PluginProcessor::tick() noexcept
     }
     for (size_t k = 0; k < 2; ++k)
         wander[k] += slew (900.0) * (wanderTarget[k] - wander[k]);
-    doubleDelayA += slew (80.0) * (timingSamples - doubleDelayA);
-    doubleDelayB += slew (80.0) * (0.72 * timingSamples - doubleDelayB);
+
+    // A Harmony Interval changed while nothing is pitched moves the added voice by the same amount straight away, so the next phrase starts
+    // on it (1.2.5; it stayed where it was until the voice came back, then slid). Nothing is shifted while unpitched, so this is not heard.
+    for (size_t k = 0; k < 2; ++k)
+    {
+        if (! voiced)
+            harmonyOffset[k] += intervalNow[k] - intervalSeen[k];
+        intervalSeen[k] = intervalNow[k];
+    }
 
     controlA.voiced = controlB.voiced = voiced;
     for (auto& c : controlH) c.voiced = voiced;
@@ -739,8 +821,9 @@ void PluginProcessor::tick() noexcept
     if (voiced)
     {
         const double pitchTuned = corrector.outputPitch();
-        const double leadOffset = pitchShiftNow + motionNow;
+        const double leadOffset = reachable (pitchShiftNow + motionNow);
         const double pitchLead = pitchTuned + leadOffset;
+        leadShown = leadOffset;
         const bool identityA = corrector.isIdentity();
 
         controlA.inputPeriod = period;
@@ -769,8 +852,11 @@ void PluginProcessor::tick() noexcept
             }
             harmonyOffset[k] += slew (5.0) * (wanted - harmonyOffset[k]);
             if (std::abs (harmonyOffset[k] - wanted) < 1.0e-5) harmonyOffset[k] = wanted;
+            // Within reach, worked out exactly as before 1.2.5, so nothing that was in reach moves by a rounding.
+            harmonyShown[k] = reachable (leadOffset + harmonyOffset[k]);
+            const bool inReach = std::abs (leadOffset + harmonyOffset[k]) <= 24.0;
             controlH[k].inputPeriod = period;
-            controlH[k].outputPeriod = periodFor (pitchLead + harmonyOffset[k]);
+            controlH[k].outputPeriod = periodFor (inReach ? pitchLead + harmonyOffset[k] : pitchTuned + harmonyShown[k]);
             controlH[k].noCorrection = false;
             controlH[k].grainRate = rate;
 
@@ -799,11 +885,10 @@ void PluginProcessor::tick() noexcept
         auto& point = pitchHistory[(size_t) (at & (pitchHistorySize - 1))];
         point.inputNote.store (voiced ? (float) corrector.inputPitch() : 0.0f, std::memory_order_relaxed);
         // Bypassed, what comes out is what went in, and the display says so. This changes nothing but the display.
-        point.outputNote.store (voiced ? (float) (displayBypassed ? corrector.inputPitch() : corrector.outputPitch() + pitchShiftNow + motionNow) : 0.0f, std::memory_order_relaxed);
+        point.outputNote.store (voiced ? (float) (displayBypassed ? corrector.inputPitch() : corrector.outputPitch() + leadShown) : 0.0f, std::memory_order_relaxed);
         point.targetNote.store ((float) target, std::memory_order_relaxed);
-        const double lead = corrector.outputPitch() + pitchShiftNow + motionNow;
-        point.harmony1.store (voiced && harmonyActive && ! displayBypassed ? (float) (lead + harmonyOffset[0]) : 0.0f, std::memory_order_relaxed);
-        point.harmony2.store (voiced && harmonyActive && twoVoices && ! displayBypassed ? (float) (lead + harmonyOffset[1]) : 0.0f, std::memory_order_relaxed);
+        point.harmony1.store (voiced && harmonyActive && ! displayBypassed ? (float) (corrector.outputPitch() + harmonyShown[0]) : 0.0f, std::memory_order_relaxed);
+        point.harmony2.store (voiced && harmonyActive && twoVoices && ! displayBypassed ? (float) (corrector.outputPitch() + harmonyShown[1]) : 0.0f, std::memory_order_relaxed);
         pitchHistoryCount.store (at + 1, std::memory_order_relaxed);
     }
 }
@@ -862,13 +947,38 @@ void PluginProcessor::controlRate() noexcept
     // Filter, with the sweep tied to the song position, so it lands in the same place on every pass.
     filterLogSmooth += (float) chunkCoef * (filterLogHz - filterLogSmooth);
     filterQSmooth += (float) chunkCoef * (filterQNow - filterQSmooth);
+    // Sweep Depth glides like Cutoff, and a new Sweep Rate glides from where the old one had the cutoff to where the new one has it, so neither
+    // jumps the cutoff by octaves in one step (1.2.5). Left alone, both are exactly as before.
+    filterDepthSmooth += (float) chunkCoef * (filterDepthNow - filterDepthSmooth);
+    if (std::abs (filterDepthNow - filterDepthSmooth) < 1.0e-4f) filterDepthSmooth = filterDepthNow;
     if (filterActive || ! fadeFilter.silent())
     {
         const double phase = twoPi * (beat - latencyNow * beatStep) / sweepBeats[filterRateIndex];
-        const double logHz = filterLogSmooth + filterDepthNow * std::sin (phase);
+        const double sweep = filterDepthSmooth * std::sin (phase);
+        if (filterRateIndex != filterRateShown)
+        {
+            filterRateShown = filterRateIndex;
+            sweepGliding = true;
+        }
+        if (sweepGliding)
+        {
+            sweepNow += chunkCoef * (sweep - sweepNow);
+            if (std::abs (sweep - sweepNow) < 0.01)
+                sweepGliding = false;
+        }
+        else
+        {
+            sweepNow = sweep;
+        }
+        const double logHz = filterLogSmooth + sweepNow;
         const double sweptHz = std::pow (2.0, logHz);
         filterHzShown.store ((float) sweptHz, std::memory_order_relaxed);
         filter.set (sweptHz, filterQSmooth);
+    }
+    else
+    {
+        filterRateShown = filterRateIndex;   // off and silent: it comes back on where the sweep is now
+        sweepGliding = false;
     }
 
     ringInc = (float) ((double) ringInc + chunkCoef * (ringHzNow / sr - (double) ringInc));
@@ -886,9 +996,10 @@ void PluginProcessor::controlRate() noexcept
         if (! reverbActive)
             tank.sleep();
     }
-    else if (wantTank && ! tankWasWanted && fadeReverb.silent())
+    else if (wantTank && ! tankWasWanted && (fadeReverb.silent() || tank.isSleeping()))
     {
-        // Switched on: a clean tank every time, whether it had gone to sleep or was still ringing unheard.
+        // Switched on: a clean tank every time, whether it had gone to sleep or was still ringing unheard. A block that starts part way into a
+        // chunk has moved the fade a few samples on by now; a sleeping tank is woken all the same (1.2.5: it never was, and stayed silent).
         tank.clear();
         tank.snapInput (0.0f);
     }
@@ -942,7 +1053,7 @@ void PluginProcessor::processSample (float inL, float inR, float& outL, float& o
     h[1] *= matchH[1].next (harmonyShifter[1].dry (0), h[1]);
     const float mixH = fadeHarmony.next (harmonyActive);
     const float mixH2 = fadeHarmony2.next (twoVoices);
-    const float levelH = smoothHarmonyLevel.next (harmonyLevelNow), widthH = smoothHarmonyWidth.next (harmonyWidthNow);
+    const float levelH = smoothHarmonyLevel.next (harmonyLevelNow), widthH = monoOutput ? 0.0f : smoothHarmonyWidth.next (harmonyWidthNow);
     if (! fadeHarmony.silent())
     {
         const float pan = mixH2 * widthH; // one voice sits in the middle, two spread apart
@@ -955,10 +1066,31 @@ void PluginProcessor::processSample (float inL, float inR, float& outL, float& o
     float d[2] = { 0.0f, 0.0f };
     doubleShifter[0].step (tracker, controlD[0], &d[0]);
     doubleShifter[1].step (tracker, controlD[1], &d[1]);
-    const float lateA = doubleLine[0].process (d[0], (float) (doubleDelayA * (1.0 + 0.1 * wander[0])));
-    const float lateB = doubleLine[1].process (d[1], (float) (doubleDelayB * (1.0 + 0.1 * wander[1])));
+    // Written in faded with the Input Type switch's fade, so its restart never sits in the lines to come out one Timing later (1.2.5).
+    // A change of Timing crossfades to a second read head over 30 ms, as Delay Time does, so the doubles never bend in pitch (1.2.5; up to
+    // 1.2.4 the read point slid there, which bent them by up to about 20 semitones).
+    if (! doubleMoving && timingSamples != doubleBase)
+    {
+        doubleNextBase = timingSamples;
+        doubleMoving = true;
+        doubleFade = 0.0f;
+    }
+    float lateA = doubleLine[0].process (d[0] * fadeGain, (float) (doubleBase * (1.0 + 0.1 * wander[0])));
+    float lateB = doubleLine[1].process (d[1] * fadeGain, (float) (0.72 * doubleBase * (1.0 + 0.1 * wander[1])));
+    if (doubleMoving)
+    {
+        lateA += doubleFade * (doubleLine[0].read ((float) (doubleNextBase * (1.0 + 0.1 * wander[0]))) - lateA);
+        lateB += doubleFade * (doubleLine[1].read ((float) (0.72 * doubleNextBase * (1.0 + 0.1 * wander[1]))) - lateB);
+        doubleFade += doubleFadeStep;
+        if (doubleFade >= 1.0f)
+        {
+            doubleBase = doubleNextBase;
+            doubleMoving = false;
+        }
+    }
     const float mixD = fadeDoubler.next (doublerActive);
-    const float levelD = smoothDoublerLevel.next (doublerLevelNow), widthD = smoothDoublerWidth.next (doublerWidthNow);
+    // On a mono output the voices are not panned: a hard panned voice folded down at half level, so Width set their loudness (1.2.5).
+    const float levelD = smoothDoublerLevel.next (doublerLevelNow), widthD = monoOutput ? 0.0f : smoothDoublerWidth.next (doublerWidthNow);
     if (! fadeDoubler.silent())
     {
         const float gain = mixD * levelD * consonant;
@@ -1102,6 +1234,19 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     const float* inR = numIn > 1 ? buffer.getReadPointer (1) : inL;
     float* left = buffer.getWritePointer (0);
     float* right = numOut > 1 ? buffer.getWritePointer (1) : nullptr;
+    monoOutput = right == nullptr;
+
+    // Follow Key in an offline bounce or freeze (1.2.5, as Choir Loft 1.6.0): the worker reads the key file every 0.3 s of wall time, which in
+    // a render faster than real time is many seconds of song. So here the file is read every 0.3 s of audio instead. Offline nothing waits on this thread.
+    if (isNonRealtime() && followKey->load (std::memory_order_relaxed) >= 0.5f)
+    {
+        if (offlineKeySamples <= 0)
+        {
+            pollKeyFileNow();
+            offlineKeySamples = juce::roundToInt (0.3 * sr);
+        }
+        offlineKeySamples -= numSamples;
+    }
 
     float segL[chunk], segR[chunk], dryL[chunk], dryR[chunk], preL[chunk], preR[chunk], wetL[chunk], wetR[chunk];
 
@@ -1117,12 +1262,32 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             const float r = inR != nullptr ? inR[i + s] : 0.0f;
             processSample (l, r, segL[s], segR[s], dryL[s], dryR[s]);
 
-            // Pre-delay line in front of the reverb. Runs all the time, it costs next to nothing.
+            // Pre-delay line in front of the reverb. Runs all the time, it costs next to nothing. A new Pre-Delay crossfades to a second read
+            // point over 30 ms, as Delay Time does (1.2.5; the read point jumped, a step straight into the reverb).
             preDelayLine[0][(size_t) preDelayWrite] = segL[s];
             preDelayLine[1][(size_t) preDelayWrite] = segR[s];
-            const int back = (preDelayWrite - juce::jlimit (0, preDelayMask, (int) reverbPreSamples)) & preDelayMask;
+            const int wantedPre = juce::jlimit (0, preDelayMask, (int) reverbPreSamples);
+            if (! preMoving && wantedPre != preCurrent)
+            {
+                preNext = wantedPre;
+                preMoving = true;
+                preFade = 0.0f;
+            }
+            const int back = (preDelayWrite - preCurrent) & preDelayMask;
             preL[s] = preDelayLine[0][(size_t) back];
             preR[s] = preDelayLine[1][(size_t) back];
+            if (preMoving)
+            {
+                const int other = (preDelayWrite - preNext) & preDelayMask;
+                preL[s] += preFade * (preDelayLine[0][(size_t) other] - preL[s]);
+                preR[s] += preFade * (preDelayLine[1][(size_t) other] - preR[s]);
+                preFade += preFadeStep;
+                if (preFade >= 1.0f)
+                {
+                    preCurrent = preNext;
+                    preMoving = false;
+                }
+            }
             preDelayWrite = (preDelayWrite + 1) & preDelayMask;
         }
 
@@ -1176,12 +1341,16 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     const bool voiced = controlA.voiced;
     offReading->set ((float) juce::jlimit (-100.0, 100.0, corrector.centsOffTarget()));
     hzReading->set (voiced ? (float) (sr / controlA.inputPeriod) : 0.0f);
-    correctionReading->set ((float) juce::jlimit (-2400.0, 2400.0, corrector.correctionCents() + 100.0 * (pitchShiftNow + motionNow)));
+    correctionReading->set ((float) juce::jlimit (-2400.0, 2400.0, corrector.correctionCents() + 100.0 * reachable (pitchShiftNow + motionNow)));
     noteReading->set ((float) corrector.targetNote());
     keyReading->set ((float) (activeKeyNow + 12 * activeScaleNow));
     heldReading->set ((float) heldCount);
     voicedNow.store (voiced ? 1 : 0, std::memory_order_relaxed);
     scaleShown.store ((int) scaleAllowed, std::memory_order_relaxed);
+    followingShown.store (followingNow ? 1 : 0, std::memory_order_relaxed);
+
+    if (bypassJustSwitchedOn.load (std::memory_order_relaxed))
+        bypassJustSwitchedOn.store (false, std::memory_order_relaxed);   // only the Reset that comes with the switch is left out
 }
 
 PluginProcessor::Readings PluginProcessor::getReadings() const noexcept
@@ -1196,6 +1365,7 @@ PluginProcessor::Readings PluginProcessor::getReadings() const noexcept
     r.activeScale = packed / 12;
     r.heldNotes = juce::roundToInt (heldReading->get());
     r.voiced = voicedNow.load (std::memory_order_relaxed) != 0;
+    r.following = followingShown.load (std::memory_order_relaxed) != 0;
     return r;
 }
 
@@ -1231,18 +1401,25 @@ void PluginProcessor::setCurrentProgram (int i)
     if (! juce::isPositiveAndBelow (i, getNumPrograms()))
         return;
     currentProgram = i;
+    programKnown = true;
+    // One pass, each control written once with where it ends up: the preset's value, or its default when the preset leaves it out. Up to
+    // 1.2.4 every control went to its default first, so audio running meanwhile could play a block of all defaults (modules off, Delay Time
+    // 1/4, Output Gain 0 dB) and a module on in both presets switched off for a moment. (1.2.5)
+    const auto& settings = presets()[(size_t) i].settings;
     for (auto* id : moduleIds)
     {
         auto* p = apvts.getParameter (id);
         jassert (p != nullptr);
-        p->setValueNotifyingHost (p->getDefaultValue());
+        float value = p->getDefaultValue();
+        for (const auto& s : settings)
+            if (std::strcmp (s.id, id) == 0)
+                value = p->convertTo0to1 (s.value);
+        p->setValueNotifyingHost (value);
     }
-    for (const auto& s : presets()[(size_t) i].settings)
-    {
-        auto* p = apvts.getParameter (s.id);
-        jassert (p != nullptr);
-        p->setValueNotifyingHost (p->convertTo0to1 (s.value));
-    }
+#if JUCE_DEBUG
+    for (const auto& s : settings)
+        jassert (std::any_of (std::begin (moduleIds), std::end (moduleIds), [&s] (const char* id) { return std::strcmp (s.id, id) == 0; }));
+#endif
 }
 
 void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
@@ -1252,6 +1429,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
         xml->setAttribute ("windowWidth", windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute ("advancedOpen", advancedOpen.load (std::memory_order_relaxed));
         xml->setAttribute ("selectedModule", selectedModule.load (std::memory_order_relaxed));
+        if (programKnown && currentProgram >= 0)
+            xml->setAttribute (programAttribute, currentProgram);
         copyXmlToBinary (*xml, dest);
     }
 }
@@ -1266,9 +1445,14 @@ void PluginProcessor::setStateInformation (const void* data, int size)
                 windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute ("windowWidth", defaultWindowWidth)), std::memory_order_relaxed);
             advancedOpen.store (xml->getBoolAttribute ("advancedOpen", false), std::memory_order_relaxed);
             selectedModule.store (juce::jlimit (0, 10, xml->getIntAttribute ("selectedModule", 0)), std::memory_order_relaxed);
+            // Which preset was chosen, only to name it: its values are already in the state and are not applied again. A session saved before
+            // 1.2.5, or with no preset chosen, does not say, so it names none ("Choose a preset") rather than Hard Tune. A damaged number is kept in range.
+            programKnown = xml->hasAttribute (programAttribute);
+            currentProgram = programKnown ? juce::jlimit (0, getNumPrograms() - 1, xml->getIntAttribute (programAttribute, 0)) : -1;
             xml->removeAttribute ("windowWidth");
             xml->removeAttribute ("advancedOpen");
             xml->removeAttribute ("selectedModule");
+            xml->removeAttribute (programAttribute);
             applySafeState (apvts, *xml);
         }
 }

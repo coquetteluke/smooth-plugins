@@ -641,13 +641,13 @@ PASS  a 1.0.0 session with none of them opens at the default size
 PASS  absurd saved sizes are clamped
 PASS  a saved size that is not a number stays in range
 PASS  the dropped file arrives
-PASS  while it loaded, blocks ran = 2823.000 
+PASS  while it loaded, blocks ran = 2639.000 
 PASS  no block allocated while the file loaded, allocations = 0.000 
 PASS  the held note kept sounding the whole time, silent blocks = 0.000 
 PASS  and the window said so while it loaded
 PASS  then it names the new file: window-big.wav, 96.00 s, 48.0 kHz, mono, 8 slices
 PASS  a broken file says so, and the sample stays: Could not read broken.wav
-PASS  60 windows opened and closed while audio ran, blocks = 63.000 
+PASS  60 windows opened and closed while audio ran, blocks = 1433.000 
 PASS  30 more with no audio
 PASS  readings are parameters
 PASS  Slices Found reads 4: 4
@@ -676,6 +676,69 @@ PASS  Pitch shows +3.00
 PASS  Root Note 60 shows C3
 PASS  Slice Mode shows its name
 PASS  every control jumps on a held note with no click, worst step (Transpose) = 0.014 
-INFO  16 stereo voices pitched up 7 st: share of one core = 3.414 %
-PASS  16 stereo voices run faster than real time, for 10 s of audio took = 341.399 ms
+INFO  16 stereo voices pitched up 7 st: share of one core = 3.728 %
+PASS  16 stereo voices run faster than real time, for 10 s of audio took = 372.818 ms
+PASS  Phase 2: a 2.5 kHz tone in a 48 kHz file played 48 st up (40 kHz, above Nyquist) comes out under the tone by = -104.294 dB
+PASS  Phase 2: the same tone played 42 st up (28 kHz) comes out under the tone by = -105.500 dB
+PASS  Phase 2: a 5 kHz tone in a 96 kHz file played 36 st up in a 48 kHz session (40 kHz) comes out under the tone by = -104.089 dB
+PASS  Phase 2:   while 24 st up (8 kHz, below Nyquist) still plays at the tone's level, dB = 0.000 dB
+PASS  Phase 2: in Zoom slice, a marker dragged 10 px left moves, px = 10.483 px
+PASS  Phase 2: in Zoom slice, the dragged Start tab stays under the pointer, worst ms off = 0.454 ms
+PASS  Phase 2: 100 saves while Slice Start automation moves: sessions that come back in Manual = 0.000 
+INFO  Phase 2: NOT FIXED cutup-window-r2-1, Manual set by the host with the window open adopts the slices on show (1 yes, 0 no) = 1.000 
+PASS  Phase 2:   while picking Manual in the window starts from the 8 grid slices on show
+PASS  Phase 2: a Manual session restored with the window open keeps the slices it was saved with
+PASS  Phase 2: Transpose reads +5 and +5 st as 5 (guard: the claim was not real) = 5.000 
+PASS  Phase 2: Root Note reads flat names Eb3 Bb2 Db3 Eb2, Eb3 reads as = 63.000 
+PASS  Phase 2: Root Note reads 51.0 as 51 = 51.000 
+PASS  Phase 2: Root Note reads empty text as its default, not C-2 = 60.000 
+PASS  Phase 2:   and still reads D#3 and 62 (guard)
+PASS  Phase 2: typing Eb3 into the Root cell sets = 63.000 
+PASS  Phase 2: typing text that is no note leaves Root alone = 63.000 
+PASS  Phase 2: typing +7 st into Transpose sets 7 (guard) = 7.000 
+PASS  Phase 2: a One Shot, a host Reset, then 5 ms on: peak = -240.000 dB
+PASS  Phase 2:   and the Reset allocates nothing, allocations = 0.000 
+PASS  Phase 2: after a Reset the pedal is up, so a note released 100 ms ago is silent, peak = -240.000 dB
+PASS  Phase 2: play, Reset, play equals a new instance, samples that differ = 0.000 
+PASS  Phase 2: the Reset that comes with host bypass switching on changes nothing, samples that differ = 0.000 
+INFO  Phase 2: NOT FIXED cutup-dsp-r1-3, with a lead-in slice the strongest onset keeps its cut and the weakest of the 32 goes (1 yes, 0 no) = 0.000 
+PASS  Phase 2: after a Root drag the keyboard settles to show all 8 slices, last key minus root = 24.000 
+PASS  Phase 2: an 1800 s file at 8 kHz loads
+PASS  Phase 2: its Sample Length reading says 1800.00
+PASS  Phase 2: time scale labels of a 1800 s sample do not overlap at the smallest size, px spare = 131.997 px
+PASS  Phase 2: in Chromatic, the stepper names Root as slice 5's key: Slice 5  C3
+PASS  Phase 2: wheel up, then Bend Range 2 to 12: cents off 12 st = -0.000 cents
+PASS  Phase 2: wheel up, then Bend Range 0: cents off the unbent pitch = -0.000 cents
+PASS  Phase 2: Reset All Controllers puts the wheel back: cents off the unbent pitch = -0.000 cents
+PASS  Phase 2:   and the pedal up, so the note released 100 ms ago is silent, peak = -240.000 dB
+PASS  Phase 2: a sample loaded during a marker edit keeps markers that fit it, end marker at = 26880.000 
+PASS  Phase 2:   and its session saves and loads with the sample in it
+PASS  Phase 2: a load cancelled by a session restore leaves no Loading message, of 10 = 0.000 
+PASS  Phase 2: a state with Advanced open, restored with the window open, shows the drawer
+PASS  Phase 2: at 1040 px, Grid Tempo 128.50 fits its cell, px over = -3.467 px
+PASS  Phase 2: at 1040 px, slot Level and Pitch and glide Amount fit their cells, worst px over = -7.647 px
+PASS  Phase 2: at 1160 px, Grid Tempo 128.50 fits its cell, px over = -3.467 px
+PASS  Phase 2: at 1160 px, slot Level and Pitch and glide Amount fit their cells, worst px over = -2.479 px
+PASS  Phase 2: Play Mode, Grid and Grid Note wait out a double-click before opening, ms = 430.000 ms
+PASS  Phase 2: a value typed while Selected Slice moves lands on the slice it was typed for
+PASS  Phase 2: in Chromatic, clicking the key an octave up plays an octave up, cents off = 0.000 cents
+PASS  Phase 2:   and lights the key that was clicked
+PASS  Phase 2: at 1040 px, the closed Advanced summary of three changes fits, px over = -4.928 px
+PASS  Phase 2: at 1160 px, the closed Advanced summary of three changes fits, px over = -4.249 px
+PASS  Phase 2: a session saved after choosing Reverse Swell names it again, preset = 5.000 
+PASS  Phase 2:   and the preset stays out of the parameter tree
+PASS  Phase 2: a new instance where no preset was chosen saves none (guard)
+PASS  Phase 2: the installed 1.2.0's sessions are there (default, 14 presets, Manual, Grid) = 17.000 
+PASS  Phase 2: each plays the score bit for bit as the installed 1.2.0 played it, sessions that differ = 0.000 
+PASS  Phase 2: each saves back the same bytes, sessions that differ = 0.000 
+PASS  Phase 2: each keeps its sample and its cuts, sessions that differ = 0.000 
+PASS  Phase 2: each keeps every control and slot as saved, values that differ = 0.000 
+PASS  Phase 2: each reads as no preset chosen, sessions that do not = 0.000 
+PASS  Phase 2: with its file deleted, a session keeps its sample, name and hand-moved cuts (guard: the audio is in the session)
+PASS  Phase 2:   and the window names it: Lead vocal take 3.wav, 1.50 s, 48.0 kHz, mono, 6 slices
+PASS  Phase 2:   and the next save keeps it all, byte for byte
+PASS  Phase 2: a damaged saved sample is named in the window: The saved sample, Lead vocal take 3.wav, was damaged, so it loaded empty. Load the file again.
+INFO  Phase 2: 16 stereo voices looping 0 st up: share of one core = 0.547 %
+INFO  Phase 2: 16 stereo voices looping 7 st up: share of one core = 3.817 %
+INFO  Phase 2: 16 stereo voices looping 40 st up: share of one core = 23.426 %
 RESULT PASS  0 failures

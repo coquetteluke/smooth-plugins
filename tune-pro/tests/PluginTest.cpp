@@ -4537,6 +4537,599 @@ void testWindow()
     render (*p, x, 256);
     check (true, "closing the window leaves audio running");
 }
+
+// ---------------------------------------------------------------------------------------------------------------- Phase 2
+// Tests for the faults the Phase 2 bug hunt kept (2026-11-13, ~/Bug Fixing/smooth-plugins/fix/tune-pro.json). Each was written and run on
+// 1.8.1 before its fix, and failed there for the reason the hunt gave; the numbers before and after are in CHANGELOG 1.8.2. Run by name:
+// PluginTest phase2 (both engines where the engine matters) or as part of a full run.
+
+int programIndex (juce::AudioProcessor& p, const char* name)
+{
+    for (int i = 0; i < p.getNumPrograms(); ++i)
+        if (p.getProgramName (i) == name) return i;
+    return -1;
+}
+
+// Renders in blocks with the window ticked after each block, as a host and the screen would together.
+std::vector<float> renderTicking (PluginProcessor& p, TuneEditor& te, const std::vector<float>& x, int block = 256)
+{
+    const auto out = render (p, x, block, nullptr, [&] (int index) { if (index > 0) te.tick ((double) block / SR); });
+    te.tick ((double) block / SR);
+    return mono (out);
+}
+
+juce::MouseEvent mouseAt (juce::Component& c, juce::Point<float> at, int clicks)
+{
+    const auto now = juce::Time::getCurrentTime();
+    return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
+                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c, now, at, now, clicks, false);
+}
+
+// Natural Vibrato, the vibrato generator and notes left as sung (tunepro-dsp-r2-1, r1-1, r3-3). Both engines.
+void testPhase2Vibrato()
+{
+    // r2-1 (high): Robot Flat must be flat. Natural Vibrato -100 put the sung vibrato back upside down wherever the correction had
+    // already taken it out. Hard Tune's limit, on the vibratoKept voice (220 Hz, +/-40 cents, 5.5 Hz).
+    {
+        auto p = make();
+        p->setCurrentProgram (programIndex (*p, "Robot Flat"));
+        const double kept = vibratoKept (*p);
+        chk (kept <= limits::vibratoFlatHard, "Phase 2: the Robot Flat preset flattens a +/-40 cent vibrato (Hard Tune's limit), kept", kept * 100.0, "%");
+    }
+    {
+        auto p = make(); setParam (*p, "retune", 3.0f); setParam (*p, "humanize", 0.0f); setParam (*p, "flex", 0.0f); setParam (*p, "naturalVibrato", -100.0f);
+        const double kept = vibratoKept (*p);
+        chk (kept <= limits::vibratoFlatHard, "Phase 2: Natural Vibrato -100 at the default Retune Speed 3 ms flattens it too, kept", kept * 100.0, "%");
+    }
+    {
+        // A slow rise of 2 semitones over 1 s in C Chromatic with Robot Flat's settings: the output steps up note by note and never falls (Tune 1.2.1's test).
+        auto p = make(); setParam (*p, "retune", 0.0f); setParam (*p, "humanize", 0.0f); setParam (*p, "flex", 0.0f); setParam (*p, "naturalVibrato", -100.0f);
+        prepare (*p, 1, SR, 256);
+        std::vector<double> f0;
+        for (size_t i = 0; i < (size_t) (2.0 * SR); ++i) { const double t = (double) i / SR; f0.push_back (196.0 * std::pow (2.0, (t < 0.5 ? 0.0 : t > 1.5 ? 2.0 : 2.0 * (t - 0.5)) / 12.0)); }
+        const auto x = voice::synth (f0, voice::vowelA, SR);
+        const auto out = mono (render (*p, x, 256));
+        const double delay = p->getLatencySamples() / SR, hop = 0.005;
+        const auto trace = pitchTrace (out.data(), (long) out.size(), SR, 208.0, 0.4 + delay, 1.6 + delay, hop, 0.2);
+        double down = 0.0;
+        for (size_t i = 2; i < trace.size(); ++i)
+            if (trace[i] > 0.0 && trace[i - 2] > 0.0) down = std::max (down, -cents (trace[i], trace[i - 2]));
+        chk (down <= 10.0, "Phase 2: Robot Flat's settings on a slow rise of 2 semitones: the most the output falls in 10 ms", down, "cents");
+    }
+
+    // r1-1: with no target, Natural Vibrato bent the voice by up to 6 semitones at the start of every phrase (its average started at 0).
+    const auto steadyA = voice::synth (voice::steady (noteHz (57) * std::pow (2.0, 30.0 / 1200.0), 2.0, SR), voice::vowelA, SR);
+    {
+        auto p = midiTuner();
+        setParam (*p, "naturalVibrato", -100.0f);
+        const auto out = renderWithMidi (*p, steadyA, {});
+        const double db = nullDb (out, steadyA, p->getLatencySamples(), (long) (0.1 * SR), (long) (1.8 * SR));
+        chk (db <= prolimits::midiNoNotesNullDb, "Phase 2: MIDI Targets on with no notes and Natural Vibrato -100: the voice passes unchanged, difference", db, "dB");
+    }
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        for (int i = 0; i < 12; ++i) setParam (*p, ("note" + juce::String (i)).toRawUTF8(), (float) smoothtune::noteRemove);
+        setParam (*p, "naturalVibrato", 100.0f);
+        const auto out = mono (render (*p, steadyA, 256));
+        const double db = nullDb (out, steadyA, p->getLatencySamples(), (long) (0.1 * SR), (long) (1.8 * SR));
+        chk (db <= prolimits::midiNoNotesNullDb, "Phase 2: every note set to Remove and Natural Vibrato +100: the voice passes unchanged, difference", db, "dB");
+    }
+
+    // r3-3: a note on Bypass, and a voice with no target, are left as sung: no Natural Vibrato and no added vibrato on them.
+    const auto wavering = voice::synth (voice::vibrato (noteHz (57), 2.0, SR, 30.0, 5.5), voice::vowelA, SR);
+    for (const char* which : { "naturalVibrato", "vibratoAmount" })
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        setParam (*p, "note9", (float) smoothtune::noteBypass);
+        setParam (*p, which, std::string (which) == "naturalVibrato" ? -100.0f : 30.0f);
+        const auto out = mono (render (*p, wavering, 256));
+        const double db = nullDb (out, wavering, p->getLatencySamples(), (long) (0.1 * SR), (long) (1.8 * SR));
+        chk (db <= prolimits::midiNoNotesNullDb, std::string ("Phase 2: A on Bypass is left as sung with ") + (std::string (which) == "naturalVibrato" ? "Natural Vibrato -100" : "Vibrato Amount 30") + ", A3 with a +/-30 cent vibrato, difference", db, "dB");
+    }
+    {
+        auto p = midiTuner();
+        setParam (*p, "vibratoAmount", 30.0f);
+        const auto out = renderWithMidi (*p, steadyA, {});
+        const double db = nullDb (out, steadyA, p->getLatencySamples(), (long) (0.1 * SR), (long) (1.8 * SR));
+        chk (db <= prolimits::midiNoNotesNullDb, "Phase 2: MIDI Targets on with no notes and Vibrato Amount 30: nothing is added, difference", db, "dB");
+    }
+
+    // r3-4: Flat Then Sung Vibrato sounds the same whatever Vibrato Rate and Delay were before it was chosen.
+    {
+        const auto x = voice::synth (voice::steady (noteHz (57) * std::pow (2.0, 20.0 / 1200.0), 2.5, SR), voice::vowelA, SR);
+        auto a = make(), b = make();
+        setParam (*a, "vibratoRate", 2.0f); setParam (*a, "vibratoDelay", 0.0f);
+        setParam (*b, "vibratoRate", 9.0f); setParam (*b, "vibratoDelay", 1500.0f);
+        a->setCurrentProgram (programIndex (*a, "Flat Then Sung Vibrato"));
+        b->setCurrentProgram (programIndex (*b, "Flat Then Sung Vibrato"));
+        prepare (*a, 1, SR, 256); prepare (*b, 1, SR, 256);
+        const auto oa = mono (render (*a, x, 256)), ob = mono (render (*b, x, 256));
+        double worst = 0.0;
+        for (size_t i = 0; i < oa.size(); ++i) worst = std::max (worst, (double) std::abs (oa[i] - ob[i]));
+        chk (worst == 0.0, "Phase 2: Flat Then Sung Vibrato sounds the same after Vibrato Rate 2 Hz / Delay 0 ms as after 9 Hz / 1500 ms, largest sample difference", worst);
+    }
+}
+
+// High Quality with Classic (tunepro-dsp-r1-3, r2-2).
+void testPhase2Classic()
+{
+    const int was = gEngine;
+    gEngine = 1;
+    // r1-3: Classic in High Quality cleared the harmonic shifter's 245 KB table on every output sample. The same reading as testCpu (this
+    // thread's CPU time, the least of the renders), against High Quality's own limit.
+    {
+        const auto x = voice::synth (voice::vibrato (180.0, 3.0, SR, 30.0, 5.5), voice::vowelA, SR, -30.0);
+        double least = 1.0e9;
+        for (int repeat = 0; repeat < 5; ++repeat)
+        {
+            auto p = make();
+            setParam (*p, "classic", 1.0f); setParam (*p, "inputType", (float) wideRange);
+            prepare (*p, 2, SR, 256);
+            timespec a {}, b {};
+            clock_gettime (CLOCK_THREAD_CPUTIME_ID, &a);
+            render (*p, x, 256);
+            clock_gettime (CLOCK_THREAD_CPUTIME_ID, &b);
+            least = std::min (least, ((double) (b.tv_sec - a.tv_sec) + 1.0e-9 * (double) (b.tv_nsec - a.tv_nsec)) / 3.0 * 100.0);
+        }
+        chk (least <= prolimits::hqCpuPercent, "Phase 2: High Quality with Classic on: CPU on one core, 48 kHz stereo, voice at 180 Hz, least of 5", least, "%");
+    }
+    // r2-2: Classic switched on in High Quality on a high held note: the output must not drop out while the grains catch up.
+    {
+        auto p = make();
+        setParam (*p, "inputType", (float) soprano); setParam (*p, "retune", 0.0f);
+        prepare (*p, 1, SR, 256);
+        const auto x = voice::synth (voice::steady (350.0 * std::pow (2.0, 20.0 / 1200.0), 3.0, SR), voice::vowelA, SR);
+        const int switchBlock = (int) (2.0 * SR / 256);
+        const auto out = mono (render (*p, x, 256, nullptr, [&] (int idx) { if (idx == switchBlock) setParam (*p, "classic", 1.0f); }));
+        // Where it switches depends on whether settings are in line with the audio (see testPhase2Midi): anywhere from the block it was set
+        // in to one latency later. So the 100 ms before that block is the reference, and everything from 10 ms before it to 60 ms after the
+        // latency is looked at.
+        const long set = (long) switchBlock * 256, from = set - (long) (0.01 * SR), to = set + p->getLatencySamples() + (long) (0.06 * SR);
+        const auto rms = [&] (long start, long n)
+        {
+            double sum = 0.0;
+            for (long i = start; i < start + n; ++i) sum += (double) out[(size_t) i] * out[(size_t) i];
+            return 10.0 * std::log10 (sum / (double) n + 1.0e-30);
+        };
+        const double before = rms (from - (long) (0.1 * SR), (long) (0.1 * SR));
+        double worst = 0.0;
+        const long w = (long) (0.002 * SR);
+        for (long i = from; i + w <= to; i += w) worst = std::max (worst, before - rms (i, w));
+        chk (worst <= 12.0, "Phase 2: Classic switched on in High Quality on a held 350 Hz note: the deepest 2 ms dip around the switch, against the 100 ms before", worst, "dB");
+        // And no jump from one path to the other: the largest step between samples around the switch, against the largest in the 100 ms before.
+        double stepBefore = 0.0, stepAfter = 0.0;
+        for (long i = from - (long) (0.1 * SR); i < from; ++i) stepBefore = std::max (stepBefore, (double) std::abs (out[(size_t) i] - out[(size_t) i - 1]));
+        for (long i = from; i < to; ++i) stepAfter = std::max (stepAfter, (double) std::abs (out[(size_t) i] - out[(size_t) i - 1]));
+        chk (stepAfter <= 2.0 * stepBefore, "Phase 2: and the largest step between samples around it, against the voice's own before", stepAfter / std::max (1.0e-9, stepBefore), "times");
+    }
+    gEngine = was;
+}
+
+// MIDI (tunepro-dsp-r2-3, r1-5, r1-2) and settings in line with the audio (tunepro-dsp-r3-2). Both engines.
+void testPhase2Midi()
+{
+    const auto noteOn = [] (int n) { return juce::MidiMessage::noteOn (1, n, (juce::uint8) 100); };
+    const auto noteOff = [] (int n) { return juce::MidiMessage::noteOff (1, n); };
+    const double sungHz = noteHz (57) * std::pow (2.0, 30.0 / 1200.0);
+    const auto x = voice::synth (voice::steady (sungHz, 2.0, SR), voice::vowelA, SR);
+    // r2-3: a second pedal-on message while the pedal is down keeps the notes it holds.
+    {
+        auto p = midiTuner (true);
+        const auto out = renderWithMidi (*p, x, { { 0L, noteOn (60) }, { 10L, juce::MidiMessage::controllerEvent (1, 64, 127) }, { 20L, noteOff (60) },
+                                                  { (long) (0.5 * SR), juce::MidiMessage::controllerEvent (1, 64, 100) } });
+        const auto e = centsOff (out.data(), (long) out.size(), SR, noteHz (60), 0.8, 1.8);
+        const double q = e.empty() ? 1.0e6 : percentile (absolute (e), 95);
+        chk (q <= prolimits::midiTargetCents && p->getReadings().targetNote == 60, "Phase 2: a second pedal-on message (CC64 100) keeps the note the pedal holds, 95th percentile against C4", q, "cents");
+    }
+    // r1-5: Reset All Controllers lets go of the pedal, not of keys still down.
+    {
+        auto p = midiTuner (true);
+        const auto out = renderWithMidi (*p, x, { { 200L, noteOn (60) }, { (long) (0.5 * SR), juce::MidiMessage::controllerEvent (1, 121, 0) } });
+        const auto e = centsOff (out.data(), (long) out.size(), SR, noteHz (60), 0.7, 1.8);
+        const double q = e.empty() ? 1.0e6 : percentile (absolute (e), 95);
+        chk (q <= prolimits::midiTargetCents, "Phase 2: Reset All Controllers (CC121) keeps a key that is still down as the target, 95th percentile against C4", q, "cents");
+    }
+    // r1-2: a MIDI note takes effect on the audio it was played against, one latency later at the output, not a base latency early.
+    // With no note held the output is the input at the reported delay to the last bit, so where it first leaves it is where the note
+    // takes effect. A grain reaches up to a period before its centre, so up to one period (4.5 ms at 220 Hz) early is allowed.
+    const auto firstChangeMs = [] (const std::vector<float>& out, const std::vector<float>& in, int delay, long due)
+    {
+        for (long i = due - (long) (0.08 * SR); i < (long) out.size(); ++i)
+            if (i - delay >= 0 && std::abs (out[(size_t) i] - in[(size_t) (i - delay)]) > 1.0e-3f)
+                return (double) (due - i) / SR * 1000.0;
+        return -1.0e6;
+    };
+    {
+        auto p = midiTuner (true, 0.0f);
+        const long on = (long) (1.0 * SR);
+        const auto out = renderWithMidi (*p, x, { { on, noteOn (60) } });
+        const double earlyMs = firstChangeMs (out, x, p->getLatencySamples(), on + p->getLatencySamples());
+        chk (earlyMs <= 5.0, "Phase 2: a MIDI note pressed at 1.0 s first changes the output no earlier than one latency later (less a period), early by", earlyMs, "ms");
+    }
+    // r3-2: a Transpose change between two blocks moves the output one latency later, with the audio it was set against. Every note on
+    // Bypass, so until then the output is the input at the reported delay.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        for (int i = 0; i < 12; ++i) setParam (*p, ("note" + juce::String (i)).toRawUTF8(), (float) smoothtune::noteBypass);
+        const int switchBlock = (int) (1.0 * SR / 256);
+        const auto out = mono (render (*p, x, 256, nullptr, [&] (int idx) { if (idx == switchBlock) setParam (*p, "transpose", 5.0f); }));
+        const double earlyMs = firstChangeMs (out, x, p->getLatencySamples(), (long) switchBlock * 256 + p->getLatencySamples());
+        chk (earlyMs <= 5.0, "Phase 2: Transpose +5 set between two blocks first changes the output no earlier than one latency later (less a period), early by", earlyMs, "ms");
+    }
+}
+
+// Low Latency's low-note pitch age at 96 kHz (tunepro-dsp-r3-5): the pitch movement sits where it does at 48 kHz.
+void testPhase2Rate()
+{
+    const auto lagMs = [] (double sr)
+    {
+        auto p = make();
+        setParam (*p, "inputType", (float) lowMale);
+        setParam (*p, "retune", 0.0f);
+        setParam (*p, "humanize", 0.0f);
+        setParam (*p, "transpose", 1.0f);
+        for (int i = 0; i < 12; ++i) setParam (*p, ("note" + juce::String (i)).toRawUTF8(), 2.0f);
+        prepare (*p, 1, sr, 256);
+        const double hz = 196.0;
+        const auto x = voice::synth (voice::vibrato (hz, 3.0, sr, 50.0, 5.5), voice::vowelA, sr);
+        const auto out = mono (render (*p, x, 256));
+        const double delay = p->getLatencySamples() / sr, hop = 0.0005, up = std::pow (2.0, 1.0 / 12.0);
+        const auto in = pitchTrace (x.data(), (long) x.size(), sr, hz, 0.5, 2.7, hop, 0.1);
+        const auto moved = pitchTrace (out.data(), (long) out.size(), sr, hz * up, 0.5 + delay - 0.04, 2.7 + delay + 0.04, hop, 0.1);
+        const int reach = (int) std::lround (0.04 / hop);
+        double best = -1.0e30; int bestK = 0; std::vector<double> score ((size_t) (2 * reach + 1), 0.0);
+        for (int k = -reach; k <= reach; ++k)
+        {
+            double sum = 0.0;
+            for (size_t i = 0; i < in.size(); ++i)
+            {
+                const size_t j = (size_t) ((int) i + reach + k);
+                if (j >= moved.size() || in[i] <= 0.0 || moved[j] <= 0.0) continue;
+                sum += cents (in[i], hz) * cents (moved[j], hz * up);
+            }
+            score[(size_t) (k + reach)] = sum;
+            if (sum > best) { best = sum; bestK = k; }
+        }
+        double lag = bestK;
+        if (bestK > -reach && bestK < reach)
+        {
+            const double a = score[(size_t) (bestK + reach - 1)], b = score[(size_t) (bestK + reach)], c = score[(size_t) (bestK + reach + 1)], den = a - 2.0 * b + c;
+            if (den < -1.0e-12) lag += 0.5 * (a - c) / den;
+        }
+        return lag * hop * 1000.0;
+    };
+    const double at48 = lagMs (48000.0), at96 = lagMs (96000.0);
+    note ("Phase 2:   pitch movement against the sound, Low Male at 196 Hz, 48 kHz", at48, "ms");
+    note ("Phase 2:   the same at 96 kHz", at96, "ms");
+    chk (std::abs (at96 - at48) <= 0.1, "Phase 2: Low Latency's pitch movement at 196 Hz sits within 0.1 ms of 48 kHz's at 96 kHz, difference", at96 - at48, "ms");
+}
+
+// State, presets, host reset, reading parameters and the key file (tunepro-window-r1-2, dsp-r1-6, HostStress paramtext, key file readers,
+// the host Reset pattern from Velvet Rope 0.8.1 and Duo 0.4.3).
+void testPhase2State()
+{
+    // window-r1-2: a new instance names no preset, a chosen one is saved and named on reload, and a 1.8.1 session names none.
+    {
+        auto p = make();
+        const int fresh = p->getCurrentProgram();
+        check (fresh < 0 || std::abs (p->apvts.getRawParameterValue ("retune")->load() - 30.0f) < 0.01f, "Phase 2: a new instance names no preset, or the one it plays (program)", fresh);
+        p->setCurrentProgram (5);
+        juce::MemoryBlock saved;
+        p->getStateInformation (saved);
+        auto q = make();
+        q->setStateInformation (saved.getData(), (int) saved.getSize());
+        check (q->getCurrentProgram() == 5, "Phase 2: a session saved after choosing Hard Tune names it on reload (program)", q->getCurrentProgram());
+        juce::MemoryBlock old;
+        juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory().getChildFile ("baseline/v1.8.1-preset5.state").loadFileAsData (old);
+        auto r = make();
+        r->setStateInformation (old.getData(), (int) old.getSize());
+        check (r->getCurrentProgram() < 0, "Phase 2: a session saved by 1.8.1 names no preset (program)", r->getCurrentProgram());
+        std::unique_ptr<juce::AudioProcessorEditor> ed (r->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        const auto shown = te != nullptr ? te->getPresetBox().text() : juce::String();
+        check (shown == "Choose a preset", "Phase 2: and the preset box says so: " + shown.toStdString());
+    }
+    // The installed 1.8.1's own sessions (tests/baseline, captured before 1.8.2 was installed): each loads and plays as 1.8.1 played it,
+    // except the two presets 1.8.2 changes on purpose (Robot Flat and Flat Then Sung Vibrato, Natural Vibrato -100), which are given.
+    {
+        const auto folder = juce::File (SMOOTH_TUNE_CORPUS).getParentDirectory().getChildFile ("baseline");
+        juce::MemoryBlock inputBlock;
+        folder.getChildFile ("input.f32").loadFileAsData (inputBlock);
+        const auto* in = static_cast<const float*> (inputBlock.getData());
+        const std::vector<float> x (in, in + inputBlock.getSize() / sizeof (float));
+        check (x.size() == 288000, "Phase 2: the 1.8.1 baseline input is there", (double) x.size());
+        int same = 0, cases = 0;
+        for (int preset = -1; preset < 12; ++preset)
+        {
+            const juce::String name = preset < 0 ? juce::String ("default") : "preset" + juce::String (preset);
+            juce::MemoryBlock st, then;
+            folder.getChildFile ("v1.8.1-" + name + ".state").loadFileAsData (st);
+            folder.getChildFile ("v1.8.1-" + name + ".f32").loadFileAsData (then);
+            auto p = make();
+            p->setStateInformation (st.getData(), (int) st.getSize());
+            prepare (*p, 2, SR, 512);
+            const auto out = render (*p, x, 512);
+            const auto* old = static_cast<const float*> (then.getData());
+            double worst = 0.0;
+            for (int i = 0; i < out.getNumSamples() && (size_t) i < then.getSize() / 4; ++i) worst = std::max (worst, (double) std::abs (out.getSample (0, i) - old[i]));
+            const bool changedOnPurpose = preset == 7 || preset == 9;
+            if (changedOnPurpose)
+                info ("Phase 2:   1.8.1's " + std::string (preset == 7 ? "Robot Flat" : "Flat Then Sung Vibrato") + " session, largest sample difference (changed on purpose)", worst);
+            else
+            {
+                ++cases;
+                same += worst == 0.0 ? 1 : 0;
+                if (worst != 0.0) info ("Phase 2:   1.8.1's " + name.toStdString() + " session differs, largest sample difference", worst);
+            }
+        }
+        check (same == cases, "Phase 2: the installed 1.8.1's own sessions (default and 10 presets) play bit for bit as 1.8.1 played them, cases", (double) same);
+    }
+    // dsp-r1-6: a damaged value goes back to its default, not to what the instance held before. This passes on 1.8.1 too: the JUCE this
+    // builds with sets a parameter whose entry is added back to the state from that entry (valueTreeChildAdded), which has no value, so
+    // the default. Kept as a guard.
+    {
+        auto p = make();
+        setParam (*p, "transpose", 12.0f);
+        setParam (*p, "mix", 40.0f);
+        auto fresh = make();
+        juce::MemoryBlock block;
+        fresh->getStateInformation (block);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (block.getData(), (int) block.getSize());
+        for (auto* child : xml->getChildIterator())
+            if (child->getStringAttribute ("id") == "transpose" || child->getStringAttribute ("id") == "mix")
+                child->setAttribute ("value", "nan");
+        juce::AudioProcessor::copyXmlToBinary (*xml, block);
+        p->setStateInformation (block.getData(), (int) block.getSize());
+        const float t = p->apvts.getRawParameterValue ("transpose")->load(), m = p->apvts.getRawParameterValue ("mix")->load();
+        check (t == 0.0f && m == 100.0f, "Phase 2: a state whose Transpose and Mix are not numbers loads them at their defaults (Transpose)", t);
+    }
+    // HostStress paramtext: each reading's own text reads back as itself.
+    {
+        auto p = make();
+        int bad = 0, seen = 0;
+        std::string example;
+        for (auto* prm : p->getParameters())
+        {
+            if (prm->isAutomatable()) continue;
+            for (float v : { 0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f })
+            {
+                ++seen;
+                const auto text = prm->getText (v, 1024);
+                const auto back = prm->getText (prm->getValueForText (text), 1024);
+                if (back != text) { ++bad; if (example.empty()) example = prm->getName (64).toStdString() + ": \"" + text.toStdString() + "\" reads back as \"" + back.toStdString() + "\""; }
+            }
+        }
+        check (bad == 0, "Phase 2: every reading parameter's text reads back as itself, 6 values each, off" + (example.empty() ? std::string() : " (" + example + ")"), bad);
+        info ("Phase 2:   reading values tried", seen);
+    }
+    // Key file reader items (fix/key-readers.md). 1: in an offline bounce the file is read by audio time, so a key change in the file is
+    // taken up within 0.3 s of song however fast the render runs.
+    {
+        const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("smooth-tune-pro-phase2-key.json");
+        writeKey (file, keyJson ("D", "major", 0.9, nowUnix()));
+        auto p = make (file.getFullPathName());
+        setParam (*p, "followKey", 1.0f);
+        p->pollKeyFileNow();
+        p->setNonRealtime (true);
+        prepare (*p, 1, SR, 512);
+        const auto x = voice::synth (voice::steady (220.0, 0.1, SR), voice::vowelA, SR);
+        render (*p, x, 512);
+        const bool wasD = p->getReadings().activeKey == 2;
+        writeKey (file, keyJson ("E", "major", 0.9, nowUnix()));
+        const auto y = voice::synth (voice::steady (220.0, 0.4, SR), voice::vowelA, SR);
+        render (*p, y, 512);
+        check (wasD && p->getReadings().activeKey == 4, "Phase 2: offline, a key change in the file is taken up within 0.4 s of audio however fast the render (active key)", p->getReadings().activeKey);
+        // 3: a fresh Manual key (Key writes listening false, confidence 1, source 1) is taken like any other; a Locked one too.
+        writeKey (file, "{\"key\":\"G\",\"scale\":\"minor\",\"confidence\":1.00,\"time\":" + std::to_string (nowUnix()) + ",\"listening\":false,\"source\":1}");
+        p->pollKeyFileNow();
+        render (*p, x, 512);
+        check (p->getReadings().activeKey == 7 && p->getReadings().activeScale == smoothtune::scaleMinor, "Phase 2: a fresh Manual key (listening false) is followed");
+        writeKey (file, "{\"key\":\"A\",\"scale\":\"major\",\"confidence\":1.00,\"time\":" + std::to_string (nowUnix()) + ",\"listening\":false,\"source\":2}");
+        p->pollKeyFileNow();
+        render (*p, x, 512);
+        check (p->getReadings().activeKey == 9, "Phase 2: and a fresh Locked key");
+        p.reset();
+        file.deleteFile();
+    }
+    // Host Reset: play, reset, play gives what a new instance gives, with no allocation; the Reset that JUCE's AU wrapper sends right after
+    // the host's own bypass turns on changes nothing, so the fade to dry is not cut off.
+    for (int engine : { 0, 1 })
+    {
+        const auto x = voice::synth (voice::vibrato (noteHz (57) * 1.01, 1.0, SR, 30.0, 5.5), voice::vowelA, SR);
+        auto p = make(), fresh = make();
+        setParam (*p, "engine", (float) engine); setParam (*fresh, "engine", (float) engine);
+        prepare (*p, 2, SR, 256); prepare (*fresh, 2, SR, 256);
+        render (*p, x, 256);
+        const long before = testkit::allocs.load();
+        p->reset();
+        const long allocated = testkit::allocs.load() - before;
+        const auto a = render (*p, x, 256), b = render (*fresh, x, 256);
+        double worst = 0.0;
+        for (int i = 0; i < a.getNumSamples(); ++i) worst = std::max (worst, (double) std::abs (a.getSample (0, i) - b.getSample (0, i)));
+        check (worst == 0.0 && allocated == 0, std::string ("Phase 2: ") + (engine == 1 ? "[HQ] " : "[LL] ") + "play, host Reset, play gives what a new instance gives, largest sample difference", worst);
+    }
+    {
+        const auto x = voice::synth (voice::vibrato (noteHz (57) * 1.01, 1.0, SR, 30.0, 5.5), voice::vowelA, SR);
+        auto p = make(), q = make();
+        prepare (*p, 2, SR, 256); prepare (*q, 2, SR, 256);
+        render (*p, x, 256); render (*q, x, 256);
+        p->getBypassParameter()->setValueNotifyingHost (1.0f);
+        q->getBypassParameter()->setValueNotifyingHost (1.0f);
+        p->reset();   // what JUCE's AU wrapper does when the host's bypass turns on
+        const auto a = render (*p, x, 256), b = render (*q, x, 256);
+        double worst = 0.0;
+        for (int i = 0; i < a.getNumSamples(); ++i) worst = std::max (worst, (double) std::abs (a.getSample (0, i) - b.getSample (0, i)));
+        check (worst == 0.0, "Phase 2: the Reset that comes with the host's bypass turning on changes nothing, largest sample difference", worst);
+    }
+}
+
+// The window (tunepro-window-r2-1, r1-3, r1-4, r1-5, r1-6, r2-2, r2-4, r2-5, r2-6, r3-1, r3-3).
+void testPhase2Window()
+{
+    gEngine = 0;
+    const auto sungA = voice::synth (voice::steady (noteHz (57) * std::pow (2.0, 30.0 / 1200.0), 1.0, SR), voice::vowelA, SR);
+    // r2-1: Key and Scale changed with no audio running reach the keyboard and the lanes.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        render (*p, sungA, 256);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        setParam (*p, "key", 2.0f);
+        setParam (*p, "scale", (float) smoothtune::scaleMajor);
+        te->tick (1.0 / 30.0);
+        const auto want = smoothtune::scaleMask (2, smoothtune::scaleMajor);
+        check (p->getInScaleMask() == want && te->getKeyboard().getScaleShown() == want, "Phase 2: D Major chosen while no audio runs: the keyboard shows D Major (mask)", te->getKeyboard().getScaleShown());
+    }
+    // r1-3: after a click the hint line describes the key's new mode.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        auto& keys = te->getKeyboard();
+        juce::String last;
+        keys.onHint = [&last] (const juce::String& t) { last = t; };
+        const auto c = keys.keyBounds (0).getBottomLeft().translated (6.0f, -6.0f);
+        keys.mouseMove (mouseAt (keys, c, 1));
+        keys.cycleNote (0);
+        check (last.contains ("is removed"), "Phase 2: after clicking C the hint says what C is now: " + last.toStdString());
+    }
+    // r1-4: bypassed with Transpose +12, the voice that is drawn stays on screen.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        setParam (*p, "transpose", 12.0f);
+        setParam (*p, "bypass", 1.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        renderTicking (*p, *te, voice::synth (voice::steady (220.0, 2.0, SR), voice::vowelA, SR));
+        for (int i = 0; i < 10; ++i) te->tick (1.0 / 30.0);
+        const auto& view = te->getPitchView();
+        check (57.0f > view.getLowestNote() && 57.0f < view.getHighestNote(), "Phase 2: bypassed with Transpose +12, A3 as sung is on screen (lowest note shown)", view.getLowestNote());
+    }
+    // r1-5: Advanced glides open from where it was, not 98% in the first frame.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        te->setAdvancedOpen (true, true);
+        const float amount = te->getAdvancedAmount();
+        check (amount <= 0.25f, "Phase 2: clicking Advanced open: how far open it is before the first frame", amount);
+    }
+    // r1-6: Follow Key on with no key read: the legend does not claim to follow one.
+    {
+        auto p = make ("/nonexistent/smooth-tune-pro-phase2.json");
+        setParam (*p, "followKey", 1.0f);
+        prepare (*p, 1, SR, 256);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        renderTicking (*p, *te, sungA);
+        const auto text = te->getPitchView().getFollowText();
+        check (! text.startsWith ("Following"), "Phase 2: Follow Key on with no key file: the legend says: " + text.toStdString());
+    }
+    // r2-2: with Transpose the note shown is the note that comes out.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        setParam (*p, "transpose", 3.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        renderTicking (*p, *te, sungA);
+        const auto& last = p->getPitchPoint (p->getPitchHistoryCount() - 1);
+        const float gap = std::abs (last.targetNote.load() - last.outputNote.load());
+        check (gap < 0.5f && te->readingText().contains ("Target C4") && te->headerNote() == "C4", "Phase 2: A3 with Transpose +3: the target shown is C4, as it comes out (target against output, notes)", gap);
+    }
+    // r2-4: a stretch played bypassed is drawn as bypassed after the whole display is drawn again.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        const auto two = voice::synth (voice::steady (noteHz (57) * std::pow (2.0, 40.0 / 1200.0), 2.0, SR), voice::vowelA, SR);
+        renderTicking (*p, *te, two);
+        setParam (*p, "bypass", 1.0f);
+        renderTicking (*p, *te, two);
+        setParam (*p, "bypass", 0.0f);
+        renderTicking (*p, *te, voice::synth (voice::steady (noteHz (57) * std::pow (2.0, 40.0 / 1200.0), 0.2, SR), voice::vowelA, SR));
+        setParam (*p, "note4", (float) smoothtune::noteRemove);   // any lane change draws the whole display again
+        te->tick (1.0 / 30.0);
+        auto& view = te->getPitchView();
+        juce::Image img (juce::Image::RGB, view.getWidth(), view.getHeight(), true);
+        {
+            juce::Graphics g (img);
+            view.paintEntireComponent (g, false);
+        }
+        // The bypassed 2 s ended 0.2 s before the newest point; the display shows 8 s across its trace.
+        const int trace = view.getWidth() - juce::roundToInt (46.0f * 1.0f);
+        const int x1 = trace - juce::roundToInt (0.25 / 8.0 * trace), x0 = trace - juce::roundToInt (2.15 / 8.0 * trace);
+        int coral = 0;
+        for (int xx = x0; xx < x1; ++xx)
+            for (int yy = 0; yy < img.getHeight(); ++yy)
+                if (img.getPixelAt (xx, yy).getRed() > 200 && img.getPixelAt (xx, yy).getGreen() < 150) ++coral;
+        check (coral == 0, "Phase 2: after a full redraw, coral pixels where the voice was bypassed", coral);
+    }
+    // r2-5: when blocks stop coming, the window stops showing the last voiced block as live.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        renderTicking (*p, *te, sungA);
+        const int litWhilePlaying = te->getKeyboard().getLitKey();
+        for (int i = 0; i < 60; ++i) te->tick (1.0 / 30.0);
+        check (litWhilePlaying == 9 && te->getKeyboard().getLitKey() == -1 && te->headerWords() == "No pitch", "Phase 2: 2 s after audio stops, no key is lit and the header says No pitch (lit key)", te->getKeyboard().getLitKey());
+    }
+    // r2-6: a double-click on a segment that is not selected selects it once; a double-click on a switch puts it back to its default.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        auto* engine = dynamic_cast<tuneui::ParamSegments*> (te->findControl ("engine"));
+        CountListener listener;
+        p->addListener (&listener);
+        const auto right = juce::Point<float> ((float) engine->getWidth() * 0.75f, (float) engine->getHeight() * 0.5f);
+        engine->mouseDown (mouseAt (*engine, right, 1));
+        engine->mouseUp (mouseAt (*engine, right, 1));
+        engine->mouseDown (mouseAt (*engine, right, 2));
+        engine->mouseUp (mouseAt (*engine, right, 2));
+        engine->mouseDoubleClick (mouseAt (*engine, right, 2));
+        p->removeListener (&listener);
+        const int engineNow = juce::roundToInt (p->apvts.getRawParameterValue ("engine")->load());
+        check (listener.changes.load() <= 1 && engineNow == 1, "Phase 2: a double-click on High Quality changes Engine once and leaves it on High Quality (changes)", listener.changes.load());
+
+        setParam (*p, "bypass", 1.0f);
+        auto* bypassButton = dynamic_cast<tuneui::ParamToggle*> (te->findControl ("bypass"));
+        const auto mid = bypassButton->getLocalBounds().getCentre().toFloat();
+        juce::Component& asComponent = *bypassButton;   // the handlers as the system calls them
+        asComponent.mouseDown (mouseAt (*bypassButton, mid, 1));
+        asComponent.mouseUp (mouseAt (*bypassButton, mid, 1));
+        asComponent.mouseDown (mouseAt (*bypassButton, mid, 2));
+        asComponent.mouseUp (mouseAt (*bypassButton, mid, 2));
+        asComponent.mouseDoubleClick (mouseAt (*bypassButton, mid, 2));
+        check (p->apvts.getRawParameterValue ("bypass")->load() < 0.5f, "Phase 2: a double-click on Bypass (on) puts it back to its default, off");
+    }
+    // r3-1: a voice left alone off the note does not read On pitch.
+    {
+        auto p = tuner (altoTenor, 0.0f, 0.0f, 100.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        renderTicking (*p, *te, sungA);
+        check (te->headerWords() != "On pitch" && std::abs (p->getReadings().centsOffTarget - 30.0f) < 5.0f, "Phase 2: A3 +30 cents left alone by Flex Tune 100: the header says " + te->headerWords().toStdString());
+    }
+    // r3-3: a state loaded while the window is open sizes the window as it says.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        juce::MemoryBlock block;
+        p->getStateInformation (block);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (block.getData(), (int) block.getSize());
+        xml->setAttribute ("windowWidth", PluginProcessor::maxWindowWidth);
+        juce::AudioProcessor::copyXmlToBinary (*xml, block);
+        p->setStateInformation (block.getData(), (int) block.getSize());
+        te->tick (1.0 / 30.0);
+        juce::MemoryBlock after;
+        p->getStateInformation (after);
+        auto saved = juce::AudioProcessor::getXmlFromBinary (after.getData(), (int) after.getSize());
+        check (saved->getIntAttribute ("windowWidth") == te->getWidth(), "Phase 2: a state loaded with the window open: the width it saves is the window's (window width)", te->getWidth());
+    }
+}
+
 } // namespace
 
 int main (int argc, char** argv)
@@ -4571,6 +5164,50 @@ int main (int argc, char** argv)
                         }
                     }
                 }
+        return 0;
+    }
+    if (only == "blockprobe")   // dev probe, not a test: AuBench's input, block size and preset order, each block timed (Phase 2, 2026-11-13)
+    {
+        auto p = make();
+        setParam (*p, "engine", 0.0f);
+        prepare (*p, 2, SR, 128);
+        std::mt19937 rng (1);
+        std::uniform_real_distribution<float> dist (-1.0f, 1.0f);
+        double t0 = 0.0;
+        juce::AudioBuffer<float> buf (2, 128);
+        juce::MidiBuffer midi;
+        const auto run = [&] (double secs, const std::string& name, bool report)
+        {
+            const int blocks = (int) (secs * 48000 / 128);
+            double worst = 0.0, total = 0.0, worstAt = 0.0;
+            for (int b = 0; b < blocks; ++b)
+            {
+                for (int i = 0; i < 128; ++i)
+                {
+                    const double t = t0 + i / 48000.0, f0 = 220.0 * std::pow (2.0, 0.4 * std::sin (2 * M_PI * 0.3 * t));
+                    double s = 0; for (int h = 1; h <= 12; ++h) s += std::sin (2 * M_PI * f0 * h * t) / h;
+                    const double gate = std::fmod (t, 2.0) < 1.6 ? 1.0 : 0.0;
+                    const float v = (float) (0.12 * s * gate + 0.01 * dist (rng));
+                    buf.setSample (0, i, v); buf.setSample (1, i, v);
+                }
+                const double at = t0;
+                t0 += 128 / 48000.0;
+                const auto a = std::chrono::steady_clock::now();
+                p->processBlock (buf, midi);
+                const double e = std::chrono::duration<double> (std::chrono::steady_clock::now() - a).count();
+                if (b > blocks / 10) { total += e; if (e > worst) { worst = e; worstAt = at; } }
+            }
+            if (report)
+                std::printf ("%-26s mean %5.2f%%  worst block %5.1f%% at %.3f s\n", name.c_str(), 100.0 * total / (blocks * 0.9 * 128.0 / 48000.0), 100.0 * worst / (128.0 / 48000.0), worstAt);
+        };
+        run (1.0, "default warm", false);
+        run (6.0, "default", true);
+        for (int i = 0; i < p->getNumPrograms(); ++i)
+        {
+            p->setCurrentProgram (i);
+            run (0.5, p->getProgramName (i).toStdString() + " (first 0.5 s)", true);
+            run (2.0, p->getProgramName (i).toStdString(), true);
+        }
         return 0;
     }
     if (want ("generic"))
@@ -4617,6 +5254,7 @@ int main (int argc, char** argv)
         if (want ("entry")) testEntries();
         if (want ("timing")) testTiming();
         if (want ("hold")) testTargetHold();
+        if (want ("phase2")) { testPhase2Vibrato(); testPhase2Midi(); }
     }
     gEngine = 0;
     if (want ("engines")) testEngines();
@@ -4670,5 +5308,6 @@ int main (int argc, char** argv)
     gEngine = 0;
     if (want ("llnull")) testLowLatencyNull();
     if (want ("window")) testWindow();
+    if (want ("phase2")) { testPhase2Classic(); gEngine = 0; testPhase2Rate(); testPhase2State(); testPhase2Window(); }
     return finish();
 }

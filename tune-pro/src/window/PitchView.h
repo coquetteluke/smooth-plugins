@@ -25,6 +25,7 @@ public:
     float getLowestNote() const noexcept  { return viewLow - 0.5f; }
     float getHighestNote() const noexcept { return viewLow - 0.5f + (float) span; }
     int getPaintCount() const noexcept    { return paintCount; }
+    juce::String getFollowText() const    { return legend.follow; }   // tests: the legend's Follow Key line
 
     static constexpr double secondsShown = 8.0;
     static constexpr int pointsPerSecond = 200;

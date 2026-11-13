@@ -459,6 +459,11 @@ namespace tuneui
         }
     }
 
+    juce::String PresetBox::text() const
+    {
+        return processor.getProgramName (processor.getCurrentProgram());
+    }
+
     void PresetBox::paint (juce::Graphics& g)
     {
         const auto b = getLocalBounds().toFloat();
@@ -467,7 +472,7 @@ namespace tuneui
 
         g.setColour (tone::white);
         g.setFont (font (Weight::regular, 13.5f));
-        g.drawText (processor.getProgramName (processor.getCurrentProgram()), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
+        g.drawText (text(), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
 
         const auto chevron = [&] (float cx, float direction, bool lit)
         {

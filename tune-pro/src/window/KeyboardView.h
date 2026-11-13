@@ -28,6 +28,10 @@ public:
 
     std::function<void (const juce::String&)> onHint;
 
+    // Tests: the key lit coral (-1 for none) and which notes are drawn as in the scale.
+    int getLitKey() const noexcept               { return litShown; }
+    std::uint16_t getScaleShown() const noexcept { return scaleShown; }
+
 private:
     int modeOf (int pitchClass) const noexcept;
     void openMenu (int pitchClass);

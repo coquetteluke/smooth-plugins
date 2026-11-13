@@ -132,6 +132,7 @@ namespace tuneui
 
         void refresh();
         void paint (juce::Graphics&) override;
+        juce::String text() const;   // what the box shows, for tests
         void mouseMove (const juce::MouseEvent&) override  { setZone (zoneAt (getMouseXYRelative().toFloat().x)); }
         void mouseExit (const juce::MouseEvent&) override  { setZone (none); }
         void mouseDown (const juce::MouseEvent&) override;

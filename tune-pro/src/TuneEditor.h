@@ -37,6 +37,10 @@ public:
 
     // What the reading shows, for tests.
     juce::String readingText() const;
+    juce::String headerWords() const;      // the words in the header beside the note, e.g. "On pitch"
+    juce::String headerNote() const;       // the big note in the header
+    float getAdvancedAmount() const noexcept  { return advancedAmount; }
+    tuneui::PresetBox& getPresetBox() noexcept  { return panel.presets; }
     KeyboardView& getKeyboard() noexcept  { return keyboard; }
     PitchView& getPitchView() noexcept    { return pitch; }
     int getNumControls() const noexcept;

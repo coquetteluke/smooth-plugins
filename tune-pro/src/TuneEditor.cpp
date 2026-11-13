@@ -36,6 +36,8 @@ public:
         }
     }
 
+    const juce::String& getText() const noexcept { return text; }
+
     void paint (juce::Graphics& g) override
     {
         g.fillAll (tone::ink);
@@ -105,6 +107,9 @@ public:
                            : juce::String (cents > 0 ? "Moved up " : "Moved down ") + juce::String (std::abs (cents)) + " cents");
         }
     }
+
+    juce::String wordsText() const { return words.getText(); }
+    juce::String noteText() const  { return note.getText(); }
 
     void paint (juce::Graphics& g) override
     {
@@ -562,6 +567,9 @@ void TuneEditor::timerCallback()
         });
     }
 }
+
+juce::String TuneEditor::headerWords() const { return reading->wordsText(); }
+juce::String TuneEditor::headerNote() const  { return reading->noteText(); }
 
 juce::String TuneEditor::readingText() const
 {

@@ -56,6 +56,7 @@ namespace
     const char* const kWindowWidth = "windowWidth";
     const char* const kWindowHeight = "windowHeight";
     const char* const kAdvancedOpen = "advancedOpen";
+    const char* const kProgram = "program";
 
     juce::String plain (float v, int decimals) { return juce::String (v, decimals); }
     juce::String signedText (float v, int decimals)
@@ -201,6 +202,42 @@ juce::String PluginProcessor::slotId (int slot, const char* what)
     return "s" + juce::String (slot + 1).paddedLeft ('0', 2) + "_" + what;
 }
 
+bool PluginProcessor::noteFromText (const juce::String& text, int& note)
+{
+    const auto t = text.trim().replace (juce::String::fromUTF8 ("\xe2\x88\x92"), "-");
+    if (t.isEmpty() || t.length() > 12)
+        return false;
+
+    if (t.containsOnly ("0123456789.") && t.containsAnyOf ("0123456789"))
+    {
+        const double v = t.getDoubleValue();
+        if (! (v >= 0.0 && v <= 127.49)) return false;
+        note = juce::roundToInt (v);
+        return true;
+    }
+
+    // A letter, then sharps or flats, then the octave, where C3 is 60.
+    constexpr int letters[] = { 9, 11, 0, 2, 4, 5, 7 };   // A B C D E F G
+    const auto letter = juce::CharacterFunctions::toUpperCase (t[0]);
+    if (letter < 'A' || letter > 'G') return false;
+    int pitch = letters[letter - 'A'];
+    int i = 1;
+    for (; i < t.length(); ++i)
+    {
+        const auto c = t[i];
+        if (c == '#' || c == 0x266F) ++pitch;
+        else if (c == 'b' || c == 'B' || c == 0x266D) --pitch;
+        else break;
+    }
+    const auto octaveText = t.substring (i).trim();
+    if (octaveText.isEmpty() || ! octaveText.containsOnly ("-0123456789") || octaveText.lastIndexOfChar ('-') > 0 || octaveText == "-")
+        return false;
+    const int n = 12 * (octaveText.getIntValue() + 2) + pitch;
+    if (n < 0 || n > 127) return false;
+    note = n;
+    return true;
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout()
 {
     using namespace juce;
@@ -240,10 +277,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
                                                      AudioParameterIntAttributes().withStringFromValueFunction ([] (int v, int) { return MidiMessage::getMidiNoteName (v, true, true, 3); })
                                                                                   .withValueFromStringFunction ([] (const String& s)
                                                                                   {
-                                                                                      const auto t = s.trim();
-                                                                                      if (t.containsOnly ("0123456789")) return t.getIntValue();
-                                                                                      for (int n = 0; n < 128; ++n) if (MidiMessage::getMidiNoteName (n, true, true, 3).equalsIgnoreCase (t)) return n;
-                                                                                      return 60;
+                                                                                      int note = 60;   // text that is no note gives the default
+                                                                                      return noteFromText (s, note) ? note : 60;
                                                                                   })));
     layout.add (std::make_unique<AudioParameterInt> (ParameterID { "selected", 1 }, "Selected Slice", 1, kSlots, 1));
     layout.add (std::make_unique<AudioParameterInt> (ParameterID { "polyphony", 1 }, "Polyphony", 1, kMaxPolyphony, 8, AudioParameterIntAttributes().withLabel ("voices")));
@@ -311,7 +346,7 @@ PluginProcessor::PluginProcessor()
     }
 
     addParameter (slicesFoundReading = new ReadingParameter ("slices_found", "Slices Found", "", 0.0f, (float) kSlots, 0.0f, [] (float v) { return juce::String (juce::roundToInt (v)); }));
-    addParameter (sampleLengthReading = new ReadingParameter ("sample_length", "Sample Length", "s", 0.0f, 1000.0f, 0.0f, [] (float v) { return juce::String (v, 2); }));
+    addParameter (sampleLengthReading = new ReadingParameter ("sample_length", "Sample Length", "s", 0.0f, 2400.0f, 0.0f, [] (float v) { return juce::String (v, 2); }));
     addParameter (activeVoicesReading = new ReadingParameter ("active_voices", "Active Voices", "", 0.0f, (float) kVoicePool, 0.0f, [] (float v) { return juce::String (juce::roundToInt (v)); }));
 
     for (auto& p : playheads) p.store (-1.0f, std::memory_order_relaxed);
@@ -322,10 +357,14 @@ PluginProcessor::PluginProcessor()
     latest = new LoadedSample();
     keepAlive.push_back (latest);
     worker = std::make_unique<Worker> (*this);
+
+    bypassWasOn.store (bypass->get(), std::memory_order_relaxed);
+    apvts.addParameterListener ("bypass", this);
 }
 
 PluginProcessor::~PluginProcessor()
 {
+    apvts.removeParameterListener ("bypass", this);
     worker->signalThreadShouldExit();
     worker->notify();
     worker->stopThread (20000);
@@ -350,10 +389,45 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     bypassSmoothed.reset (hostRate, 0.02);
     outputSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (outputP->load(), -120.0f));
     bypassSmoothed.setCurrentAndTargetValue (bypass->get() ? 0.0f : 1.0f);
-    for (auto& v : voices) v = Voice {};
-    bendSemis = 0.0f;
-    sustainDown = false;
+    clearPlaying();
+    prepared = true;
     setLatencySamples (0); // plays straight from memory
+}
+
+// Everything that is playing stops, and the wheel and pedal go back to rest. The sample, the slices and the controls stay.
+void PluginProcessor::clearPlaying() noexcept
+{
+    for (auto& v : voices) v = Voice {};
+    bendWheel = 0.0f;
+    sustainDown = false;
+}
+
+void PluginProcessor::reset()
+{
+    // The Reset that comes with the host's bypass switching on is left out: clearing then would stop the voices at once instead of
+    // fading them over 20 ms. It is the next Reset within a quarter second, with no audio block in between.
+    if (bypassJustSwitchedOn.exchange (false, std::memory_order_relaxed)
+        && juce::Time::getMillisecondCounter() - bypassSwitchedAtMs.load (std::memory_order_relaxed) < 250)
+        return;
+    if (! prepared)
+        return;
+
+    const juce::ScopedLock lock (getCallbackLock());   // the AU wrapper renders under this lock, so a Reset never lands mid block
+    clearPlaying();
+    auditionRequest.store (-1, std::memory_order_relaxed);
+    outputSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (outputP->load(), -120.0f));
+    bypassSmoothed.setCurrentAndTargetValue (bypass->get() ? 0.0f : 1.0f);
+}
+
+void PluginProcessor::parameterChanged (const juce::String& id, float value)
+{
+    if (id != "bypass")
+        return;
+    const bool on = value > 0.5f;
+    const bool was = bypassWasOn.exchange (on, std::memory_order_relaxed);
+    if (on && ! was)
+        bypassSwitchedAtMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+    bypassJustSwitchedOn.store (on && ! was, std::memory_order_relaxed);
 }
 
 void PluginProcessor::releaseResources()
@@ -418,46 +492,72 @@ void PluginProcessor::takeManualMail() noexcept
     }
 }
 
-SliceTable PluginProcessor::deriveTable (const LoadedSample& s, const SliceTable& manual) const noexcept
+PluginProcessor::SliceKey PluginProcessor::liveSettings() const noexcept
+{
+    SliceKey k;
+    k.mode = (int) sliceModeP->load();
+    k.sensitivityTenths = juce::roundToInt (sensitivityP->load() * 10.0f);
+    k.grid = (int) gridP->load();
+    k.minSliceMs = juce::roundToInt (minSliceP->load());
+    k.gridType = (int) gridTypeP->load();
+    k.gridNote = (int) gridNoteP->load();
+    k.gridBpmHundredths = juce::roundToInt (gridBpmP->load() * 100.0f);
+    k.sliceStartMs = juce::roundToInt (sliceStartP->load());
+    return k;
+}
+
+// The same values, read from the copy of the parameters a save writes.
+PluginProcessor::SliceKey PluginProcessor::savedSettings (const juce::ValueTree& state) const
+{
+    const auto value = [&] (const char* id, std::atomic<float>* live)
+    {
+        const auto child = state.getChildWithProperty ("id", id);
+        return child.isValid() && child.hasProperty ("value") ? (float) (double) child.getProperty ("value") : live->load();
+    };
+    SliceKey k;
+    k.mode = (int) value ("slice_mode", sliceModeP);
+    k.sensitivityTenths = juce::roundToInt (value ("sensitivity", sensitivityP) * 10.0f);
+    k.grid = (int) value ("grid", gridP);
+    k.minSliceMs = juce::roundToInt (value ("min_slice", minSliceP));
+    k.gridType = (int) value ("grid_type", gridTypeP);
+    k.gridNote = (int) value ("grid_note", gridNoteP);
+    k.gridBpmHundredths = juce::roundToInt (value ("grid_tempo", gridBpmP) * 100.0f);
+    k.sliceStartMs = juce::roundToInt (value ("slice_start", sliceStartP));
+    return k;
+}
+
+SliceTable PluginProcessor::deriveTable (const LoadedSample& s, const SliceTable& manual, const SliceKey& k) noexcept
 {
     const int frames = s.frames();
     if (frames <= 0) return {};
-    const int from = juce::jlimit (0, frames - 1, (int) std::lround (juce::roundToInt (sliceStartP->load()) * 0.001 * s.rate));
-    switch ((int) sliceModeP->load())
+    const int from = juce::jlimit (0, frames - 1, (int) std::lround (k.sliceStartMs * 0.001 * s.rate));
+    switch (k.mode)
     {
         case modeGrid:
-            if ((int) gridTypeP->load() == gridNote)
+            if (k.gridType == gridNote)
             {
-                const double beats = gridNoteBeats[juce::jlimit (0, (int) std::size (gridNoteBeats) - 1, (int) gridNoteP->load())];
-                const double bpm = juce::roundToInt (gridBpmP->load() * 100.0f) * 0.01;
+                const double beats = gridNoteBeats[juce::jlimit (0, (int) std::size (gridNoteBeats) - 1, k.gridNote)];
+                const double bpm = k.gridBpmHundredths * 0.01;
                 return slicecore::noteSlices (frames, beats * 60.0 / std::max (1.0, bpm) * s.rate, from);
             }
-            return slicecore::gridSlices (frames, gridParts[juce::jlimit (0, (int) std::size (gridParts) - 1, (int) gridP->load())], from);
+            return slicecore::gridSlices (frames, gridParts[juce::jlimit (0, (int) std::size (gridParts) - 1, k.grid)], from);
         case modeManual:
             return manual;
         default:
             break;
     }
-    const int gap = (int) std::lround (juce::roundToInt (minSliceP->load()) * 0.001 * s.rate);
-    return slicecore::pickTransients (s.onsets.data(), (int) s.onsets.size(), s.firstAudible, frames, juce::roundToInt (sensitivityP->load() * 10.0f) * 0.1f, gap, from);
+    const int gap = (int) std::lround (k.minSliceMs * 0.001 * s.rate);
+    return slicecore::pickTransients (s.onsets.data(), (int) s.onsets.size(), s.firstAudible, frames, k.sensitivityTenths * 0.1f, gap, from);
 }
 
 void PluginProcessor::refreshAudioTable() noexcept
 {
-    SliceKey k;
+    SliceKey k = liveSettings();
     k.sample = current;
-    k.mode = (int) sliceModeP->load();
-    k.sensitivityTenths = juce::roundToInt (sensitivityP->load() * 10.0f);
-    k.grid = (int) gridP->load();
-    k.minSliceMs = juce::roundToInt (minSliceP->load());
     k.manualVersion = audioManualVersion;
-    k.gridType = (int) gridTypeP->load();
-    k.gridNote = (int) gridNoteP->load();
-    k.gridBpmHundredths = juce::roundToInt (gridBpmP->load() * 100.0f);
-    k.sliceStartMs = juce::roundToInt (sliceStartP->load());
     if (k == audioKey) return;
     audioKey = k;
-    audioTable = current != nullptr ? deriveTable (*current, audioManual) : SliceTable {};
+    audioTable = current != nullptr ? deriveTable (*current, audioManual, k) : SliceTable {};
 }
 
 void PluginProcessor::stealVoice (Voice& v) noexcept
@@ -493,7 +593,7 @@ void PluginProcessor::enforcePolyphony (int room) noexcept
     }
 }
 
-void PluginProcessor::startVoice (int note, int slot, double keyOffset, float velocity, bool isAudition) noexcept
+void PluginProcessor::startVoice (int note, int slot, double keyOffset, float velocity, bool isAudition, int shownNote) noexcept
 {
     if (current == nullptr || current->isEmpty() || ! juce::isPositiveAndBelow (slot, audioTable.count))
         return;
@@ -516,6 +616,7 @@ void PluginProcessor::startVoice (int note, int slot, double keyOffset, float ve
     v.active = true;
     v.sample = current;
     v.note = note;
+    v.shownNote = shownNote;
     v.slot = slot;
     v.order = ++voiceCounter;
 
@@ -540,7 +641,7 @@ void PluginProcessor::startVoice (int note, int slot, double keyOffset, float ve
     v.rateRatio = current->rate / hostRate;
     v.keyOffset = keyOffset;
     v.pitchSemis = juce::jlimit (-kMaxPitchSemis, kMaxPitchSemis,
-                                 (double) pitchP[(size_t) slot]->load() + (double) transposeP->load() + (double) bendSemis + keyOffset);
+                                 (double) pitchP[(size_t) slot]->load() + (double) transposeP->load() + (double) (bendWheel * bendRangeP->load()) + keyOffset);
     v.penvAmount = penvAmountP->load();
     v.penvTotal = v.penvLeft = std::max (1, (int) std::lround (penvTimeP->load() * 0.001 * hostRate));
     if (v.penvAmount == 0.0) v.penvLeft = 0;
@@ -603,7 +704,15 @@ void PluginProcessor::handleMidi (const juce::MidiMessage& m) noexcept
     }
     else if (m.isPitchWheel())
     {
-        bendSemis = (float) (m.getPitchWheelValue() - 8192) / 8192.0f * bendRangeP->load();
+        bendWheel = (float) (m.getPitchWheelValue() - 8192) / 8192.0f;
+    }
+    else if (m.isResetAllControllers())
+    {
+        // The wheel back to the middle and the pedal up, as Reset All Controllers means.
+        bendWheel = 0.0f;
+        sustainDown = false;
+        for (auto& v : voices)
+            if (v.active && v.sustained) { v.sustained = false; releaseVoice (v); }
     }
     else if (m.isAllSoundOff())
     {
@@ -636,6 +745,11 @@ void PluginProcessor::renderVoice (Voice& v, juce::AudioBuffer<float>& out, int 
         // A Boomerang's second half walks back over the first, the same samples in the opposite order.
         const double inSlice = logical >= (double) v.len ? (double) (v.total - 1) - logical : logical;
         const double src = v.reverse ? (double) (v.start + v.len - 1) - inSlice : (double) v.start + inSlice;
+        if (stereoSource && v.band >= SincBank::kFirstWideBand)
+        {
+            bank.readPair (srcL, srcR, frames, src, v.band, l, r);
+            return;
+        }
         l = bank.read (srcL, frames, src, v.band);
         r = stereoSource ? bank.read (srcR, frames, src, v.band) : l;
     };
@@ -645,7 +759,7 @@ void PluginProcessor::renderVoice (Voice& v, juce::AudioBuffer<float>& out, int 
         if (v.control == 0)
         {
             v.control = kControlSamples;
-            const double target = (double) pitchP[(size_t) v.slot]->load() + (double) transposeP->load() + (double) bendSemis + v.keyOffset;
+            const double target = (double) pitchP[(size_t) v.slot]->load() + (double) transposeP->load() + (double) (bendWheel * bendRangeP->load()) + v.keyOffset;
             v.pitchSemis += (target - v.pitchSemis) * pitchCoef;
             double semis = v.pitchSemis;
             if (v.penvLeft > 0)
@@ -753,7 +867,7 @@ void PluginProcessor::publishReadings() noexcept
             if (v.stealTotal > 0) envelope *= (float) v.stealLeft / (float) v.stealTotal;
 
             playheadSlots[(size_t) shown].store (v.slot, std::memory_order_relaxed);
-            playheadNotes[(size_t) shown].store (v.note, std::memory_order_relaxed);
+            playheadNotes[(size_t) shown].store (v.note >= 0 ? v.note : v.shownNote, std::memory_order_relaxed);
             playheadLevels[(size_t) shown].store (envelope, std::memory_order_relaxed);
             playheads[(size_t) shown++].store ((float) (logical / (double) v.sample->frames()), std::memory_order_relaxed);
         }
@@ -779,11 +893,15 @@ void PluginProcessor::renderBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     // Polyphony lowered while notes ring.
     enforcePolyphony (juce::jlimit (1, kMaxPolyphony, (int) polyphonyP->load()));
 
+    bypassJustSwitchedOn.store (false, std::memory_order_relaxed);   // only the Reset that comes with the switch is left out
+
     const int requested = auditionRequest.exchange (-1, std::memory_order_acq_rel);
     if (requested >= 0)
     {
         for (auto& v : voices) if (v.active && v.note == -2) stealVoice (v);
-        startVoice (-2, requested, 0.0, 1.0f, true);
+        const int slot = requested % 64, semitones = requested / 64 - 64;
+        const bool pitched = (int) keyModeP->load() == keyChromatic && semitones != 0;
+        startVoice (-2, slot, pitched ? (double) semitones : 0.0, 1.0f, true, pitched ? (int) rootNoteP->load() + semitones : -1);
     }
 
     juce::AudioBuffer<float> outputs (buffer.getArrayOfWritePointers(), numOut, numSamples);
@@ -841,6 +959,7 @@ void PluginProcessor::setCurrentProgram (int i)
     if (! juce::isPositiveAndBelow (i, getNumPrograms()))
         return;
     currentProgram = i;
+    programChosen = true;
     const auto set = [this] (const juce::String& id, float v)
     {
         auto* p = apvts.getParameter (id);
@@ -903,7 +1022,17 @@ bool PluginProcessor::waitForLoad (int timeoutMs)
 
 void PluginProcessor::loadJob (const juce::File& file, int generation)
 {
-    setStatus ("Loading " + file.getFileName());
+    // A job overtaken by a restored session or a newer file says nothing, and takes back its own Loading message.
+    const auto loading = "Loading " + file.getFileName();
+    const auto overtaken = [&]
+    {
+        if (! worker->threadShouldExit() && generation == loadGeneration.load()) return false;
+        const juce::ScopedLock l (stateLock);
+        if (status == loading) status = {};
+        return true;
+    };
+    if (overtaken()) return;
+    setStatus (loading);
 
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
@@ -937,7 +1066,7 @@ void PluginProcessor::loadJob (const juce::File& file, int generation)
     constexpr int chunk = 65536;
     for (int pos = 0; pos < frames; pos += chunk)
     {
-        if (worker->threadShouldExit() || generation != loadGeneration.load()) return;
+        if (overtaken()) return;
         if (! reader->read (&s->audio, pos, std::min (chunk, frames - pos), pos, true, true))
         {
             setStatus ("Could not read " + file.getFileName());
@@ -973,7 +1102,7 @@ void PluginProcessor::loadJob (const juce::File& file, int generation)
     const auto manual = slicecore::pickTransients (s->onsets.data(), (int) s->onsets.size(), s->firstAudible, frames, kDefaultSensitivity,
                                                    (int) std::lround (kDefaultMinSliceMs * 0.001 * rate));
 
-    if (worker->threadShouldExit() || generation != loadGeneration.load()) return;
+    if (overtaken()) return;
     install (s, manual, false);
     setStatus ({});
 }
@@ -999,7 +1128,7 @@ void PluginProcessor::install (LoadedSample::Ptr s, const SliceTable& manual, bo
                 if (keepAlive[i].get() == prev) { keepAlive.erase (keepAlive.begin() + (long) i); break; }
         }
     }
-    const auto table = deriveTable (*s, manual);
+    const auto table = deriveTable (*s, manual, liveSettings());
     slicesFoundReading->set ((float) table.count);
     sampleLengthReading->set (s->frames() > 0 ? (float) (s->frames() / s->rate) : 0.0f);
     worker->startIfNeeded();
@@ -1063,29 +1192,37 @@ bool PluginProcessor::isManualEdited() const
 SliceTable PluginProcessor::getShownTable() const
 {
     LoadedSample::Ptr s;
+    return shownTableAndSample (s);
+}
+
+SliceTable PluginProcessor::shownTableAndSample (LoadedSample::Ptr& s) const
+{
     SliceTable manual;
     {
         const juce::ScopedLock l (stateLock);
         s = latest;
         manual = manualTable;
     }
-    return s != nullptr ? deriveTable (*s, manual) : SliceTable {};
+    return s != nullptr ? deriveTable (*s, manual, liveSettings()) : SliceTable {};
 }
 
 // ---- hand editing ----
 
-bool PluginProcessor::applyMarkerEdit (const SliceTable& t)
+// An edit is made from the markers of one sample. It is only written if that sample is still the one loaded, checked in the same step
+// as the write, so a sample that arrives in between keeps its own markers.
+bool PluginProcessor::applyMarkerEdit (const SliceTable& t, const LoadedSample::Ptr& madeFor)
 {
-    LoadedSample::Ptr s = getSample();
-    if (s == nullptr || ! slicecore::isValid (t, s->frames()) || t.count == 0) return false;
+    if (madeFor == nullptr || ! slicecore::isValid (t, madeFor->frames()) || t.count == 0) return false;
     if (testHookInMarkerEdit != nullptr) testHookInMarkerEdit();
     {
         const juce::ScopedLock l (stateLock);
+        if (latest != madeFor)
+            return false;
         manualTable = t;
         manualEdited = true;
         const juce::SpinLock::ScopedLockType mail (mailLock);
         mailTable = t;
-        mailOwner = s.get();
+        mailOwner = madeFor.get();
         mailDirty.store (true, std::memory_order_release);
     }
     slicesFoundReading->set ((float) t.count);
@@ -1101,19 +1238,21 @@ bool PluginProcessor::applyMarkerEdit (const SliceTable& t)
 
 bool PluginProcessor::moveMarker (int index, int frame)
 {
-    auto t = getShownTable();
+    LoadedSample::Ptr s;
+    auto t = shownTableAndSample (s);
     if (! juce::isPositiveAndBelow (index, t.count)) return false;
     constexpr int gap = 64;
     const int lowest = index > 0 ? t.start[index - 1] + gap : 0;
     const int highest = t.start[index + 1] - gap;
     if (highest < lowest) return false;
     t.start[index] = juce::jlimit (lowest, highest, frame);
-    return applyMarkerEdit (t);
+    return applyMarkerEdit (t, s);
 }
 
 bool PluginProcessor::addMarker (int frame)
 {
-    auto t = getShownTable();
+    LoadedSample::Ptr s;
+    auto t = shownTableAndSample (s);
     if (t.count < 1 || t.count >= kSlots || frame <= 0 || frame >= t.start[t.count]) return false;
     constexpr int gap = 64;
     int at = 0;
@@ -1123,22 +1262,23 @@ bool PluginProcessor::addMarker (int frame)
     for (int i = t.count + 1; i > at; --i) t.start[i] = t.start[i - 1];
     t.start[at] = frame;
     ++t.count;
-    return applyMarkerEdit (t);
+    return applyMarkerEdit (t, s);
 }
 
 bool PluginProcessor::removeMarker (int index)
 {
-    auto t = getShownTable();
+    LoadedSample::Ptr s;
+    auto t = shownTableAndSample (s);
     if (t.count <= 1 || ! juce::isPositiveAndBelow (index, t.count)) return false;
     for (int i = index; i < t.count; ++i) t.start[i] = t.start[i + 1];
     --t.count;
-    return applyMarkerEdit (t);
+    return applyMarkerEdit (t, s);
 }
 
 void PluginProcessor::adoptAsManual (const SliceTable& t)
 {
     if (isManualEdited() || t.count == 0) return;
-    applyMarkerEdit (t);
+    applyMarkerEdit (t, getSample());
 }
 
 void PluginProcessor::selectSlice (int index)
@@ -1166,12 +1306,16 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
         edited = manualEdited;
     }
 
-    auto xml = apvts.copyState().createXml();
+    // The slices saved are cut by the parameter values saved with them, so automation moving during a save cannot split the two.
+    const auto parameters = apvts.copyState();
+    auto xml = parameters.createXml();
     if (xml == nullptr) return;
 
     xml->setAttribute (kWindowWidth, windowWidth.load (std::memory_order_relaxed));
     xml->setAttribute (kWindowHeight, windowHeight.load (std::memory_order_relaxed));
     xml->setAttribute (kAdvancedOpen, advancedOpen.load (std::memory_order_relaxed) ? 1 : 0);
+    if (programChosen && juce::isPositiveAndBelow (currentProgram, getNumPrograms()))
+        xml->setAttribute (kProgram, currentProgram);   // only once a preset was chosen: older sessions and new ones that chose none have none
 
     const bool hasAudio = s != nullptr && ! s->isEmpty();
     juce::int64 bytes = 0;
@@ -1188,7 +1332,7 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
         e->setAttribute ("audible", s->firstAudible);
         e->setAttribute ("edited", edited ? 1 : 0);
         e->setAttribute ("manual", tableToText (manual));
-        e->setAttribute ("slices", tableToText (deriveTable (*s, manual)));
+        e->setAttribute ("slices", tableToText (deriveTable (*s, manual, savedSettings (parameters))));
         juce::String onsetText;
         onsetText.preallocateBytes (s->onsets.size() * 16);
         for (const auto& c : s->onsets)
@@ -1279,6 +1423,7 @@ LoadedSample::Ptr PluginProcessor::parseSampleState (const juce::XmlElement& e, 
 void PluginProcessor::setStateInformation (const void* data, int size)
 {
     loadGeneration.fetch_add (1); // this state wins over any file still being read
+    const struct Restored { std::atomic<int>& n; ~Restored() { n.fetch_add (1, std::memory_order_release); } } restored { restoreCount };   // counted once it is in
 
     constexpr int kHeader = 8;
     const juce::int64 limit = (juce::int64) kHeader + kMaxXmlBytes + 1 + kTailHeader + kMaxAudioBytes;
@@ -1316,14 +1461,25 @@ void PluginProcessor::setStateInformation (const void* data, int size)
     xml->removeAttribute (kWindowHeight);
     xml->removeAttribute (kAdvancedOpen);
 
+    // The preset the session was saved on. Sessions from before 1.2.1, and ones where none was chosen, name none.
+    {
+        int program = -1;
+        programChosen = xml->hasAttribute (kProgram) && parseWhole (xml->getStringAttribute (kProgram), 0, getNumPrograms() - 1, program);
+        currentProgram = programChosen ? program : -1;
+        xml->removeAttribute (kProgram);
+    }
+
     SliceTable saved, manual;
     bool edited = false;
     LoadedSample::Ptr sample;
     bool damaged = false;
+    juce::String damagedName;
     if (auto* e = xml->getChildByName (kSampleTag))
     {
         sample = parseSampleState (*e, size > xmlBlock ? bytes + xmlBlock : nullptr, (juce::int64) size - xmlBlock, saved, manual, edited);
         damaged = sample == nullptr;
+        if (damaged)
+            damagedName = e->getStringAttribute ("name").substring (0, 120).removeCharacters ("\r\n\t").trim();
         xml->removeChildElement (e, true);
     }
 
@@ -1332,12 +1488,14 @@ void PluginProcessor::setStateInformation (const void* data, int size)
     if (sample == nullptr)
     {
         install (new LoadedSample(), {}, false);
-        setStatus (damaged ? "The saved sample was damaged, so it loaded empty" : "");
+        setStatus (! damaged ? juce::String()
+                   : damagedName.isEmpty() ? juce::String ("The saved sample was damaged, so it loaded empty")
+                                           : "The saved sample, " + damagedName + ", was damaged, so it loaded empty. Load the file again.");
         return;
     }
 
     // A session keeps the slices it was saved with, even if a later build would cut this sample differently.
-    if ((int) sliceModeP->load() != modeManual && deriveTable (*sample, manual) != saved)
+    if ((int) sliceModeP->load() != modeManual && deriveTable (*sample, manual, liveSettings()) != saved)
     {
         manual = saved;
         edited = true;

@@ -157,7 +157,7 @@ private:
     SliceWaveform& waveform;
     slicecore::SliceTable table;
     int selected = 0, root = 60, firstKey = 48, lastKey = 84, viewFrom = 0, viewTo = 0;
-    bool chromatic = false, hasSample = false, bypassed = false, draggingRoot = false, stale = true, hoverRoot = false;
+    bool chromatic = false, hasSample = false, bypassed = false, draggingRoot = false, stale = true, hoverRoot = false, needsRange = false;
     std::array<Key, 128> keys;
     std::array<juce::Path, PluginProcessor::kSlots> ribbons;
     std::array<std::uint8_t, 128> lit {};     // 0 off, then how loud in a few steps, so a fade repaints a few times and not every frame

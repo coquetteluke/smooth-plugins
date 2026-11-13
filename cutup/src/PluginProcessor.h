@@ -62,7 +62,8 @@ public:
     static std::atomic<juce::Thread::ThreadID> lastDestroyThread; // read by the tests: a sample must never be freed on the audio thread
 };
 
-class PluginProcessor final : public juce::AudioProcessor
+class PluginProcessor final : public juce::AudioProcessor,
+                              private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     // Limits for files and saved state. See README.
@@ -83,6 +84,7 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
+    void reset() override;
     bool isBusesLayoutSupported (const BusesLayout&) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -96,7 +98,7 @@ public:
     double getTailLengthSeconds() const override { return 4.0; }
 
     int getNumPrograms() override;
-    int getCurrentProgram() override { return currentProgram; }
+    int getCurrentProgram() override { return currentProgram; }   // -1 for a session that names no preset
     void setCurrentProgram (int) override;
     const juce::String getProgramName (int) override;
     void changeProgramName (int, const juce::String&) override {}
@@ -119,6 +121,7 @@ public:
     slicecore::SliceTable getShownTable() const;      // what the current parameters and markers give right now
     juce::String getStatus() const;
     bool isManualEdited() const;
+    int getRestoreCount() const noexcept { return restoreCount.load (std::memory_order_acquire); }   // goes up with every restored session
 
     // Hand editing. The first edit keeps the markers on show and turns Slice Mode to Manual.
     bool moveMarker (int index, int frame);
@@ -132,11 +135,18 @@ public:
 
     void selectSlice (int index);                     // moves the Selected Slice parameter, as a user gesture
     int getSelectedIndex() const noexcept;
-    void audition (int index) noexcept { auditionRequest.store (index, std::memory_order_release); }
+    // Plays a slice once, as a click in the window does. In Chromatic a key plays it that many semitones from Root, and lights that key.
+    void audition (int index, int semitones = 0) noexcept
+    {
+        auditionRequest.store (index + 64 * (juce::jlimit (-64, 63, semitones) + 64), std::memory_order_release);
+    }
 
+    // Reads a note as a number (60, 61.4) or a name in any spelling (C3, D#3, Eb3, Bb 2, C-2). False for anything else.
+    static bool noteFromText (const juce::String&, int& note);
     float getPlayhead (int i) const noexcept { return playheads[(size_t) i].load (std::memory_order_relaxed); }
 
     // One voice as the window draws it. The audio thread only ever stores these, after the block is done, so they cannot change the sound.
+    // A preview from the window has no MIDI note: its note is the key it was asked for, or -1.
     struct PlayheadView { float position = -1.0f; int slot = -1, note = -1; float level = 0.0f; };
     PlayheadView getPlayheadView (int i) const noexcept
     {
@@ -157,6 +167,7 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
 
+    // What the slices depend on. Read from the live parameters, or from a saved copy of them, so a save cuts by the values it saves.
     struct SliceKey
     {
         const LoadedSample* sample = nullptr;
@@ -174,7 +185,7 @@ private:
     {
         bool active = false;
         const LoadedSample* sample = nullptr;
-        int note = -1, slot = 0;
+        int note = -1, slot = 0, shownNote = -1;   // shownNote: the key the window lights for a preview
         juce::uint64 order = 0;
         int start = 0, len = 0, loopFade = 0;
         bool reverse = false, loop = false, oneShot = false, bounce = false, held = true, sustained = false;
@@ -200,7 +211,8 @@ private:
     void takeManualMail() noexcept;
     void refreshAudioTable() noexcept;
     void handleMidi (const juce::MidiMessage&) noexcept;
-    void startVoice (int note, int slot, double keyOffset, float velocity, bool audition) noexcept;
+    void startVoice (int note, int slot, double keyOffset, float velocity, bool audition, int shownNote = -1) noexcept;
+    void clearPlaying() noexcept;
     void releaseVoice (Voice&) noexcept;
     void stealVoice (Voice&) noexcept;
     void enforcePolyphony (int room) noexcept;
@@ -215,9 +227,13 @@ private:
     void refreshIdleReadings();
     void loadJob (const juce::File&, int generation);
     void setStatus (const juce::String&);
-    bool applyMarkerEdit (const slicecore::SliceTable&);
+    bool applyMarkerEdit (const slicecore::SliceTable&, const LoadedSample::Ptr& madeFor);
+    slicecore::SliceTable shownTableAndSample (LoadedSample::Ptr&) const;
+    void parameterChanged (const juce::String&, float) override;
     LoadedSample::Ptr parseSampleState (const juce::XmlElement&, const char* tail, juce::int64 tailBytes, slicecore::SliceTable& savedSlices, slicecore::SliceTable& manual, bool& manualEdited) const;
-    slicecore::SliceTable deriveTable (const LoadedSample&, const slicecore::SliceTable& manual) const noexcept;
+    SliceKey liveSettings() const noexcept;
+    SliceKey savedSettings (const juce::ValueTree&) const;
+    static slicecore::SliceTable deriveTable (const LoadedSample&, const slicecore::SliceTable& manual, const SliceKey&) noexcept;
 
     class Worker;
     std::unique_ptr<Worker> worker;
@@ -250,6 +266,7 @@ private:
     std::atomic<bool> mailDirty { false };
     std::atomic<int> auditionRequest { -1 };
     std::atomic<int> loadGeneration { 0 }; // a restored session cancels a file load already running
+    std::atomic<int> restoreCount { 0 };
 
     // Audio thread only.
     const LoadedSample* current = nullptr;
@@ -262,13 +279,20 @@ private:
     std::array<Voice, kVoicePool> voices;
     juce::uint64 voiceCounter = 0;
     double hostRate = 48000.0;
-    float bendSemis = 0.0f;
+    float bendWheel = 0.0f;   // -1 to 1. Bend Range applies as the pitch is worked out, so a change reaches a held wheel
     bool sustainDown = false;
     juce::SmoothedValue<float> outputSmoothed, bypassSmoothed;
 
     std::array<std::atomic<float>, kPlayheads> playheads, playheadLevels;
     std::array<std::atomic<int>, kPlayheads> playheadSlots, playheadNotes;
-    int currentProgram = 0;
+    int currentProgram = 0;     // -1 when a restored session named no preset
+    bool programChosen = false; // a preset was chosen, or restored, so the session names it
+
+    // JUCE's AU wrapper resets straight after the host turns its own bypass on. That one reset is left out, so the sound fades out in
+    // 20 ms instead of stopping at once. It is the next reset within a quarter second, with no audio block in between.
+    std::atomic<bool> bypassJustSwitchedOn { false }, bypassWasOn { false };
+    std::atomic<juce::uint32> bypassSwitchedAtMs { 0 };
+    bool prepared = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)
 };

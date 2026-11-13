@@ -112,8 +112,8 @@ double SliceWaveform::timeStepSeconds() const
         return 1.0;
     const double seconds = (double) (viewTo - viewFrom) / juce::jmax (1.0, sample->rate);
     const double wanted = seconds / juce::jmax (1.0, (double) getWidth() / 110.0);
-    double step = 60.0;
-    for (double s : { 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0 })
+    double step = 600.0;   // a sample at the load limit is about 35 minutes
+    for (double s : { 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0, 300.0, 600.0 })
         if (s >= wanted) { step = s; break; }
     return step;
 }
@@ -132,6 +132,14 @@ void SliceWaveform::update (const slicecore::SliceTable& t, int newSelected, boo
         const int margin = juce::jmax (32, (b - a) / 16);
         from = juce::jmax (0, a - margin);
         to = juce::jmin (frames, b + margin);
+    }
+
+    // The zoomed view holds still under a dragged marker or Start tab, which move the slice it shows. Otherwise the frame under the
+    // mouse would move with them and the drag would run away. It settles when the mouse is let go.
+    if (zoomed && isDraggingSomething() && s.get() == sample.get() && viewTo > viewFrom)
+    {
+        from = viewFrom;
+        to = viewTo;
     }
     viewFrom = from;
     viewTo = to;
@@ -816,7 +824,7 @@ void KeyMap::update (const slicecore::SliceTable& t, int newSelected)
     const bool nowBypassed = processor.apvts.getRawParameterValue ("bypass")->load() > 0.5f;
 
     if (t == table && newSelected == selected && newRoot == root && newChromatic == chromatic && sampleThere == hasSample && from == viewFrom && to == viewTo
-        && nowBypassed == bypassed && ! stale)
+        && nowBypassed == bypassed && ! stale && ! needsRange)
         return;
 
     bypassed = nowBypassed;
@@ -834,6 +842,7 @@ void KeyMap::update (const slicecore::SliceTable& t, int newSelected)
     {
         chooseRange (root, t.count, chromatic);
         placeKeys();
+        needsRange = false;
     }
 
     stale = true;
@@ -1109,8 +1118,9 @@ void KeyMap::mouseDown (const juce::MouseEvent& e)
 
     if (chromatic)
     {
+        // Each key plays the selected slice at its own pitch, as MIDI does, and that key lights.
         if (table.count > 0)
-            processor.audition (juce::jlimit (0, table.count - 1, selected));
+            processor.audition (juce::jlimit (0, table.count - 1, selected), note - root);
         return;
     }
 
@@ -1141,7 +1151,8 @@ void KeyMap::mouseUp (const juce::MouseEvent&)
     {
         rootAttachment->endGesture();
         draggingRoot = false;
-        stale = true;      // the keys were held still for the drag; now they can settle
+        stale = true;
+        needsRange = true;   // the keys were held still for the drag; they settle on the next tick, even if a paint comes first
         repaint();
     }
 }

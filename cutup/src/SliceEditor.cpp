@@ -298,7 +298,13 @@ SliceEditor::SliceEditor (PluginProcessor& p)
                  [] (float v) { return juce::String (v, std::abs (v - std::round (v)) < 0.005f ? 0 : 2) + " BPM"; }),
       output (p.apvts, "output", "Output", "The level of everything coming out.", [] (float v) { return plusMinus (v, 1, " dB"); }),
       root (p.apvts, "root_note", "Root", "The key slice 1 sits on. You can also drag the Root tab on the keyboard.",
-            [] (float v) { return juce::MidiMessage::getMidiNoteName (juce::roundToInt (v), true, true, 3); }),
+            [] (float v) { return juce::MidiMessage::getMidiNoteName (juce::roundToInt (v), true, true, 3); },
+            [] (const juce::String& text, bool& understood)
+            {
+                int note = 60;
+                understood = PluginProcessor::noteFromText (text, note);   // text that is no note is refused, not read as C3
+                return (float) note;
+            }),
       polyphony (p.apvts, "polyphony", "Voices", "How many notes can sound at once. Past that, the oldest fades out.", [] (float v) { return juce::String (juce::roundToInt (v)); }),
       velSens (p.apvts, "vel_sens", "Velocity", "How much playing softer makes it quieter. 0% ignores how hard you play.", percentText),
       loopFade (p.apvts, "loop_fade", "Crossfade", "In Loop mode, how much the end of the loop blends into its start.", timeText, parseTime),
@@ -348,6 +354,20 @@ SliceEditor::SliceEditor (PluginProcessor& p)
     hintText = restingHint;
     addMouseListener (this, true);
 
+    // The hint line keeps room for its longest hint, whatever the Advanced summary says.
+    {
+        const auto hintFont = font (Weight::regular, 12.5f);
+        std::function<void (juce::Component&)> measure = [&] (juce::Component& c)
+        {
+            if (auto* hinted = dynamic_cast<Hinted*> (&c))
+                longestHint = juce::jmax (longestHint, (int) std::ceil (juce::GlyphArrangement::getStringWidth (hintFont, hinted->hint)));
+            for (auto* child : c.getChildren())
+                measure (*child);
+        };
+        measure (*this);
+        longestHint = juce::jmax (longestHint, (int) std::ceil (juce::GlyphArrangement::getStringWidth (hintFont, restingHint)));
+    }
+
     setResizable (true, true);
     using P = PluginProcessor;
     setResizeLimits (P::minWindowWidth, P::minWindowHeight, P::maxWindowWidth, P::maxWindowHeight);
@@ -356,6 +376,8 @@ SliceEditor::SliceEditor (PluginProcessor& p)
 
     constructed = true;
     shownMode = (int) p.apvts.getRawParameterValue ("slice_mode")->load();
+    shownRestore = p.getRestoreCount();
+    shownAdvanced = isAdvancedOpen();
     refresh();
     startTimerHz ((int) slowRate);
 }
@@ -463,7 +485,7 @@ void SliceEditor::resized()
         {
             gridNote.setBounds (tools.removeFromLeft (118));
             tools.removeFromLeft (14);
-            gridTempo.setBounds (tools.removeFromLeft (84));
+            gridTempo.setBounds (tools.removeFromLeft (100));
             tools.removeFromLeft (14);
         }
         sliceStart.setBounds (tools.removeFromLeft (juce::jmin (200, tools.getWidth())));
@@ -475,7 +497,7 @@ void SliceEditor::resized()
 
     // Bottom up: the footer, Advanced, the control band. The hero takes what is left.
     auto foot = r.removeFromBottom (34).reduced (margin, 0).withTrimmedBottom (6);
-    advancedHeader->setBounds (foot.removeFromLeft (300));
+    advancedHeader->setBounds (foot.removeFromLeft (advancedHeaderWidth (foot.getWidth())));
     hintArea = foot.withTrimmedRight (10);
 
     const bool open = isAdvancedOpen();
@@ -578,8 +600,23 @@ bool SliceEditor::isAdvancedOpen() const noexcept
 void SliceEditor::setAdvancedOpen (bool shouldBeOpen)
 {
     processor.advancedOpen.store (shouldBeOpen, std::memory_order_relaxed);
+    shownAdvanced = shouldBeOpen;
     resized();
     repaint();
+}
+
+// The Advanced header is as wide as its summary needs, leaving the hint line room for the longest hint. A summary too long even then
+// names what changed and leaves the values to the drawer.
+int SliceEditor::advancedRoom (int footWidth) const
+{
+    return juce::jmax (300, footWidth - longestHint - 14);
+}
+
+int SliceEditor::advancedHeaderWidth (int footWidth) const
+{
+    const int least = 300, most = advancedRoom (footWidth);
+    const int wanted = 90 + (int) std::ceil (juce::GlyphArrangement::getStringWidth (font (Weight::regular, 13.0f), summaryText)) + 4;
+    return juce::jlimit (least, most, wanted);
 }
 
 void SliceEditor::setZoomed (bool shouldZoom)
@@ -590,7 +627,7 @@ void SliceEditor::setZoomed (bool shouldZoom)
 
 void SliceEditor::bindSelected (int index)
 {
-    if (index == boundSlot || isDraggingSlotControl())
+    if (index == boundSlot || isDraggingSlotControl() || isTypingSlotControl())
         return;
 
     boundSlot = index;
@@ -607,6 +644,15 @@ void SliceEditor::bindSelected (int index)
         s->setAccent (colour);
     slotReverse.setAccent (colour);
     ampGraph.setAccent (colour);
+}
+
+// A value being typed goes to the slice it was typed for, so the cells hold still while a type box is open.
+bool SliceEditor::isTypingSlotControl() const
+{
+    for (auto* s : { &slotPitch, &slotLevel, &slotPan, &slotAttack, &slotRelease })
+        if (s->isTyping())
+            return true;
+    return false;
 }
 
 bool SliceEditor::isDraggingSlotControl() const
@@ -660,7 +706,7 @@ void SliceEditor::updateInfo()
     else if (hasSample)
         detail = "Not cut yet";
     stepper->setUsed (used);
-    stepper->setDetail (juce::MidiMessage::getMidiNoteName (processor.noteForSlice (selected), true, true, 3), detail);
+    stepper->setDetail (juce::MidiMessage::getMidiNoteName (keyForSlice (selected), true, true, 3), detail);
 
     // The three readings: what a host sees, as a host sees it.
     for (auto* p : processor.getParameters())
@@ -673,17 +719,30 @@ void SliceEditor::updateInfo()
             else if (id == "active_voices")  activeVoices.setValueText (value);
         }
 
-    juce::StringArray changed;
+    juce::StringArray changed, changedNames;
     const auto note = [&] (ValueCell& cell, const char* id, const juce::String& name)
     {
         auto* prm = processor.apvts.getParameter (id);
         if (std::abs (prm->getValue() - prm->getDefaultValue()) > 1.0e-4f)
-            changed.add (name + " " + cell.valueText());
+        {
+            changed.add (name + " " + cell.fullValueText());
+            changedNames.add (name);
+        }
     };
     note (minSlice, "min_slice", "Min Slice");
     note (transpose, "transpose", "Transpose");
     note (bendRange, "bend_range", "Bend Range");
-    advancedHeader->setSummary (changed.joinIntoString (", "));
+
+    auto summary = changed.joinIntoString (", ");
+    const int foot = getWidth() - 2 * margin;
+    if (90 + juce::GlyphArrangement::getStringWidth (font (Weight::regular, 13.0f), summary) + 4 > (float) advancedRoom (foot))
+        summary = changedNames.joinIntoString (", ");
+    if (summary != summaryText)
+    {
+        summaryText = summary;
+        advancedHeader->setSummary (summary);
+        resized();
+    }
 
     presets.refresh();
 }
@@ -692,11 +751,26 @@ void SliceEditor::pollFast()
 {
     const int actualMode = (int) processor.apvts.getRawParameterValue ("slice_mode")->load();
 
+    // A restored session brings its own Slice Mode and markers: they are taken as they are, never replaced by what was on show.
+    if (processor.getRestoreCount() != shownRestore)
+    {
+        shownRestore = processor.getRestoreCount();
+        shownMode = actualMode;
+    }
+
     // Picking Manual before any edit starts from the markers that were on show.
     if (actualMode == PluginProcessor::modeManual && shownMode != PluginProcessor::modeManual && ! processor.isManualEdited())
         processor.adoptAsManual (shownTable);
 
     shownMode = actualMode;
+
+    // Advanced opened or closed by a restored session lays the drawer out to match.
+    if (isAdvancedOpen() != shownAdvanced)
+    {
+        shownAdvanced = isAdvancedOpen();
+        resized();
+        repaint();
+    }
 
     // The tools above the waveform change with how slices are cut.
     const int layout = actualMode * 10 + (int) processor.apvts.getRawParameterValue ("grid_type")->load();
@@ -760,7 +834,14 @@ juce::Point<float> SliceEditor::stepperPreviousArrow() const { return stepper->p
 juce::String SliceEditor::getSelectedText() const
 {
     const int selected = juce::jlimit (0, PluginProcessor::kSlots - 1, processor.getSelectedIndex());
-    return "Slice " + juce::String (selected + 1) + "  " + juce::MidiMessage::getMidiNoteName (processor.noteForSlice (selected), true, true, 3);
+    return "Slice " + juce::String (selected + 1) + "  " + juce::MidiMessage::getMidiNoteName (keyForSlice (selected), true, true, 3);
+}
+
+// The key that plays a slice at its own pitch: its own key, or in Chromatic, Root.
+int SliceEditor::keyForSlice (int index) const
+{
+    const bool chromatic = (int) processor.apvts.getRawParameterValue ("key_mode")->load() == PluginProcessor::keyChromatic;
+    return chromatic ? (int) processor.apvts.getRawParameterValue ("root_note")->load() : processor.noteForSlice (index);
 }
 
 void SliceEditor::chooseFile()

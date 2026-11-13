@@ -1,6 +1,8 @@
 #pragma once
 // Band limited sample reading. Band 0 reads at or below the file's own speed and is exact on whole sample positions, so
 // unpitched playback and Reverse are bit exact. Faster bands lower the cutoff with the speed, so pitching up does not fold back.
+// Four bands an octave, up to 64 times the file's speed (+48 st on a file at more than 4 times the session's rate). Past 8 times the
+// kernels grow to 512 taps, so the filter stays as steep for the speed. Bands 0 to 12 are the ones 1.2.0 had, unchanged.
 // Tables are built once, off the audio thread, and shared by every instance.
 #include <algorithm>
 #include <cmath>
@@ -9,7 +11,8 @@
 class SincBank
 {
 public:
-    static constexpr int kBands = 13;
+    static constexpr int kBands = 25;           // band k reads at up to 2^(k/4) times the file's speed
+    static constexpr int kFirstWideBand = 13;   // from here on the kernels may grow past 64 taps a side
     static constexpr int kPhases = 128;
 
     static const SincBank& get()
@@ -59,7 +62,35 @@ public:
         return sum;
     }
 
+    // Both channels at once, for the wide bands only: the kernel for this position is worked out once and used for both.
+    void readPair (const float* x, const float* y, int frames, double pos, int band, float& left, float& right) const noexcept
+    {
+        const int i = (int) std::floor (pos);
+        const double f = pos - (double) i;
+        const auto& b = bands[(size_t) band];
+        const double phase = f * kPhases;
+        const int p = std::min (kPhases - 1, (int) phase);
+        const float a = (float) (phase - p);
+        const float* r0 = b.table.data() + (size_t) p * (size_t) b.taps;
+        const float* r1 = r0 + b.taps;
+        float kernel[2 * kMaxHalf];
+        for (int t = 0; t < b.taps; ++t)
+            kernel[t] = r0[t] + a * (r1[t] - r0[t]);
+
+        const int first = i - b.half + 1;
+        const int lo = std::max (0, -first), hi = std::min (b.taps, frames - first);
+        float l = 0.0f, r = 0.0f;
+        for (int t = lo; t < hi; ++t)
+        {
+            l += x[first + t] * kernel[t];
+            r += y[first + t] * kernel[t];
+        }
+        left = l;
+        right = r;
+    }
+
 private:
+    static constexpr int kMaxHalf = 256;
     struct Band { int half = 0, taps = 0; std::vector<float> table; };
     std::vector<Band> bands;
 
@@ -84,7 +115,7 @@ private:
             const double speed = std::pow (2.0, k / 4.0);
             const double cutoff = k == 0 ? 1.0 : 0.94 / speed;
             auto& b = bands[(size_t) k];
-            b.half = k == 0 ? 12 : std::min (64, (int) std::ceil (16.0 * speed));
+            b.half = k == 0 ? 12 : std::min (k >= kFirstWideBand ? kMaxHalf : 64, (int) std::ceil (16.0 * speed));
             b.taps = 2 * b.half;
             b.table.assign ((size_t) (kPhases + 1) * (size_t) b.taps, 0.0f);
             const double norm = besselI0 (beta);

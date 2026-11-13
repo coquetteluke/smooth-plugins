@@ -64,6 +64,10 @@ private:
     void showHintFor (juce::Component*);
     void setHint (const juce::String&);
     bool isDraggingSlotControl() const;
+    bool isTypingSlotControl() const;
+    int keyForSlice (int index) const;
+    int advancedHeaderWidth (int footWidth) const;
+    int advancedRoom (int footWidth) const;
     bool acceptsFile (const juce::String&) const;
 
     PluginProcessor& processor;
@@ -93,8 +97,10 @@ private:
     std::unique_ptr<juce::FileChooser> chooser;
 
     juce::Rectangle<int> titleArea, infoArea, manualNoteArea, hintArea, ampLabel, pitchLabel;
-    juce::String statusText, hintText;
-    int boundSlot = -1, shownMode = -1, shownLayout = -1, slowCounter = 0;
+    juce::String statusText, hintText, summaryText;
+    int boundSlot = -1, shownMode = -1, shownLayout = -1, shownRestore = 0, slowCounter = 0;
+    bool shownAdvanced = false;
+    int longestHint = 0;
     slicecore::SliceTable shownTable;
     bool constructed = false, fast = false;
 

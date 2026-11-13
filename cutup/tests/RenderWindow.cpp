@@ -402,5 +402,70 @@ int main (int argc, char** argv)
         s.save (folder, "large", 1.0f);
     }
 
+    // Phase 2 (1.2.1): the places the fixes show.
+    {
+        Session s;
+        s.set ("slice_mode", (float) PluginProcessor::modeGrid);
+        s.set ("grid_type", (float) PluginProcessor::gridNote);
+        s.set ("grid_note", 3.0f);
+        s.set ("grid_tempo", 128.5f);
+        s.editor->refresh();
+        s.editor->refresh();
+        s.saveBoth (folder, "grid-note-tempo-fraction");
+    }
+
+    {
+        Session s (true, PluginProcessor::minWindowWidth, PluginProcessor::minWindowHeight);
+        s.processor.selectSlice (2);
+        s.set ("s03_level", -18.0f);
+        s.set ("s03_pitch", -12.34f);
+        s.set ("penv_amount", -12.34f);
+        s.saveBoth (folder, "smallest-long-values");
+    }
+
+    for (const auto size : { juce::Point<int> (1160, 740), juce::Point<int> (PluginProcessor::minWindowWidth, PluginProcessor::minWindowHeight) })
+    {
+        Session s (true, size.x, size.y);
+        s.set ("min_slice", 80.0f);
+        s.set ("transpose", -12.0f);
+        s.set ("bend_range", 24.0f);
+        s.saveBoth (folder, size.x > 1100 ? "advanced-closed-three-changes" : "smallest-advanced-closed-three-changes");
+    }
+
+    {
+        // A session saved before 1.2.1, or one where no preset was chosen.
+        PluginProcessor fresh;
+        juce::MemoryBlock st;
+        fresh.getStateInformation (st);
+        Session s;
+        s.processor.setStateInformation (st.getData(), (int) st.getSize());
+        s.saveBoth (folder, "no-preset-named");
+    }
+
+    {
+        // A session whose saved sample was damaged.
+        Session source;
+        juce::MemoryBlock st;
+        source.processor.getStateInformation (st);
+        static_cast<char*> (st.getData())[st.getSize() - 100] ^= 0x40;
+        Session s (false);
+        s.processor.setStateInformation (st.getData(), (int) st.getSize());
+        s.saveBoth (folder, "damaged-sample");
+    }
+
+    {
+        Session s;
+        s.set ("key_mode", (float) PluginProcessor::keyChromatic);
+        s.processor.selectSlice (5);
+        s.editor->refresh();
+        auto& keys = s.editor->getKeyMap();
+        const auto at = keys.keyCentre (67);
+        const auto now = juce::Time::getCurrentTime();
+        keys.mouseDown (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
+                                          1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &keys, &keys, now, at, now, 1, false));
+        s.render (settle);
+        s.saveBoth (folder, "chromatic-key-clicked");
+    }
+
     return 0;
 }

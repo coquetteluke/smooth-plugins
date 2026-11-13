@@ -25,12 +25,12 @@ The window is titled Cutup. The build keeps its current name for now.
 - Click a slice or a key to select it and hear it. Drag a marker to move it. Double-click to add one. Option-click or right-click to remove one. Any of these turns Slice Mode to Manual.
 - Level changes the height of a slice on the waveform, Reverse flips it, and Pitch shows on its number.
 - Drag the Start tab under the waveform to set Slice Start. Drag the Root tab above the keys to set Root Note.
-- Zoom slice fills the waveform with the selected slice, to place its markers closely. It is a view, and is not saved.
+- Zoom slice fills the waveform with the selected slice, to place its markers closely. The view holds still while a marker or the Start tab is dragged. It is a view, and is not saved.
 - Load sample, or drop a file anywhere on the window. With nothing loaded, the waveform invites you to.
 - The stepper chooses which of the 32 slots the Pitch, Level, Pan, Reverse, Attack and Release controls edit, including slots this sample has not filled. Those are the slot's real parameters.
 - Amp and Pitch glide are graphs with dots to drag. Their cells underneath are the same parameters.
 - Advanced holds Min Slice, Transpose, Bend Range and the three readings.
-- Drag any value, click it to type one, double-click it to reset it. Type 1.5 s or 250 ms for a time, 40 L for a pan, D3 for a root.
+- Drag any value, click it to type one, double-click it to reset it. Type 1.5 s or 250 ms for a time, 40 L for a pan, D3 or Eb3 for a root. Text that is no note is refused. A cell too narrow for its unit shows the number alone.
 - Resize it from the corner. Its size and Advanced are saved with the session, and nothing else is added.
 
 ## Controls
@@ -41,7 +41,7 @@ Every control is a real AU parameter with a value string. The sample and hand-mo
 
 | Control | What it does |
 |---|---|
-| Slice Mode | Transient, Grid or Manual. Manual uses the markers moved by hand. Until something has been moved it starts from the slices on show when you pick it in the window, or the default transient slices if a host sets it |
+| Slice Mode | Transient, Grid or Manual. Manual uses the markers moved by hand. Until something has been moved it starts from the slices on show when it is picked with the window open, or the default transient slices when the window is closed. A restored session keeps its own markers either way |
 | Sensitivity | 0 to 100%. How weak an onset can be and still cut. Transient mode |
 | Min Slice | 5 to 1000 ms. Two cuts never come closer than this, and the stronger one stays. Transient mode |
 | Slice Start | 0 to 60000 ms. Nothing before this point is sliced. Works in Transient and Grid |
@@ -52,7 +52,7 @@ Every control is a real AU parameter with a value string. The sample and hand-mo
 
 Transient cuts start where the sound starts: a soft S, F, H or breath that leads into a vowel stays on the slice, a cut never lands in the middle of an S or on dead air, and a place where nothing rises is not cut. In a real recording "quiet" means the room, not zero.
 
-There are 32 slots. If a sample has more onsets than that, the 32 strongest stay. If a Note Length grid would need more, the last slice runs to the end of the sample.
+There are 32 slots. If a sample has more onsets than that, the 32 strongest stay. When sound before the first cut takes a slot of its own, the latest of those 32 makes room for it, whatever its strength. If a Note Length grid would need more, the last slice runs to the end of the sample.
 
 ### Each slice (32 slots, 192 parameters)
 
@@ -77,7 +77,7 @@ Named `Slice 01 Pitch` up to `Slice 32 Pan`.
 | Selected Slice | The slice the window edits and Chromatic plays |
 | Polyphony | 1 to 16. Past that, the oldest voice fades out over 5 ms |
 | Transpose | -24 to +24 semitones, all slices |
-| Bend Range | 0 to 24 semitones for the pitch wheel |
+| Bend Range | 0 to 24 semitones for the pitch wheel. A change applies to a wheel already held |
 | Pitch Env Amount, Pitch Env Time | Each note starts this many semitones off and glides back to pitch over this time |
 | Decay, Sustain | After the Attack, falls to Sustain over the Decay. All slices. Sustain 100% switches it off. Sustain 0% ends the note after its Decay |
 | Loop Crossfade | 1 to 500 ms. How much the end of a loop blends into its start. Up to half the slice |
@@ -85,15 +85,15 @@ Named `Slice 01 Pitch` up to `Slice 32 Pan`.
 | Output | -60 to +12 dB |
 | Bypass | Silent, with a 20 ms fade. Latency stays 0 |
 
-It also answers the sustain pedal, All Sound Off and All Notes Off.
+It also answers the sustain pedal, All Sound Off, All Notes Off and Reset All Controllers. The host's Reset stops every voice and puts the wheel and pedal back, except the one JUCE sends as the host's own bypass turns on, so that the sound still fades out.
 
 ### Readings (read only, never automated)
 
-Slices Found, Sample Length, Active Voices.
+Slices Found, Sample Length (up to 2400 s), Active Voices.
 
 ## Presets
 
-They set behaviours and never touch the sample or hand-moved markers. Choosing one resets the slot Pitch, Pan, Attack, Release and Reverse.
+They set behaviours and never touch the sample or hand-moved markers. Choosing one resets the slot Pitch, Pan, Attack, Release and Reverse. The session remembers which one was chosen; a session saved before 1.2.1, or where none was chosen, shows Choose a preset and loads exactly as before.
 
 Chop Gate (the defaults), One Shot Stabs, Mono Cut, Stutter Loop, Vowel Hold, Reverse Swell, Boomerang, Keys From One Slice, Pluck Chops, Pitch Drop Chops, Octave Down Run, Fine Transients, Even Eighths, Tempo Sixteenths.
 
@@ -111,7 +111,7 @@ A new sample is built off the audio thread and handed over through one atomic po
 
 ## Damaged state
 
-A saved session is outside input, so everything is checked on load: sizes, sample rate, channels, frame count, marker order and bounds, onset lists, a hash of the audio, and every audio value finite and within +/-16. If the sample part fails it loads empty with a message in the window, and the plug-in stays usable. If the whole state is unreadable or over the size limit, the controls go back to their defaults too.
+A saved session is outside input, so everything is checked on load: sizes, sample rate, channels, frame count, marker order and bounds, onset lists, a hash of the audio, and every audio value finite and within +/-16. If the sample part fails it loads empty with a message in the window that names the sample, and the plug-in stays usable. A sample file moved or deleted since does not matter: the audio is in the session. If the whole state is unreadable or over the size limit, the controls go back to their defaults too.
 
 ## What was measured
 
@@ -137,6 +137,7 @@ All numbers are in `tests/results.txt` and `tests/au-check.txt`. Limits were wri
 - Sound with the window: all 14 presets bit identical to 1.0.0, with the window closed and with it open and drawing throughout
 - Loading through the window: no block allocates, and a held note never goes silent, until the new sample takes over
 - Window CPU, real window at 2x with notes playing: 1.4 to 3.4% of one core over 10 runs, median 1.8%. The 3.4% run landed mostly on slow cores; the work stayed at 1.0% of a fast core in all 10. 16 voices looping at once: 3.8% over 3 runs. Silent: 0.6% over 3 runs, with almost no redraws. Other agents were building during these, at a load of about 4 to 5
+- Pitching past 8 times the file's speed stays band limited up to 64 times (+48 st on a file at 4 times the session's rate): a tone pitched above Nyquist at 42 and 48 st up, and 36 st up from a 96 kHz file, comes out more than 60 dB down (Phase 2 lines in `tests/results.txt`). Up to 8 times it reads exactly as 1.2.0 did
 - Pitching a 15 kHz tone up an octave: fold back at -94 dB. Pitching a 5 kHz tone down an octave: image at 21.5 kHz at -102 dB
 
 Tones, noise and a synthetic voice do not prove it sounds good on a real singer. Slicing a real vocal with breaths, reverb and bleed needs ears. Nothing has been loaded in Logic.

@@ -31,10 +31,12 @@ namespace ui
         void mouseUp (const juce::MouseEvent&) override;
         void mouseDoubleClick (const juce::MouseEvent&) override;
 
-        juce::String valueText() const;
+        juce::String valueText() const;       // as drawn: without its unit when the whole of it would not fit
+        juce::String fullValueText() const;   // always with its unit
         void startTyping();
         void applyTyped (const juce::String&);
         bool isBeingDragged() const noexcept  { return dragging; }
+        bool isTyping() const noexcept  { return typeBox.isBeingEdited(); }
 
     private:
         void timerCallback() override;

@@ -4,7 +4,6 @@ namespace ui
 {
     namespace
     {
-        constexpr int menuDelayMs = 200;   // long enough to see the second half of a double-click, short enough not to feel late
         constexpr float labelSize = 12.5f;
     }
 
@@ -90,9 +89,21 @@ namespace ui
         }
     }
 
-    juce::String ValueCell::valueText() const
+    juce::String ValueCell::fullValueText() const
     {
         return formatter ((float) getValue());
+    }
+
+    juce::String ValueCell::valueText() const
+    {
+        // A narrow cell drops the unit before it cuts a digit off. The label above says what the number is.
+        const auto text = fullValueText();
+        if (getWidth() <= 0 || juce::GlyphArrangement::getStringWidth (font (Weight::medium, valueSize, true), text) <= (float) getWidth())
+            return text;
+        const auto unit = text.fromLastOccurrenceOf (" ", false, false);
+        if (unit == "dB" || unit == "st" || unit == "ms" || unit == "s" || unit == "BPM")
+            return text.upToLastOccurrenceOf (" ", false, false);
+        return text;
     }
 
     void ValueCell::mouseDown (const juce::MouseEvent& e)
@@ -232,8 +243,9 @@ namespace ui
 
     void MenuField::mouseUp (const juce::MouseEvent& e)
     {
+        // Waits out the second click of a double-click, which resets instead, as a value cell does.
         if (e.getNumberOfClicks() == 1 && getLocalBounds().contains (e.getPosition()))
-            startTimer (menuDelayMs);
+            startTimer (juce::MouseEvent::getDoubleClickTimeout() + 30);
     }
 
     void MenuField::mouseDoubleClick (const juce::MouseEvent&)
@@ -471,7 +483,8 @@ namespace ui
 
     void PresetBox::refresh()
     {
-        const auto now = processor.getProgramName (processor.getCurrentProgram());
+        const int current = processor.getCurrentProgram();
+        const auto now = juce::isPositiveAndBelow (current, processor.getNumPrograms()) ? processor.getProgramName (current) : juce::String ("Choose a preset");
 
         if (now != shown)
         {
@@ -510,10 +523,12 @@ namespace ui
     {
         const auto z = zoneAt (e.position.x);
 
+        const int current = processor.getCurrentProgram();   // -1 for a session that names no preset: the arrows go to the last or the first
+
         if (z == previous)
-            choose (processor.getCurrentProgram() - 1);
+            choose (current < 0 ? processor.getNumPrograms() - 1 : current - 1);
         else if (z == next)
-            choose (processor.getCurrentProgram() + 1);
+            choose (current < 0 ? 0 : current + 1);
         else
         {
             juce::PopupMenu menu;

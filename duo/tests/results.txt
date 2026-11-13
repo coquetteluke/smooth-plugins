@@ -378,8 +378,8 @@ INFO  Precise Vibrato, Tightness 85, vibrato at 6.8 Hz, wandering: the 0.3 law, 
 PASS  Precise Vibrato, double 3 sings 0.35 to 0.65 times as wide = 0.534 
 PASS  Precise Vibrato, Vibrato Variation 50: double 1 keeps 0.35 to 0.65 of the depth = 0.534 
 PASS  Precise Vibrato, Vibrato Variation 0: double 1 has the lead's depth within 5 percent = 0.997 
-PASS  vibrato that comes and goes: on the straight part the bend adds at most 5 cents = 0.230 cents
-PASS  vibrato that comes and goes: half a second after it starts, double 1 keeps at most 0.35 of it = 0.089 
+PASS  vibrato that comes and goes: on the straight part the bend adds at most 5 cents = 1.382 cents
+PASS  vibrato that comes and goes: half a second after it starts, double 1 keeps at most 0.35 of it = 0.087 
 PASS  Mono Safe, Natural Pair: left plus right is the lead alone, what is left = -151.307 dB
 PASS  Mono Safe, Natural Pair: the doubles are all there in left minus right, against their levels = -0.132 dB
 PASS  Mono Safe, Wide Stack: left plus right is the lead alone, what is left = -146.873 dB
@@ -525,7 +525,53 @@ PASS  block size 64 gives the same output as 512
 PASS  block size 4096 gives the same output as 512
 PASS  a playhead changes nothing
 PASS  prepare called again restarts cleanly, same bounce
-PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.024 
+PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.015 
+PASS  Precise Vibrato, Tightness 30, vibrato then a jump up a fifth: once double 1 sings the new note it gets no bend (60 to 290 ms after), worst = 2.655 cents
+INFO  Precise Vibrato, Tightness 30, vibrato then a jump up a fifth: largest delay walk over the 290 ms after the jump = 1.266 ms
+PASS  Precise Vibrato, Tightness 85, vibrato then a jump up a fifth: once double 1 sings the new note it gets no bend (60 to 290 ms after), worst = 2.387 cents
+INFO  Precise Vibrato, Tightness 85, vibrato then a jump up a fifth: largest delay walk over the 290 ms after the jump = 1.231 ms
+PASS  Precise Vibrato switched back on while a straight note plays: no bend from before it was switched off, worst = 1.664 cents
+PASS  Precise Vibrato, a 50 ms consonant in a vibrato: in the 250 ms after it, double 1 keeps no more vibrato than with no bend = 0.135 
+PASS  Precise Vibrato, vibrato then a slide: on the slide double 1 is bent no more than its old vibrato, worst = 42.187 cents
+PASS  Precise Vibrato, vibrato then a slide: once double 1 holds the new note it gets no vibrato bend (the leak taken out), worst = 0.382 cents
+PASS  play, reset, play: the second part equals a new instance playing it, largest difference = 0.000 
+PASS  after a reset, silence in gives silence out: largest sample = 0.000 
+PASS  reset allocates nothing, allocations = 0.000 
+PASS  a reset before the first prepare is harmless
+PASS  the reset that comes with host bypass switching on changes nothing: the fade to dry goes on, largest difference = 0.000 
+PASS  a reset later on while bypassed is not left out
+PASS  Timbre frame at 44100 Hz is 10.5 to 12 ms = 11.610 ms
+PASS  Timbre frame at 48000 Hz is 10.5 to 12 ms = 10.667 ms
+PASS  Timbre frame at 88200 Hz is 10.5 to 12 ms = 11.610 ms
+PASS  Timbre frame at 96000 Hz is 10.5 to 12 ms = 10.667 ms
+PASS  Timbre frame at 176400 Hz is 10.5 to 12 ms = 11.610 ms
+PASS  Timbre frame at 192000 Hz is 10.5 to 12 ms = 10.667 ms
+PASS  Timbre Variation 100 at 176400 Hz, double 1: formant moves by 1.189 within 0.04, measured = 1.174 
+PASS  Timbre Variation 100 at 176400 Hz, double 2: formant moves by 0.840 within 0.04, measured = 0.859 
+PASS  Timbre Variation 100 at 192000 Hz, double 1: formant moves by 1.189 within 0.04, measured = 1.153 
+PASS  Timbre Variation 100 at 192000 Hz, double 2: formant moves by 0.840 within 0.04, measured = 0.847 
+INFO  Timbre Variation 100 at 48000 Hz, double 1: level ripple over 20 ms windows = 0.420 dB
+INFO  Timbre Variation 100 at 192000 Hz, double 1: level ripple over 20 ms windows = 0.435 dB
+PASS  a new Duo names Natural Pair, which is its default state = 0.000 
+PASS  a session saved after choosing Loose Gang reloads naming it = 4.000 
+PASS  the preset is not applied again on reload: a Width changed after choosing it stays
+PASS  the preset number stays out of the sound's value tree
+PASS  a damaged preset number (99) is kept in range = 7.000 
+PASS  a damaged preset number (-5) is kept in range = 0.000 
+PASS  a damaged preset number (x) is kept in range = 0.000 
+PASS  the 0.4.2 input file loads = 96000.000 
+PASS  v0.4.2-default: names no preset, since 0.4.2 did not save which one = -1.000 
+PASS  v0.4.2-default: the session the installed 0.4.2 saved, against what 0.4.2 played with it, largest difference (limit -90) = -240.000 dBFS
+INFO  v0.4.2-default: bit for bit the same (1 yes) = 1.000 
+PASS  v0.4.2-slapback-double: names no preset, since 0.4.2 did not save which one = -1.000 
+PASS  v0.4.2-slapback-double: the session the installed 0.4.2 saved, against what 0.4.2 played with it, largest difference (limit -90) = -240.000 dBFS
+INFO  v0.4.2-slapback-double: bit for bit the same (1 yes) = 1.000 
+PASS  v0.4.2-loose-gang-precise-off: names no preset, since 0.4.2 did not save which one = -1.000 
+PASS  v0.4.2-loose-gang-precise-off: the session the installed 0.4.2 saved, against what 0.4.2 played with it, largest difference (limit -90) = -240.000 dBFS
+INFO  v0.4.2-loose-gang-precise-off: bit for bit the same (1 yes) = 1.000 
+PASS  v0.4.2-loose-gang: names no preset, since 0.4.2 did not save which one = -1.000 
+INFO  v0.4.2-loose-gang: the session the installed 0.4.2 saved, against what 0.4.2 played with it, largest difference (Precise Vibrato on, changed by the note change fix) = -18.861 dBFS
+INFO  v0.4.2-loose-gang: bit for bit the same (1 yes) = 0.000 
 PASS  the sung recording loads
 PASS  null test: bit for bit the same as 0.2.0, no window, as first opened
 PASS  null test: bit for bit the same with the window open and drawing, as first opened
@@ -691,11 +737,11 @@ PASS  the singer stays on its real delay, worst, Natural Pair = 0.498 px
 PASS  share of time a singer is outside its lane, Natural Pair = 0.000 %
 PASS  the readout shows the delay: 22 ms
 PASS  live while the voice plays, Wide Stack
-PASS  the singer stays on its real delay, worst, Wide Stack = 0.632 px
+PASS  the singer stays on its real delay, worst, Wide Stack = 0.633 px
 PASS  share of time a singer is outside its lane, Wide Stack = 0.000 %
 PASS  the readout shows the delay: 23 ms
 PASS  live while the voice plays, Loose Gang
-PASS  the singer stays on its real delay, worst, Loose Gang = 0.941 px
+PASS  the singer stays on its real delay, worst, Loose Gang = 0.944 px
 PASS  share of time a singer is outside its lane, Loose Gang = 0.000 %
 PASS  the readout shows the delay: 26 ms
 PASS  live while the voice plays, Slapback Double
@@ -733,4 +779,12 @@ PASS  audio still runs after the window closes
 PASS  no allocation with the new reading
 PASS  the input peak reading
 PASS  reading it clears it
+PASS  Mono Safe on a stereo track dims Doubles Pan = 0.451 
+PASS  Mono Safe on a stereo track leaves Lead Pan lit, since it still pans the lead = 1.000 
+PASS  on a mono track Lead Pan and Doubles Pan are both dimmed
+PASS  the Precise Vibrato hint no longer says three presets keep it off
+PASS  a session saved on Loose Gang reopens with the preset box reading Loose Gang
+PASS  a session saved by 0.4.2 shows a neutral preset label, not a wrong preset name
+PASS  from no preset the right arrow loads the first preset = 0.000 
+PASS  from no preset the left arrow loads the last preset = 7.000 
 RESULT PASS  0 failures

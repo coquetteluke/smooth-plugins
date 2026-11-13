@@ -5,6 +5,7 @@
 namespace
 {
     const juce::Identifier windowWidthAttribute { "windowWidth" }, advancedOpenAttribute { "advancedOpen" };
+    const juce::Identifier programAttribute { "program" };   // since 0.4.3: the preset last chosen, left out when none is known
 
     struct Preset
     {
@@ -116,6 +117,35 @@ PluginProcessor::PluginProcessor()
     monoSafe = apvts.getRawParameterValue ("monosafe");
     matchLevel = apvts.getRawParameterValue ("matchlevel");
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
+    bypassWasOn.store (bypass->get(), std::memory_order_relaxed);
+    apvts.addParameterListener ("bypass", this);
+}
+
+PluginProcessor::~PluginProcessor()
+{
+    apvts.removeParameterListener ("bypass", this);
+}
+
+void PluginProcessor::parameterChanged (const juce::String& id, float value)
+{
+    if (id != "bypass")
+        return;
+    const bool on = value > 0.5f;
+    const bool was = bypassWasOn.exchange (on, std::memory_order_relaxed);
+    if (on && ! was)
+        bypassSwitchedAtMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+    bypassJustSwitchedOn.store (on && ! was, std::memory_order_relaxed);
+}
+
+void PluginProcessor::reset()
+{
+    // The reset that comes with the host's bypass switching on is left out: clearing then would cut the doubles off at once.
+    if (bypassJustSwitchedOn.exchange (false, std::memory_order_relaxed)
+        && juce::Time::getMillisecondCounter() - bypassSwitchedAtMs.load (std::memory_order_relaxed) < 250)
+        return;
+
+    const juce::ScopedLock lock (getCallbackLock());   // the AU wrapper renders under this lock, so a reset never lands mid block
+    engine.reset (readParams(), juce::jmax (1, getMainBusNumOutputChannels()));
 }
 
 bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -173,6 +203,8 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
         inputPeak.store (peak, std::memory_order_relaxed);
 
     engine.process (buffer.getArrayOfWritePointers(), numIn, numOut, buffer.getNumSamples(), readParams(), forceBypass);
+    if (bypassJustSwitchedOn.load (std::memory_order_relaxed))
+        bypassJustSwitchedOn.store (false, std::memory_order_relaxed);   // only the reset that comes with the switch is left out
 }
 
 void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -230,6 +262,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
+        if (currentProgram >= 0)
+            xml->setAttribute (programAttribute, currentProgram);
         copyXmlToBinary (*xml, dest);
     }
 }
@@ -243,8 +277,14 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             if (xml->hasAttribute (windowWidthAttribute))
                 windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
             advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            // Which preset was chosen, only to name it: its values are already in the state and are not applied again. A session
+            // saved before 0.4.3 does not say, so it names none rather than a wrong one. A damaged number is kept in range.
+            currentProgram = xml->hasAttribute (programAttribute)
+                               ? juce::jlimit (0, getNumPrograms() - 1, xml->getIntAttribute (programAttribute, 0))
+                               : -1;
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (advancedOpenAttribute);
+            xml->removeAttribute (programAttribute);
             // A session saved before 0.4.0 keeps the vibrato it was saved with, and has no Mono Safe and no Match Level.
             const bool savedBefore04 = ! stateHolds (*xml, "precisevibrato");
             applySafeState (apvts, *xml);

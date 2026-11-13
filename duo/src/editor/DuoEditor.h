@@ -31,6 +31,8 @@ public:
     juce::Component& getPanel() noexcept      { return panel; }
     juce::String getHintText() const          { return panel.hintLine.getText(); }
     juce::String getReadoutText (int singer) const  { return panel.readouts[(size_t) singer].getText(); }
+    /** What the preset box reads, for the tests. */
+    juce::String getPresetText() const;
 
 private:
     class PresetBox;

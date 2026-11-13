@@ -495,3 +495,77 @@ static void testWindow()
         check (p.takeInputPeak() == 0.0f, "reading it clears it");
     }
 }
+
+// 0.4.3: the Phase 2 bug check, the window's part.
+static void testWindowPhase2()
+{
+    using namespace windowtests;
+    const auto alphaOf = [] (DuoEditor& e, const char* id)
+    {
+        auto* c = findById<juce::Component> (e.getPanel(), id);
+        return c != nullptr ? c->getAlpha() : -1.0f;
+    };
+
+    // duo-r1-3. Mono Safe leaves Width and Doubles Pan nothing to move, but Lead Pan still places the lead.
+    {
+        PluginProcessor p;
+        setParam (p, "monosafe", 1.0f);
+        auto e = openWindow (p);
+        e->setAdvancedOpen (true, false);
+        for (int i = 0; i < 5; ++i)
+            e->tick (1.0 / 30.0);
+        check (alphaOf (*e, "doublespan") < 1.0f, "Mono Safe on a stereo track dims Doubles Pan", alphaOf (*e, "doublespan"));
+        check (alphaOf (*e, "leadpan") == 1.0f, "Mono Safe on a stereo track leaves Lead Pan lit, since it still pans the lead", alphaOf (*e, "leadpan"));
+    }
+    {
+        PluginProcessor p;
+        juce::AudioProcessor::BusesLayout layout;
+        layout.inputBuses.add (juce::AudioChannelSet::mono());
+        layout.outputBuses.add (juce::AudioChannelSet::mono());
+        p.setBusesLayout (layout);
+        auto e = openWindow (p);
+        e->setAdvancedOpen (true, false);
+        for (int i = 0; i < 5; ++i)
+            e->tick (1.0 / 30.0);
+        check (alphaOf (*e, "leadpan") < 1.0f && alphaOf (*e, "doublespan") < 1.0f, "on a mono track Lead Pan and Doubles Pan are both dimmed");
+    }
+
+    // duo-r1-4. Every preset uses Precise Vibrato since 0.4.2, so the hint must not say three presets keep it off.
+    {
+        PluginProcessor p;
+        auto e = openWindow (p);
+        e->setAdvancedOpen (true, false);
+        e->previewHover ("precisevibrato");
+        check (e->getHintText().isNotEmpty() && ! e->getHintText().contains ("three presets"), "the Precise Vibrato hint no longer says three presets keep it off");
+    }
+
+    // duo-r2-3. The preset box names the preset a session was saved with, and none for a session saved before that was kept.
+    {
+        PluginProcessor a;
+        a.setCurrentProgram (4);
+        juce::MemoryBlock st; a.getStateInformation (st);
+        PluginProcessor p; p.setStateInformation (st.getData(), (int) st.getSize());
+        auto e = openWindow (p);
+        e->tick (1.0 / 30.0);
+        check (e->getPresetText() == "Loose Gang", "a session saved on Loose Gang reopens with the preset box reading Loose Gang");
+    }
+    {
+        juce::MemoryBlock state;
+        juce::File (juce::String (DUO_BASELINE)).getChildFile ("v0.4.2-loose-gang.state").loadFileAsData (state);
+        PluginProcessor p; p.setStateInformation (state.getData(), (int) state.getSize());
+        auto e = openWindow (p);
+        e->tick (1.0 / 30.0);
+        check (e->getPresetText() == "Choose a preset", "a session saved by 0.4.2 shows a neutral preset label, not a wrong preset name");
+
+        // From no preset, the arrows go to the first and the last.
+        auto* box = findById<juce::Component> (e->getPanel(), "presets");
+        const auto click = [&] (float x) { box->mouseDown (mouseEvent (*box, { x, 10.0f }, { x, 10.0f })); };
+        click ((float) box->getWidth() - 5.0f);
+        check (p.getCurrentProgram() == 0, "from no preset the right arrow loads the first preset", p.getCurrentProgram());
+        PluginProcessor q; q.setStateInformation (state.getData(), (int) state.getSize());
+        auto f = openWindow (q);
+        box = findById<juce::Component> (f->getPanel(), "presets");
+        box->mouseDown (mouseEvent (*box, { 5.0f, 10.0f }, { 5.0f, 10.0f }));
+        check (q.getCurrentProgram() == q.getNumPrograms() - 1, "from no preset the left arrow loads the last preset", q.getCurrentProgram());
+    }
+}

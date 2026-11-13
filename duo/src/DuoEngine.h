@@ -61,6 +61,15 @@ public:
     // Share of the input's vibrato each double adds at Vibrato Variation 100. -1 removes it, +0.5 makes it half as wide again.
     static constexpr std::array<double, maxDoubles> vibratoShare { -1.0, 0.5, -0.5 };
 
+    // Length of the Timbre spectrum frame at a sample rate, in samples.
+    static int spectrumFrameSamples (double sampleRate)
+    {
+        // 512 points, 1024 at 88.2 and 96 kHz, 2048 at 176.4 and 192 kHz: about 11 ms at every rate. The lifter and the smoothers
+        // per frame are made for that length.
+        const int order = sampleRate < 60000.0 ? 9 : sampleRate < 120000.0 ? 10 : 11;
+        return 1 << order;
+    }
+
     void prepare (double sampleRate, const Params& p, int numOutputs)
     {
         sr = sampleRate;
@@ -77,7 +86,20 @@ public:
         mask = size - 1;
         for (auto& l : lines)
             l.assign ((size_t) (2 * size), 0.0f); // written twice, so a read never has to wrap
+        reset (p, numOutputs);
+    }
+
+    // Back to how prepare leaves it, at the same rate and size, without allocating: empty lines and spectrum buffers, a new pitch
+    // history, the drift curves from their start, every glide at its target. The host's Reset comes here.
+    void reset (const Params& p, int numOutputs)
+    {
+        if (lines[0].empty())
+            return; // not prepared yet
+        for (auto& l : lines)
+            std::fill (l.begin(), l.end(), 0.0f);
         writeIndex = 0;
+        clearSpectrum();
+        clearTracker();
 
         static constexpr std::array<double, maxDoubles> slowSeconds { 2.1, 1.9, 2.3 }, quickSeconds { 0.43, 0.47, 0.41 }, sideSeconds { 3.1, 2.7, 3.4 };
         for (size_t v = 0; v < maxDoubles; ++v)
@@ -113,6 +135,9 @@ public:
         extra = extraTarget;
         timbre = timbreTarget;
         vibrato = vibratoTarget;
+        for (auto& r : readDelayMs)
+            r.store (0.0f, std::memory_order_relaxed);
+        readPitchHz.store (0.0f, std::memory_order_relaxed);
     }
 
     // Input comes from the first numIn channels and output goes to the first numOut channels, in place.
@@ -350,7 +375,7 @@ private:
     // spectrum is taken at all and a frame's overlap adds back to the input exactly.
     void prepareSpectrum()
     {
-        const int order = sr < 60000.0 ? 9 : 10; // 512 points, 1024 at high rates: about 11 ms at every rate
+        const int order = juce::roundToInt (std::log2 ((double) spectrumFrameSamples (sr)));
         frameSamples = 1 << order;
         hopSamples = frameSamples / 4;
         analysisSamples = frameSamples * 2;
@@ -375,6 +400,17 @@ private:
         {
             overlap[v].assign (n, 0.0f);
             logGain[v].assign (n / 2 + 1, 0.0f);
+        }
+    }
+
+    void clearSpectrum() noexcept
+    {
+        for (auto* b : { &fifo, &frame, &spectrum, &scratch, &analysis, &envelope, &logAverage })
+            std::fill (b->begin(), b->end(), 0.0f);
+        for (size_t v = 0; v < maxDoubles; ++v)
+        {
+            std::fill (overlap[v].begin(), overlap[v].end(), 0.0f);
+            std::fill (logGain[v].begin(), logGain[v].end(), 0.0f);
             levelFix[v] = 0.0f;
             shifted[v] = false;
             spectrumOut[v] = 0.0f;
@@ -529,36 +565,15 @@ private:
         trackerRing.assign ((size_t) trackerRingSize, 0.0f);
         trackerDiff.assign ((size_t) trackerRingSize, 0.0f);
         trackerLinear.assign ((size_t) trackerRingSize, 0.0f);
-        trackerPos = trackerCount = trackerSkip = 0;
-        lp1 = lp2 = 0.0;
-        trackedHz = 0.0;
-        recent.fill (0.0);
-        recentPos = 0;
-        hold = 0;
-        gate = 0.0;
-        haveCents = false;
-        lastCents = 0.0;
         // Band pass over the speeds vibrato has, about 4 to 9.5 Hz. Narrow, so a slide between notes barely gets through. Centred
         // a little high on purpose: its phase lead makes up for the pitch tracker's own lag across the usual vibrato speeds.
         const double w = juce::MathConstants<double>::twoPi * 6.3 / frameRate, alpha = std::sin (w) / (2.0 * 1.2), a0 = 1.0 + alpha;
         bp0 = alpha / a0; bp1 = -2.0 * std::cos (w) / a0; bp2 = (1.0 - alpha) / a0;
-        bpX1 = bpX2 = bpY1 = bpY2 = 0.0;
-        bend.fill (0.0);
-        bendTarget.fill (0.0);
-        bendNow.fill (0.0);
-        bendSmooth.fill (0.0);
         bendStep = 1.0 - std::exp (-1.0 / (trackerSeconds * sr));
         bendSmoothCoef = 1.0 - std::exp (-1.0 / (0.003 * sr));
 
-        // Precise Vibrato: the pitch history and, for each vibrato speed tried, how many frames make its window and the
-        // cosine and sine at each of them (time runs back from the newest frame).
-        fitCents.fill (0.0);
-        fitOk.fill (0);
-        fitRecent.fill (0.0);
-        fitHead = fitSince = fitRecentPos = 0;
-        fitHave = fitGood = false;
-        fitLast = fitGate = fitA = fitB = fitOmega = 0.0;
-        fitAge = trackerAge = 0.025;
+        // Precise Vibrato: for each vibrato speed tried, how many frames make its window and the cosine and sine at each of them
+        // (time runs back from the newest frame).
         fitCos.assign ((size_t) (fitRates * fitFrames), 0.0);
         fitSin.assign ((size_t) (fitRates * fitFrames), 0.0);
         for (int j = 0; j < fitRates; ++j)
@@ -571,6 +586,35 @@ private:
                 fitSin[(size_t) (j * fitFrames + k)] = std::sin (-w * trackerSeconds * k);
             }
         }
+    }
+
+    void clearTracker() noexcept
+    {
+        for (auto* b : { &trackerRing, &trackerDiff, &trackerLinear })
+            std::fill (b->begin(), b->end(), 0.0f);
+        trackerPos = trackerCount = trackerSkip = 0;
+        lp1 = lp2 = 0.0;
+        trackedHz = 0.0;
+        recent.fill (0.0);
+        recentPos = 0;
+        hold = 0;
+        gate = 0.0;
+        haveCents = false;
+        lastCents = 0.0;
+        bpX1 = bpX2 = bpY1 = bpY2 = 0.0;
+        bend.fill (0.0);
+        bendTarget.fill (0.0);
+        bendNow.fill (0.0);
+        bendSmooth.fill (0.0);
+        // Precise Vibrato: the pitch history and the sinusoid in use.
+        fitCents.fill (0.0);
+        fitOk.fill (0);
+        fitRecent.fill (0.0);
+        fitHead = fitSince = fitRecentPos = 0;
+        fitHave = fitGood = false;
+        fitLast = fitGate = fitA = fitB = fitOmega = 0.0;
+        fitAge = trackerAge = fitOriginAge = 0.025;
+        fitJumpAge = -1.0;
         delayNowMs.fill (0.0);
     }
 
@@ -672,8 +716,13 @@ private:
         const bool precise = vibratoPreciseTarget;
         if (precise)
         {
+            fitOriginAge += trackerSeconds; // the sinusoid in use runs on, so while no new fit is taken it keeps moving as it fades
             if (vibrato != 0.0) solveFit(); else fitGood = false;
             fitGate += juce::jlimit (-fitGateStep, fitGateStep, (fitGood ? 1.0 : 0.0) - fitGate);
+        }
+        else
+        {
+            fitGate = 0.0; // switched back on, it fades in from nothing instead of where it was left
         }
         for (size_t v = 0; v < maxDoubles; ++v)
         {
@@ -697,6 +746,7 @@ private:
 
     void pushFit (bool voiced) noexcept
     {
+        if (fitJumpAge >= 0.0) fitJumpAge += trackerSeconds;
         double c = fitLast;
         if (voiced)
         {
@@ -705,7 +755,11 @@ private:
             const double before = fitRecent[(size_t) fitRecentPos]; // 8 frames ago, about 40 ms
             fitRecent[(size_t) fitRecentPos] = c;
             fitRecentPos = (fitRecentPos + 1) % (int) fitRecent.size();
-            if (! fitHave || std::abs (c - before) > 150.0) fitSince = 0; // a new note: the window starts over on it
+            const bool jump = fitHave && std::abs (c - before) > 150.0;
+            if (! fitHave || jump) fitSince = 0; // a new note: the window starts over on it
+            // The sinusoid in use belongs to the old note. Remember how long ago the new one came in (the first frame that shows it
+            // only), so no double is bent by the old vibrato once it plays the new note.
+            if (jump && fitJumpAge < 0.0) fitJumpAge = trackerAge;
             fitHave = true;
             fitLast = c;
             fitAge = trackerAge;
@@ -723,7 +777,7 @@ private:
     void solveFit() noexcept
     {
         fitGood = false;
-        double best = -1.0, bestAmp = 0.0, bestTrend = 0.0;
+        double best = -1.0, bestAmp = 0.0, bestTrend = 0.0, bestA = 0.0, bestB = 0.0;
         int bestJ = -1;
         for (int j = 0; j < fitRates; ++j)
         {
@@ -783,22 +837,33 @@ private:
             if (share > best)
             {
                 best = share; bestJ = j;
-                fitA = p[2]; fitB = p[3];
-                fitOmega = juce::MathConstants<double>::twoPi * fitRateHz (j);
+                bestA = p[2]; bestB = p[3];
                 bestAmp = std::sqrt (p[2] * p[2] + p[3] * p[3]);
                 bestTrend = std::abs (p[1]) * trackerSeconds * n;
             }
         }
         fitGood = best >= fitMinShare && bestAmp >= fitMinCents && bestAmp <= 150.0 && bestJ >= 1 && bestJ <= fitRates - 2 && bestTrend <= fitMaxTrend * bestAmp;
+        // Only a fit that passes is used. A refused one (a slide, a new note) never bends a double: the last good one runs on
+        // while the gate shuts.
+        if (fitGood)
+        {
+            fitA = bestA; fitB = bestB;
+            fitOmega = juce::MathConstants<double>::twoPi * fitRateHz (bestJ);
+            fitOriginAge = fitAge;
+            fitJumpAge = -1.0;
+        }
     }
 
-    // The vibrato, in cents, of the sound double v is playing now. That sound left the input one delay ago; the newest pitch
-    // reading is fitAge old; and the bend made now lands bendLandsSeconds later. So the sinusoid is read this far past its
-    // newest frame (often a few ms into the future of the readings, which a sinusoid can give and a filter cannot).
+    // The vibrato, in cents, of the sound double v is playing now. That sound left the input one delay ago; the frame the fit
+    // ends on is fitOriginAge old (the newest pitch reading when the fit is new); and the bend made now lands bendLandsSeconds
+    // later. So the sinusoid is read this far past its newest frame (often a few ms into the future of the readings, which a
+    // sinusoid can give and a filter cannot). Once the double plays a note that came in after the fit, it gets nothing.
     double preciseVibrato (size_t v) const noexcept
     {
         if (fitGate <= 0.0) return 0.0;
-        const double t = fitAge - delayNowMs[v] * 0.001 + bendLandsSeconds;
+        const double playing = delayNowMs[v] * 0.001 - bendLandsSeconds; // how long ago the sound the bend lands on was sung
+        if (fitJumpAge >= 0.0 && playing <= fitJumpAge) return 0.0;
+        const double t = fitOriginAge - delayNowMs[v] * 0.001 + bendLandsSeconds;
         return juce::jlimit (-120.0, 120.0, fitGate * (fitA * std::cos (fitOmega * t) + fitB * std::sin (fitOmega * t)));
     }
 
@@ -928,6 +993,8 @@ private:
     int fitHead = 0, fitSince = 0, fitRecentPos = 0;
     bool fitHave = false, fitGood = false, vibratoPreciseTarget = true;
     double fitLast = 0.0, fitGate = 0.0, fitA = 0.0, fitB = 0.0, fitOmega = 0.0, fitAge = 0.025, trackerAge = 0.025;
+    double fitOriginAge = 0.025;  // how old the newest frame of the sinusoid in use is
+    double fitJumpAge = -1.0;     // how long ago a new note came in after the sinusoid in use was fitted, -1 for none
     std::array<double, maxDoubles> delayNowMs {};
 
     // Readings for a later window

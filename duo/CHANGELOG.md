@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.3, 2026-11-13
+
+Bug fixes from the Phase 2 bug check. No control, preset or default changed.
+
+- **Precise Vibrato at a note change.** After a jump of more than 150 cents the doubles were still bent by the old note's vibrato for about 50 ms, read at one frozen moment, so double 1 got a one-sided push of up to 31 cents on its new note (a scoop). Now a double gets no bend from the old note once it plays the new one. A fit that fails the vibrato checks is never used any more: the last good one runs on while the bend fades. Switching Precise Vibrato back on fades in from nothing instead of where it was left (it pushed a straight note by 35 cents). This changes what Wide Stack, Loose Gang, Two Singers and any session with Precise Vibrato on and Vibrato Variation above 0 play at note changes; held vibrato measures as before.
+- **Host Reset.** Duo did nothing on the host's Reset, so after one the doubles could sing up to 220 ms of what came before it, and the wander carried on from wherever it was, so two bounces of the same part differed. Reset now clears what preparing clears, without allocating. The Reset JUCE sends right after the host's own bypass switches on is left out, so the 20 ms fade to dry still runs.
+- **The chosen preset is saved.** A reopened session named Natural Pair whatever it came from, and the arrows stepped from there. The preset last chosen is now saved, only to name it. Sessions saved before 0.4.3 read "Choose a preset" and sound exactly as before (proven against the installed 0.4.2, `tests/baseline/`).
+- **176.4 and 192 kHz.** The Timbre spectrum frame was 5.3 to 5.8 ms there instead of about 11 ms, so formants moved short (1.13 instead of 1.19 for double 1) and the smoothers ran twice as fast. It is 11 ms at every rate now.
+- **Window.** Lead Pan is no longer dimmed while Mono Safe is on, since it still pans the lead; it is dimmed only on a mono track. The Precise Vibrato hint no longer says three presets keep it off.
+- Tests: `PluginTest phase2` runs only these checks. The slide check takes the engine's slow leak out, since the leak pulling a bend back to the mark can read as 5.2 cents by itself.
+
 ## 0.4.2, 2026-11-11
 
 Luke said yes to this on 2026-11-11.

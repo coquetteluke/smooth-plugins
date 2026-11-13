@@ -6,6 +6,8 @@ Automatic vocal doubling. Your vocal plays untouched, and 1 to 3 copies follow i
 
 Audio Units > Luke Garito > Duo. AU code: `aufx SDuo Luke`. Works mono to stereo (the usual choice on a vocal track), mono to mono, and stereo to stereo. No licence system. Zero latency at every sample rate, bypassed or not.
 
+The host's Reset (Logic sends one when playback starts and before a bounce) empties the delay lines and starts each double's wander over from its beginning, so the doubles never sing what came before it and two bounces of the same part come out the same. The Reset JUCE sends right after the host's own bypass switches on is left out, so the doubles still fade to dry in 20 ms.
+
 ## Controls
 
 | Control | Range | What it does |
@@ -41,6 +43,7 @@ A stage seen from straight above, with the audience at the bottom. The title rea
 - **Around the stage:** Width underneath, with one handle under each double. Tightness up the side. Doubles and Bypass above. Level faders on the right, with the note being followed and each double's live delay under them.
 - **Advanced:** Timing, Pitch, Vibrato, Timbre, Vocal Range, Lead Pan, Doubles Pan, Extra Delay, and three switches at the right: Precise Vibrato, Mono Safe and Match Level. While Mono Safe is on, Width and Doubles Pan are dimmed, as on a mono track, and the stage still draws the doubles where Width would put them.
 - Everything is a real AU parameter with its old ID, name and range. The window adds only its size and whether Advanced is open to a session.
+- The preset box names the preset last chosen, which the session keeps since 0.4.3. A session saved before that does not say, so it reads "Choose a preset" until one is chosen, and the arrows then go to the first or the last preset.
 - With nothing playing, doubles walk back to their marks and the window stops drawing.
 
 Pictures are in `docs/window/`, made by `build/RenderWindow_artefacts/Release/RenderWindow`. Inter is under the SIL OFL, see `assets/fonts/OFL.txt`.
@@ -56,6 +59,8 @@ Pictures are in `docs/window/`, made by `build/RenderWindow_artefacts/Release/Re
 - **Two Singers**: lead left of centre, one copy right, with changed timbre and vibrato.
 - **Slapback Double**: 1 copy at about 90 ms, for an obvious echo double.
 
+Which preset was chosen is saved with the session (since 0.4.3), only to name it: its values are in the session already and are not applied again.
+
 ## Signal flow
 
 Lead: input > Lead Level and Lead Pan > output, never delayed.
@@ -66,7 +71,7 @@ Reading through a moving delay changes pitch by the rate the delay moves. The cu
 
 A stereo input feeds the doubles from its mono sum, so sound that is opposite on left and right does not reach them. The lead keeps its stereo image.
 
-Vibrato Variation with Precise Vibrato on: the pitch follower gives a reading every 5 ms. A straight line plus one sinusoid is fitted to the last cycle and a half of those readings, for each vibrato speed from 4 to 8.5 Hz, and the speed that explains the pitch best wins. If that sinusoid explains less than half of what the line leaves, is under 3 cents, or the line moves more than three times as far as the sinusoid swings, it is not vibrato and nothing is bent. Each double then reads the sinusoid at the moment it is playing (its own delay back from now), so the bend lands on the vibrato it is meant to change.
+Vibrato Variation with Precise Vibrato on: the pitch follower gives a reading every 5 ms. A straight line plus one sinusoid is fitted to the last cycle and a half of those readings, for each vibrato speed from 4 to 8.5 Hz, and the speed that explains the pitch best wins. If that sinusoid explains less than half of what the line leaves, is under 3 cents, or the line moves more than three times as far as the sinusoid swings, it is not vibrato: it is never used, and the bend fades out over 50 ms on the last sinusoid that was, which runs on as it fades. Each double then reads the sinusoid at the moment it is playing (its own delay back from now), so the bend lands on the vibrato it is meant to change. When the note jumps (more than 150 cents in 40 ms), a double gets no bend from the old note's vibrato once it plays the new note.
 
 Mono Safe: each double is added to the left and taken from the right (the second double the other way round) at its own level, through its one centre read head.
 
@@ -89,6 +94,10 @@ All in `tests/results.txt`, from `tests/PluginTest.cpp`, on synthetic signals. L
 - Sweep rate: the largest spectral line holds a small share of the path's energy, against 96 percent for a plain chorus sweep measured the same way.
 - Timing Amount, Pitch Amount, Extra Delay, both pans, Vibrato Variation, Timbre Variation and Vocal Range each have their own measured checks.
 - Latency: 0 samples at 44.1, 48, 88.2 and 96 kHz, bypassed or not.
+- Timbre's spectrum frame is 10.7 to 11.6 ms at every rate from 44.1 to 192 kHz, and the formant move holds at 176.4 and 192 kHz as well.
+- Precise Vibrato into a jump of a fifth: once double 1 sings the new note the bend stays under 3 cents (it was 31 cents for about 50 ms before 0.4.3). Switched back on while a straight note plays, it adds under 2 cents (35 before).
+- Host Reset: play, reset, play gives exactly what a new instance gives; silence after a reset is silent; it allocates nothing.
+- A session saved by the installed 0.4.2 (default, Slapback Double, and Loose Gang with Precise Vibrato off) plays bit for bit what 0.4.2 played with it. See `tests/baseline/`.
 - Null test: every output sample's bits, on real speech and sung-style material from macOS `say`, hash the same as the 0.2.0 source for all 8 presets, as first opened, mono layouts, 44.1 and 96 kHz, and with every control moving. Both with no window and with the window open and drawing. See `tests/NullTest.h` and `tests/WindowTests.h`.
 - Window CPU: 2.4% to 4.4% of one core with Loose Gang playing, nothing drawn when silent. See `docs/window-cpu.md`.
 - Window: every parameter has a control, automation moves each one, each drag is one gesture, double-click resets, typing works. Singers stay on their real delay and inside their lanes. 30 opens and closes with audio running.

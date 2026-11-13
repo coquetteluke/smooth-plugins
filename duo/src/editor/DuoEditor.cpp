@@ -59,9 +59,9 @@ public:
         g.setColour (tone::text.withAlpha (zone != none ? 0.13f : 0.075f));
         g.fillRoundedRectangle (b, b.getHeight() * 0.5f);
 
-        g.setColour (tone::text);
+        g.setColour (processor.getCurrentProgram() >= 0 ? tone::text : tone::muted);
         g.setFont (font (Weight::regular, 14.0f));
-        g.drawText (processor.getProgramName (processor.getCurrentProgram()), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
+        g.drawText (text(), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
 
         const auto chevron = [&] (float cx, float direction, bool lit)
         {
@@ -85,12 +85,21 @@ public:
         const auto hit = zoneAt (e.position.x);
         const int count = processor.getNumPrograms();
 
+        const int current = processor.getCurrentProgram();   // -1 for none: the arrows then go to the last or the first
+
         if (hit == previous)
-            choose ((processor.getCurrentProgram() + count - 1) % count);
+            choose (current < 0 ? count - 1 : (current + count - 1) % count);
         else if (hit == next)
-            choose ((processor.getCurrentProgram() + 1) % count);
+            choose (current < 0 ? 0 : (current + 1) % count);
         else
             openMenu();
+    }
+
+    // A session saved before 0.4.3 does not say which preset it came from, so it names none rather than a wrong one.
+    juce::String text() const
+    {
+        const int current = processor.getCurrentProgram();
+        return current >= 0 ? processor.getProgramName (current) : juce::String ("Choose a preset");
     }
 
     void choose (int index)
@@ -211,7 +220,7 @@ DuoEditor::Panel::Panel (DuoEditor& e, PluginProcessor& p)
       doublesPan (p.apvts, "doublespan", "Doubles Pan", "Moves all the doubles left or right together, on top of Width.", ValueSlider::Format::pan),
       extraDelay (p.apvts, "extradelay", "Extra Delay", "Adds a fixed delay to every double. Turn it up for a slapback.", ValueSlider::Format::milliseconds),
       range (p.apvts, "range", "Vocal Range", "Where to listen for your pitch. Used only by Vibrato and Timbre."),
-      preciseVibrato (p.apvts, "precisevibrato", "Precise Vibrato", "Vibrato follows your real vibrato closely. Off is how it worked before 0.4, kept for older sessions and three presets."),
+      preciseVibrato (p.apvts, "precisevibrato", "Precise Vibrato", "Vibrato follows your real vibrato closely. Off is how it worked before 0.4, kept for older sessions."),
       monoSafe (p.apvts, "monosafe", "Mono Safe", "The doubles cancel when left and right are added: in mono, and for a tuner or harmony plug-in after Duo, only your own voice is left. Width and Doubles Pan rest."),
       matchLevel (p.apvts, "matchlevel", "Match Level", "Turns you and the doubles down together, so Duo comes out as loud as the vocal that went in. The balance between you and the doubles stays.")
 {
@@ -306,7 +315,10 @@ void DuoEditor::Panel::resized()
     {
         auto* c = advancedControls[(size_t) i];
         c->setVisible (showAdvanced);
-        c->setAlpha (advancedAmount * ((c == &leadPan || c == &doublesPan) ? width.getAlpha() : 1.0f));
+        // Doubles Pan steps back with Width (a mono track, or Mono Safe). Lead Pan still places the lead under Mono Safe, so it
+        // steps back only on a mono track.
+        const float stepBack = c == &doublesPan ? width.getAlpha() : c == &leadPan && processor.getMainBusNumOutputChannels() < 2 ? 0.45f : 1.0f;
+        c->setAlpha (advancedAmount * stepBack);
         const int column = i % 4, row = i / 4;
         const int height = c == &range ? 32 : advancedRow;
         c->setBounds (margin + column * (columnWidth + columnGap), firstRowY + row * (advancedRow + 6) + (c == &range ? 8 : 0), columnWidth, height);
@@ -532,6 +544,11 @@ void DuoEditor::tick (double dtSeconds)
         panel.advancedHeader->setAmount (panel.advancedAmount);
         panel.repaint();
     }
+}
+
+juce::String DuoEditor::getPresetText() const
+{
+    return panel.presets->text();
 }
 
 void DuoEditor::previewHover (const juce::String& paramId)

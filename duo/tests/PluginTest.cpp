@@ -1672,6 +1672,335 @@ static void testCpu()
     check (took / 10.0 <= 0.1, "worst case at 96 kHz, 3 doubles with split heads, share of one core", took / 10.0);
 }
 
+// ---------------------------------------------------------------- 0.4.3: the Phase 2 bug check
+
+// The bend Precise Vibrato puts on double 1, in cents, read every 64 samples from the delay the plug-in reports, with the double held
+// still otherwise. t is when each reading was taken. The engine's slow leak (1 s) pulls any bend back towards the double's mark, which
+// by itself reads as up to 1731 x 3 ms / 1 s = 5.2 cents; vibrato is the bend with that taken out.
+struct BendTrace { std::vector<double> t, cents, vibrato, delay; };
+
+static BendTrace bendTrace (const std::vector<float>& x, double sr, float loose, const std::function<void (PluginProcessor&, double)>& atTime = {})
+{
+    Setup s = solo (0, loose); s.timing = 0.0f; s.pitch = 0.0f; s.vibrato = 100.0f;
+    PluginProcessor q; apply (q, s); setParam (q, "precisevibrato", 1.0f); prepare (q, 1, sr, 64);
+    const double mark = DuoEngine::restDelayMs (0, loose, 0.0, 0.0, 0.0);
+    BendTrace tr;
+    double last = 0; bool have = false;
+    render (q, x, 64, nullptr, [&] (int idx)
+    {
+        const double t = idx * 64.0 / sr, d = q.getDelayMs (0);
+        tr.t.push_back (t);
+        tr.cents.push_back (have ? -1731.2 * (d - last) * 0.001 / (64.0 / sr) : 0.0);
+        tr.vibrato.push_back (tr.cents.back() - 1731.2 * (d - mark) * 0.001 / 1.0);
+        tr.delay.push_back (d);
+        last = d; have = true;
+        if (atTime) atTime (q, t);
+    });
+    return tr;
+}
+
+static double worstBend (const BendTrace& tr, double from, double to, bool leakTakenOut = false)
+{
+    double worst = 0;
+    for (size_t i = 0; i < tr.t.size(); ++i)
+        if (tr.t[i] >= from && tr.t[i] < to) worst = std::max (worst, std::abs (leakTakenOut ? tr.vibrato[i] : tr.cents[i]));
+    return worst;
+}
+
+static double delayAt (const BendTrace& tr, double t)
+{
+    for (size_t i = 0; i < tr.t.size(); ++i)
+        if (tr.t[i] >= t) return tr.delay[i];
+    return tr.delay.back();
+}
+
+// A sung line written directly: cents (from 220 Hz) for each moment, five harmonics.
+static std::vector<float> sungLine (int n, double sr, const std::function<double (double)>& centsAt)
+{
+    std::vector<float> x ((size_t) n);
+    double phase = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        phase += 220.0 * std::pow (2.0, centsAt (i / sr) / 1200.0) / sr;
+        phase -= std::floor (phase);
+        double v = 0; for (int h = 1; h <= 5; ++h) v += std::sin (twoPi * h * phase) / h;
+        x[(size_t) i] = (float) (0.3 * v);
+    }
+    return x;
+}
+
+// duo-r1-1. Vibrato into a note change or a slide, with Precise Vibrato on. The old note's vibrato belongs to the old note: once double 1
+// plays the new note it gets no bend, and a fit that was refused is never applied. Limit from the straight-part test above: 5 cents.
+static void testPreciseVibratoNoteChanges()
+{
+    const double sr = 48000.0;
+    const int n = 48000 * 12;
+    const double cycle = 1.1, jumpAt = 0.8;   // 0.8 s of a 50 cent 5.5 Hz vibrato on 220 Hz, then 330 Hz held straight; the jump lands on a new phase each time
+    const auto jumps = sungLine (n, sr, [&] (double t)
+    {
+        return std::fmod (t, cycle) < jumpAt ? 50.0 * std::sin (twoPi * 5.5 * t) : 702.0;
+    });
+    for (float loose : { 30.0f, 85.0f })
+    {
+        const auto tr = bendTrace (jumps, sr, loose);
+        double worst = 0, walk = 0;
+        for (double at = cycle + jumpAt; at + 0.3 < n / sr; at += cycle)
+        {
+            worst = std::max (worst, worstBend (tr, at + 0.06, at + 0.29));
+            walk = std::max (walk, std::abs (delayAt (tr, at + 0.29) - delayAt (tr, at)));
+        }
+        const auto tag = "Precise Vibrato, Tightness " + std::to_string ((int) loose) + ", vibrato then a jump up a fifth: ";
+        check (worst <= 5.0, tag + "once double 1 sings the new note it gets no bend (60 to 290 ms after), worst", worst, "cents");
+        info (tag + "largest delay walk over the 290 ms after the jump", walk, "ms");
+    }
+
+    // The same jump with Precise Vibrato switched off 0.3 s before it and on again 0.1 s after it, on the new straight note.
+    {
+        const auto tr = bendTrace (jumps, sr, 30.0f, [&] (PluginProcessor& q, double t)
+        {
+            const double inCycle = std::fmod (t, cycle);
+            if (t > cycle && std::abs (inCycle - (jumpAt - 0.3)) < 0.0007) setParam (q, "precisevibrato", 0.0f);
+            if (t > cycle && std::abs (inCycle - (jumpAt + 0.1)) < 0.0007) setParam (q, "precisevibrato", 1.0f);
+        });
+        double worst = 0;
+        for (double at = cycle + jumpAt; at + 0.3 < n / sr; at += cycle)
+            worst = std::max (worst, worstBend (tr, at + 0.1, at + 0.29));
+        check (worst <= 5.0, "Precise Vibrato switched back on while a straight note plays: no bend from before it was switched off, worst", worst, "cents");
+    }
+
+    // A consonant in a vibrato: 50 ms of silence every 1.1 s, the vibrato going on in step across it. Too little of the window is voiced
+    // to fit, and 0.4.2 then read the old sinusoid at one frozen moment, a one-sided push. Double 1 plays what the lead sang one delay
+    // ago, so its vibrato and the bend should cancel; the bend must at least never leave more than doing nothing would (1.0).
+    {
+        const double gapCycle = 1.1, gapAt = 0.8, gapLength = 0.05;
+        auto gaps = sungLine (n, sr, [&] (double t) { return 50.0 * std::sin (twoPi * 5.5 * t); });
+        for (int i = 0; i < n; ++i)
+        {
+            const double u = std::fmod (i / sr, gapCycle);
+            if (u >= gapAt && u < gapAt + gapLength) gaps[(size_t) i] = 0.0f;
+        }
+        const auto tr = bendTrace (gaps, sr, 30.0f);
+        double left = 0, whole = 0;
+        for (size_t i = 0; i < tr.t.size(); ++i)
+        {
+            const double t = tr.t[i], u = std::fmod (t, gapCycle);
+            if (t < gapCycle || u < gapAt + gapLength + 0.036 || u > gapAt + gapLength + 0.25) continue;   // from when the double plays the voice again
+            const double vib = 50.0 * std::sin (twoPi * 5.5 * (t - tr.delay[i] * 0.001));
+            left += (vib + tr.cents[i]) * (vib + tr.cents[i]);
+            whole += vib * vib;
+        }
+        const double share = std::sqrt (left / std::max (whole, 1.0e-9));
+        check (share <= 1.0, "Precise Vibrato, a 50 ms consonant in a vibrato: in the 250 ms after it, double 1 keeps no more vibrato than with no bend", share);
+    }
+
+    // Vibrato, then an S shaped slide of 200 cents over 200 ms, then the note held straight. A double that only lost its vibrato
+    // correction can be bent at most by that vibrato (50 cents) on the slide, and not at all once it holds the new note.
+    {
+        const double slideAt = 0.8, slideLength = 0.2, slideCycle = 1.4;
+        const auto slides = sungLine (n, sr, [&] (double t)
+        {
+            const double u = std::fmod (t, slideCycle);
+            if (u < slideAt) return 50.0 * std::sin (twoPi * 5.5 * t);
+            const double a = juce::jlimit (0.0, 1.0, (u - slideAt) / slideLength);
+            return 200.0 * a * a * (3.0 - 2.0 * a);
+        });
+        const auto tr = bendTrace (slides, sr, 30.0f);
+        double onSlide = 0, after = 0;
+        for (double at = slideCycle + slideAt; at + 0.55 < n / sr; at += slideCycle)
+        {
+            onSlide = std::max (onSlide, worstBend (tr, at + 0.06, at + slideLength + 0.06));
+            after = std::max (after, worstBend (tr, at + slideLength + 0.06, at + 0.59, true));
+        }
+        check (onSlide <= 55.0, "Precise Vibrato, vibrato then a slide: on the slide double 1 is bent no more than its old vibrato, worst", onSlide, "cents");
+        check (after <= 5.0, "Precise Vibrato, vibrato then a slide: once double 1 holds the new note it gets no vibrato bend (the leak taken out), worst", after, "cents");
+    }
+}
+
+// duo-r1-2. The host's Reset (Logic sends one at the start of playback and before a bounce) clears what prepareToPlay clears.
+static void testReset()
+{
+    const double sr = 48000.0;
+    Setup s; s.doubles = 3; s.loose = 60.0f; s.width = 80.0f; s.lead = 0.0f; s.d1 = s.d2 = s.d3 = -6.0f; s.vibrato = 60.0f; s.timbre = 50.0f;
+    const auto a = vibratoNote (48000 * 5, sr, 220.0, 5.5, 50.0), b = vibratoNote (48000 * 3, sr, 196.0, 5.2, 40.0);
+    const auto largest = [] (const juce::AudioBuffer<float>& x, const juce::AudioBuffer<float>& y)
+    {
+        double worst = 0;
+        for (int ch = 0; ch < x.getNumChannels(); ++ch)
+            for (int i = 0; i < x.getNumSamples(); ++i) worst = std::max (worst, (double) std::abs (x.getSample (ch, i) - y.getSample (ch, i)));
+        return worst;
+    };
+
+    {
+        PluginProcessor fresh; apply (fresh, s); prepare (fresh, 2, sr, 512);
+        const auto want = render (fresh, b, 512);
+        PluginProcessor p; apply (p, s); prepare (p, 2, sr, 512);
+        render (p, a, 512);
+        p.reset();
+        const double worst = largest (render (p, b, 512), want);
+        check (worst == 0.0, "play, reset, play: the second part equals a new instance playing it, largest difference", worst);
+    }
+    {
+        PluginProcessor p; apply (p, s); prepare (p, 2, sr, 512);
+        std::vector<float> nz ((size_t) sr); noise (nz.data(), (int) sr, 0.25);
+        render (p, nz, 512);
+        p.reset();
+        const auto out = render (p, std::vector<float> ((size_t) (sr * 0.3), 0.0f), 512);
+        const double peak = std::max (out.getMagnitude (0, 0, out.getNumSamples()), out.getMagnitude (1, 0, out.getNumSamples()));
+        check (peak == 0.0, "after a reset, silence in gives silence out: largest sample", peak);
+        const long before = testkit::allocs.load();
+        p.reset();
+        const long made = testkit::allocs.load() - before;
+        check (made == 0, "reset allocates nothing, allocations", (double) made);
+    }
+    {
+        PluginProcessor never;
+        never.reset();
+        check (true, "a reset before the first prepare is harmless");
+    }
+
+    // JUCE's AU wrapper resets straight after the host turns its own bypass on. Clearing then would cut the doubles off at once instead
+    // of the 20 ms fade to dry, so that one reset is left out.
+    {
+        std::vector<float> nz ((size_t) sr); noise (nz.data(), (int) sr, 0.25);
+        PluginProcessor p, q; apply (p, s); apply (q, s); prepare (p, 2, sr, 256); prepare (q, 2, sr, 256);
+        const auto withReset = render (p, nz, 256, nullptr, [&] (int idx) { if (idx == 100) { setParam (p, "bypass", 1.0f); p.reset(); } });
+        const auto without = render (q, nz, 256, nullptr, [&] (int idx) { if (idx == 100) setParam (q, "bypass", 1.0f); });
+        const double worst = largest (withReset, without);
+        check (worst == 0.0, "the reset that comes with host bypass switching on changes nothing: the fade to dry goes on, largest difference", worst);
+    }
+    // A later reset while bypassed does clear: the doubles come back from empty lines when bypass goes off.
+    {
+        std::vector<float> nz ((size_t) sr); noise (nz.data(), (int) sr, 0.25);
+        PluginProcessor p, q; apply (p, s); apply (q, s); prepare (p, 2, sr, 256); prepare (q, 2, sr, 256);
+        const auto step = [&] (PluginProcessor& x, int idx, bool resetToo)
+        {
+            if (idx == 50) setParam (x, "bypass", 1.0f);
+            if (idx == 100 && resetToo) x.reset();
+            if (idx == 101) setParam (x, "bypass", 0.0f);
+        };
+        const auto withReset = render (p, nz, 256, nullptr, [&] (int idx) { step (p, idx, true); });
+        const auto without = render (q, nz, 256, nullptr, [&] (int idx) { step (q, idx, false); });
+        check (largest (withReset, without) > 0.0, "a reset later on while bypassed is not left out");
+    }
+}
+
+// duo-r2-1. The Timbre spectrum frame is about 11 ms at every rate Logic offers, so its smoothers and lifter mean the same thing.
+static void testHighRateTimbre()
+{
+    for (double rate : { 44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0 })
+    {
+        const double ms = DuoEngine::spectrumFrameSamples (rate) * 1000.0 / rate;
+        check (ms >= 10.5 && ms <= 12.0, "Timbre frame at " + std::to_string ((int) rate) + " Hz is 10.5 to 12 ms", ms, "ms");
+    }
+    for (double rate : { 176400.0, 192000.0 })
+    {
+        const int len = (int) rate * 6;
+        const auto x = formantNoise (len, 2000.0, rate);
+        const double before = spectrumPeakHz (x, 0, rate, 1000.0, 4500.0);
+        for (int v = 0; v < 2; ++v)
+        {
+            Setup s = solo (v, 0.0f); s.timing = 0.0f; s.pitch = 0.0f; s.timbre = 100.0f;
+            const double measured = spectrumPeakHz (runSolo (x, rate, s), (int) (0.2 * rate), rate, 1000.0, 4500.0) / before;
+            const double wanted = std::pow (2.0, DuoEngine::timbreSemitones[(size_t) v] / 12.0);
+            check (std::abs (measured - wanted) <= 0.04, "Timbre Variation 100 at " + std::to_string ((int) rate) + " Hz, double " + std::to_string (v + 1) + ": formant moves by " + std::to_string (wanted).substr (0, 5) + " within 0.04, measured", measured);
+        }
+    }
+    // Short-term level of double 1 on a steady voice shape, at 48 and 192 kHz. Only shown: the frame check above is the test.
+    for (double rate : { 48000.0, 192000.0 })
+    {
+        const int len = (int) rate * 4, win = (int) (rate * 0.02);
+        const auto saw = formantSaw (len, 180.0, rate);
+        Setup s = solo (0, 0.0f); s.timing = 0.0f; s.pitch = 0.0f; s.timbre = 100.0f;
+        const auto out = runSolo (saw, rate, s);
+        std::vector<double> dbs;
+        for (int at = (int) rate; at + win <= len; at += win) dbs.push_back (toDb (rms (out.data() + at, win)));
+        double mean = 0; for (auto d : dbs) mean += d; mean /= (double) dbs.size();
+        double var = 0; for (auto d : dbs) var += (d - mean) * (d - mean);
+        info ("Timbre Variation 100 at " + std::to_string ((int) rate) + " Hz, double 1: level ripple over 20 ms windows", std::sqrt (var / (double) dbs.size()), "dB");
+    }
+}
+
+// duo-r2-3. The chosen preset is saved with the session, only to name it.
+static juce::File baselineFile (const juce::String& name) { return juce::File (juce::String (DUO_BASELINE)).getChildFile (name); }
+
+static std::vector<float> readFloats (const juce::String& name)
+{
+    juce::MemoryBlock m;
+    if (! baselineFile (name).loadFileAsData (m)) return {};
+    const auto* f = static_cast<const float*> (m.getData());
+    return { f, f + m.getSize() / sizeof (float) };
+}
+
+static void testSavedPreset()
+{
+    const auto programAfterReload = [] (PluginProcessor& from)
+    {
+        juce::MemoryBlock st; from.getStateInformation (st);
+        PluginProcessor to; to.setStateInformation (st.getData(), (int) st.getSize());
+        return to.getCurrentProgram();
+    };
+    {
+        PluginProcessor a;
+        check (a.getCurrentProgram() == 0, "a new Duo names Natural Pair, which is its default state", a.getCurrentProgram());
+        a.setCurrentProgram (4);
+        check (programAfterReload (a) == 4, "a session saved after choosing Loose Gang reloads naming it", programAfterReload (a));
+        setParam (a, "width", 20.0f);
+        juce::MemoryBlock st; a.getStateInformation (st);
+        PluginProcessor b; b.setStateInformation (st.getData(), (int) st.getSize());
+        check (std::abs (b.apvts.getRawParameterValue ("width")->load() - 20.0f) < 0.06f, "the preset is not applied again on reload: a Width changed after choosing it stays");
+        check (! b.apvts.state.hasProperty ("program"), "the preset number stays out of the sound's value tree");
+    }
+    for (const juce::String bad : { "99", "-5", "x" })
+    {
+        PluginProcessor a; a.setCurrentProgram (2);
+        juce::MemoryBlock st; a.getStateInformation (st);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (st.getData(), (int) st.getSize());
+        xml->setAttribute ("program", bad);
+        juce::MemoryBlock damaged; juce::AudioProcessor::copyXmlToBinary (*xml, damaged);
+        PluginProcessor b; b.setStateInformation (damaged.getData(), (int) damaged.getSize());
+        check (juce::isPositiveAndBelow (b.getCurrentProgram(), b.getNumPrograms()), ("a damaged preset number (" + bad + ") is kept in range").toStdString(), b.getCurrentProgram());
+    }
+
+    // What the installed 0.4.2 really saved, read out of its Audio Unit through the host API (kAudioUnitProperty_ClassInfo, after
+    // kAudioUnitProperty_PresentPreset for the two presets), and what that same Audio Unit played with it: tests/baseline/capture.mm.
+    // It names no preset, since 0.4.2 did not save one, and sounds as it did.
+    const auto in = readFloats ("input.f32");
+    check (in.size() == 96000, "the 0.4.2 input file loads", (double) in.size());
+    // Loose Gang uses Precise Vibrato, whose note change fix (duo-r1-1) changes what it plays on a sung line, so it is held to 0.4.2
+    // with Precise Vibrato switched off in the state (a state made from the one 0.4.2 saved, played by 0.4.2), and only shown with it on.
+    for (const juce::String name : { "v0.4.2-default", "v0.4.2-slapback-double", "v0.4.2-loose-gang-precise-off", "v0.4.2-loose-gang" })
+    {
+        juce::MemoryBlock state;
+        const bool found = baselineFile (name + ".state").loadFileAsData (state);
+        const auto want = readFloats (name + ".f32");
+        PluginProcessor p;
+        p.setStateInformation (state.getData(), (int) state.getSize());
+        check (found && p.getCurrentProgram() < 0, (name + ": names no preset, since 0.4.2 did not save which one").toStdString(), p.getCurrentProgram());
+        prepare (p, 2, 48000.0, 512);
+        const auto out = render (p, in, 512);
+        double worst = 0;
+        const int n = (int) in.size();
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < n && want.size() == (size_t) (2 * n); ++i)
+                worst = std::max (worst, (double) std::abs (out.getSample (ch, i) - want[(size_t) (ch * n + i)]));
+        const double db = want.size() == (size_t) (2 * n) ? 20.0 * std::log10 (worst + 1.0e-12) : 0.0;
+        const auto what = (name + ": the session the installed 0.4.2 saved, against what 0.4.2 played with it, largest difference").toStdString();
+        if (name == "v0.4.2-loose-gang")
+            info (what + " (Precise Vibrato on, changed by the note change fix)", db, "dBFS");
+        else
+            check (db <= -90.0, what + " (limit -90)", db, "dBFS");
+        info ((name + ": bit for bit the same (1 yes)").toStdString(), worst == 0.0 ? 1.0 : 0.0);
+    }
+}
+
+static void testPhase2()
+{
+    testPreciseVibratoNoteChanges();
+    testReset();
+    testHighRateTimbre();
+    testSavedPreset();
+}
+
 #include "WindowTests.h"
 
 int main (int argc, char** argv)
@@ -1681,6 +2010,12 @@ int main (int argc, char** argv)
     {
         nulltest::printFingerprints();
         return 0;
+    }
+    if (argc > 1 && juce::String (argv[1]) == "phase2")   // only the 0.4.3 bug check tests
+    {
+        testPhase2();
+        testWindowPhase2();
+        return finish();
     }
     GenericOptions opt;
     opt.minPresets = 4;
@@ -1709,6 +2044,8 @@ int main (int argc, char** argv)
     testSampleRates();
     testRepeatable();
     testCpu();
+    testPhase2();
     testWindow();
+    testWindowPhase2();
     return finish();
 }

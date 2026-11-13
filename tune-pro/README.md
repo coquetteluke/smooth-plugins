@@ -17,16 +17,16 @@ Every control is a real AU parameter that a host can find by name. The window on
 | Retune Speed | Time constant of the correction, 0 to 400 ms. 0 reads Instant. |
 | Flex Tune | How far a note may drift before correction applies, 0 to 100 cents. Inside that it is left as sung, outside it is brought to the edge. |
 | Humanize | Slows correction on the sustained part of a note, up to 400 ms extra. The start of the note stays quick. |
-| Natural Vibrato | Scales the vibrato that is left. -100 takes most of it out, +100 doubles it. |
-| Vibrato Amount, Rate, Delay | Adds a vibrato: 0 to 100 cents, 2 to 9 Hz, starting 0 to 1500 ms into the note with a 150 ms fade. |
+| Natural Vibrato | Scales the vibrato that is left after correction. -100 takes most of it out, +100 doubles it. A note left as sung (Bypass, or nothing to tune to) gets none. |
+| Vibrato Amount, Rate, Delay | Adds a vibrato: 0 to 100 cents, 2 to 9 Hz, starting 0 to 1500 ms into the note with a 150 ms fade. Only on a note being tuned. |
 | Throat | Formant shift, 60 to 150%. Above 100 lowers the formants, as a longer throat would. Pitch does not move. Only voiced sound is changed. |
 | Formant Preserve | On keeps the formants. Off lets them follow the pitch. |
 | Transpose | -24 to +24 semitones, after correction. |
 | Input Type | Voice range: Soprano, Alto/Tenor, Low Male, Wide Range. The lowest note sets the latency. Alto/Tenor's range starts at 98 Hz, and since 1.6.0 it also follows notes under that, down to 70 Hz, at the same latency. |
 | Reference A4 | 415 to 466 Hz. |
 | Tracking | Which sounds count as pitched. 0 is choosy, 100 tunes rough, breathy sound too. |
-| Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key. Bad, stale or low confidence data is ignored and the last good key holds. |
-| MIDI Targets | Held notes are the targets, and the nearest held note wins. With no notes held, nothing is corrected. The sustain pedal holds notes, All Notes Off lets go. Note modes do not apply here. |
+| Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key. Bad, stale or low confidence data is ignored and the last good key holds. A Manual or Locked key is followed like any other. In an offline bounce or freeze the file is read every 0.3 s of audio, so a key change lands where it does in playback. |
+| MIDI Targets | Held notes are the targets, and the nearest held note wins. With no notes held, nothing is corrected. The sustain pedal holds notes, All Notes Off lets go, Reset All Controllers lets go of the pedal only. A note acts on the audio it was played against, one latency later at the output, as every setting does. Note modes do not apply here. |
 | MIDI Octave | All Octaves: a held note counts in every octave, so the singer stays in their register. As Played: only that exact note. |
 | Classic Mode | The plain fast snap. Instant correction whatever Retune Speed, Flex Tune, Humanize and the vibrato controls say, with plain grains and no vocal tract model. |
 | Engine | Low Latency or High Quality. See below. |
@@ -52,19 +52,19 @@ Changing Engine or Input Type warms the other engine while the first keeps playi
 
 ## Presets
 
-Natural Pop, Transparent Ballad, Light Touch, Keep The Vibrato, Tight Modern, Hard Tune, Hard Tune Glide, Robot Flat, Classic Snap, Flat Then Sung Vibrato, Final Mix High Quality, Tracking Low Latency. They set how the tuning behaves and leave Key, Scale, Input Type, Follow Key and the note modes alone. Only the last two touch Engine.
+Natural Pop, Transparent Ballad, Light Touch, Keep The Vibrato, Tight Modern, Hard Tune, Hard Tune Glide, Robot Flat, Classic Snap, Flat Then Sung Vibrato, Final Mix High Quality, Tracking Low Latency. They set how the tuning behaves, the added vibrato's rate and delay included, and leave Key, Scale, Input Type, Follow Key and the note modes alone. Only the last two touch Engine. The preset last chosen is saved with the session; a new instance, or a session saved before 1.8.2, says Choose a preset.
 
 ## Window
 
 Ink, coral and white. Coral only ever means what the tuning is doing. The font is Inter, SIL OFL, in `assets/fonts/`. Pictures of every state are in `docs/window/`.
 
-- **Header:** presets, Key, Scale, Follow Key, then the note being hit and a bar showing how far the voice was moved.
+- **Header:** presets, Key, Scale, Follow Key, then the note being hit (with Transpose, the note that comes out) and a bar showing how far the voice was moved. A voice left alone says how far from the note it was sung. When the host stops sending audio the reading clears.
 - **Pitch display:** the last 8 seconds on a lane per note. White is your voice, coral is the corrected voice, the filled gap is the correction, and each note being hit is a block in its lane. Notes outside the scale have the darkest lanes. It follows your range by itself, in whole notes.
-- **Keyboard:** click a key to go Tune, Remove, Bypass. Double-click resets. Right-click lists all three. The note being hit lights coral.
+- **Keyboard:** click a key to go Tune, Remove, Bypass. Double-click resets (its first click still steps the note for a moment). Right-click lists all three. The note being hit lights coral.
 - **Controls:** Retune Speed, Flex Tune, Humanize, Natural Vibrato, Mix, then Bypass, Engine and the delay it adds.
 - **Advanced:** Throat, Transpose, Input Type, Formant Preserve, Tracking, Reference A4, Classic Mode, the added vibrato and MIDI. While closed it says how many are changed.
 
-Drag any control, shift-drag for fine moves, click a value to type one, double-click to reset. A second click straight after opening a menu closes it and resets it. The line at the bottom says what the control under the mouse does. Drag the corner to resize. The size and whether Advanced is open are saved in the session, and nothing else is added.
+Drag any control, shift-drag for fine moves, click a value to type one, double-click to reset. On Engine, a double-click on the side not chosen chooses it once. A second click straight after opening a menu closes it and resets it. The line at the bottom says what the control under the mouse does. Drag the corner to resize. The size and whether Advanced is open are saved in the session, and nothing else is added.
 
 Nothing in it can block audio: it reads atomics and writes through parameters with begin and end gestures, so automation and the window move each other.
 
@@ -113,6 +113,8 @@ Bold fails its limit. See below.
 - CPU, one core, 48 kHz stereo: about 3.4% while correcting in Low Latency, 4.4% in High Quality, about 8% at 96 kHz.
 
 ## What does not pass, and what the numbers do not say
+
+- **Left from the Phase 2 bug hunt (1.8.2, 2026-11-13).** (1) Double-clicking a key to reset it still steps the note on its first click for the double-click time, which is heard and can be written as automation: a click acts at once, and holding every single click back until a second one could come would make each click late. (2) At 96 kHz Low Latency's pitch movement sits 0.16 ms earlier than at 48 kHz at 196 Hz (Low Male): the low-note age's thresholds are in 48 kHz periods, but reading them that way moves it to 0.13 ms late, so that is not the only difference, and it is left. (3) In High Quality on a held note the vocal tract fit's full search still takes up to about a third of a 128 sample block, once every 0.2 s: made quicker with exactly the same answer (37% to 32% of the block in AuBench's worst block), but it cannot be spread over time without changing the sound.
 
 - **The eleventh and twelfth held out sets pass since 1.8.0, 2026-11-12** (`heldout11`, `heldout12`, by name only). French, Greek and Portuguese women's vowels at 174 to 252 Hz: held u came out 8 to 10 dB low around its formants in Low Latency (12.1% and 13.5% against a real voice, limit 5) and with its first formant in the wrong place in High Quality (4.4% and 4.8%, limit 4). 1.8.0: Low Latency 2.7% and 2.9%, High Quality 2.5% and 2.9%. Low Latency now keeps a memory of the harmonics from 130 to 400 Hz, as High Quality does, and its level trim settles over its first two seconds; High Quality's harmonic shifter no longer forgets that memory on a glide and no longer lifts breath between harmonics. This changes Low Latency on corrected voices over 130 Hz, presets included; see CHANGELOG 1.8.0 for every number and for what was re-pinned. Both sets have been seen; the thirteenth (Czech men's vowels and the same tracts at 207 and 233 Hz) is the proof.
 - **1.6.1, the second pass on those takes, 2026-11-11.** Of the three faults listed in the next point, (1) and (2) are fixed: High Quality's pitch control is read in line with its audio, and Low Latency puts the vocal tract model back for the moment the grains were read from, so a tick in a corrected note is no longer a burst above 9 kHz with a dip under it. Low notes also have their pitch movement in time now, and High Quality with nothing to correct is the input across its hand over. (3), the default's Humanize 30, is a setting and Luke's call; the real vocal check now also holds the settings that claim tight tuning (Hard Tune, Classic, Humanize 0) to 10 cents on every take. What 1.6.1 does not fix: grains for notes under about 140 Hz in Alto/Tenor are still cut from the newest period whose mark is known, so the voice's own high band is heard up to a period late there (it no longer comes out louder or with a hole); and a note he sings across the line between two notes of the scale still has its target changed inside the note (two rules that make the target wait were measured and put more notes on the wrong note, so they are in the code switched off, `PitchCorrector::weighMode`). The ninth held out set's failing line had the wrong reference and was corrected, with proof: see CHANGELOG 1.6.1 and `tests/heldout9-reference.txt`.

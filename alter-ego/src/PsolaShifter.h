@@ -24,6 +24,7 @@ class PsolaShifter
 {
 public:
     static constexpr int interpolatorReach = 6;
+    static constexpr double shortestScale = 0.125, longestScale = 8.0; // the output period against the input's, 36 semitones either way
 
     struct Control
     {
@@ -33,6 +34,7 @@ public:
         double robot = 0.0;          // 0 to 1: how far the output period is pulled to robotPeriod, on a log scale
         double robotPeriod = 0.0;    // samples
         double vibratoScale = 1.0;   // on the output period, last of all
+        double vibratoReach = 1.0;   // how far the vibrato swings the period either way, as a ratio of 1 or more
         bool noCorrection = false;   // the output pitch is the input pitch: pass straight through
         bool neutral = false;        // nothing at all is changed: no pitch, formant, character, vibrato or whisper (level match off)
         double alternate = 0.0;      // every other grain spacing is this fraction longer, and the next shorter: a subharmonic
@@ -330,7 +332,12 @@ private:
             double want = period * c.periodScale;
             if (c.robot > 0.0 && c.robotPeriod > 0.0)
                 want = std::exp ((1.0 - c.robot) * std::log (want) + c.robot * std::log (c.robotPeriod));
-            const double wanted = std::clamp (want * c.vibratoScale, 0.2 * period, 8.0 * period);
+            // Grains may be packed down to an eighth of the input period and spread to 8 times it: 36 semitones either way, which covers
+            // Pitch and any Character together (Pitch +24 with Child is 31 up; to 1.2.5 the limit was a fifth of the period, 27.9 semitones,
+            // and past it the voice came out flat). The move is held inside that before the vibrato, so the vibrato keeps both its halves;
+            // Range Match on top can ask for more, and is held there too (1.2.6). Inside the limits this changes nothing.
+            want = std::clamp (want, shortestScale * period * c.vibratoReach, longestScale * period / c.vibratoReach);
+            const double wanted = std::clamp (want * c.vibratoScale, shortestScale * period, longestScale * period);
             flip = ! flip;
             const double bend = 1.0 + (flip ? c.alternate : -c.alternate) + c.jitter;
             spacing = wanted * bend;

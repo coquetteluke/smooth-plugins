@@ -405,6 +405,37 @@ int main (int argc, char** argv)
     }
 
     {
+        // 1.2.6: the drawer at the smallest window, at the widest values (they no longer print over their names).
+        Session s (PluginProcessor::minWindowWidth, PluginProcessor::minWindowHeight);
+        s.editor->setAdvancedOpen (true);
+        s.set ("vibratoDepth", 150.0f);
+        s.set ("rangeMatch", 1.0f);
+        s.set ("rangeCentre", 58.0f);
+        s.set ("output", -24.0f);
+        s.play (woman, 0, womanFrame + 1);
+        s.saveBoth (folder, "smallest-advanced-open");
+    }
+
+    {
+        // 1.2.6: Advanced closed with four settings moved: what fits, and how many more.
+        Session s;
+        s.set ("rangeMatch", 1.0f);
+        s.set ("peakGuard", 1.0f);
+        s.set ("mix", 50.0f);
+        s.set ("output", 2.5f);
+        s.play (woman, 0, womanFrame + 1);
+        s.saveBoth (folder, "advanced-closed-four-moved");
+    }
+
+    {
+        // 1.2.6: the largest window, where the pad keeps a semitone the same distance either way.
+        Session s (PluginProcessor::maxWindowWidth, PluginProcessor::maxWindowHeight);
+        s.set ("character", 1.0f);
+        s.play (man, 0, manFrame + 1);
+        s.save (folder, "largest", 1.0f);
+    }
+
+    {
         Session s (1500, 1000);
         s.set ("character", 2.0f);
         s.play (woman, 0, womanFrame + 1);

@@ -47,6 +47,7 @@ private:
     class AdvancedHeader;
 
     void timerCallback() override;
+    void showAdvanced (bool open);
     void updateStatus();
     void updateAdvancedSummary();
     void showHintFor (juce::Component*);
@@ -69,7 +70,8 @@ private:
     std::unique_ptr<AdvancedHeader> advancedHeader;
     juce::Rectangle<int> titleArea, statusArea, hintArea;
     juce::String hintText, status;
-    bool constructed = false, fast = false;
+    bool constructed = false, fast = false, shownAdvanced = false;
+    int addedHeight = 0;   // what opening Advanced added to the height, so closing it takes off no more than that
     int slowCounter = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MorphEditor)

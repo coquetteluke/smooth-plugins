@@ -5,6 +5,7 @@
 namespace
 {
     const juce::Identifier windowWidthAttribute { "windowWidth" }, windowHeightAttribute { "windowHeight" }, advancedOpenAttribute { "advancedOpen" };
+    const juce::Identifier programAttribute { "program" };   // since 1.2.6: the preset last picked, left out for Clean Slate (the defaults) and for none
 
     struct Preset
     {
@@ -40,17 +41,36 @@ namespace
         return juce::String (names[((midi % 12) + 12) % 12]) + juce::String (midi / 12 - 1);
     }
 
-    int noteFromText (const juce::String& text)
+    // A note typed or sent by name: C4, F#2, Bb2 (flats too, in either case), a bare letter for the nearest such note to the one set now,
+    // or a MIDI number. Anything else leaves the note where it is. To 1.2.5 flats and bare letters landed on the wrong note (Bb2 read as
+    // C2) and a word read as C4 (1.2.6).
+    int noteFromText (const juce::String& text, int now)
     {
-        const auto t = text.trim().toUpperCase();
-        if (t.isEmpty()) return 60;
-        if (t[0] >= '0' && t[0] <= '9') return t.getIntValue();
+        const auto t = text.trim();
+        if (t.isEmpty()) return now;
+        if (juce::CharacterFunctions::isDigit (t[0]) || ((t[0] == '-' || t[0] == '+') && juce::CharacterFunctions::isDigit (t[1])))
+            return t.getIntValue();
         static const int steps[] = { 9, 11, 0, 2, 4, 5, 7 }; // A to G
-        if (t[0] < 'A' || t[0] > 'G') return 60;
-        int midi = steps[t[0] - 'A'];
-        const auto rest = t.substring (1);
-        const bool sharp = rest.startsWithChar ('#');
-        return midi + (sharp ? 1 : 0) + 12 * ((sharp ? rest.substring (1) : rest).getIntValue() + 1);
+        const auto letter = juce::CharacterFunctions::toUpperCase (t[0]);
+        if (letter < 'A' || letter > 'G') return now;
+        int pitchClass = steps[letter - 'A'];
+        auto rest = t.substring (1);
+        if (rest.startsWithChar ('#') || rest.startsWithChar ((juce::juce_wchar) 0x266F)) { ++pitchClass; rest = rest.substring (1); }
+        else if (rest.startsWithChar ((juce::juce_wchar) 0x266D) || ((rest.startsWithChar ('b') || rest.startsWithChar ('B'))
+                                                                   && (rest.length() == 1 || juce::CharacterFunctions::isDigit (rest[1]) || rest[1] == '-')))
+        { --pitchClass; rest = rest.substring (1); }
+        rest = rest.trim();
+        if (rest.isEmpty())
+        {
+            // The nearest note with that name to the one set now
+            int best = now, bestGap = 1000;
+            for (int midi = now - 6; midi <= now + 6; ++midi)
+                if ((((midi - pitchClass) % 12) + 12) % 12 == 0 && std::abs (midi - now) < bestGap) { best = midi; bestGap = std::abs (midi - now); }
+            return best;
+        }
+        if (! (juce::CharacterFunctions::isDigit (rest[0]) || (rest[0] == '-' && juce::CharacterFunctions::isDigit (rest[1]))))
+            return now;
+        return pitchClass + 12 * (rest.getIntValue() + 1);
     }
 
     double hzOfNote (float midi) { return 440.0 * std::pow (2.0, ((double) midi - 69.0) / 12.0); }
@@ -78,18 +98,28 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout(
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "formant", 1 }, "Formant Shift", NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f, fixedText (2, "st")));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "character", 1 }, "Character", names, 0));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "characterAmount", 1 }, "Character Amount", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, fixedText (0, "%")));
-    layout.add (std::make_unique<AudioParameterInt> (ParameterID { "robotNote", 1 }, "Robot Note", 36, 72, 45, AudioParameterIntAttributes()
-        .withStringFromValueFunction ([] (int v, int) { return noteName (v); })
-        .withValueFromStringFunction ([] (const String& s) { return noteFromText (s); })));
+    // Each note control reads its own value back through a holder filled in once it exists, so a bare letter or a word knows the note now.
+    const auto noteControl = [] (const char* id, const char* name, int lowest, int highest, int initial)
+    {
+        auto holder = std::make_shared<std::atomic<AudioParameterInt*>> (nullptr);
+        auto made = std::make_unique<AudioParameterInt> (ParameterID { id, 1 }, name, lowest, highest, initial, AudioParameterIntAttributes()
+            .withStringFromValueFunction ([] (int v, int) { return noteName (v); })
+            .withValueFromStringFunction ([holder, initial] (const String& s)
+            {
+                const auto* self = holder->load();
+                return noteFromText (s, self != nullptr ? self->get() : initial);
+            }));
+        holder->store (made.get());
+        return made;
+    };
+    layout.add (noteControl ("robotNote", "Robot Note", 36, 72, 45));
     auto rateRange = NormalisableRange<float> (0.5f, 12.0f, 0.01f);
     rateRange.setSkewForCentre (5.0f);
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "vibratoRate", 1 }, "Vibrato Rate", rateRange, 5.5f, fixedText (2, "Hz")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "vibratoDepth", 1 }, "Vibrato Depth", NormalisableRange<float> (0.0f, 200.0f, 0.1f), 0.0f, fixedText (0, "cents")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "whisper", 1 }, "Whisper", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, fixedText (0, "%")));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "rangeMatch", 1 }, "Range Match", false));
-    layout.add (std::make_unique<AudioParameterInt> (ParameterID { "rangeCentre", 1 }, "Range Centre", 36, 84, 57, AudioParameterIntAttributes()
-        .withStringFromValueFunction ([] (int v, int) { return noteName (v); })
-        .withValueFromStringFunction ([] (const String& s) { return noteFromText (s); })));
+    layout.add (noteControl ("rangeCentre", "Range Centre", 36, 84, 57));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "mix", 1 }, "Mix", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, fixedText (0, "%")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "output", 1 }, "Output", NormalisableRange<float> (-24.0f, 12.0f, 0.01f), 0.0f, fixedText (1, "dB")));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "bypass", 1 }, "Bypass", false));
@@ -119,11 +149,44 @@ PluginProcessor::PluginProcessor()
     peakGuard = apvts.getRawParameterValue ("peakGuard");
 
     addParameter (detectedReading = new ReadingParameter ("detectedPitch", "Detected Pitch", "Hz", 0.0f, 2000.0f, 0.0f, hzText));
-    addParameter (outputReading = new ReadingParameter ("outputPitch", "Output Pitch", "Hz", 0.0f, 4000.0f, 0.0f, hzText));
+    // To 12 kHz since 1.2.6: the voice can go 36 semitones up from a 1.3 kHz note, and at 4 kHz the reading stopped short of it.
+    addParameter (outputReading = new ReadingParameter ("outputPitch", "Output Pitch", "Hz", 0.0f, 12000.0f, 0.0f, hzText));
     addParameter (rangeReading = new ReadingParameter ("rangeOffset", "Range Offset", "st", -24.0f, 24.0f, 0.0f, semitoneText));
 
     // True before the host calls prepareToPlay, for hosts that ask early.
     setLatencySamples (smoothmorph::MorphEngine::latencyFor (48000.0));
+    bypassWasOn.store (bypass->get(), std::memory_order_relaxed);
+    apvts.addParameterListener ("bypass", this);
+}
+
+PluginProcessor::~PluginProcessor()
+{
+    apvts.removeParameterListener ("bypass", this);
+}
+
+void PluginProcessor::parameterChanged (const juce::String& id, float value)
+{
+    if (id != "bypass")
+        return;
+    const bool on = value > 0.5f;
+    const bool was = bypassWasOn.exchange (on, std::memory_order_relaxed);
+    if (on && ! was)
+        bypassSwitchedAtMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+    bypassJustSwitchedOn.store (on && ! was, std::memory_order_relaxed);
+}
+
+void PluginProcessor::reset()
+{
+    // The Reset that comes with the host's bypass switching on is left out: Bypass fades over 15 ms to the input read from the same delay
+    // line, so clearing it then would cut the sound off for a whole delay.
+    if (bypassJustSwitchedOn.exchange (false, std::memory_order_relaxed)
+        && juce::Time::getMillisecondCounter() - bypassSwitchedAtMs.load (std::memory_order_relaxed) < 250)
+        return;
+    if (preparedRate <= 0.0)
+        return;   // nothing has been prepared, so nothing is held
+
+    const juce::ScopedLock lock (getCallbackLock());   // the AU wrapper renders under this lock, so a host Reset never lands mid block
+    engine.reset();
 }
 
 bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -137,11 +200,14 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     engine.prepare (sampleRate, getTotalNumOutputChannels());
     setLatencySamples (engine.getLatency());
     tap.prepare (sampleRate, engine.getLatency());
+    preparedRate = sampleRate;
 }
 
 void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass) noexcept
 {
     juce::ScopedNoDenormals noDenormals;
+    if (bypassJustSwitchedOn.load (std::memory_order_relaxed))
+        bypassJustSwitchedOn.store (false, std::memory_order_relaxed);   // only the Reset that comes with the switch is left out
     smoothmorph::MorphEngine::Settings s;
     s.pitchSemitones = pitch->load (std::memory_order_relaxed);
     s.formantSemitones = formant->load (std::memory_order_relaxed);
@@ -225,6 +291,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
         xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute (windowHeightAttribute, windowHeight.load (std::memory_order_relaxed));
         xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
+        if (currentProgram > 0)
+            xml->setAttribute (programAttribute, currentProgram);
         copyXmlToBinary (*xml, dest);
     }
 }
@@ -240,10 +308,23 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             if (xml->hasAttribute (windowHeightAttribute))
                 windowHeight.store (juce::jlimit (minWindowHeight, maxWindowHeight, xml->getIntAttribute (windowHeightAttribute, defaultWindowHeight)), std::memory_order_relaxed);
             advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            const bool namesPreset = xml->hasAttribute (programAttribute);
+            const int savedProgram = juce::jlimit (0, getNumPrograms() - 1, xml->getIntAttribute (programAttribute, 0));
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (windowHeightAttribute);
             xml->removeAttribute (advancedOpenAttribute);
+            xml->removeAttribute (programAttribute);
             applySafeState (apvts, *xml);
+            // The preset is only a name for the settings, so it is restored, not applied again. A session that names none (Clean Slate since
+            // 1.2.6, and every session before) is Clean Slate if it has Clean Slate's settings, and otherwise no preset at all.
+            if (namesPreset)
+                currentProgram = savedProgram;
+            else
+            {
+                currentProgram = 0;
+                if (isCurrentProgramEdited())
+                    currentProgram = -1;
+            }
         }
 }
 

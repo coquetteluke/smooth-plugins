@@ -340,6 +340,79 @@ PASS  after a double-click on the pad the voice nulls against the delayed input,
 PASS  audio with the window open and painting nulls to exact zero against closed, Natural = 0.000 
 PASS  audio with the window open and painting nulls to exact zero against closed, Child with Whisper = 0.000 
 PASS  audio with the window open and painting nulls to exact zero against closed, Monster with Vibrato = 0.000 
-PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 8.463 %
-PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 9.095 %
+INFO  Phase 2: notes fading into breath (Deep, Giant, Monster, Female To Male, 98 to 247 Hz): furthest a grain sat past the newest pulse while reading one (196 Hz, setting 2), limit 0.600000, not met: known, periods = 1.840 
+INFO  Phase 2: a vowel straight into an S (5 ms crossfade), Deep, 110 to 330 Hz: the output still called voiced after the S starts, at most (limit 5.000000 ms, not met: known) = 6.396 ms
+PASS  Phase 2: Giant, a vowel, a host Reset, then 50 ms of silence: peak of the old vowel left in the output = -240.000 dB
+PASS  Phase 2:   and the Reset allocates nothing = 0.000 
+PASS  Phase 2: Deep, play, Reset, play: the second play against a new instance, largest difference = 0.000 
+PASS  Phase 2: Peak Guard, Giant, a loud chorus, a host Reset, a soft verse: samples over the verse's own highest peak = 0.000 
+PASS  Phase 2: the Reset that comes with host bypass switching on changes nothing, largest difference = 0.000 
+PASS  Phase 2:   a Reset later on while bypassed still clears: peak of the old voice left = -240.000 dB
+PASS  Phase 2: a session saved after picking Giant reloads naming it: Giant = 11.000 
+PASS  Phase 2:   and the preset stays out of the parameter tree
+PASS  Phase 2:   Giant with Whisper moved reloads as: Giant, edited
+PASS  Phase 2:   a damaged preset number '99' comes back in range = 13.000 
+PASS  Phase 2:   a damaged preset number '-5' comes back in range = 0.000 
+PASS  Phase 2:   a damaged preset number 'x' comes back in range = 0.000 
+PASS  Phase 2: a Giant session saved by 1.2.5 names no preset: Choose a preset = -1.000 
+PASS  Phase 2:   from no preset the next arrow goes to the first preset and the previous one to the last: next = 0.000 
+PASS  Phase 2: 1.2.5's default session reads Clean Slate: Clean Slate
+PASS  Phase 2: the 1.2.5 baseline input is there = 288000.000 
+PASS  Phase 2: 1.2.5's default session plays as 1.2.5 played it, to rounding: difference = -3036.933 dB
+INFO  Phase 2:   1.2.5's Clean Slate session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Deep Voice session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Little Kid session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Robot Announcer session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Half Robot session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Monster Growl session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Ghost Whisper session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Breathy Layer session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Male To Female session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Female To Male session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Chipmunk session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Giant session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Old Singer session against 1.2.5's own render, largest difference = 0.000 
+INFO  Phase 2:   1.2.5's Deep Double session against 1.2.5's own render, largest difference = 0.000 
+PASS  Phase 2: the installed 1.2.5's own sessions (default and 14 presets) load into the settings of picking that preset now, cases = 15.000 
+PASS  Phase 2:   and play the same samples as picking it, cases = 15.000 
+PASS  Phase 2: Robot Note typed as Bb2 is A#2 (46) = 46.000 
+PASS  Phase 2: Range Centre typed as Eb4 is D#4 (63) = 63.000 
+PASS  Phase 2: Db3 and c#3 are both 49 = 49.000 
+PASS  Phase 2: a bare A, Robot Note on D3 (50), lands on the nearest A (45) = 45.000 
+PASS  Phase 2: a word that is no note leaves Robot Note where it was (50) = 50.000 
+PASS  Phase 2: every note's text reads back as that note, Robot Note and Range Centre, wrong = 0.000 
+PASS  Phase 2: a session with Mix and Character Amount saved as 'abc' loads them at their defaults, Mix = 100.000 %
+PASS  Phase 2: a 1050 Hz note at Pitch +24 comes out near 4200 Hz, and Output Pitch reads: 4200.1 Hz = 4200.100 
+PASS  Phase 2: a 110 Hz note at Pitch +24 with Child is 31 semitones up (661 Hz), median off by = -0.039 cents
+PASS  Phase 2:   and Output Pitch reads what comes out, Hz = 659.300 
+PASS  Phase 2: Pitch +12 on Bypass, a 220 Hz voice: Output Pitch reads what comes out, Hz = 220.000 
+PASS  Phase 2:   and Range Offset reads 0 with Range Match on, st = 0.000 
+INFO  Phase 2:   held_kathy.wav Formant Shift -4: frames off, 90th percentile, at 48 kHz (%) 5.536838, at 96 kHz = 8.748 %
+INFO  Phase 2:   held_kathy.wav Formant Shift 4: frames off, 90th percentile, at 48 kHz (%) 5.120618, at 96 kHz = 11.324 %
+INFO  Phase 2:   held_fred.wav Formant Shift -4: frames off, 90th percentile, at 48 kHz (%) 4.487772, at 96 kHz = 18.741 %
+INFO  Phase 2:   held_fred.wav Formant Shift 4: frames off, 90th percentile, at 48 kHz (%) 4.740721, at 96 kHz = 6.625 %
+INFO  Phase 2: Formant Shift +/-4 on held vowels at 96 kHz against 48 kHz, frame by frame, 90th percentile over 48 kHz's, worst (limit 1.000000%, not met: known, see the README) = 14.253 %
+PASS  Phase 2: 192 kHz, a 4096 block lands while the mirror reads its 8192 look one delay back: samples of the read torn = 0.000 
+PASS  Phase 2: a state with Advanced closed, loaded with the window open: the drawer goes away
+PASS  Phase 2:   and opening Advanced again brings the window back to the height it had open, pt off = 0.000 
+PASS  Phase 2: at 1600 x 1200, Advanced opened and closed three times: height lost = 0.000 
+PASS  Phase 2: Monster, Pitch -20, Formant -10 (past the pad's corner): a click on the dot without moving leaves Pitch at = -20.000 st
+PASS  Phase 2: Child on Bypass: a click on the dot drawn at You leaves Pitch at = -0.000 st
+INFO  Phase 2:   a double-click on the pad at +20 st: Pitch between the two clicks (not fixed, see the report) = 20.000 st
+PASS  Phase 2: pad at 1600 x 1200: a semitone across against a semitone up = 1.000 times
+PASS  Phase 2: pad at 1600 x 580: a semitone across against a semitone up = 1.000 times
+PASS  Phase 2: pad at 880 x 1200: a semitone across against a semitone up = 1.000 times
+PASS  Phase 2: pad at 980 x 620: a semitone across against a semitone up = 1.000 times
+PASS  Phase 2: smallest window, Advanced open: a slider's name, a 6 pt gap and its value against its width, worst (vibratoDepth at 100 cents), pt over = -0.104 
+PASS  Phase 2: Advanced closed with one to four settings moved, default and smallest window: the summary against its room, worst, pt over = -21.357 
+PASS  Phase 2: Half Robot (Amount 70) does not say Robot holds every note: Robot pulls the voice 70% of the way to D3.
+PASS  Phase 2: Robot at Amount 0 does not say Robot holds every note: Character Amount is 0, so nothing is added.
+PASS  Phase 2: Monster at Amount 0 does not promise a growl: Character Amount is 0, so nothing is added.
+PASS  Phase 2: Natural with Output -6 dB is not 'untouched': No Character added.
+PASS  Phase 2: Natural with Range Match moving the voice is not 'untouched': No Character added. Range Match adds +9 st.
+PASS  Phase 2: a window opened later with nothing playing shows nothing of the old voice: loudest point of the mirror = 0.000 
+PASS  Phase 2: a window opened later with nothing playing, after a change to 96 kHz, shows nothing of the old voice: loudest point of the mirror = 0.000 
+PASS  Phase 2: a soft voice (-42 dBFS) with Output -20 dB: the window still names its pitch: You 196 Hz  |  Alter Ego 262 Hz
+PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 8.414 %
+PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 8.981 %
 RESULT PASS  0 failures

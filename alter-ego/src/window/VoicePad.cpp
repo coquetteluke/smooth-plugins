@@ -25,9 +25,13 @@ VoicePad::VoicePad (PluginProcessor& p)
     bypassAttachment.sendInitialUpdate();
 }
 
+// The map is 48 semitones across and 24 up, kept at that shape and centred, so a semitone is the same distance either way at any window
+// size. It filled the pad to 1.2.5, and the two only matched near the default size (1600 x 1200: 1.65 times as far up as across) (1.2.6).
 juce::Rectangle<float> VoicePad::map() const noexcept
 {
-    return getLocalBounds().toFloat().reduced (20.0f, 18.0f);
+    const auto room = getLocalBounds().toFloat().reduced (20.0f, 18.0f);
+    const float perSemitone = juce::jmax (0.0f, juce::jmin (room.getWidth() / (float) (2.0 * pitchReach), room.getHeight() / (float) (2.0 * formantReach)));
+    return juce::Rectangle<float> (perSemitone * (float) (2.0 * pitchReach), perSemitone * (float) (2.0 * formantReach)).withCentre (room.getCentre());
 }
 
 juce::Point<float> VoicePad::pointFor (double p, double f) const noexcept
@@ -301,6 +305,11 @@ void VoicePad::moveTo (juce::Point<float> at, bool snap)
         wantedFormant = std::round (wantedFormant);
     }
 
+    setVoice (wantedPitch, wantedFormant);
+}
+
+void VoicePad::setVoice (double wantedPitch, double wantedFormant)
+{
     // The dot is the voice, so a Character's part comes off to get the parameter.
     const auto& c = smoothmorph::characters[juce::jlimit (0, smoothmorph::numCharacters - 1, character)];
     pitchAttachment.setValueAsPartOfGesture (juce::jlimit (-24.0f, 24.0f, (float) (wantedPitch - (double) amount * c.pitchSemitones)));
@@ -309,21 +318,49 @@ void VoicePad::moveTo (juce::Point<float> at, bool snap)
 
 void VoicePad::mouseDown (const juce::MouseEvent& e)
 {
-    if (e.getNumberOfClicks() > 1 || e.mods.isPopupMenu())
+    // Bypassed, the dot is drawn at You, where the sound is, and the voice it would move is not heard: the pad leaves it alone. To 1.2.5 a
+    // click on the dot drawn at You moved the hidden voice there (Child: Pitch -7, Formant -4) (1.2.6).
+    if (e.getNumberOfClicks() > 1 || e.mods.isPopupMenu() || bypassed)
         return;
 
     dragging = true;
-    const auto voice = voiceAt();
-    grabOffset = e.position.getDistanceFrom (voice) <= dotRadius + 4.0f ? voice - e.position : juce::Point<float>();
-    pitchAttachment.beginGesture();
-    formantAttachment.beginGesture();
-    moveTo (e.position + grabOffset, e.mods.isShiftDown());
+    // On the dot, the voice is picked up where it is and moves by as far as the mouse does, so a click alone changes nothing. The dot is
+    // drawn at the pad's edge when the voice is past it, and to 1.2.5 a click there set the voice to the edge (Monster, Pitch -20,
+    // Formant -10: Pitch jumped to -16) (1.2.6). Anywhere else the voice goes where the click is.
+    grabbed = e.position.getDistanceFrom (voiceAt()) <= dotRadius + 4.0f;
+    gestureOpen = false;
+    grabAt = e.position;
+    grabPitch = voicePitch();
+    grabFormant = voiceFormant();
+    if (! grabbed)
+    {
+        openGesture();
+        moveTo (e.position, e.mods.isShiftDown());
+    }
 }
 
 void VoicePad::mouseDrag (const juce::MouseEvent& e)
 {
-    if (dragging)
-        moveTo (e.position + grabOffset, e.mods.isShiftDown());
+    if (! dragging)
+        return;
+    if (! grabbed)
+    {
+        moveTo (e.position, e.mods.isShiftDown());
+        return;
+    }
+    if (e.position == grabAt && ! gestureOpen)
+        return;
+    openGesture();
+    const auto m = map();
+    const double perSemitone = m.getWidth() / (2.0 * pitchReach);
+    double wantedPitch = grabPitch + (double) (e.position.x - grabAt.x) / perSemitone;
+    double wantedFormant = grabFormant - (double) (e.position.y - grabAt.y) / perSemitone;
+    if (e.mods.isShiftDown())
+    {
+        wantedPitch = std::round (wantedPitch);
+        wantedFormant = std::round (wantedFormant);
+    }
+    setVoice (wantedPitch, wantedFormant);
 }
 
 void VoicePad::mouseUp (const juce::MouseEvent&)
@@ -331,13 +368,28 @@ void VoicePad::mouseUp (const juce::MouseEvent&)
     if (dragging)
     {
         dragging = false;
-        pitchAttachment.endGesture();
-        formantAttachment.endGesture();
+        if (gestureOpen)
+        {
+            pitchAttachment.endGesture();
+            formantAttachment.endGesture();
+            gestureOpen = false;
+        }
     }
 }
 
 void VoicePad::mouseDoubleClick (const juce::MouseEvent&)
 {
+    if (bypassed)
+        return;
     pitchAttachment.setValueAsCompleteGesture (pitchParam.convertFrom0to1 (pitchParam.getDefaultValue()));
     formantAttachment.setValueAsCompleteGesture (formantParam.convertFrom0to1 (formantParam.getDefaultValue()));
+}
+
+void VoicePad::openGesture()
+{
+    if (gestureOpen)
+        return;
+    pitchAttachment.beginGesture();
+    formantAttachment.beginGesture();
+    gestureOpen = true;
 }

@@ -37,13 +37,19 @@ private:
 
 // Parameters, presets, state, latency and bypass. The sound is all in MorphEngine, so a later window only needs this class's
 // getEngine() for its graphs: pitch, range offset and the envelope before and after shifting, all safe to read while audio runs.
-class PluginProcessor final : public juce::AudioProcessor
+class PluginProcessor final : public juce::AudioProcessor,
+                              private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     PluginProcessor();
+    ~PluginProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
+    // A host Reset (a locate, a stop and start, the start of a bounce) clears what prepareToPlay clears: the delay lines, grains, filters,
+    // the level match's memory and Peak Guard's ceiling. Allocates nothing. The one Reset JUCE's AU wrapper sends right after the host turns
+    // its own bypass on is left out, so Bypass still fades to the input instead of cutting it off for a whole delay. Since 1.2.6.
+    void reset() override;
     bool isBusesLayoutSupported (const BusesLayout&) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -58,6 +64,7 @@ public:
 
     int getNumPrograms() override;
     int getCurrentProgram() override { return currentProgram; }
+    int getCurrentProgramIndex() const noexcept { return currentProgram; }
     void setCurrentProgram (int) override;
     const juce::String getProgramName (int) override;
     void changeProgramName (int, const juce::String&) override {}
@@ -84,6 +91,8 @@ public:
     juce::AudioProcessorValueTreeState apvts;
 
 private:
+    void parameterChanged (const juce::String&, float) override;
+
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
     void run (juce::AudioBuffer<float>&, bool forceBypass) noexcept;
 
@@ -106,7 +115,12 @@ private:
     ReadingParameter* detectedReading = nullptr;
     ReadingParameter* outputReading = nullptr;
     ReadingParameter* rangeReading = nullptr;
-    int currentProgram = 0;
+    int currentProgram = 0;   // a new instance: Clean Slate, as before; -1 for none (a session that names no preset)
+    double preparedRate = 0.0;
+    // JUCE's AU wrapper resets straight after the host turns its own bypass on. That one Reset is left out (see reset()). It is the next
+    // Reset within a quarter second, with no audio block in between.
+    std::atomic<bool> bypassJustSwitchedOn { false }, bypassWasOn { false };
+    std::atomic<juce::uint32> bypassSwitchedAtMs { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)
 };

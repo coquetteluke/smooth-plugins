@@ -17,7 +17,9 @@ inline void applySafeState (juce::AudioProcessorValueTreeState& apvts, const juc
             continue;
         const auto value = child.getProperty ("value").toString().trim().getDoubleValue();
         const auto text = child.getProperty ("value").toString().trim().toLowerCase();
-        if (! std::isfinite (value) || text.contains ("nan") || text.contains ("inf"))
+        // A word is not a value either: read as a number it is 0, and Mix 0 passed only the dry voice (1.2.6).
+        const bool number = text.containsAnyOf ("0123456789") && text.containsOnly ("0123456789+-.e");
+        if (! number || ! std::isfinite (value) || text.contains ("nan") || text.contains ("inf"))
         {
             state.removeChild (i, nullptr);
             continue;

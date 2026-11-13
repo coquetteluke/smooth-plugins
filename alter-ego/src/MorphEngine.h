@@ -409,9 +409,11 @@ public:
                 audio[ch][i] = (float) std::clamp (out[ch], -16.0, 16.0);
             ++input;
         }
-        readDetected.store ((float) (control.voiced && control.inputPeriod > 0.0 ? sr / control.inputPeriod : 0.0), std::memory_order_relaxed);
-        readOutput.store ((float) (control.voiced ? readingOutHz : 0.0), std::memory_order_relaxed);
-        readRange.store ((float) rangeHeld, std::memory_order_relaxed);
+        // Bypassed, what comes out is the input: Output Pitch names its pitch and Range Match moves nothing (1.2.6).
+        const double detected = control.voiced && control.inputPeriod > 0.0 ? sr / control.inputPeriod : 0.0;
+        readDetected.store ((float) detected, std::memory_order_relaxed);
+        readOutput.store ((float) (control.voiced ? (wanted.bypass ? detected : readingOutHz) : 0.0), std::memory_order_relaxed);
+        readRange.store ((float) (wanted.bypass ? 0.0 : rangeHeld), std::memory_order_relaxed);
     }
 
 private:
@@ -650,7 +652,18 @@ private:
         control.robot = current.robot;
         control.robotPeriod = sr / std::pow (2.0, fromRobot);
         control.vibratoScale = std::pow (2.0, -vibrato / 1200.0);
-        readingOutHz = std::pow (2.0, fromInput + current.robot * (fromRobot - fromInput) + vibrato / 1200.0);
+        control.vibratoReach = std::pow (2.0, std::abs (current.vibrato) / 1200.0);
+        // The pitch that comes out, held inside the shifter's own limits as the grains are, so Output Pitch, the Robot buzz and the window
+        // name what is heard (1.2.6). Inside them this is the sum it always was.
+        double moved = fromInput + current.robot * (fromRobot - fromInput);
+        if (smoothedPeriod > 0.0)
+        {
+            const double inputOctaves = std::log2 (sr / smoothedPeriod), reach = std::log2 (control.vibratoReach);
+            const double highest = inputOctaves - std::log2 (PsolaShifter::shortestScale) - reach, lowest = inputOctaves - std::log2 (PsolaShifter::longestScale) + reach;
+            if (moved > highest) moved = highest;
+            if (moved < lowest) moved = lowest;
+        }
+        readingOutHz = std::pow (2.0, moved + vibrato / 1200.0);
         wantedOutputPeriod = sr / readingOutHz;
         pulseGate += fadeSmooth * ((control.voiced ? 1.0 : 0.0) - pulseGate);
         // How much of the sound is noise, gliding over 15 ms. In the first 30 ms after a voiced start it falls in 3 ms instead: the voice is

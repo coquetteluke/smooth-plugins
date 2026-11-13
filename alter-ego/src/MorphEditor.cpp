@@ -40,23 +40,47 @@ public:
         hint = "Range Match, Peak Guard, Centre, Mix and Output.";
     }
 
-    void setSummary (const juce::String& text)
+    void setSummary (const juce::StringArray& items)
     {
-        if (text != summary)
+        if (items != moved)
         {
-            summary = text;
+            moved = items;
             repaint();
         }
     }
 
-    juce::String getSummary() const  { return summary; }
+    // What fits in the room: every moved setting if they fit, else the first ones and how many more, so nothing moved is hidden behind an
+    // ellipsis. To 1.2.5 the whole list was cut off with one, and "Peak Guard on" could be lost after "Range Match to A3" (1.2.6).
+    juce::String fitted() const
+    {
+        const auto f = font (Weight::regular, 13.0f);
+        const float room = summaryRoom();
+        for (int shown = moved.size(); shown >= 1; --shown)
+        {
+            juce::StringArray part;
+            for (int i = 0; i < shown; ++i) part.add (moved[i]);
+            auto text = part.joinIntoString (", ");
+            if (shown < moved.size())
+                text += ", +" + juce::String (moved.size() - shown) + " more";
+            if (juce::GlyphArrangement::getStringWidth (f, text) <= room)
+                return text;
+        }
+        if (moved.isEmpty())
+            return {};
+        const auto count = juce::String (moved.size()) + (moved.size() == 1 ? " setting moved" : " settings moved");
+        return juce::GlyphArrangement::getStringWidth (f, count) <= room ? count : juce::String (moved.size()) + " moved";
+    }
+
+    float summaryRoom() const  { return (float) getWidth() - 16.0f - 64.0f - 8.0f; }
+
+    juce::String getSummary() const  { return fitted(); }
 
     float summaryOverflow() const
     {
-        if (summary.isEmpty())
+        const auto text = fitted();
+        if (text.isEmpty())
             return -1.0e6f;
-        const float room = (float) getWidth() - 16.0f - 64.0f - 8.0f;
-        return juce::GlyphArrangement::getStringWidth (font (Weight::regular, 13.0f), summary) - room;
+        return juce::GlyphArrangement::getStringWidth (font (Weight::regular, 13.0f), text) - summaryRoom();
     }
 
     void paint (juce::Graphics& g) override
@@ -86,6 +110,7 @@ public:
         g.setFont (font (Weight::medium, 13.0f));
         g.drawText ("Advanced", b.removeFromLeft (64.0f), juce::Justification::centredLeft, false);
 
+        const auto summary = fitted();
         if (summary.isNotEmpty() && ! open)
         {
             g.setColour (tone::text);
@@ -100,7 +125,7 @@ public:
 
 private:
     MorphEditor& owner;
-    juce::String summary;
+    juce::StringArray moved;
 };
 
 // ---- the editor -------------------------------------------------------------------------------------------------
@@ -142,11 +167,16 @@ MorphEditor::MorphEditor (PluginProcessor& p)
 
     presets.nameNow = [&p]
     {
+        // A session that names no preset (one saved before 1.2.6 away from Clean Slate) says so, rather than "Clean Slate, edited".
+        if (p.getCurrentProgramIndex() < 0)
+            return juce::String ("Choose a preset");
         return p.isCurrentProgramEdited() ? p.getProgramName (p.getCurrentProgram()) + ", edited" : p.getProgramName (p.getCurrentProgram());
     };
 
     chips.onHover = [this] (int index) { pad.showCharacter (index); };
     amount.setLabelRow (20);
+    rangeCentre.setShortLabel ("Centre");
+    output.setShortLabel ("Out");
 
     addAndMakeVisible (pad);
     addAndMakeVisible (mirror);
@@ -162,7 +192,9 @@ MorphEditor::MorphEditor (PluginProcessor& p)
     addMouseListener (this, true);
 
     setResizable (true, true);
-    const bool open = isAdvancedOpen();
+    shownAdvanced = processorRef.advancedOpen.load (std::memory_order_relaxed);
+    addedHeight = shownAdvanced ? drawerHeight : 0;
+    const bool open = shownAdvanced;
     using P = PluginProcessor;
     const int extra = open ? drawerHeight : 0;
     setResizeLimits (P::minWindowWidth, P::minWindowHeight + extra, P::maxWindowWidth, P::maxWindowHeight);
@@ -285,21 +317,34 @@ void MorphEditor::resized()
     repaint();
 }
 
+// What the window shows. The saved flag can change under an open window when the host loads a state (a Logic preset, Compare, undo);
+// tick() brings the window round to it.
 bool MorphEditor::isAdvancedOpen() const noexcept
 {
-    return processorRef.advancedOpen.load (std::memory_order_relaxed);
+    return shownAdvanced;
 }
 
 void MorphEditor::setAdvancedOpen (bool shouldBeOpen)
 {
-    if (shouldBeOpen == isAdvancedOpen())
-        return;
-
     processorRef.advancedOpen.store (shouldBeOpen, std::memory_order_relaxed);
+    showAdvanced (shouldBeOpen);
+}
+
+// Lays the window out with the drawer open or closed. Closing takes off only the height opening added: at the largest window opening adds
+// none, and to 1.2.5 every close there took 58 pt off (1.2.6). Also called from tick() when a loaded state has changed the saved flag,
+// which to 1.2.5 the window never saw: the drawer stayed, the chevron flipped, and the next click added or took off another 58 pt.
+void MorphEditor::showAdvanced (bool open)
+{
+    if (open == shownAdvanced)
+        return;
+    shownAdvanced = open;
 
     using P = PluginProcessor;
-    const int extra = shouldBeOpen ? drawerHeight : 0;
-    const int height = juce::jlimit (P::minWindowHeight + extra, P::maxWindowHeight, getHeight() + (shouldBeOpen ? drawerHeight : -drawerHeight));
+    const int extra = open ? drawerHeight : 0;
+    const int before = getHeight();
+    const int height = open ? juce::jlimit (P::minWindowHeight + extra, P::maxWindowHeight, before + drawerHeight)
+                            : juce::jlimit (P::minWindowHeight, P::maxWindowHeight, before - addedHeight);
+    addedHeight = open ? height - before : 0;
     setResizeLimits (P::minWindowWidth, P::minWindowHeight + extra, P::maxWindowWidth, P::maxWindowHeight);
     setSize (getWidth(), height);
     resized();
@@ -333,10 +378,20 @@ void MorphEditor::updateStatus()
     {
         const auto shortest = [] (float v) { return signedText (v, std::abs (v - std::round (v)) < 0.05f ? 0 : 1, " st"); };
 
-        if (character == 3)
-            text = "Robot holds every note on " + noteName (juce::roundToInt (value ("robotNote") + value ("pitch"))) + ".";
+        // A Character at Amount 0 adds nothing, and Robot under 100 pulls the voice part of the way (1.2.6: it said Robot held every note,
+        // and Monster at 0 still promised a growl). Untouched means nothing at all changes the voice: Output and a Range Match that is
+        // moving it count too.
+        const float offsetNow = processorRef.getEngine().rangeOffset();
+        const bool ranging = value ("rangeMatch") >= 0.5f && character != 3 && offsetNow != 0.0f;
+        if (character != 0 && share <= 0.0f)
+            text = "Character Amount is 0, so nothing is added.";
+        else if (character == 3)
+            text = share >= 0.995f ? "Robot holds every note on " + noteName (juce::roundToInt (value ("robotNote") + value ("pitch"))) + "."
+                                   : "Robot pulls the voice " + juce::String (juce::roundToInt (share * 100.0f)) + "% of the way to "
+                                         + noteName (juce::roundToInt (value ("robotNote") + value ("pitch"))) + ".";
         else if (character == 0)
             text = std::abs (value ("pitch")) < 0.005f && std::abs (value ("formant")) < 0.005f && value ("vibratoDepth") <= 0.0f && value ("whisper") <= 0.0f
+                           && std::abs (value ("output")) < 0.005f && ! ranging
                        ? "Your voice, untouched." : "No Character added.";
         else
             text = juce::String (c.name) + " adds " + shortest ((float) c.pitchSemitones * share) + " pitch, "
@@ -372,13 +427,14 @@ void MorphEditor::updateAdvancedSummary()
         moved.add ("Mix " + mix.valueText());
     if (std::abs (output.getValue()) > 0.005)
         moved.add ("Output " + output.valueText());
-    advancedHeader->setSummary (moved.joinIntoString (", "));
+    advancedHeader->setSummary (moved);
 }
 
 // ---- frames -----------------------------------------------------------------------------------------------------
 
 bool MorphEditor::tick()
 {
+    showAdvanced (processorRef.advancedOpen.load (std::memory_order_relaxed));
     bool moving = mirror.advance();
 
     moving = pad.advance (mirror.isVoiced(), mirror.getLiveShift(), mirror.getOutputLevel()) || moving;

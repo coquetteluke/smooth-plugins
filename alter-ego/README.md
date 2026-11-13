@@ -10,12 +10,12 @@ Measured on synthetic voices and macOS `say`, which is synthetic too. **That doe
 
 Called Alter Ego inside. The build name stays Alter Ego until the rename.
 
-- **Pad:** left and right is Pitch, up and down is Formant Shift, one semitone the same distance either way. You are the ring in the middle and the dot is the voice, including what the Character adds. Drag it, hold Shift for whole semitones, double-click to go back. The rings show where each Character would land from here.
+- **Pad:** left and right is Pitch, up and down is Formant Shift, one semitone the same distance either way at any window size (1.2.6). You are the ring in the middle and the dot is the voice, including what the Character adds. Drag it, hold Shift for whole semitones, double-click to go back. A click on the dot alone moves nothing, and on Bypass the pad leaves the voice alone. The rings show where each Character would land from here.
 - **Disc under the dot:** where the voice really is right now, read from the engine, and how loud. Vibrato swings it. Robot throws it about as the sung pitch moves against the held note. Range Match shows in it too.
 - **Mirror, the live cue:** your voice on the left and what comes out on the right, each one's real spectrum, low notes at the bottom. Natural is a perfect ink blot, because the two really are the same. Pitch slides the teeth (harmonics), Formant Shift slides the humps, Whisper melts the teeth, Monster fills in between them. The line across the middle joins the note going in to the note coming out.
-- **Advanced:** Range Match, Peak Guard, Range Centre, Mix and Output. Closed, it says which of them have moved.
+- **Advanced:** Range Match, Peak Guard, Range Centre, Mix and Output. Closed, it says which of them have moved: as many as fit, and how many more.
 
-Every control is the same AU parameter as before, with the same ID and name. Readings stay readings. Only the window's size and whether Advanced is open are added to saved state, and they stay out of the parameter tree.
+Every control is the same AU parameter as before, with the same ID and name. Readings stay readings. Only the window's size, whether Advanced is open and the preset picked (1.2.6; left out for Clean Slate) are added to saved state, and they stay out of the parameter tree. A session saved before 1.2.6 names no preset: the box says "Choose a preset", or Clean Slate at Clean Slate's settings.
 
 The mirror reads `src/VoiceTap.h`: a fixed ring of relaxed atomics, written by the processor only while a window is open, read on the window's thread. Frequency analysis runs on the window's thread, never the audio thread.
 
@@ -42,7 +42,9 @@ Every control is a real AU parameter that a host can find by name.
 | Bypass | off, on | Input at the same delay. |
 | Peak Guard | off, on | On, the output never peaks higher than the input has; Output can only lower that ceiling (1.2.3). Off by default, no preset touches it, and off it adds nothing. New in 1.2.0. |
 
-Readings, which never write automation: Detected Pitch, Output Pitch, Range Offset.
+Readings, which never write automation: Detected Pitch, Output Pitch (to 12 kHz since 1.2.6), Range Offset. On Bypass, Output Pitch names the input's pitch and Range Offset reads 0.
+
+Robot Note and Range Centre take a note by name, sharps and flats alike (A#2, Bb2), a bare letter for the nearest such note, or a MIDI number.
 
 ## Characters
 
@@ -66,7 +68,7 @@ input > pre-emphasis > whitening filter > grain shifter > breath or Robot pulses
       \> dry delay ------------------------------------------------------------------------------------------------> Mix
 ```
 
-- `src/EnvelopeEngine.h`: a frame every 2.7 ms gives two all-pole filters (order 48 at 48 kHz; 96 on voiced frames where formants move by 2 semitones or more, 1.2.5), one fitted to the voice and one to the voice with its frequency axis scaled. On voiced sound with separate harmonics the fit answers to the harmonics alone (discrete all-pole modelling), so it doesn't lean towards the nearest harmonic. Held sounds get a long memory and changing sounds get none.
+- `src/EnvelopeEngine.h`: a frame every 2.7 ms gives two all-pole filters (order 48 at 48 kHz; 96 on voiced frames where formants move by 2 semitones or more, 1.2.5; 80 on every frame from 88.2 kHz up, so Formant Shift moves formants less there than at 48 kHz: see Known), one fitted to the voice and one to the voice with its frequency axis scaled. On voiced sound with separate harmonics the fit answers to the harmonics alone (discrete all-pole modelling), so it doesn't lean towards the nearest harmonic. Held sounds get a long memory and changing sounds get none.
 - `src/PsolaShifter.h`: copied from Smooth Tune and changed. Works on the whitened excitation, so grains only carry pulses and the filter takes care of formants. Pitch comes from grain spacing. Unvoiced sound passes at the reported delay.
 - `src/PitchTracker.h`: from Smooth Tune, with the slower mark pull found while building Smooth Harmony.
 - `src/MorphEngine.h`: everything else, one sample at a time. `src/Characters.h`: the table above.
@@ -87,6 +89,7 @@ Measured on Luke's own takes with `~/smooth-plugins/_shared/realvox` (the check 
 - 1.2.3: going back to the default after any setting passes the voice straight through again (-142 dB 3 s after the move back; 1.2.2 read -108 to -118 dB on real takes), and Peak Guard holds every preset, Deep Double's Output +2.5 dB included, under the input's highest peak.
 - 1.2.4: the engine costs about a third of what it did at 96 kHz (half at 48 kHz) and sounds exactly the same, sample for sample. The envelope fit walks each harmonic's cosines once per fit instead of again in every round, Levinson's steps work in place, both channels go through the two filters side by side, and Whisper's balance is worked out per control tick. 96 kHz on the suite's CPU line: 24.9% > 9.2% of one core on a quiet Mac, 100% > 34% on the efficiency cores alone.
 - 1.2.5: Formant Shift moves formants the whole way. Two poles per kHz of the band left part of the vocal tract in the excitation, so formants moved about 60% of the way on real voices (a third of real frames read as not moved). Where formants move by 2 semitones or more, voiced frames get four poles per kHz at 48 kHz. Real takes: formant p90 at Giant 66.5 > 5.4%, formant median at Deep 4.95 > 0.49%. Settings that move formants less, Pitch alone and the default keep their 1.2.4 envelope.
+- 1.2.6: the hunt's faults (host Reset, saved preset, note names, readings, the window); every setting at 48 kHz plays the same samples as 1.2.5. Round 1's two click faults (a louder pulse repeated at a note's end, take 01 at 161.24 s; a consonant voiced for 4 to 6 ms, 152.02 s) and its rode-pass6 tracker change are still open: each fix tried broke a line that passes (see CHANGELOG).
 - The CPU lines of the suite use process time. With other builds filling this Mac's four fast cores they read more than on a quiet Mac (1.1.1 to 1.2.3: 34 to 46% at 96 kHz, against 24% quiet, over the 30% limit). Since 1.2.4 they read 9.8 to 21.7% at 96 kHz under that load (10 whole suite runs in a row: 9.8 to 17.2%, 0 failures; with two other suites running flat out, up to 21.7%).
 
 ## Latency
@@ -124,5 +127,11 @@ All in `tests/results.txt`. Limits are in `tests/PassLimits.h`, committed before
   - Hiss frames are pooled across voices, because per voice the 95th percentile was just the worst single frame, and frames next to a vowel are left out. Both changes followed the first run and made the test easier to pass.
 - Pitch readings use three periods. On a voice dominated by one harmonic the reading is touchy, and that is where the worst numbers come from.
 - A real singer's breath, roughness and bright top are not in these test voices. The envelope memory and the fit were tuned on them, and may need changing for real voices.
+
+## Known
+
+- From 88.2 kHz up the envelope keeps 80 poles on every frame, as up to 1.2.5, so Formant Shift moves formants less than at 48 kHz. Held vowels, Formant Shift +/-4, 90th percentile of frames off the move: 4.5 to 5.5% at 48 kHz, 6.6 to 18.7% at 96 kHz. Four poles per kHz there fixed the male voice and not the female one, and took the engine from 9.8% to 21 to 27% of a core at 96 kHz. The suite reports it as a reading.
+- At a note's end the last grains can repeat an earlier, louder pulse into the decay, and a consonant straight after a vowel is called voiced at the output for 4 to 6 ms. Round 1 found both on real takes; every fix tried in 1.2.6 broke a line that passes (CHANGELOG).
+- A double-click on the pad first moves the voice to the clicked spot for the length of the double-click, because a click on the pad sets Pitch and Formant at once.
 
 `build/PluginTest_artefacts/Release/PluginTest demo` writes every preset on three `say` files to `build/demo`, for a quick listen outside any host.

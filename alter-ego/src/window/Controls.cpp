@@ -128,15 +128,18 @@ namespace ui
         auto b = getLocalBounds().toFloat();
         auto top = b.removeFromTop ((float) labelRow);
 
+        const auto value = valueText();
+        const auto row = rowFor (value);
+        const float valueWidth = juce::GlyphArrangement::getStringWidth (font (Weight::medium, row.valueSize, true), value);
         g.setColour (lit ? tone::text : (resting ? tone::faint : tone::muted));
         g.setFont (font (Weight::regular, 13.0f));
-        g.drawText (label, top, juce::Justification::centredLeft, false);
+        g.drawText (row.name, top.withTrimmedRight (typeBox.isVisible() ? 0.0f : valueWidth + 6.0f), juce::Justification::centredLeft, true);
 
         if (! typeBox.isVisible())
         {
             g.setColour (resting && ! lit ? tone::muted : tone::text);
-            g.setFont (font (Weight::medium, 18.0f, true));
-            g.drawText (valueText(), top, juce::Justification::centredRight, false);
+            g.setFont (font (Weight::medium, row.valueSize, true));
+            g.drawText (value, top, juce::Justification::centredRight, false);
         }
 
         constexpr float thumbRadius = 7.0f;
@@ -159,10 +162,29 @@ namespace ui
         g.fillEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre ({ x, line.getCentreY() }));
     }
 
+    DotSlider::Row DotSlider::rowFor (const juce::String& value) const
+    {
+        const auto need = [&value] (const juce::String& name, float size)
+        {
+            return juce::GlyphArrangement::getStringWidth (font (Weight::regular, 13.0f), name) + 6.0f
+                   + juce::GlyphArrangement::getStringWidth (font (Weight::medium, size, true), value);
+        };
+        const float room = (float) getWidth();
+        for (const auto& name : { label, shortLabel })
+        {
+            if (name.isEmpty())
+                continue;
+            for (float size = 18.0f; size >= 13.0f; size -= 0.5f)
+                if (need (name, size) <= room)
+                    return { name, size, need (name, size) - room };
+        }
+        // Nothing fits whole: the smallest value, and the name cut short with an ellipsis in what is left, so they still do not overlap.
+        return { shortLabel.isNotEmpty() ? shortLabel : label, 13.0f, 0.0f };
+    }
+
     float DotSlider::labelValueOverlap() const
     {
-        return juce::GlyphArrangement::getStringWidth (font (Weight::regular, 13.0f), label) + 6.0f
-               + juce::GlyphArrangement::getStringWidth (font (Weight::medium, 18.0f, true), valueText()) - (float) getWidth();
+        return rowFor (valueText()).over;
     }
 
     // ---- the big value --------------------------------------------------------------------------------------
@@ -396,7 +418,7 @@ namespace ui
         g.setColour (tone::text.withAlpha (zone != none ? 0.2f : 0.11f));
         g.fillRoundedRectangle (b, b.getHeight() * 0.5f);
 
-        g.setColour (tone::text);
+        g.setColour (processor.getCurrentProgram() < 0 ? tone::muted : tone::text);   // "Choose a preset" is quieter than a name
         g.setFont (font (Weight::medium, 14.0f));
         g.drawText (shown, b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
 
@@ -438,13 +460,14 @@ namespace ui
         const auto hit = zoneAt (e.position.x);
         const int count = processor.getNumPrograms();
 
+        const int now = processor.getCurrentProgram();   // -1 when the session names no preset: the arrows go to the last or the first
         if (hit == previous)
         {
-            choose ((processor.getCurrentProgram() + count - 1) % count);
+            choose (now < 0 ? count - 1 : (now + count - 1) % count);
         }
         else if (hit == next)
         {
-            choose ((processor.getCurrentProgram() + 1) % count);
+            choose (now < 0 ? 0 : (now + 1) % count);
         }
         else
         {

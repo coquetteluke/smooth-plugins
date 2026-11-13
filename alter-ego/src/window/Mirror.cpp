@@ -89,6 +89,9 @@ Mirror::Mirror (PluginProcessor& p) : processorRef (p)
     youPath.preallocateSpace (numPoints * 3 + 8);
     egoPath.preallocateSpace (numPoints * 3 + 8);
     prepareAnalysis (processorRef.getTap().sampleRate());
+    // Only audio that comes in from now on is news. Starting from -1, a window opened with the host stopped took what the read still held
+    // from the last window as new, and showed that voice and the engine's last readings (1.2.6).
+    lastPosition = processorRef.getTap().position();
 }
 
 Mirror::~Mirror() = default;
@@ -251,7 +254,11 @@ bool Mirror::advance()
     const auto& engine = processorRef.getEngine();
     const double inNow = fresh ? (double) engine.detectedHz() : 0.0;
     const double outNow = fresh ? (bypassed ? inNow : (double) engine.outputHz()) : 0.0;
-    voiced = inNow > 0.0 && outNow > 0.0 && outputLevel > 0.0f;
+    // Voiced is the engine's word, not the output's level: a soft take with Output turned down lost both readouts, the disc and the line
+    // under -54 dBFS though the engine was tracking it (1.2.6). Such a voice still gets a small disc.
+    voiced = inNow > 0.0 && outNow > 0.0;
+    if (voiced)
+        outputLevel = juce::jmax (outputLevel, 0.08f);
     quietVoiceFrames = voiced ? 0 : juce::jmin (1000, quietVoiceFrames + 1);
     if (voiced)
         liveShift = 12.0 * std::log2 (outNow / inNow);

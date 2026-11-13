@@ -3,7 +3,7 @@
 #include "../PluginProcessor.h"
 
 /** The hero's left half. A map of voices: left and right is Pitch, up and down is Formant Shift, one semitone is the same distance
-    either way. You are the mark in the middle, and the dot is the voice, including whatever the Character adds.
+    either way at any size. You are the mark in the middle, and the dot is the voice, including whatever the Character adds.
 
     Everything that only moves with a parameter sits in one cached image. Only the disc under the dot moves with the sound: it sits
     where the voice really is right now (vibrato and Robot swing it about) and grows with the level going out. */
@@ -44,6 +44,8 @@ private:
     void drawLayer (juce::Graphics&) const;
     void changed();
     void moveTo (juce::Point<float>, bool snap);
+    void setVoice (double pitch, double formant);
+    void openGesture();
     juce::Rectangle<float> map() const noexcept;
     juce::Rectangle<int> liveBounds() const;
 
@@ -53,8 +55,9 @@ private:
 
     float pitch = 0.0f, formant = 0.0f, amount = 1.0f;
     int character = 0, shownCharacter = -1;
-    bool bypassed = false, dragging = false;
-    juce::Point<float> grabOffset;
+    bool bypassed = false, dragging = false, grabbed = false, gestureOpen = false;
+    juce::Point<float> grabAt;
+    double grabPitch = 0.0, grabFormant = 0.0;
 
     juce::ParameterAttachment pitchAttachment, formantAttachment, characterAttachment, amountAttachment, bypassAttachment;
 

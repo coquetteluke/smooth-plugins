@@ -40,9 +40,17 @@ namespace ui
         /** How tall the row with the name and value is. The line sits centred in what is left. */
         void setLabelRow (int height)  { labelRow = height; repaint(); }
 
+        /** A shorter name for when the slider is too narrow for the name and the value side by side. */
+        void setShortLabel (const juce::String& text)  { shortLabel = text; repaint(); }
+
     private:
         void timerCallback() override;
         juce::Rectangle<int> valueArea() const;
+
+        // What the name row shows at this width: the value shrinks first (down to 13 pt), then the short name takes over, and last of all
+        // the name gives way to an ellipsis. To 1.2.6 both were drawn full size over each other at the smallest window.
+        struct Row { juce::String name; float valueSize = 18.0f, over = 0.0f; };
+        Row rowFor (const juce::String& value) const;
 
         struct TypeBox final : public juce::Label
         {
@@ -51,6 +59,7 @@ namespace ui
 
         juce::RangedAudioParameter& param;
         const juce::String label;
+        juce::String shortLabel;
         const juce::Colour accent;
         const Formatter formatter;
         const double restValue;

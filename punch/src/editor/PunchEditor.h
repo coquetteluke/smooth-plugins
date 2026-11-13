@@ -37,6 +37,8 @@ public:
 private:
     class AdvancedHeader;
 
+    void showAdvanced (bool open);   // lays out the drawer and the window to match the saved flag
+
     void timerCallback() override;
     void showHintFor (juce::Component*);
     void setHint (const juce::String&);

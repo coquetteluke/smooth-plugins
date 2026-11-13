@@ -37,6 +37,7 @@ namespace
     float linearToDb (float x) { return 8.685889638f * std::log (juce::jmax (x, 1.0e-6f)); }
 
     const juce::Identifier windowWidthAttribute { "windowWidth" }, windowHeightAttribute { "windowHeight" }, advancedOpenAttribute { "advancedOpen" };
+    const juce::Identifier programAttribute { "program" };   // since 0.6.2: the preset last chosen, left out when none is known
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::makeLayout()
@@ -93,6 +94,25 @@ PluginProcessor::PluginProcessor()
     addParameter (outputLevel);
     addParameter (impactReduction);
     addParameter (ceilingReduction);
+
+    bypassWasOn.store (bypass->get(), std::memory_order_relaxed);
+    apvts.addParameterListener ("bypass", this);
+}
+
+PluginProcessor::~PluginProcessor()
+{
+    apvts.removeParameterListener ("bypass", this);
+}
+
+void PluginProcessor::parameterChanged (const juce::String& id, float value)
+{
+    if (id != "bypass")
+        return;
+    const bool on = value > 0.5f;
+    const bool was = bypassWasOn.exchange (on, std::memory_order_relaxed);
+    if (on && ! was)
+        bypassSwitchedAtMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+    bypassJustSwitchedOn.store (on && ! was, std::memory_order_relaxed);
 }
 
 bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -127,6 +147,13 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
 
 void PluginProcessor::reset()
 {
+    // The Reset that comes with the host's bypass switching on is left out: clearing then would cut the sound off at once instead of the
+    // 20 ms fade (HostStress measured a step of 0.24 there). It is the next Reset within a quarter second, with no audio block in between.
+    if (bypassJustSwitchedOn.exchange (false, std::memory_order_relaxed)
+        && juce::Time::getMillisecondCounter() - bypassSwitchedAtMs.load (std::memory_order_relaxed) < 250)
+        return;
+
+    const juce::ScopedLock lock (getCallbackLock());   // the AU wrapper renders under this lock, so a host Reset never lands mid block
     for (auto& d : delay)
         std::fill (d.begin(), d.end(), 0.0f);
     writePos = 0;
@@ -140,7 +167,9 @@ void PluginProcessor::reset()
     ceilingSmoothed.setCurrentAndTargetValue (ceiling->load());
     ceilingOnSmoothed.setCurrentAndTargetValue (ceilingOn->load() > 0.5f ? 1.0f : 0.0f);
     engine.reset (punch->load() * 0.01f);
+    lastInGain = PunchEngine::dbToGain (gain->load());
     limiter.reset();
+    envelopeTap.clearPending();
     inputPeak = outputPeak = impactPeakDb = ceilingPeakDb = 0.0f;
     inputLevel->setDb (-60.0f);
     outputLevel->setDb (-60.0f);
@@ -173,30 +202,42 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
     float* d0 = delay[0].data();
     float* d1 = delay[1].data();
     const bool steady = steadyNotes->load() > 0.5f;
+    if (bypassJustSwitchedOn.load (std::memory_order_relaxed))
+        bypassJustSwitchedOn.store (false, std::memory_order_relaxed);   // only the Reset that comes with the switch is left out
 
     for (int i = 0; i < buffer.getNumSamples(); ++i)
     {
         const float rect = ch1 != nullptr ? juce::jmax (std::abs (ch0[i]), std::abs (ch1[i])) : std::abs (ch0[i]);
         const float inGain = PunchEngine::dbToGain (gainSmoothed.getNextValue());
+        if (inGain != lastInGain)
+        {
+            engine.levelChanged (inGain / lastInGain);   // a Gain move is the new level from the start, not a change in the sound
+            lastInGain = inGain;
+        }
         // The detector keeps running in bypass, so coming back is seamless.
         const float gainDb = engine.process (rect * inGain, attackSmoothed.getNextValue(), sustainSmoothed.getNextValue(), punchSmoothed.getNextValue(), impactSmoothed.getNextValue(),
                                              steady, ch1 != nullptr ? 0.5f * (ch0[i] + ch1[i]) : ch0[i]);
         const float on = onSmoothed.getNextValue();
-        const float m = mixSmoothed.getNextValue() * on;
+        const float mixNow = mixSmoothed.getNextValue();
+        const float m = mixNow * on;
         // Wet and dry are the same delayed sample, so they can't comb: Mix only scales how much of the gain change is used.
-        const float blended = gainDb == 0.0f ? 1.0f : 1.0f + m * (PunchEngine::dbToGain (gainDb) - 1.0f);
+        // Everything up to the ceiling is worked out as if Bypass were off; Bypass then fades between that finished sound and the delayed
+        // input (0.6.2: it faded Gain and the ceiling's cut each on its own, and halfway through the output went over both the ceiling and
+        // the bypassed level). With Bypass off or fully on this is exactly what it was.
+        const float blended = gainDb == 0.0f ? 1.0f : 1.0f + mixNow * (PunchEngine::dbToGain (gainDb) - 1.0f);
         // Gain is a level control in front of everything, so it moves dry and wet alike. Bypass takes it out too.
-        const float total = blended * (1.0f + on * (inGain - 1.0f));
+        const float total = blended * (1.0f + (inGain - 1.0f));
 
         // The sample coming out of the delay as it was before any gain, so the window's before and after line up in time. Only read here.
         const float before = ch1 != nullptr ? juce::jmax (std::abs (d0[writePos]), std::abs (d1[writePos])) : std::abs (d0[writePos]);
 
-        float out0 = d0[writePos] * total;
+        const float dry0 = d0[writePos], dry1 = ch1 != nullptr ? d1[writePos] : 0.0f;
+        float out0 = dry0 * total;
         d0[writePos] = ch0[i];
         float out1 = 0.0f;
         if (ch1 != nullptr)
         {
-            out1 = d1[writePos] * total;
+            out1 = dry1 * total;
             d1[writePos] = ch1[i];
         }
 
@@ -207,10 +248,12 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
         const float loudest = juce::jmax (std::abs (out0), std::abs (out1)) * limit;
         if (loudest > ceilingLinear)
             limit *= ceilingLinear / loudest;
-        const float applied = 1.0f + ceilingOnSmoothed.getNextValue() * on * (limit - 1.0f);
+        const float ceilingOnNow = ceilingOnSmoothed.getNextValue();
+        const float applied = 1.0f + ceilingOnNow * (limit - 1.0f);
+        const float appliedShown = 1.0f + ceilingOnNow * on * (limit - 1.0f);   // what the Ceiling Reduction reading has always shown
 
-        out0 = juce::jlimit (-outputSafety, outputSafety, out0 * applied);
-        out1 = juce::jlimit (-outputSafety, outputSafety, out1 * applied);
+        out0 = juce::jlimit (-outputSafety, outputSafety, on * (out0 * applied) + (1.0f - on) * dry0);
+        out1 = juce::jlimit (-outputSafety, outputSafety, on * (out1 * applied) + (1.0f - on) * dry1);
         ch0[i] = out0;
         if (ch1 != nullptr)
             ch1[i] = out1;
@@ -218,7 +261,7 @@ void PluginProcessor::run (juce::AudioBuffer<float>& buffer, bool forceBypass)
         inputPeak = juce::jmax (rect, inputPeak * meterFall);
         outputPeak = juce::jmax (std::abs (out0), std::abs (out1), outputPeak * meterFall);
         impactPeakDb = juce::jmax (engine.impactReductionNowDb() * m, impactPeakDb * meterFall);
-        ceilingPeakDb = juce::jmax (-linearToDb (applied), ceilingPeakDb * meterFall);
+        ceilingPeakDb = juce::jmax (-linearToDb (appliedShown), ceilingPeakDb * meterFall);
         envelopeTap.push (before, juce::jmax (std::abs (out0), std::abs (out1)));
 
         if (++writePos >= delaySamples)
@@ -243,10 +286,15 @@ void PluginProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, ju
 
 int PluginProcessor::getNumPrograms() { return (int) std::size (presets); }
 
+// The preset last chosen, or -1 for a session saved before 0.6.2, which does not say: then the window reads "Choose a preset".
+int PluginProcessor::getCurrentProgram() { return currentProgram; }
+
 juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new PunchEditor (*this); }
 
 bool PluginProcessor::isCurrentProgramEdited() const
 {
+    if (currentProgram < 0)
+        return false;
     const auto& preset = presets[juce::jlimit (0, (int) std::size (presets) - 1, currentProgram)];
     const auto moved = [] (const std::atomic<float>* now, float wanted) { return std::abs (now->load (std::memory_order_relaxed) - wanted) > 0.01f; };
     return moved (punch, preset.punch) || moved (attack, preset.attack) || moved (sustain, preset.sustain) || moved (mix, preset.mix)
@@ -288,6 +336,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
         xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute (windowHeightAttribute, windowHeight.load (std::memory_order_relaxed));
         xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
+        if (currentProgram >= 0)
+            xml->setAttribute (programAttribute, currentProgram);
         copyXmlToBinary (*xml, dest);
     }
 }
@@ -303,9 +353,15 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             if (xml->hasAttribute (windowHeightAttribute))
                 windowHeight.store (juce::jlimit (minWindowHeight, maxWindowHeight, xml->getIntAttribute (windowHeightAttribute, defaultWindowHeight)), std::memory_order_relaxed);
             advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            // Which preset was chosen, only to name it: its values are already in the state and are not applied again. A session saved
+            // before 0.6.2 does not say, so it names none rather than a wrong one. A damaged number is kept in range.
+            currentProgram = xml->hasAttribute (programAttribute)
+                               ? juce::jlimit (0, getNumPrograms() - 1, xml->getIntAttribute (programAttribute, 0))
+                               : -1;
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (windowHeightAttribute);
             xml->removeAttribute (advancedOpenAttribute);
+            xml->removeAttribute (programAttribute);
             // A session saved before Steady Notes existed (0.3.x and older) has no value for it, and must sound as it did when it was
             // saved: with it off, whatever the default. (Added in 0.6.0, when the default was on; kept since.)
             bool hasSteady = false;

@@ -20,6 +20,13 @@ public:
         peakBefore = peakAfter = 0.0f;
     }
 
+    // Audio thread. A host Reset: the bin being gathered is dropped, as prepare does. The ring and its count stay, for the window.
+    void clearPending() noexcept
+    {
+        count = 0;
+        peakBefore = peakAfter = 0.0f;
+    }
+
     // Audio thread.
     void push (float before, float after) noexcept
     {

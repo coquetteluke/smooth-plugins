@@ -1,9 +1,13 @@
 #pragma once
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <vector>
 
-// Largest value in the last `window` samples, O(1) on average, with no allocation.
+// Largest value in the last `window` samples, O(1) on average, with no allocation. rescale() multiplies every value in the window at
+// once (0.6.2, for a Gain move): the values are kept divided by the scale, which is exactly 1 until then.
 struct SlidingMax
 {
     void prepare (int windowSamples)
@@ -21,10 +25,18 @@ struct SlidingMax
         std::fill (index.begin(), index.end(), 0L);
         head = tail = count = 0;
         now = 0;
+        scale = inverse = 1.0f;
     }
 
-    float push (float x)
+    void rescale (float r)
     {
+        scale *= r;
+        inverse = 1.0f / scale;
+    }
+
+    float push (float in)
+    {
+        const float x = in * inverse;
         while (count > 0)
         {
             const int back = (tail + size - 1) % size;
@@ -43,13 +55,64 @@ struct SlidingMax
             --count;
         }
         ++now;
-        return value[(size_t) head];
+        return value[(size_t) head] * scale;
     }
 
     std::vector<float> value;
     std::vector<long> index;
     int window = 1, size = 2, head = 0, tail = 0, count = 0;
     long now = 0;
+    float scale = 1.0f, inverse = 1.0f;
+};
+
+// How much of the sound's power came at each level against the recent peak, averaged over the level match's own time (0.6.2). Punch's
+// reduction depends only on that level and on Punch, so from this the level match can be worked out for any Punch at once: when Punch
+// moves, the match carries over to the new Punch instead of learning it again over a second. O(1) a sample: every bin fades by the same
+// amount, so the bins are kept divided by that fade. Read only while Punch moves. No allocation.
+struct LevelHistogram
+{
+    static constexpr int numBins = 93;              // one for everything 40 dB or more under the peak, where no Punch acts, then -40 to +6 dB
+    static constexpr float lowestDb = -40.0f, stepDb = 0.5f;
+
+    void prepare (float coefficient) { add = coefficient; keep = 1.0 - (double) coefficient; grow = 1.0 / keep; reset(); }
+    void reset() { power.fill (0.0); level.fill (0.0); scale = inverse = 1.0; }
+
+    void push (float p, float levelDb)
+    {
+        scale *= keep;
+        inverse *= grow;
+        if (scale < 1.0e-200)
+        {
+            for (int k = 0; k < numBins; ++k) { power[(size_t) k] *= scale; level[(size_t) k] *= scale; }
+            scale = inverse = 1.0;
+        }
+        const int k = ! (levelDb >= lowestDb) ? 0 : std::min (numBins - 1, 1 + (int) ((levelDb - lowestDb) * (1.0f / stepDb)));
+        const double a = (double) add * (double) p * inverse;
+        power[(size_t) k] += a;
+        level[(size_t) k] += a * (double) levelDb;
+    }
+
+    // A change of level: every power by r squared. The levels against the peak do not move.
+    void rescale (double r2) { scale *= r2; inverse = 1.0 / scale; }
+
+    // The power after a reduction, sum over the bins of power times gainSquared (level), for the bins at or above fromDb.
+    template <typename GainSquared>
+    double after (GainSquared gainSquared, float fromDb = -1.0e9f) const
+    {
+        double sum = 0.0;
+        for (int k = 0; k < numBins; ++k)
+            if (power[(size_t) k] > 0.0)
+            {
+                const float db = (float) (level[(size_t) k] / power[(size_t) k]);
+                if (db >= fromDb)
+                    sum += power[(size_t) k] * (double) gainSquared (db);
+            }
+        return sum * scale;
+    }
+
+    std::array<double, numBins> power {}, level {};
+    double scale = 1.0, inverse = 1.0, keep = 1.0, grow = 1.0;
+    float add = 0.0f;
 };
 
 // Whether the sound has a pitch right now. Steady Notes only: a note is a sound with a pitch, and its tail is what comes right after
@@ -236,6 +299,8 @@ public:
     static constexpr double makeupHeldTime = 3.0;  // How slowly Punch's level match moves once it is right.
     static constexpr double pauseHold = 0.5;       // How long after the voice the level match stays up,
     static constexpr double pauseFade = 0.5;       // and how long it takes to go.
+    static constexpr double plainFade = 0.020;     // Steady Notes: how fast Sustain's plain reading leaves when a pitch is heard, and comes back if it was not a note (0.6.2).
+    static constexpr int rebaseEvery = 16;         // While Punch moves, its level match is carried over every this many samples (0.6.2).
 
     void prepare (double sampleRate)
     {
@@ -282,6 +347,9 @@ public:
         cMakeupHeld = coef (makeupHeldTime);
         pauseHoldSamples = std::max (1, (int) std::lround (pauseHold * sampleRate));
         pauseFadeSamples = std::max (1, (int) std::lround (pauseFade * sampleRate));
+        plainStep = (float) (1.0 / std::max (1.0, plainFade * sampleRate));
+        plainLevels.prepare (cPower);
+        steadyLevels.prepare (cPower);
         pitch.prepare (sampleRate);
 
         shaperHold.prepare (std::max (1, (int) std::lround (holdTime * sampleRate)));
@@ -293,11 +361,20 @@ public:
     {
         shaperHold.reset();
         compHold.reset();
-        attackFast = attackSlow = sustainFast = sustainSlow = 0.0f;
+        attackFast = attackSlow = sustainFast = sustainSlow = sustainSlowPlain = 0.0f;
         compEnv = peakRef = 0.0f;
-        inPower = outPower = 0.0f;
+        inPower = outPower = steadyIn = steadyOut = 0.0f;
         gainDb = 0.0f;
-        makeupDb = restingMakeupDb (punch);
+        makeupDb = steadyMakeup = restingMakeupDb (punch);
+        handoverDb = 0.0f;
+        plainLevels.reset();
+        steadyLevels.reset();
+        lastPunch = rebasedPunch = punch;
+        sinceRebase = 0;
+        lastImpact = 0.0f;
+        impactLevelDb = -120.0f;
+        plainQuietFor = 0;
+        fresh = true;
         impactFast = impactSlow = impactNowDb = quietGuard = 0.0f;
         pitch.reset();
         noteRecent.reset();
@@ -311,7 +388,9 @@ public:
         levelPower = crestDb = overDb = 0.0f;
         makeupGuard = 1.0f;
         givenDb = 0.0f;
-        matchedPunch = punch;
+        steadyLevelDb = 0.0f;
+        plainWeight = 1.0f;
+        noteAge = 0;
         matched = false;
         quietFor = 0;
         steadyWasOn = false;
@@ -329,56 +408,127 @@ public:
         follow (attackSlow, hold, cAttackSlowRise, cAttackFall);
         follow (sustainFast, hold, cFastRise, cSustainFastFall);
         follow (sustainSlow, hold, cFastRise, cSustainSlowFall);
+        follow (sustainSlowPlain, hold, cFastRise, cSustainSlowFall);
         follow (compEnv, compPeak, cCompRise, cCompFall);
         follow (peakRef, compPeak, 1.0f, cPeakRefFall);
+        // sustainSlow is Steady Notes' own: a sharp start pulls it down to the new sound. sustainSlowPlain never is, and is what Sustain
+        // reads with Steady Notes off (0.6.2), so switching Steady Notes off lands on that reading at once. With Steady Notes off from the
+        // start the two are the same.
+        if (steadyNotes && ! steadyWasOn)
+            sustainSlow = sustainSlowPlain;
 
         // Start of a sound: the fast envelope is ahead of the slow one. Tail: the slow one is above the fast one.
         const float startDb = toDb (attackFast) - toDb (attackSlow);
-        const float tailDb = toDb (sustainSlow) - toDb (sustainFast);
+        const float tailDb = toDb (steadyNotes ? sustainSlow : sustainSlowPlain) - toDb (sustainFast);
         float startAmount = clamp01 ((startDb - deadZoneDb) / startRangeDb);
         float tailAmount = clamp01 ((tailDb - deadZoneDb) / tailRangeDb);
         if (steadyNotes)
         {
+            // Where there is no voice Sustain reads the level plainly (tailAmount), but from Steady Notes' own slow envelope, which a sharp
+            // start pulls down (rule 4 below): a phrase start after a pause, a breath or a mouth sound is a new sound, not the tail of what
+            // came before. (0.6.2 tried the reading with Steady Notes off here, for drums, where a soft hit right after a loud one gets no
+            // tail with Steady Notes on; on Luke's rap take 16 that gave phrase starts Sustain's full 9 dB, so it was not kept.)
             tailAmount = steadyTailAmount (startDb, sample, sustainDb, tailAmount);
             startAmount = steadyStartAmount (startDb);
         }
 
         const float reductionDb = steadyNotes ? steadyReductionDb (punch, x) : compReductionDb (punch);
 
+        // 0.6.2. A Punch move is a change of setting, not of the sound: the level match carries over to the new Punch at once, worked out
+        // from how much of the sound came at each level (LevelHistogram), instead of lagging behind it for a second. Every few samples
+        // while Punch moves, and once more when it stops. With Punch still, none of this runs.
+        if (punch != rebasedPunch && (punch == lastPunch || ++sinceRebase >= rebaseEvery))
+        {
+            carryMatchOver (rebasedPunch, punch);
+            rebasedPunch = punch;
+            sinceRebase = 0;
+        }
+        lastPunch = punch;
+
         // Level match from average power with and without the reduction. Held when there is nothing to measure.
         const float reductionGain = std::exp (-reductionDb * dbToLn);
         const float inP = x * x;
         const float outP = inP * reductionGain * reductionGain;
-        float makeupNowDb;
+        float makeupNowDb = 0.0f;
         if (steadyNotes)
         {
+            if (! steadyWasOn)
+                steadyLevels = plainLevels;
             makeupNowDb = steadyMakeupDb (punch, inP, outP);
+            steadyLevels.push (inP, steadyLevelDb);
         }
-        else
+        // The plain level match runs always, with Steady Notes on too, so that switching it off lands on what the plain match has been
+        // all along (0.6.2: it took over the Steady Notes match and fell away for a second). With Steady Notes off this is 0.4.0's.
+        // The level against the recent peak, read with a quick logarithm (within 0.01 dB): it sorts the sound into half dB bins, and with
+        // Steady Notes on it gives the plain match's reduction, which only that match uses. With Steady Notes off the match uses the exact
+        // reduction, as ever.
+        const float plainLevelDb = 6.02059991f * quickLog2 ((compEnv + epsilon) / std::max (peakRef + epsilon, peakRefFloor));
+        const float plainOutP = steadyNotes ? inP * quickPowerLeft (plainLevelDb, punch) : outP;
+        plainLevels.push (inP, plainLevelDb);
+        // How long the sound has been under the level Punch works at, kept with Steady Notes off too, so that Steady Notes switched on
+        // between phrases knows it is between phrases (0.6.2).
+        plainQuietFor = punch > 0.0f && plainLevelDb + depthNow (punch) >= -guardKneeDb ? 0 : std::min (plainQuietFor + 1, pauseHoldSamples + pauseFadeSamples);
+        inPower += cPower * (inP - inPower);
+        outPower += cPower * (plainOutP - outPower);
+        float makeupTarget = restingMakeupDb (punch);
+        if (inPower > gateFloorPower && outPower > 0.0f)
+            makeupTarget = std::min (maxMakeupDb, std::max (0.0f, 10.0f * std::log10 (inPower / outPower)));
+        makeupDb += cMakeup * (makeupTarget - makeupDb);
+        if (! steadyNotes)
         {
-            inPower += cPower * (inP - inPower);
-            outPower += cPower * (outP - outPower);
-            float makeupTarget = restingMakeupDb (punch);
-            if (inPower > gateFloorPower && outPower > 0.0f)
-                makeupTarget = std::min (maxMakeupDb, std::max (0.0f, 10.0f * std::log10 (inPower / outPower)));
-            makeupDb += cMakeup * (makeupTarget - makeupDb);
-            makeupNowDb = makeupDb;
+            // Steady Notes just went off: from what it gave to the plain match, at the plain match's own speed.
+            if (steadyWasOn)
+                handoverDb = givenDb - makeupDb;
+            makeupNowDb = makeupDb + handoverDb;
+            handoverDb -= cMakeup * handoverDb;
         }
 
         // Impact: two release speeds. The slow stage follows the level itself, not the fast stage's release, so it only builds up on a level that lasts and a short peak lets go quickly.
+        // 0.6.2: when Impact moves, the reduction it holds goes to what the new Impact holds for the same sound, so it leaves with its makeup
+        // and does not let go over a second after the makeup has gone.
+        if (impact != lastImpact)
+        {
+            moveImpact (lastImpact, impact, 0.0f);
+            lastImpact = impact;
+        }
         const float heldDb = toDb (hold);
         const float impactTarget = impactReductionDb (heldDb, impact);
         impactFast += (impactTarget > impactFast ? cImpactAttack : cImpactFastRelease) * (impactTarget - impactFast);
         impactSlow += (impactTarget > impactSlow ? cImpactSlowRise : cImpactSlowRelease) * (impactTarget - impactSlow);
         impactNowDb = std::max (impactFast, impactSlow);
+        // The level that built the reduction Impact holds: followed while the slow stage rises or holds, kept while it lets go. Only read
+        // when Impact or Gain moves.
+        if (impactTarget >= impactSlow)
+            impactLevelDb += cImpactSlowRise * (heldDb - impactLevelDb);
         // Impact's makeup fades out on near silence, so room noise between phrases isn't lifted with the voice.
         const float guardTarget = clamp01 ((heldDb - guardFloorDb) / guardRangeDb);
         quietGuard += (guardTarget > quietGuard ? cGuardRise : cGuardFall) * (guardTarget - quietGuard);
 
         const float total = attackDb * startAmount + sustainDb * tailAmount - reductionDb + makeupNowDb - impactNowDb + impactMakeupDb (impact) * quietGuard;
         steadyWasOn = steadyNotes;
+        fresh = false;
         gainDb += cGain * (std::min (maxGainDb, std::max (minGainDb, total)) - gainDb);
         return gainDb;
+    }
+
+    // 0.6.2. Gain moved: the level going in is now r times what it was. Gain is a level in front of everything, so the detector takes the
+    // new level as the level it has always had. Attack, Sustain and Punch ignore level, so a Gain move changes nothing they do; Impact goes
+    // to the new level's reduction without letting go late. Only called when Gain moves.
+    void levelChanged (float r)
+    {
+        if (! (r > 0.0f && r < 1.0e6f))
+            return;
+        const float r2 = r * r;
+        for (float* e : { &attackFast, &attackSlow, &sustainFast, &sustainSlow, &sustainSlowPlain, &compEnv, &peakRef, &noteLevel })
+            *e *= r;
+        for (float* e : { &inPower, &outPower, &steadyIn, &steadyOut, &levelPower })
+            *e *= r2;
+        plainLevels.rescale ((double) r2);
+        steadyLevels.rescale ((double) r2);
+        shaperHold.rescale (r);
+        compHold.rescale (r);
+        noteRecent.rescale (r);
+        moveImpact (lastImpact, lastImpact, 20.0f * std::log10 (r));
     }
 
     // For the window's drawing of a hit, which is made from levels and has no sound to hear a pitch in: every sound counts as pitched.
@@ -428,6 +578,49 @@ private:
     // Punch to the power 1.25. Spreads the audible change more evenly across the control.
     static float curve (float punch) { return punch * std::sqrt (std::sqrt (punch)); }
     static float toDb (float x) { return 8.685889638f * std::log (x + epsilon); }
+    static constexpr float peakRefFloor = 1.0e-3f;    // peakRefFloorDb as a level
+    // 2 to the y for y from about -100 to 0, within about 0.07 %: the integer part into the exponent, and a cubic on the rest.
+    static float quickExp2 (float y)
+    {
+        y = std::max (y, -120.0f);
+        const float fl = std::floor (y), f = y - fl;
+        const float m = ((0.07944024f * f + 0.22741418f) * f + 0.69314718f) * f + 1.0f;   // 2^f on [0, 1) to within 0.07 %
+        const std::uint32_t bits = (std::uint32_t) ((int) fl + 127) << 23;
+        float e;
+        std::memcpy (&e, &bits, sizeof e);
+        return m * e;
+    }
+
+    // powerLeft with the quick exponent and Punch's curve worked out once per Punch: for the plain level match kept while Steady Notes is on.
+    float quickPowerLeft (float levelDb, float punch)
+    {
+        if (punch <= 0.0f)
+            return 1.0f;
+        return quickExp2 (-softKneeAbove (levelDb + depthNow (punch)) * slopeNow * 0.33219281f);
+    }
+
+    float depthNow (float punch)
+    {
+        if (punch != curvePunch)
+        {
+            curvePunch = punch;
+            curveDepth = depthDb (punch);
+            slopeNow = 1.0f - 1.0f / ratio (punch);
+        }
+        return curveDepth;
+    }
+
+    // log2 for a positive normal float, within about 0.0015 (0.01 dB as a level): the exponent, and a cubic on the mantissa.
+    static float quickLog2 (float x)
+    {
+        std::uint32_t bits;
+        std::memcpy (&bits, &x, sizeof bits);
+        const float e = (float) ((int) ((bits >> 23) & 255u) - 127);
+        bits = (bits & 0x7FFFFFu) | 0x3F800000u;
+        float m;
+        std::memcpy (&m, &bits, sizeof m);
+        return e + ((0.15824871f * m - 1.05187502f) * m + 3.04788335f) * m - 2.15458178f;
+    }
     static float clamp01 (float x) { return x <= 0.0f ? 0.0f : (x >= 1.0f ? 1.0f : x); }
     static void follow (float& env, float target, float rise, float fall) { env += (target > env ? rise : fall) * (target - env); }
 
@@ -462,6 +655,8 @@ private:
             noteLevel = sustainSlow;
             startDeadDb = deadZoneDb;
             sunkFor = 0;
+            plainWeight = 1.0f;
+            noteAge = 0;
         }
         if (! levelsOnly)
             pitch.push (clean);
@@ -495,6 +690,7 @@ private:
             sinceNote = 0;
         else if (sinceNote < farFromANote)
             ++sinceNote;
+        noteAge = noteOn ? std::min (noteAge + 1, noteSamples) : 0;
 
         const bool inTail = ! noteOn && sinceNote < end;
         const float gateTarget = noteOn ? 1.0f : (sinceNote <= full ? 1.0f : (sinceNote >= end ? 0.0f : (float) (end - sinceNote) / (float) (end - full)));
@@ -526,18 +722,27 @@ private:
         // 6. No voice: with no note for voiceGone (or none since Steady Notes came on, as on a drum track) Sustain is what it is with
         //    Steady Notes off, the plain reading of the level, faded in over voiceGoneRamp. Breaths and mouth sounds between phrases come
         //    well within voiceGone of a note and are still left alone.
-        if (levelsOnly || sinceNote < voiceGoneSamples)
+        //    0.6.2: a pitch at the level where a note starts is a voice coming, so the plain reading leaves over plainFade as soon as one is
+        //    heard, not all at once when the note is confirmed 80 ms later (that stepped the gain by Sustain's full amount in half a
+        //    millisecond, in the first vowel of every phrase after a rest). If it was not a note after all it comes back as fast.
+        if (levelsOnly)
             return voiced;
-        const float plain = sinceNote >= farFromANote ? 1.0f : std::min (1.0f, (float) (sinceNote - voiceGoneSamples) / (float) voiceGoneRampSamples);
-        return voiced + plain * (plainAmount - voiced);
+        const float plainTarget = sinceNote < voiceGoneSamples || notedFor > 0 ? 0.0f
+                                : (sinceNote >= farFromANote ? 1.0f : std::min (1.0f, (float) (sinceNote - voiceGoneSamples) / (float) voiceGoneRampSamples));
+        plainWeight = plainWeight < plainTarget ? std::min (plainTarget, plainWeight + plainStep) : std::max (plainTarget, plainWeight - plainStep);
+        if (plainWeight <= 0.0f)
+            return voiced;
+        return voiced + plainWeight * (plainAmount - voiced);
     }
 
     // Attack for a voice (Steady Notes). Inside a held vowel the peaks jump by a few dB now and then while the level stays where it is
     // (on Luke's takes by 1.6 to 4.8 dB), and Attack took each jump for a start. While a note is sounding a start has to rise by
     // heldStartDb before Attack acts. The first sound after a pause, and any sound that is not a note yet, is read as ever.
+    // (0.6.2: the window's drawing counts a hit as a note from its first moment, so there the dead zone waits until the note is as old as
+    // a note the audio would have confirmed; it rose within the hit's first 30 ms and drew Attack smaller than the audio gives it.)
     float steadyStartAmount (float startDb)
     {
-        const float target = noteOn ? heldStartDb : deadZoneDb;
+        const float target = noteOn && (! levelsOnly || noteAge >= noteSamples) ? heldStartDb : deadZoneDb;
         startDeadDb = startDeadDb < target ? std::min (target, startDeadDb + startDeadUpStep) : std::max (target, startDeadDb - startDeadDownStep);
         return clamp01 ((startDb - startDeadDb) / startRangeDb);
     }
@@ -557,6 +762,7 @@ private:
         levelPower += cLevel * (x * x - levelPower);
         const float levelDb = 4.342944819f * std::log (levelPower + 1.0e-12f);
         crestDb += (noteOn ? cCrestHeld : cCrestFree) * (peakDb - levelDb - crestDb);
+        steadyLevelDb = levelDb + crestDb - 6.02059991f * quickLog2 (std::max (peakRef + epsilon, peakRefFloor));
         if (punch <= 0.0f)
         {
             overDb = -100.0f;
@@ -573,48 +779,131 @@ private:
     // note keeps one gain. It is then given to a sound by how near that sound is to the level Punch works at: in full at that level,
     // none of it guardSpanDb further down and none once the voice has been gone for a while. So it comes in with the first word of a
     // phrase and not after it, and the room and a far-off breath are not lifted with the voice.
+    // 0.6.2: it has its own powers and match (steadyIn, steadyOut, steadyMakeup), taken over from the plain match when Steady Notes comes
+    // on, as before. A Punch move no longer makes it learn again (from the level after the match, which locked it several dB low): the
+    // match carries over to the new Punch (carryMatchOver) and is trimmed on from there.
     float steadyMakeupDb (float punch, float inP, float outP)
     {
-        if (! steadyWasOn || punch != matchedPunch)
+        if (! steadyWasOn)
         {
             matched = false;
-            matchedPunch = punch;
-            if (! steadyWasOn)
-            {
-                makeupGuard = 1.0f;
-                givenDb = 0.0f;
-                quietFor = 0;
-            }
+            givenDb = 0.0f;
+            // Switched on while playing (0.6.2), the match is given as it would be now: between phrases, not at all. It was given in full
+            // and fell away over a second, so the first word after the switch still had some of it. From a reset, as ever.
+            makeupGuard = fresh ? 1.0f : guardFor (overDb, plainQuietFor);
+            quietFor = fresh ? 0 : plainQuietFor;
+            steadyIn = inPower;
+            steadyOut = outPower;
+            steadyMakeup = makeupDb;
         }
         if (! matched)
         {
             // Until the match is first right it is found the old way, quickly, from the level with and without the reduction.
-            inPower += cPower * (inP - inPower);
-            outPower += cPower * (outP - outPower);
-            const bool measurable = inPower > gateFloorPower && outPower > 0.0f;
-            const float target = measurable ? std::min (maxMakeupDb, std::max (0.0f, 10.0f * std::log10 (inPower / outPower))) : restingMakeupDb (punch);
-            makeupDb += cMakeup * (target - makeupDb);
-            if (noteOn && measurable && std::abs (target - makeupDb) < matchedWithinDb)
+            steadyIn += cPower * (inP - steadyIn);
+            steadyOut += cPower * (outP - steadyOut);
+            const bool measurable = steadyIn > gateFloorPower && steadyOut > 0.0f;
+            const float target = measurable ? std::min (maxMakeupDb, std::max (0.0f, 10.0f * std::log10 (steadyIn / steadyOut))) : restingMakeupDb (punch);
+            steadyMakeup += cMakeup * (target - steadyMakeup);
+            if (noteOn && measurable && std::abs (target - steadyMakeup) < matchedWithinDb)
             {
                 matched = true;
-                outPower *= std::exp (2.0f * givenDb * dbToLn); // From here on the level after the match is what is measured.
+                steadyOut *= std::exp (2.0f * givenDb * dbToLn); // From here on the level after the match is what is measured.
             }
         }
         else if (overDb >= std::max (-guardKneeDb, depthDb (punch) - trimReachDb))
         {
             // Then it is trimmed, slowly, until what goes out is as loud as what came in. Only sound at the level Punch works at and
             // within trimReachDb of the loudest the voice has just been has a say: the voice itself, not what lies between the words.
-            inPower += cPower * (inP - inPower);
-            outPower += cPower * (outP * std::exp (2.0f * givenDb * dbToLn) - outPower);
-            if (inPower > gateFloorPower && outPower > 0.0f)
-                makeupDb = std::min (maxMakeupDb, std::max (0.0f, makeupDb + cMakeupHeld * 10.0f * std::log10 (inPower / outPower)));
+            steadyIn += cPower * (inP - steadyIn);
+            steadyOut += cPower * (outP * std::exp (2.0f * givenDb * dbToLn) - steadyOut);
+            if (steadyIn > gateFloorPower && steadyOut > 0.0f)
+                steadyMakeup = std::min (maxMakeupDb, std::max (0.0f, steadyMakeup + cMakeupHeld * 10.0f * std::log10 (steadyIn / steadyOut)));
         }
         quietFor = overDb >= -guardKneeDb ? 0 : std::min (quietFor + 1, pauseHoldSamples + pauseFadeSamples);
-        const float present = quietFor <= pauseHoldSamples ? 1.0f : 1.0f - (float) (quietFor - pauseHoldSamples) / (float) pauseFadeSamples;
-        const float target = clamp01 ((overDb + guardKneeDb + guardSpanDb) / guardSpanDb) * present;
+        const float target = guardFor (overDb, quietFor);
         makeupGuard += (target > makeupGuard ? cGuardRise : cGuardFall) * (target - makeupGuard);
-        givenDb = makeupDb * makeupGuard;
+        givenDb = steadyMakeup * makeupGuard;
         return givenDb;
+    }
+
+    // How much of the match is given: by how near the sound is to the level Punch works at, and none once the voice has been gone a while.
+    float guardFor (float over, int quiet) const
+    {
+        const float present = quiet <= pauseHoldSamples ? 1.0f : 1.0f - (float) (quiet - pauseHoldSamples) / (float) pauseFadeSamples;
+        return clamp01 ((over + guardKneeDb + guardSpanDb) / guardSpanDb) * present;
+    }
+
+    // What Punch's reduction leaves of a sound's power, at a level levelDb against the recent peak: 10 to the -reduction / 10.
+    static float powerLeft (float levelDb, float punch)
+    {
+        if (punch <= 0.0f)
+            return 1.0f;
+        return std::exp (-2.0f * softKneeAbove (levelDb + depthDb (punch)) * (1.0f - 1.0f / ratio (punch)) * dbToLn);
+    }
+
+    // A level match (powers in and out, and the makeup that follows them) carried from one Punch to another: the power out is what the
+    // same sound gives with the new reduction, and the makeup moves with its target. Left alone with nothing measured: then it goes to
+    // its resting value at its own speed, as it always has.
+    static void carry (const LevelHistogram& levels, float in, float& out, float& makeup, float from, float to)
+    {
+        if (! (in > gateFloorPower && out > 0.0f))
+            return;
+        const double before = levels.after ([from] (float db) { return powerLeft (db, from); });
+        const double now = levels.after ([to] (float db) { return powerLeft (db, to); });
+        if (! (before > 0.0 && now > 0.0))
+            return;
+        const auto target = [in] (float o) { return std::min (maxMakeupDb, std::max (0.0f, 10.0f * std::log10 (in / o))); };
+        const float was = target (out);
+        out = (float) ((double) out * (now / before));
+        makeup = std::min (maxMakeupDb, std::max (0.0f, makeup + target (out) - was));
+    }
+
+    void carryMatchOver (float from, float to)
+    {
+        carry (plainLevels, inPower, outPower, makeupDb, from, to);
+        if (! steadyWasOn)
+            return;  // Steady Notes coming on takes over the plain match, already carried
+        if (! matched)
+        {
+            carry (steadyLevels, steadyIn, steadyOut, steadyMakeup, from, to);
+            return;
+        }
+        // Once right, the match is held to the voice: only sound at the level Punch works at has a say, as in the trim.
+        const float voiceDb = std::max (-guardKneeDb - depthDb (from), -trimReachDb);
+        double before = steadyLevels.after ([from] (float db) { return powerLeft (db, from); }, voiceDb);
+        double now = steadyLevels.after ([to] (float db) { return powerLeft (db, to); }, voiceDb);
+        if (! (before > 0.0 && now > 0.0))
+        {
+            before = steadyLevels.after ([from] (float db) { return powerLeft (db, from); });
+            now = steadyLevels.after ([to] (float db) { return powerLeft (db, to); });
+        }
+        if (before > 0.0 && now > 0.0)
+            steadyMakeup = std::min (maxMakeupDb, std::max (0.0f, steadyMakeup + (float) (10.0 * std::log10 (before / now))));
+    }
+
+    // Impact's held reduction, taken from one Impact (and a level shiftDb louder) to another. The level the reduction stands for is read
+    // back through the old curve. At or above the level that built it, the reduction is following the sound, and the new curve at that
+    // level is the answer. Under it, the reduction is letting go, by a fixed share each sample, so what is left stands to the new curve
+    // at the level that built it as it stood to the old one there, and it is scaled by the two curves' ratio. The two meet where the
+    // reduction equals the old curve at that level.
+    float movedReduction (float r, float from, float to, float shiftDb) const
+    {
+        if (! (r > 0.0f) || from <= 0.0f)
+            return 0.0f;
+        const float y = r / (1.0f - 1.0f / impactRatio (from));
+        const float over = y >= 0.5f * kneeDb ? y : std::sqrt (2.0f * kneeDb * y) - 0.5f * kneeDb;
+        const float standsFor = over + impactThresholdDb (from);
+        if (standsFor >= impactLevelDb)
+            return impactReductionDb (standsFor + shiftDb, to);
+        return r * impactReductionDb (impactLevelDb + shiftDb, to) / impactReductionDb (impactLevelDb, from);
+    }
+
+    void moveImpact (float from, float to, float shiftDb)
+    {
+        impactFast = movedReduction (impactFast, from, to, shiftDb);
+        impactSlow = movedReduction (impactSlow, from, to, shiftDb);
+        impactNowDb = std::max (impactFast, impactSlow);
+        impactLevelDb += shiftDb;
     }
 
     static float softKneeAbove (float over)
@@ -646,8 +935,14 @@ private:
     float cCompRise = 1, cCompFall = 1, cPeakRefFall = 1, cPower = 1, cMakeup = 1, cGain = 1;
     float cImpactAttack = 1, cImpactFastRelease = 1, cImpactSlowRise = 1, cImpactSlowRelease = 1, cGuardRise = 1, cGuardFall = 1;
 
-    float attackFast = 0, attackSlow = 0, sustainFast = 0, sustainSlow = 0, compEnv = 0, peakRef = 0;
+    float attackFast = 0, attackSlow = 0, sustainFast = 0, sustainSlow = 0, sustainSlowPlain = 0, compEnv = 0, peakRef = 0;
     float inPower = 0, outPower = 0, makeupDb = 0, gainDb = 0;
+    float steadyIn = 0, steadyOut = 0, steadyMakeup = 0, handoverDb = 0, steadyLevelDb = 0, lastPunch = 0, rebasedPunch = 0, lastImpact = 0;
+    float plainWeight = 1, plainStep = 1, impactLevelDb = -120.0f;
+    float curvePunch = -1.0f, curveDepth = 0.0f, slopeNow = 0.0f;
+    int sinceRebase = 0, noteAge = 0, plainQuietFor = 0;
+    bool fresh = true;
+    LevelHistogram plainLevels, steadyLevels;
     float impactFast = 0, impactSlow = 0, impactNowDb = 0, quietGuard = 0;
 
     float cRestart = 1, cBrightRise = 1, cBrightFall = 1, brightLow = 0.33f, brightHigh = 0.45f, cLevel = 1, cCrestHeld = 1, cCrestFree = 1;
@@ -655,7 +950,7 @@ private:
     int notedFor = 0, noteSamples = 1, sinceNote = farFromANote, boostFull = 0, boostEnd = 1, cutFull = 0, cutEnd = 1;
     float noteLevel = 0, cNoteFall = 1, startDeadDb = 0.25f, startDeadUpStep = 0, startDeadDownStep = 0;
     int sunkFor = 0, graceSamples = 1, voiceGoneSamples = 1, voiceGoneRampSamples = 1;
-    float overDb = 0, makeupGuard = 1, matchedPunch = 0, cMakeupHeld = 1, givenDb = 0;
+    float overDb = 0, makeupGuard = 1, cMakeupHeld = 1, givenDb = 0;
     int quietFor = 0, pauseHoldSamples = 1, pauseFadeSamples = 1;
     bool steadyWasOn = false, noteOn = false, matched = false, levelsOnly = false;
     PitchSense pitch;

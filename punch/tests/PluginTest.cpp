@@ -2552,9 +2552,552 @@ void testWindow()
     }
 }
 
-int main()
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// 0.6.2, Phase 2. Every limit below was written before the first run.
+//
+// Moving a control while playing. What the plug-in should do: go to what that setting does when it was never moved, at the speed of
+// the control's own 20 ms smoothing, with nothing on the way past either setting. A control move is a change of setting, not a change
+// of the sound, so no part of the detector may read it as one: Punch's level match, Impact's makeup and Steady Notes' learned match
+// carry over to the new setting instead of learning again or letting go late. Gain is a level in front of everything and Punch,
+// Attack and Sustain ignore level, so a Gain move is the new level from the start for them too; Impact cares about level, so it goes
+// to the new level's own reduction, again without letting go late.
+// The test: a held sung note (196 Hz with vibrato, steady level, a room under it), and the same note in two parts with 1.2 s of room
+// between. Each control that feeds the gain is moved between two values, both ways, with Steady Notes on and off, once in the middle
+// of the held note (at 9.5 s, when everything has settled) and once in the middle of the pause (9.9 s). The output is compared, 10 ms
+// at a time where the input has sound (over -40 dBFS), with two renders that had the one setting or the other from the start.
+// Limits: from the move on, never more than 1.0 dB above the louder of the two or below the quieter; from 0.5 s after the move,
+// within 1.0 dB of the new setting's own render. The rest of the settings: Punch 50, Attack +6, Sustain +6, Impact 40, Ceiling On at -1.
+namespace phase2
+{
+    std::vector<float> sungNotes (double sr, double total, const std::vector<std::pair<double, double>>& notes, double amp = 0.15)
+    {
+        const double twoPi = juce::MathConstants<double>::twoPi;
+        const int n = (int) (sr * total);
+        std::vector<float> x ((size_t) n, 0.0f);
+        std::mt19937 g (31); std::uniform_real_distribution<float> d (-1.0f, 1.0f);
+        for (int i = 0; i < n; ++i)
+            x[(size_t) i] = 0.0003f * d (g) + (float) (0.0006 * std::sin (twoPi * 120.0 * i / sr));
+        for (const auto& [from, to] : notes)
+        {
+            double phase = 0.0;
+            for (int i = (int) (from * sr); i < (int) (to * sr) && i < n; ++i)
+            {
+                const double t = i / sr - from;
+                phase += twoPi * 196.0 * std::pow (2.0, 0.4 / 12.0 * std::sin (twoPi * 5.5 * t)) / sr;
+                const double env = std::min (1.0, t / 0.01) * std::min (1.0, (to - i / sr) / 0.004);
+                double v = 0.0;
+                for (int h = 1; h <= 6; ++h) v += std::sin (h * phase) / h;
+                x[(size_t) i] += (float) (amp * env * v);
+            }
+        }
+        return x;
+    }
+
+    void setControl (PluginProcessor& p, const std::string& id, float v) { setParam (p, id.c_str(), v); }
+
+    // A fresh plug-in with these settings and the one control at `from`; at block moveBlock the control goes to `to`. Channel 0.
+    std::vector<float> renderMove (const std::vector<float>& in, const Settings& s, const std::string& id, float from, float to, int moveBlock, double sr = 48000.0)
+    {
+        PluginProcessor p;
+        apply (p, s);
+        setControl (p, id, from);
+        prepare (p, 2, sr, 512);
+        auto out = render (p, in, 512, nullptr, [&] (int block) { if (block == moveBlock) setControl (p, id, to); });
+        return std::vector<float> (out.getReadPointer (0), out.getReadPointer (0) + out.getNumSamples());
+    }
+
+    struct Movement { double past = 0.0, settle = 0.0; };
+
+    // 10 ms windows with sound in the input, from the move on. past: how far the moved render goes beyond the two settings' own renders.
+    // settle: how far it is from the new setting's render, from settleAfter seconds after the move.
+    Movement compare (const std::vector<float>& in, const std::vector<float>& moved, const std::vector<float>& a, const std::vector<float>& b,
+                      int moveSample, int lat, double sr = 48000.0, double settleAfter = 0.5)
+    {
+        Movement m;
+        const int w = (int) (sr * 0.01);
+        for (int k = moveSample; k + w + lat <= (int) in.size(); k += w)
+        {
+            if (windowRmsDb (in, k, w) < -40.0)
+                continue;
+            const double x = windowRmsDb (moved, k + lat, w), la = windowRmsDb (a, k + lat, w), lb = windowRmsDb (b, k + lat, w);
+            m.past = std::max (m.past, std::max (x - std::max (la, lb), std::min (la, lb) - x));
+            if (k >= moveSample + (int) (settleAfter * sr))
+                m.settle = std::max (m.settle, std::abs (x - lb));
+        }
+        return m;
+    }
+
+    std::string fmt (double v) { char b[32]; std::snprintf (b, sizeof (b), "%.2f", v); return b; }
+}
+
+static void testControlMoves()
+{
+    using namespace phase2;
+    const double sr = 48000.0;
+    const int lat = (int) std::lround (sr * 0.002);
+    struct Signal { const char* name; std::vector<float> x; double moveAt; };
+    // The first version moved at 3.0 s (held) and 3.9 s (pause). With Steady Notes on, a render that had the new setting from the start
+    // had not settled by then: its first level match on a held note locks about 2 dB low and is trimmed back with a 3 s time (2.0 dB
+    // low at 3.0 s, 1.2 dB at 5.0 s), so the check read that and not the move. Now 9 s of the note come first. No limit changed.
+    const Signal signals[] = { { "held note", sungNotes (sr, 12.0, { { 0.3, 11.8 } }), 9.5 },
+                               { "pause", sungNotes (sr, 13.2, { { 0.3, 9.3 }, { 10.5, 13.0 } }), 9.9 } };
+    Settings base; base.punch = 50; base.attack = 6; base.sustain = 6; base.impact = 40; base.ceiling = -1; base.ceilingOn = 1;
+    struct Move { std::string name, id; float a, b; float ceiling = -1.0f; };
+    const Move moves[] = {
+        { "Punch 50 and 0", "punch", 50, 0 }, { "Punch 50 and 85", "punch", 50, 85 }, { "Punch 50 and 51", "punch", 50, 51 },
+        { "Attack +6 and -6", "attack", 6, -6 }, { "Sustain +6 and -6", "sustain", 6, -6 }, { "Mix 100 and 40", "mix", 100, 40 },
+        { "Gain 0 and +12", "gain", 0, 12 }, { "Impact 40 and 0", "impact", 40, 0 }, { "Impact 40 and 90", "impact", 40, 90 },
+        { "Ceiling -1 and -12", "ceiling", -1, -12 }, { "Ceiling On on and off, Ceiling -12", "ceilingOn", 1, 0, -12.0f },
+        { "Bypass off and on", "bypass", 0, 1 }, { "Steady Notes off and on", "steadyNotes", 0, 1 } };
+    std::map<std::string, std::vector<float>> refs;
+    for (const auto& mv : moves)
+        for (float steady : { 0.0f, 1.0f })
+        {
+            if (mv.id == "steadyNotes" && steady > 0.5f) continue;
+            Settings s = base; s.steadyNotes = steady; s.ceiling = mv.ceiling;
+            Movement worst; std::string worstPast, worstSettle;
+            for (const auto& sig : signals)
+            {
+                const int moveBlock = (int) std::lround (sig.moveAt * sr / 512.0);
+                const auto ref = [&] (float v) -> const std::vector<float>&
+                {
+                    const std::string key = mv.id + " " + std::to_string (v) + " " + std::to_string (steady) + " " + std::to_string (mv.ceiling) + " " + sig.name;
+                    auto it = refs.find (key);
+                    if (it == refs.end()) it = refs.emplace (key, renderMove (sig.x, s, mv.id, v, v, -1, sr)).first;
+                    return it->second;
+                };
+                for (const bool forward : { true, false })
+                {
+                    const float from = forward ? mv.a : mv.b, to = forward ? mv.b : mv.a;
+                    const auto moved = renderMove (sig.x, s, mv.id, from, to, moveBlock, sr);
+                    const std::string what = std::string (sig.name) + ", " + fmt (from) + " to " + fmt (to);
+                    const auto m = compare (sig.x, moved, ref (from), ref (to), moveBlock * 512, lat, sr);
+                    if (m.past > worst.past) { worst.past = m.past; worstPast = what; }
+                    if (m.settle > worst.settle) { worst.settle = m.settle; worstSettle = what; }
+                }
+            }
+            const std::string tag = mv.name + (mv.id == "steadyNotes" ? std::string() : (steady > 0.5f ? ", Steady Notes on" : ", Steady Notes off"))
+                                  + ", moved while playing (both ways, held note and pause): ";
+            check (worst.past <= 1.0, tag + "largest overshoot or dip past the two settings' own levels", worst.past, "dB");
+            if (worst.past > 1.0) std::printf ("      worst: %s\n", worstPast.c_str());
+            check (worst.settle <= 1.0, tag + "largest distance from the new setting's own level, 0.5 s on", worst.settle, "dB");
+            if (worst.settle > 1.0) std::printf ("      worst: %s\n", worstSettle.c_str());
+        }
+}
+
+// Presets chosen while playing (the hunt's own cases: Parallel Weight to Neutral, Lead Gentle to Lead Upfront, Rap Upfront to Neutral,
+// and Steady Notes going off with Lead Upfront to Neutral). Same held note and the same two limits, against each preset from the start.
+static void testPresetMoves()
+{
+    using namespace phase2;
+    const double sr = 48000.0;
+    const int lat = (int) std::lround (sr * 0.002), moveBlock = (int) std::lround (3.0 * sr / 512.0);
+    const auto x = sungNotes (sr, 5.8, { { 0.3, 5.6 } });
+    const auto renderPresets = [&] (int from, int to)
+    {
+        PluginProcessor p;
+        p.setCurrentProgram (from);
+        prepare (p, 2, sr, 512);
+        auto out = render (p, x, 512, nullptr, [&] (int block) { if (block == moveBlock && to != from) p.setCurrentProgram (to); });
+        return std::vector<float> (out.getReadPointer (0), out.getReadPointer (0) + out.getNumSamples());
+    };
+    const std::pair<int, int> cases[] = { { 6, 0 }, { 0, 6 }, { 14, 15 }, { 15, 14 }, { 8, 0 }, { 0, 8 }, { 15, 0 }, { 0, 15 } };
+    for (const auto& [from, to] : cases)
+    {
+        PluginProcessor names;
+        const auto m = compare (x, renderPresets (from, to), renderPresets (from, from), renderPresets (to, to), moveBlock * 512, lat, sr);
+        const std::string tag = names.getProgramName (from).toStdString() + " to " + names.getProgramName (to).toStdString() + " while a held note plays: ";
+        check (m.past <= 1.0, tag + "largest overshoot or dip past the two presets' own levels", m.past, "dB");
+        check (m.settle <= 1.0, tag + "largest distance from the new preset's own level, 0.5 s on", m.settle, "dB");
+    }
+}
+
+// punch-r1-1, the hunt's own test: testSteadyPunch's held 150 Hz note whose peaks move, Steady Notes on, Punch 50, nudged to 51 at 3 s.
+// Limit (the existing one): every 30 ms from 3.0 to 4.9 s within 1.0 dB of the input.
+static void testSteadyPunchNudge()
+{
+    const double sr = 48000.0, twoPi = juce::MathConstants<double>::twoPi, pi = juce::MathConstants<double>::pi;
+    const int n = (int) (sr * 5.0);
+    std::vector<float> in ((size_t) n, 0.0f);
+    for (int i = (int) (0.3 * sr); i < n; ++i)
+    {
+        const double u = i / sr - 0.3, turn = 0.5 * pi * (1.0 - std::cos (twoPi * 1.5 * u)), p = twoPi * 150.0 * u;
+        in[(size_t) i] = (float) (0.15 * std::min (1.0, u / 0.01) * (std::sin (p) + 0.8 * std::sin (2.0 * p + turn) + 0.6 * std::sin (3.0 * p + 2.0 * turn)));
+    }
+    Settings s; s.punch = 50; s.steadyNotes = 1;
+    const int lat = (int) std::lround (sr * 0.002), moveBlock = (int) std::lround (3.0 * sr / 512.0);
+    const auto out = phase2::renderMove (in, s, "punch", 50.0f, 51.0f, moveBlock, sr);
+    double worst = 0.0;
+    for (int k = moveBlock * 512; k + 1440 <= (int) (4.9 * sr); k += 480)
+        worst = std::max (worst, std::abs (windowRmsDb (out, k + lat, 1440) - windowRmsDb (in, k, 1440)));
+    check (worst <= 1.0, "Steady Notes on, Punch 50 nudged to 51 on a held note: largest difference from the input, 30 ms at a time, 3.0 to 4.9 s", worst, "dB");
+}
+
+// punch-r2-1. Steady Notes, Sustain +9 and -9, the detector alone at 48 kHz: 1.5 s of silence, then a 220 Hz sine, 20 ms at 0.5 and 400 ms
+// at 0.3. Limits from the hunt: the gain moves at most 1.0 dB within any 1 ms from 40 to 300 ms after the start, and the gain at 60 ms and
+// at 150 ms (both on the held part) agree within 1.0 dB.
+static void testSustainAfterPause()
+{
+    const double sr = 48000.0;
+    for (float sustain : { 9.0f, -9.0f })
+    {
+        PunchEngine e;
+        e.prepare (sr);
+        e.reset (0.0f);
+        for (int i = 0; i < (int) (1.5 * sr); ++i)
+            e.process (0.0f, 0.0f, sustain, 0.0f, 0.0f, true, 0.0f);
+        std::vector<float> g;
+        for (int i = 0; i < (int) (0.42 * sr); ++i)
+        {
+            const float x = (float) ((i < (int) (0.02 * sr) ? 0.5 : 0.3) * std::sin (juce::MathConstants<double>::twoPi * 220.0 * i / sr));
+            g.push_back (e.process (std::abs (x), 0.0f, sustain, 0.0f, 0.0f, true, x));
+        }
+        double worst = 0.0;
+        const int ms = (int) (0.001 * sr);
+        for (int i = (int) (0.04 * sr); i + ms <= (int) (0.3 * sr); ++i)
+        {
+            float lo = g[(size_t) i], hi = lo;
+            for (int j = 1; j <= ms; ++j) { lo = std::min (lo, g[(size_t) (i + j)]); hi = std::max (hi, g[(size_t) (i + j)]); }
+            worst = std::max (worst, (double) (hi - lo));
+        }
+        const std::string tag = "Steady Notes, Sustain " + std::to_string ((int) sustain) + ", the first note after 1.5 s of silence: ";
+        check (worst <= 1.0, tag + "largest gain move within 1 ms, 40 to 300 ms after it starts", worst, "dB");
+        const double apart = std::abs ((double) g[(size_t) (0.06 * sr)] - (double) g[(size_t) (0.15 * sr)]);
+        check (apart <= 1.0, tag + "gain at 60 ms against 150 ms, both on the held part", apart, "dB");
+    }
+}
+
+// punch-r2-2. Gain +12, Ceiling On at -1 dBFS, a 1 kHz tone at -6 dBFS, Bypass switched on at 0.5 s (and, in a second render, off).
+// Limit from the hunt: the output peak over the whole render at most max (ceiling, input peak) + 0.01 dB.
+static void testBypassFadeUnderCeiling()
+{
+    const double sr = 48000.0;
+    const auto in = tone (sr, 0.7, 1000.0, -6.0);
+    for (const bool on : { true, false })
+    {
+        Settings s; s.gain = 12; s.ceilingOn = 1; s.ceiling = -1;
+        const auto out = phase2::renderMove (in, s, "bypass", on ? 0.0f : 1.0f, on ? 1.0f : 0.0f, (int) std::lround (0.5 * sr / 512.0), sr);
+        const double over = toDb (peak (out.data(), (int) out.size())) - std::max (-1.0, toDb (peak (in.data(), (int) in.size())));
+        check (over <= 0.01, std::string ("Gain +12 into Ceiling -1, Bypass switched ") + (on ? "on" : "off") + " during a tone: output peak over the ceiling and the input", over, "dB");
+    }
+}
+
+// punch-r1-3. Steady Notes on and no pitch anywhere: a loud noise hit (-6 dBFS) and a soft one 12 dB down 80 ms later, every 600 ms.
+// Limits written before the first run: over the soft hit's first 100 ms the change with Steady Notes on is within 1.0 dB of the change
+// with it off, at Sustain +9 and -9; with it off the soft hits move at least 3 dB (so the comparison means something).
+// Not fixed in 0.6.2, so the difference is information only: the fix (Steady Notes off's reading where there is no voice) passed this
+// check but made round 1's real vocal check fail on rap take 16 (phrase starts, Sustain +9 and -9: 9 dB at the 90th percentile, limit 3,
+// 0.6.1 0.000). A sharp start counting as a new sound is what keeps those phrase starts still.
+// The first version of this test gave both hits a 60 ms decay. The loud one had then fallen to the soft one's level by the time it came,
+// so the soft hit was no sharp start and the restart rule never acted: 0.000 dB on 0.6.1, which measured nothing. The hunt's case is a
+// snare that dies fast: now the loud hit decays in 20 ms and the soft one in 40 ms. No limit changed.
+static void testNoVoiceGhostHits()
+{
+    const double sr = 48000.0;
+    const int n = (int) (sr * 6.5);
+    std::vector<float> x ((size_t) n, 0.0f);
+    std::mt19937 g (17); std::uniform_real_distribution<float> d (-1.0f, 1.0f);
+    for (int i = 0; i < n; ++i) x[(size_t) i] = 0.0003f * d (g);
+    std::vector<int> soft;
+    for (int k = 0; k < 10; ++k)
+        for (const bool ghost : { false, true })
+        {
+            const int at = (int) ((0.2 + 0.6 * k + (ghost ? 0.08 : 0.0)) * sr);
+            if (ghost) soft.push_back (at);
+            for (int i = at; i < at + (int) (0.4 * sr) && i < n; ++i)
+            {
+                const double t = (i - at) / sr;
+                x[(size_t) i] += (float) ((ghost ? 0.125 : 0.5) * std::min (1.0, t / 0.001) * std::exp (-t / (ghost ? 0.04 : 0.02)) * d (g));
+            }
+        }
+    for (float sustain : { 9.0f, -9.0f })
+    {
+        Settings on; on.sustain = sustain; on.steadyNotes = 1.0f;
+        Settings off = on; off.steadyNotes = 0.0f;
+        int lat = 0;
+        const auto yOn = process (x, on, sr, 512, &lat), yOff = process (x, off, sr, 512, &lat);
+        double worst = 0.0, smallestOff = 100.0;
+        for (const int at : soft)
+        {
+            const int len = (int) (0.1 * sr);
+            const double cOn = windowRmsDb (yOn, at + lat, len) - windowRmsDb (x, at, len), cOff = windowRmsDb (yOff, at + lat, len) - windowRmsDb (x, at, len);
+            worst = std::max (worst, std::abs (cOn - cOff));
+            smallestOff = std::min (smallestOff, std::abs (cOff));
+        }
+        const std::string tag = "Steady Notes on, Sustain " + std::to_string ((int) sustain) + ", a soft noise hit 80 ms after a loud one, no pitch: ";
+        check (smallestOff >= 3.0, tag + "with Steady Notes off the soft hits move at least", smallestOff, "dB");
+        info (tag + "largest difference from Steady Notes off (not fixed, see above)", worst, "dB");
+    }
+}
+
+// punch-r1-4. The chosen preset is saved with the session and named again on reload; a session saved before 0.6.2 names none and shows
+// "Choose a preset"; from there the arrows go to the first and the last preset.
+static juce::File punchBaseline (const juce::String& name) { return juce::File (juce::String (SMOOTH_PUNCH_BASELINE)).getChildFile (name); }
+
+static void testPresetSaved()
+{
+    {
+        PluginProcessor p;
+        check (p.getCurrentProgram() == 0, "a new instance names Neutral", (double) p.getCurrentProgram());
+        p.setCurrentProgram (14);
+        juce::MemoryBlock st; p.getStateInformation (st);
+        PluginProcessor q;
+        q.setStateInformation (st.getData(), (int) st.getSize());
+        check (q.getCurrentProgram() == 14 && ! q.isCurrentProgramEdited(), "a session saved after choosing Lead Gentle reloads naming it, not edited", (double) q.getCurrentProgram());
+    }
+    {
+        PluginProcessor p;
+        p.setCurrentProgram (15);
+        setParam (p, "attack", 9.0f);
+        juce::MemoryBlock st; p.getStateInformation (st);
+        PluginProcessor q;
+        q.setStateInformation (st.getData(), (int) st.getSize());
+        check (q.getCurrentProgram() == 15 && std::abs (realValue (q, "attack") - 9.0f) < 0.01f && q.isCurrentProgramEdited(),
+               "the preset is not applied again on reload: Lead Upfront with Attack moved keeps Attack and reads edited");
+    }
+    for (const auto& [text, want] : std::vector<std::pair<const char*, int>> { { "99", 19 }, { "-5", 0 }, { "x", 0 } })
+    {
+        PluginProcessor p;
+        juce::MemoryBlock st; p.getStateInformation (st);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (st.getData(), (int) st.getSize());
+        xml->setAttribute ("program", text);
+        juce::MemoryBlock bad; juce::AudioProcessor::copyXmlToBinary (*xml, bad);
+        PluginProcessor q;
+        q.setStateInformation (bad.getData(), (int) bad.getSize());
+        check (q.getCurrentProgram() == want, std::string ("a damaged preset number \"") + text + "\" is kept in range", (double) q.getCurrentProgram());
+    }
+    {
+        juce::MemoryBlock old;
+        punchBaseline ("v0.6.1-lead-gentle.state").loadFileAsData (old);
+        PluginProcessor q;
+        q.setStateInformation (old.getData(), (int) old.getSize());
+        check (old.getSize() > 0 && q.getCurrentProgram() == -1, "a session saved by 0.6.1 names no preset", (double) q.getCurrentProgram());
+        std::unique_ptr<juce::AudioProcessorEditor> e (q.createEditor());
+        auto* box = dynamic_cast<ui::PresetBox*> (e->findChildWithID ("presets"));
+        if (box != nullptr) box->refresh();
+        check (box != nullptr && box->getShownName() == "Choose a preset", "and its window shows \"Choose a preset\": " + (box != nullptr ? box->getShownName().toStdString() : std::string ("no box")));
+        if (box != nullptr)
+        {
+            box->mouseDown (mouseAt (*box, { (float) box->getWidth() - 5.0f, 10.0f }));
+            check (q.getCurrentProgram() == 0, "from no preset the right arrow goes to the first preset", (double) q.getCurrentProgram());
+            q.setStateInformation (old.getData(), (int) old.getSize());
+            box->mouseDown (mouseAt (*box, { 5.0f, 10.0f }));
+            check (q.getCurrentProgram() == 19, "and the left arrow to the last", (double) q.getCurrentProgram());
+        }
+    }
+    {
+        PluginProcessor p;
+        p.setCurrentProgram (14);
+        juce::MemoryBlock st; p.getStateInformation (st);
+        PluginProcessor q;
+        q.setStateInformation (st.getData(), (int) st.getSize());
+        std::unique_ptr<juce::AudioProcessorEditor> e (q.createEditor());
+        auto* box = dynamic_cast<ui::PresetBox*> (e->findChildWithID ("presets"));
+        if (box != nullptr) box->refresh();
+        check (box != nullptr && box->getShownName() == "Lead Gentle", "a session saved on Lead Gentle reopens reading Lead Gentle: " + (box != nullptr ? box->getShownName().toStdString() : std::string ("no box")));
+    }
+}
+
+// The installed 0.6.1's own states and renders (tests/baseline, made by capture.mm before 0.6.2 was installed): the default and the six
+// lead presets, on 6 s of drum hits, real speech, the room and a sung note after more than a second of rest. Each state, loaded as a
+// host loads a session, must name no preset and play exactly what choosing that preset here plays. The default must also play exactly
+// what 0.6.1 played, and the two lead presets with Sustain at 0 what it played to float rounding (-150 dBFS). The four with Sustain are
+// changed on purpose at the first note after a second with no note (punch-r2-1): how far is shown as information.
+// The first version asked the two with Sustain at 0 for exactly 0.6.1's samples. Their Sustain is saved as 2.2e-7 dB, not 0 (the
+// parameter's 0.1 step), so the Sustain fix reaches them at float rounding: 721 and 971 samples differed, by at most -198.7 dBFS. With
+// that fix taken out, all seven null bit for bit (after/punch/phase2-experiment-061-sustain.txt).
+static void testOldSessions()
+{
+    juce::MemoryBlock raw;
+    punchBaseline ("input.f32").loadFileAsData (raw);
+    const std::vector<float> in ((const float*) raw.getData(), (const float*) raw.getData() + raw.getSize() / sizeof (float));
+    check (in.size() == 288000, "the 0.6.1 baseline input is there", (double) in.size());
+    const std::pair<const char*, int> states[] = { { "default", 0 }, { "lead-gentle", 14 }, { "lead-upfront", 15 }, { "lead-rap", 16 },
+                                                   { "lead-soft-consonants", 17 }, { "lead-long-tails", 18 }, { "lead-dry-and-close", 19 } };
+    for (const auto& [name, program] : states)
+    {
+        juce::MemoryBlock st, then;
+        punchBaseline (juce::String ("v0.6.1-") + name + ".state").loadFileAsData (st);
+        punchBaseline (juce::String ("v0.6.1-") + name + ".f32").loadFileAsData (then);
+        PluginProcessor q;
+        q.setStateInformation (st.getData(), (int) st.getSize());
+        const int named = q.getCurrentProgram();
+        prepare (q, 2, 48000.0, 512);
+        const auto y = render (q, in, 512);
+        PluginProcessor c;
+        c.setCurrentProgram (program);
+        prepare (c, 2, 48000.0, 512);
+        const auto z = render (c, in, 512);
+        const float* old = (const float*) then.getData();
+        long differ = 0, differChosen = 0;
+        double largest = 0.0;
+        for (int i = 0; i < y.getNumSamples(); ++i)
+        {
+            const float a = y.getSample (0, i);
+            differChosen += a != z.getSample (0, i) || y.getSample (1, i) != z.getSample (1, i) ? 1 : 0;
+            if (i < (int) (then.getSize() / sizeof (float)))
+            {
+                differ += a != old[i] ? 1 : 0;
+                largest = std::max (largest, (double) std::abs (a - old[i]));
+            }
+        }
+        const std::string tag = std::string ("a session saved by 0.6.1, ") + name + ": ";
+        check (named == -1, tag + "names no preset", (double) named);
+        check (st.getSize() > 0 && differChosen == 0, tag + "plays what choosing that preset here plays; samples that differ", (double) differChosen);
+        const bool sustainPreset = program >= 16;
+        if (sustainPreset)
+        {
+            info (tag + "samples that differ from what 0.6.1 played", (double) differ);
+            info (tag + "largest difference from what 0.6.1 played", toDb (largest), "dBFS");
+        }
+        else if (program == 0)
+            check (then.getSize() == in.size() * sizeof (float) && differ == 0, tag + "plays exactly what 0.6.1 played; samples that differ", (double) differ);
+        else
+            check (then.getSize() == in.size() * sizeof (float) && toDb (largest) <= -150.0, tag + "plays what 0.6.1 played to float rounding; largest difference", toDb (largest), "dBFS");
+    }
+}
+
+// punch-r2-3. A state loaded while the window is open: the Advanced drawer follows the saved flag at the next frame, and one click on
+// the header then toggles it.
+static void testAdvancedAfterLoad()
+{
+    PluginProcessor p;
+    prepare (p, 2, 48000.0, 256);
+    setParam (p, "gain", 6.0f);
+    std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
+    auto* w = dynamic_cast<PunchEditor*> (e.get());
+    auto* gain = e->findChildWithID ("gain");
+    if (w == nullptr || gain == nullptr) { check (false, "the window and its Gain bar are found"); return; }
+    w->setAdvancedOpen (false);
+    const int closedHeight = w->getHeight();
+    for (const bool savedOpen : { true, false })
+    {
+        PluginProcessor other;
+        other.advancedOpen.store (savedOpen);
+        setParam (other, "gain", 6.0f);
+        juce::MemoryBlock st; other.getStateInformation (st);
+        p.setStateInformation (st.getData(), (int) st.getSize());
+        w->tick (1.0 / 30.0);
+        check (gain->isVisible() == savedOpen && w->getHeight() == closedHeight + (savedOpen ? PunchEditor::drawerHeight : 0),
+               std::string ("a state saved with Advanced ") + (savedOpen ? "open" : "closed") + " loaded while the window is open: the drawer and the window follow it at the next frame");
+    }
+    w->setAdvancedOpen (! p.advancedOpen.load());
+    check (gain->isVisible() && w->getHeight() == closedHeight + PunchEditor::drawerHeight, "and one click on the header then opens it");
+}
+
+// punch-r2-4. At the smallest window the hit picture's caption fits beside its legend, before anything plays and on a redrawn hit.
+static void testCaptionFits()
+{
+    PluginProcessor p;
+    prepare (p, 2, 48000.0, 256);
+    std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
+    auto* w = dynamic_cast<PunchEditor*> (e.get());
+    if (w == nullptr) { check (false, "the window is found"); return; }
+    w->setSize (PluginProcessor::minWindowWidth, PluginProcessor::minWindowHeight);
+    const auto legendFont = ui::font (ui::Weight::regular, 12.0f), captionFont = ui::font (ui::Weight::regular, 13.0f);
+    float room = (float) w->getHitView().getPlot().getWidth();
+    for (const char* name : { "Taken off", "After", "Before" })
+        room -= juce::GlyphArrangement::getStringWidth (legendFont, name) + 18.0f + 16.0f;
+    using S = punchview::HitView::Showing;
+    for (const auto& [showing, what] : std::vector<std::pair<S, const char*>> { { S::example, "the example hit" }, { S::preview, "a hit redrawn while stopped" } })
+    {
+        const float width = juce::GlyphArrangement::getStringWidth (captionFont, punchview::HitView::captionFor (showing));
+        check (width <= room, std::string ("at the smallest window the caption for ") + what + " fits beside the legend; its width in points against " + phase2::fmt (room), (double) width);
+    }
+}
+
+// punch-r3-3. The window's drawing of the example hit with Steady Notes on: the first sound after a pause gets Attack as ever, as in the
+// audio, so at 10 and 15 ms the drawing with Steady Notes on is within 0.3 dB of the drawing with it off, at Attack +9.
+static void testDrawnAttackSteady()
+{
+    using namespace punchview;
+    std::array<float, hitBins> example {}, withOn {}, withOff {};
+    fillExampleHit (example.data(), hitBins);
+    punchview::Settings s; s.attack = 9.0f;
+    s.steadyNotes = true;  { Preview pv; pv.run (example.data(), hitBins, s, withOn.data()); }
+    s.steadyNotes = false; { Preview pv; pv.run (example.data(), hitBins, s, withOff.data()); }
+    for (const double ms : { 10.0, 15.0 })
+    {
+        const int bin = (int) std::lround (ms * 0.001 / binSeconds);
+        const double apart = std::abs ((double) toDb (withOn[(size_t) bin]) - (double) toDb (withOff[(size_t) bin]));
+        check (apart <= 0.3, "the example hit drawn with Attack +9: Steady Notes on against off at " + std::to_string ((int) ms) + " ms", apart, "dB");
+    }
+}
+
+// The host's Reset, the way Velvet Rope 0.8.1 and Duo 0.4.3 do it: it clears what prepareToPlay clears and allocates nothing, and the
+// one Reset JUCE's AU wrapper sends right after the host turns its own bypass on is left out, so Bypass fades instead of cutting.
+static void testHostReset()
+{
+    const double sr = 48000.0;
+    const auto x = phase2::sungNotes (sr, 3.0, { { 0.2, 2.8 } });
+    const auto make = [&] (PluginProcessor& p) { p.setCurrentProgram (15); prepare (p, 2, sr, 512); };
+    {
+        PluginProcessor p, fresh;
+        make (p); make (fresh);
+        render (p, x, 512);
+        p.reset();
+        const auto a = render (p, x, 512), b = render (fresh, x, 512);
+        long differ = 0;
+        for (int i = 0; i < a.getNumSamples(); ++i) differ += a.getSample (0, i) != b.getSample (0, i) ? 1 : 0;
+        check (differ == 0, "play, reset, play: the second part equals a new instance; samples that differ", (double) differ);
+        p.reset();
+        const auto quiet = render (p, std::vector<float> (4096, 0.0f), 512);
+        check (peak (quiet.getReadPointer (0), quiet.getNumSamples()) == 0.0, "after a reset, silence in gives silence out");
+        const long before = testkit::allocs.load();
+        p.reset();
+        const long made = testkit::allocs.load() - before;
+        check (made == 0, "a reset allocates nothing", (double) made);
+    }
+    {
+        PluginProcessor q;
+        q.reset();
+        prepare (q, 2, sr, 512);
+        const auto y = render (q, x, 512);
+        check (countNonFinite (y) == 0 && peak (y.getReadPointer (0), y.getNumSamples()) > 0.01, "a reset before the first prepare is harmless");
+    }
+    {
+        // Two instances; the host turns Bypass on in both at 1 s, and in one JUCE's AU wrapper then sends its Reset.
+        PluginProcessor a, b;
+        make (a); make (b);
+        const int at = (int) std::lround (1.0 * sr / 512.0);
+        const auto ya = render (a, x, 512, nullptr, [&] (int block) { if (block == at) setParam (a, "bypass", 1.0f); });
+        const auto yb = render (b, x, 512, nullptr, [&] (int block) { if (block == at) { setParam (b, "bypass", 1.0f); b.reset(); } });
+        double worst = 0.0;
+        for (int i = 0; i < ya.getNumSamples(); ++i) worst = std::max (worst, (double) std::abs (ya.getSample (0, i) - yb.getSample (0, i)));
+        check (worst == 0.0, "the Reset that comes with host bypass switching on changes nothing; largest difference", worst);
+        // Later on, while bypassed, a Reset is a real one: silence in gives silence out at once.
+        b.reset();
+        const auto quiet = render (b, std::vector<float> (2048, 0.0f), 512);
+        check (peak (quiet.getReadPointer (0), quiet.getNumSamples()) == 0.0, "a Reset later on while bypassed is not left out");
+    }
+}
+
+static void runPhase2()
+{
+    testControlMoves();
+    testPresetMoves();
+    testSteadyPunchNudge();
+    testSustainAfterPause();
+    testBypassFadeUnderCeiling();
+    testNoVoiceGhostHits();
+    testPresetSaved();
+    testOldSessions();
+    testAdvancedAfterLoad();
+    testCaptionFits();
+    testDrawnAttackSteady();
+    testHostReset();
+}
+
+// "PluginTest phase2" runs only the checks added in 0.6.2.
+int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+    if (argc > 1 && juce::String (argv[1]) == "phase2")
+    {
+        runPhase2();
+        return finish();
+    }
     GenericOptions opt;
     opt.minPresets = 4;
     opt.readOnly = { "inputLevel", "outputLevel", "impactReduction", "ceilingReduction" };
@@ -2593,5 +3136,6 @@ int main()
     testEnvelopeTap();
     testHitDisplayNumbers();
     testWindow();
+    runPhase2();
     return finish();
 }

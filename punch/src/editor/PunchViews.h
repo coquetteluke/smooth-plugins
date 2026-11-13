@@ -26,6 +26,7 @@ namespace punchview
         Showing getShowing() const noexcept  { return showing; }
         const HitTracker& getTracker() const noexcept  { return tracker; }
         juce::String captionText() const;
+        static juce::String captionFor (Showing);
 
         /** The plot inside this component, and where 30 ms falls on it, which is where Attack's column ends. */
         juce::Rectangle<int> getPlot() const noexcept  { return plot; }

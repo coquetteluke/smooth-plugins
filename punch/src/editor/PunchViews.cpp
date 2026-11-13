@@ -283,12 +283,15 @@ namespace punchview
         return plot.getX() + juce::roundToInt ((float) plot.getWidth() * xForSeconds (0.03));
     }
 
-    juce::String HitView::captionText() const
+    juce::String HitView::captionText() const { return captionFor (showing); }
+
+    juce::String HitView::captionFor (Showing what)
     {
-        switch (showing)
+        switch (what)
         {
-            case Showing::example: return "Example hit, moved by your settings. Play something to see your own.";
-            case Showing::preview: return "Last hit, redrawn with your new settings. Play to see it for real.";
+            // Short enough to sit beside the legend at the smallest window (0.6.2: the longer ones were cut off there).
+            case Showing::example: return "Example hit. Play something to see your own.";
+            case Showing::preview: return "Last hit, redrawn. Play to see it for real.";
             case Showing::real:    break;
         }
         return "Last hit";

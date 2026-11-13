@@ -33,10 +33,12 @@ private:
 
 // Transient shaper plus fast compressor, level-riding compressor and output ceiling.
 // One sidechain makes one gain, applied to one delayed copy of the input.
-class PluginProcessor final : public juce::AudioProcessor
+class PluginProcessor final : public juce::AudioProcessor,
+                              private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     PluginProcessor();
+    ~PluginProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -54,7 +56,7 @@ public:
     double getTailLengthSeconds() const override { return lookaheadSeconds; }
 
     int getNumPrograms() override;
-    int getCurrentProgram() override { return currentProgram; }
+    int getCurrentProgram() override;
     void setCurrentProgram (int) override;
     const juce::String getProgramName (int) override;
     void changeProgramName (int, const juce::String&) override {}
@@ -89,6 +91,7 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
     void run (juce::AudioBuffer<float>&, bool forceBypass);
+    void parameterChanged (const juce::String& id, float value) override;
 
     std::atomic<float>* punch = nullptr;
     std::atomic<float>* attack = nullptr;
@@ -108,7 +111,13 @@ private:
     float meterFall = 0.0f, inputPeak = 0.0f, outputPeak = 0.0f, impactPeakDb = 0.0f, ceilingPeakDb = 0.0f;
     std::array<std::vector<float>, 2> delay;
     int delaySamples = 0, writePos = 0;
-    int currentProgram = 0;
+    int currentProgram = 0;   // -1 for none, see getCurrentProgram()
+    float lastInGain = 1.0f;  // Gain as the detector last had it
+
+    // JUCE's AU wrapper resets straight after the host turns its own bypass on. That one reset is left out, so the sound fades to the
+    // input in 20 ms instead of being cut off. It is the next reset within a quarter second, with no audio block in between.
+    std::atomic<bool> bypassJustSwitchedOn { false }, bypassWasOn { false };
+    std::atomic<juce::uint32> bypassSwitchedAtMs { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)
 };

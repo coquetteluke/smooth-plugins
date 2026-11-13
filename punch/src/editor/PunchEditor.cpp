@@ -116,6 +116,9 @@ PunchEditor::PunchEditor (PluginProcessor& p)
 
     presets.nameNow = [&p]
     {
+        // A session saved before 0.6.2 does not say which preset it was: it names none rather than a wrong one.
+        if (p.getCurrentProgram() < 0)
+            return juce::String ("Choose a preset");
         const auto name = p.getProgramName (p.getCurrentProgram());
         return p.isCurrentProgramEdited() ? name + ", edited" : name;
     };
@@ -274,12 +277,18 @@ void PunchEditor::setAdvancedOpen (bool shouldBeOpen)
         return;
 
     processorRef.advancedOpen.store (shouldBeOpen, std::memory_order_relaxed);
+    showAdvanced (shouldBeOpen);
+}
 
+void PunchEditor::showAdvanced (bool open)
+{
+    // The drawer as laid out now is what Gain shows; the window grows or shrinks by the drawer only if that changes.
+    const bool shown = gain.isVisible();
     using P = PluginProcessor;
-    const int extra = shouldBeOpen ? drawerHeight : 0;
-    const int height = juce::jlimit (P::minWindowHeight + extra, P::maxWindowHeight, getHeight() + (shouldBeOpen ? drawerHeight : -drawerHeight));
+    const int extra = open ? drawerHeight : 0;
     setResizeLimits (P::minWindowWidth, P::minWindowHeight + extra, P::maxWindowWidth, P::maxWindowHeight);
-    setSize (getWidth(), height);
+    if (shown != open)
+        setSize (getWidth(), juce::jlimit (P::minWindowHeight + extra, P::maxWindowHeight, getHeight() + (open ? drawerHeight : -drawerHeight)));
     resized();
     advancedHeader->repaint();
 }
@@ -384,6 +393,10 @@ bool PunchEditor::tick (double seconds)
     }
 
     ceiling.setDimmed (! settings.ceilingOn);
+
+    // A state loaded while the window is open (a host's user setting, say) can change whether Advanced is open (0.6.2).
+    if (gain.isVisible() != isAdvancedOpen())
+        showAdvanced (isAdvancedOpen());
 
     if (--slowCounter <= 0)
     {

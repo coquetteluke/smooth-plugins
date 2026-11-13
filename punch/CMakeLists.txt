@@ -8,7 +8,7 @@ set(SP_NAME    "Punch")
 set(SP_CODE    SPun)
 set(SP_BUNDLE  "com.lukegarito.smoothpunch")
 set(SP_DESC    "Vocal impact: transient shaper, compressors and output ceiling")
-set(SP_VERSION 0.6.1)
+set(SP_VERSION 0.6.2)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice
@@ -86,7 +86,7 @@ enable_testing()
 juce_add_console_app(PluginTest PRODUCT_NAME "PluginTest")
 target_sources(PluginTest PRIVATE ${SP_SOURCES} tests/PluginTest.cpp)
 target_include_directories(PluginTest PRIVATE src tests)
-target_compile_definitions(PluginTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0 SMOOTH_PUNCH_CORPUS="${CMAKE_CURRENT_SOURCE_DIR}/tests/corpus")
+target_compile_definitions(PluginTest PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0 SMOOTH_PUNCH_CORPUS="${CMAKE_CURRENT_SOURCE_DIR}/tests/corpus" SMOOTH_PUNCH_BASELINE="${CMAKE_CURRENT_SOURCE_DIR}/tests/baseline")
 target_link_libraries(PluginTest PRIVATE PunchWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME plugin COMMAND PluginTest)
 

@@ -332,6 +332,29 @@ int main (int argc, char** argv)
         s.saveBoth (folder, "smallest");
     }
 
+    // Since 1.2.2: all five Advanced settings moved at the smallest size (the summary names what fits and counts the rest), and a tall,
+    // narrow window with only C to tune to, so the voice is far from its note (the note still turns lime, the readouts fit beside it).
+    {
+        Session s (PluginProcessor::minWindowWidth, PluginProcessor::minWindowHeight);
+        s.demoTuning();
+        s.set ("transpose", 3.0f);
+        s.set ("reference", 432.0f);
+        s.set ("tracking", 75.0f);
+        s.set ("throat", 110.0f);
+        s.set ("formantPreserve", 0.0f);
+        s.play (sung, 0, bestFrame + 1);
+        s.saveBoth (folder, "smallest-advanced-closed-with-changes");
+    }
+
+    {
+        Session s (PluginProcessor::minWindowWidth, PluginProcessor::maxWindowHeight);
+        s.demoTuning();
+        s.set ("scale", (float) smoothtune::scaleCustom);
+        for (int n = 1; n < 12; ++n) s.set ("note" + juce::String (n), 1.0f);
+        s.play (sung, 0, bestFrame + 1);
+        s.saveBoth (folder, "tall-narrow-one-note");
+    }
+
     {
         Session s (1400, 1000);
         s.demoTuning();

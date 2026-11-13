@@ -141,19 +141,38 @@ public:
         hint = "Transpose, Reference A4, Tracking, Throat Length and Formant Preserve.";
     }
 
-    void setSummary (const juce::String& text)
+    void setSummary (const juce::StringArray& items)
     {
-        if (text != summary)
+        if (items != moved)
         {
-            summary = text;
+            moved = items;
             repaint();
         }
+    }
+
+    // As many of the moved settings as fit after the label, then how many more there are, so none is lost behind an ellipsis (1.2.2:
+    // at the smallest window two moved settings were already cut off).
+    juce::String getSummary() const
+    {
+        const auto f = font (Weight::regular, 13.0f);
+        for (int n = moved.size(); n >= 0; --n)
+        {
+            juce::StringArray first;
+            for (int i = 0; i < n; ++i)
+                first.add (moved[i]);
+            auto text = first.joinIntoString (", ");
+            if (n < moved.size())
+                text += (n > 0 ? ", +" : "+") + juce::String (moved.size() - n) + " more";
+            if (n == 0 || juce::GlyphArrangement::getStringWidth (f, text) <= summaryRoom())
+                return text;
+        }
+        return {};
     }
 
     void paint (juce::Graphics& g) override
     {
         const bool lit = isMouseOver (true);
-        const bool open = owner.isAdvancedOpen();
+        const bool open = owner.shownAdvanced;
         auto b = getLocalBounds().toFloat();
         auto mark = b.removeFromLeft (16.0f);
 
@@ -177,11 +196,11 @@ public:
         g.setFont (font (Weight::medium, 13.0f));
         g.drawText ("Advanced", b.removeFromLeft (64.0f), juce::Justification::centredLeft, false);
 
-        if (summary.isNotEmpty() && ! open)
+        if (! moved.isEmpty() && ! open)
         {
             g.setColour (tone::text);
             g.setFont (font (Weight::regular, 13.0f));
-            g.drawText (summary, b.withTrimmedLeft (8.0f), juce::Justification::centredLeft, true);
+            g.drawText (getSummary(), b.withTrimmedLeft (8.0f), juce::Justification::centredLeft, true);
         }
     }
 
@@ -189,12 +208,11 @@ public:
     void mouseExit (const juce::MouseEvent&) override   { repaint(); }
     void mouseDown (const juce::MouseEvent&) override   { owner.setAdvancedOpen (! owner.isAdvancedOpen()); }
 
-    const juce::String& getSummary() const noexcept  { return summary; }
     float summaryRoom() const noexcept  { return (float) getWidth() - 16.0f - 64.0f - 8.0f; }
 
 private:
     TuneEditor& owner;
-    juce::String summary;
+    juce::StringArray moved;
 };
 
 // ---- the editor -------------------------------------------------------------------------------------------------
@@ -233,17 +251,24 @@ TuneEditor::TuneEditor (PluginProcessor& p)
 
     presets.nameNow = [&p]
     {
+        // Fresh out of the box the settings are their own, not a preset that has been changed.
+        const auto atDefaults = [&p]
+        {
+            bool all = true;
+            for (const char* id : { "retune", "humanize", "flex", "naturalVibrato" })
+            {
+                auto* prm = p.apvts.getParameter (id);
+                all = all && std::abs (prm->getValue() - prm->getDefaultValue()) < 1.0e-4f;
+            }
+            return all;
+        };
+
+        // A session saved before 1.2.2 does not say which preset it was.
+        if (p.getCurrentProgram() < 0)
+            return atDefaults() ? juce::String ("Default") : juce::String ("Choose a preset");
         if (! p.isCurrentProgramEdited())
             return p.getProgramName (p.getCurrentProgram());
-
-        // Fresh out of the box the settings are their own, not a preset that has been changed.
-        bool atDefaults = true;
-        for (const char* id : { "retune", "humanize", "flex", "naturalVibrato" })
-        {
-            auto* prm = p.apvts.getParameter (id);
-            atDefaults = atDefaults && std::abs (prm->getValue() - prm->getDefaultValue()) < 1.0e-4f;
-        }
-        return atDefaults ? juce::String ("Default") : p.getProgramName (p.getCurrentProgram()) + ", edited";
+        return atDefaults() ? juce::String ("Default") : p.getProgramName (p.getCurrentProgram()) + ", edited";
     };
 
     for (auto* s : { &transpose, &reference, &tracking, &throat })
@@ -276,6 +301,7 @@ TuneEditor::TuneEditor (PluginProcessor& p)
 
     setResizable (true, true);
     const bool open = isAdvancedOpen();
+    shownAdvanced = open;
     using P = PluginProcessor;
     const int extra = open ? drawerHeight : 0;
     setResizeLimits (P::minWindowWidth, P::minWindowHeight + extra, P::maxWindowWidth, P::maxWindowHeight);
@@ -380,7 +406,7 @@ void TuneEditor::resized()
     advancedHeader->setBounds (foot.removeFromLeft (foot.getWidth() * 2 / 5));
     hintArea = foot;
 
-    const bool open = isAdvancedOpen();
+    const bool open = shownAdvanced;
     for (juce::Component* c : std::initializer_list<juce::Component*> { &transpose, &reference, &tracking, &throat, &formant })
         c->setVisible (open);
 
@@ -451,18 +477,31 @@ bool TuneEditor::isAdvancedOpen() const noexcept
 
 void TuneEditor::setAdvancedOpen (bool shouldBeOpen)
 {
-    if (shouldBeOpen == isAdvancedOpen())
-        return;
-
     processorRef.advancedOpen.store (shouldBeOpen, std::memory_order_relaxed);
+    showAdvanced (shouldBeOpen);
+}
+
+// Lays the window out with the drawer open or closed. Also called from tick() when a loaded state has changed the saved flag.
+void TuneEditor::showAdvanced (bool open)
+{
+    if (open == shownAdvanced)
+        return;
+    shownAdvanced = open;
 
     using P = PluginProcessor;
-    const int extra = shouldBeOpen ? drawerHeight : 0;
-    const int height = juce::jlimit (P::minWindowHeight + extra, P::maxWindowHeight, getHeight() + (shouldBeOpen ? drawerHeight : -drawerHeight));
+    const int extra = open ? drawerHeight : 0;
+    const int height = juce::jlimit (P::minWindowHeight + extra, P::maxWindowHeight, getHeight() + (open ? drawerHeight : -drawerHeight));
     setResizeLimits (P::minWindowWidth, P::minWindowHeight + extra, P::maxWindowWidth, P::maxWindowHeight);
     setSize (getWidth(), height);
     resized();
     advancedHeader->repaint();
+}
+
+// The key Follow Key is using, straight from what it holds of the key file, so it is right whether or not the host is processing
+// (1.2.2: it came from the last processed block, and with the host stopped a newly chosen Key was not shown or used for the notes).
+bool TuneEditor::followed (int& keyNow, int& scaleNow) const
+{
+    return followKey.isOn() && scale.getSelected() != smoothtune::scaleCustom && processorRef.followedKey (keyNow, scaleNow);
 }
 
 juce::String TuneEditor::readingText() const
@@ -488,9 +527,9 @@ void TuneEditor::setNoteMode (int pitchClass, int mode)
     // From any scale but Custom, the current scale's notes become the start of your own, so nothing jumps.
     if (scale.getSelected() != smoothtune::scaleCustom)
     {
-        const auto r = processorRef.getReadings();
-        const bool following = followKey.isOn() && processorRef.getPitchHistoryCount() > 0;
-        const auto mask = smoothtune::scaleMask (following ? r.activeKey : key.getSelected(), following ? r.activeScale : scale.getSelected());
+        int fileKey = 0, fileScale = 0;
+        const bool following = followed (fileKey, fileScale);
+        const auto mask = smoothtune::scaleMask (following ? fileKey : key.getSelected(), following ? fileScale : scale.getSelected());
 
         for (int i = 0; i < 12; ++i)
             noteAttachments[(size_t) i]->setValueAsCompleteGesture ((mask >> i) & 1 ? 0.0f : 1.0f);
@@ -512,10 +551,10 @@ void TuneEditor::updateNotes()
     if (notes.size() < 12)
         return;
 
-    const auto r = processorRef.getReadings();
     const int selectedScale = scale.getSelected();
-    const bool following = followKey.isOn() && selectedScale != smoothtune::scaleCustom && processorRef.getPitchHistoryCount() > 0;
-    const auto mask = smoothtune::scaleMask (following ? r.activeKey : key.getSelected(), following ? r.activeScale : selectedScale);
+    int fileKey = 0, fileScale = 0;
+    const bool following = followed (fileKey, fileScale);
+    const auto mask = smoothtune::scaleMask (following ? fileKey : key.getSelected(), following ? fileScale : selectedScale);
 
     for (int i = 0; i < 12; ++i)
     {
@@ -526,12 +565,11 @@ void TuneEditor::updateNotes()
 
 void TuneEditor::updateFollow()
 {
-    const auto r = processorRef.getReadings();
-
-    if (followKey.isOn() && scale.getSelected() != smoothtune::scaleCustom && processorRef.getPitchHistoryCount() > 0)
+    int fileKey = 0, fileScale = 0;
+    if (followed (fileKey, fileScale))
     {
-        key.showInstead (smoothtune::noteNames[juce::jlimit (0, 11, r.activeKey)]);
-        scale.showInstead (smoothtune::scaleNames[juce::jlimit (0, smoothtune::numScales - 1, r.activeScale)]);
+        key.showInstead (smoothtune::noteNames[juce::jlimit (0, 11, fileKey)]);
+        scale.showInstead (smoothtune::scaleNames[juce::jlimit (0, smoothtune::numScales - 1, fileScale)]);
     }
     else
     {
@@ -554,8 +592,8 @@ void TuneEditor::updateAdvancedSummary()
     note (tracking, "Tracking", 50.0);
     note (throat, "Throat", 100.0);
     if (! formant.isOn())
-        moved.add ("Formant Preserve off");
-    advancedHeader->setSummary (moved.joinIntoString (", "));
+        moved.add ("Formant off");
+    advancedHeader->setSummary (moved);
 }
 
 // ---- frames -----------------------------------------------------------------------------------------------------
@@ -563,6 +601,7 @@ void TuneEditor::updateAdvancedSummary()
 bool TuneEditor::tick (double seconds)
 {
     const bool moving = display.advance (seconds);
+    showAdvanced (isAdvancedOpen());   // a state loaded with the window open (a Logic setting, Compare, undo) may have changed it
 
     const auto r = processorRef.getReadings();
     const int target = r.voiced && r.targetNote >= 0 ? r.targetNote % 12 : -1;

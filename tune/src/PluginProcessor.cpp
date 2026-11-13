@@ -46,6 +46,36 @@ namespace
         return juce::String (noteNames[n % 12]) + juce::String (n / 12 - 1);
     }
     const juce::Identifier windowWidthAttribute { "windowWidth" }, windowHeightAttribute { "windowHeight" }, advancedOpenAttribute { "advancedOpen" };
+    const juce::Identifier programAttribute { "program" };   // since 1.2.2: the preset last chosen, left out when none is known
+
+    // Note names at the start of a reading's text, longest first so C# is not read as C. -1 if none.
+    int noteAt (const juce::String& text, int& length)
+    {
+        for (int i = 11; i >= 0; --i)
+            if (juce::String (noteNames[i]).length() == 2 && text.startsWith (noteNames[i])) { length = 2; return i; }
+        for (int i = 0; i < 12; ++i)
+            if (text.startsWith (noteNames[i])) { length = 1; return i; }
+        return -1;
+    }
+    float noteFromText (const juce::String& s)
+    {
+        const auto text = s.trim();
+        int length = 0;
+        const int pc = noteAt (text, length);
+        if (pc < 0) return -1.0f;   // "no note"
+        return (float) juce::jlimit (-1, 127, 12 * (text.substring (length).getIntValue() + 1) + pc);
+    }
+    float keyFromText (const juce::String& s)
+    {
+        const auto text = s.trim();
+        int length = 0;
+        const int pc = noteAt (text, length);
+        const auto rest = text.substring (juce::jmax (0, length)).trim();
+        int scale = 0;
+        for (int i = 0; i < numScales; ++i)
+            if (rest.equalsIgnoreCase (scaleNames[i])) scale = i;
+        return (float) (juce::jmax (0, pc) + 12 * scale);
+    }
 
     juce::String keyText (float v)
     {
@@ -147,12 +177,14 @@ PluginProcessor::PluginProcessor (const Options& options)
     for (int i = 0; i < 12; ++i)
         customNote[(size_t) i] = apvts.getRawParameterValue ("note" + juce::String (i));
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
+    bypassWasOn.store (bypass->get(), std::memory_order_relaxed);
+    apvts.addParameterListener ("bypass", this);
 
     addParameter (offReading = new ReadingParameter ("pitchOffTarget", "Pitch Off Target", "cents", -100.0f, 100.0f, 0.0f, offText));
     addParameter (hzReading = new ReadingParameter ("detectedPitch", "Detected Pitch", "Hz", 0.0f, 2000.0f, 0.0f, hzText));
     addParameter (correctionReading = new ReadingParameter ("correctionApplied", "Correction Applied", "cents", -2400.0f, 2400.0f, 0.0f, centsText));
-    addParameter (noteReading = new ReadingParameter ("targetNote", "Target Note", "", -1.0f, 127.0f, -1.0f, noteText));
-    addParameter (keyReading = new ReadingParameter ("activeKey", "Active Key", "", 0.0f, (float) (12 * numScales - 1), 0.0f, keyText));
+    addParameter (noteReading = new ReadingParameter ("targetNote", "Target Note", "", -1.0f, 127.0f, -1.0f, noteText, noteFromText));
+    addParameter (keyReading = new ReadingParameter ("activeKey", "Active Key", "", 0.0f, (float) (12 * numScales - 1), 0.0f, keyText, keyFromText));
 
     char path[PATH_MAX] {};
     if (options.keyFilePath.isNotEmpty())
@@ -169,6 +201,7 @@ PluginProcessor::PluginProcessor (const Options& options)
 
 PluginProcessor::~PluginProcessor()
 {
+    apvts.removeParameterListener ("bypass", this);
     worker->stopThread (2000);
     cancelPendingUpdate();
 }
@@ -201,10 +234,46 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     bypassMix = bypass->get() ? 0.0f : 1.0f;
     lastVoicingLimit = -1.0f;
     control = {};
+    offlineKeySamples = 0;
     applyInputType ((int) inputType->load());
     readSettings();
     setLatencySamples (latencyFor (typeNow, sr));
     preparedRate.store (sr, std::memory_order_relaxed);
+}
+
+void PluginProcessor::parameterChanged (const juce::String& id, float value)
+{
+    if (id != "bypass")
+        return;
+    const bool on = value > 0.5f;
+    const bool was = bypassWasOn.exchange (on, std::memory_order_relaxed);
+    if (on && ! was)
+        bypassSwitchedAtMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+    bypassJustSwitchedOn.store (on && ! was, std::memory_order_relaxed);
+}
+
+void PluginProcessor::reset()
+{
+    // The Reset that comes with the host's bypass switching on is left out: Bypass crossfades to the input read from the same delay line,
+    // so clearing it then would cut the sound off for a whole delay instead of the 20 ms fade.
+    if (bypassJustSwitchedOn.exchange (false, std::memory_order_relaxed)
+        && juce::Time::getMillisecondCounter() - bypassSwitchedAtMs.load (std::memory_order_relaxed) < 250)
+        return;
+    if (preparedRate.load (std::memory_order_relaxed) <= 0.0)
+        return;   // nothing has been prepared, so nothing is held
+
+    const juce::ScopedLock lock (getCallbackLock());   // the AU wrapper renders under this lock, so a host Reset never lands mid block
+    tracker.reset();
+    shifter.reset();
+    corrector.reset();
+    tickPhase = historyPhase = 0;
+    fadeGain = 1.0f;
+    fading = false;
+    bypassMix = bypass->get() ? 0.0f : 1.0f;
+    control = {};
+    offlineKeySamples = 0;
+    applyInputType ((int) inputType->load());
+    readSettings();
 }
 
 void PluginProcessor::applyInputType (int type) noexcept
@@ -289,6 +358,21 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, bool forceBypas
     const int numSamples = buffer.getNumSamples();
     if (numCh <= 0)
         return;
+
+    if (bypassJustSwitchedOn.load (std::memory_order_relaxed))
+        bypassJustSwitchedOn.store (false, std::memory_order_relaxed);   // only the Reset that comes with the switch is left out
+
+    // Follow Key in an offline bounce or freeze (1.2.2): the worker reads the key file every 0.3 s of wall time, which in a render faster
+    // than real time is many seconds of song. So here it is read every 0.3 s of audio instead. Offline nothing waits on this thread.
+    if (isNonRealtime() && followKey->load (std::memory_order_relaxed) >= 0.5f)
+    {
+        if (offlineKeySamples <= 0)
+        {
+            pollKeyFileNow();
+            offlineKeySamples = juce::roundToInt (0.3 * sr);
+        }
+        offlineKeySamples -= numSamples;
+    }
 
     readSettings();
     const int wantedType = juce::jlimit (0, numInputTypes - 1, (int) inputType->load (std::memory_order_relaxed));
@@ -384,10 +468,16 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, bool forceBypas
     keepPeak (levelOut, buffer.getMagnitude (0, numSamples));
 
     // Readings: stored, never sent to the host. Nothing here can write automation.
+    // Under Bypass the output is the input, so Correction Applied is 0 (1.2.2; it kept reporting the correction it was not applying).
     const bool voiced = control.voiced;
-    offReading->set ((float) juce::jlimit (-100.0, 100.0, corrector.centsOffTarget()));
+    const bool bypassed = bypassTarget <= 0.0f;
+    const double off = corrector.centsOffTarget(), fix = bypassed ? 0.0 : corrector.correctionCents();
+    offReading->set ((float) juce::jlimit (-100.0, 100.0, off));
     hzReading->set (voiced ? (float) (sr / control.inputPeriod) : 0.0f);
-    correctionReading->set ((float) juce::jlimit (-2400.0, 2400.0, corrector.correctionCents()));
+    correctionReading->set ((float) juce::jlimit (-2400.0, 2400.0, fix));
+    offWide.store ((float) off, std::memory_order_relaxed);
+    correctionWide.store ((float) fix, std::memory_order_relaxed);
+    bypassedNow.store (bypassed ? 1 : 0, std::memory_order_relaxed);
     noteReading->set ((float) corrector.targetNote());
     keyReading->set ((float) (activeKeyNow + 12 * activeScaleNow));
     voicedNow.store (voiced ? 1 : 0, std::memory_order_relaxed);
@@ -443,9 +533,10 @@ double PluginProcessor::pitchInLine (double period) const noexcept
 PluginProcessor::Readings PluginProcessor::getReadings() const noexcept
 {
     Readings r;
-    r.centsOffTarget = offReading->get();
+    r.centsOffTarget = offWide.load (std::memory_order_relaxed);
     r.detectedHz = hzReading->get();
-    r.correctionCents = correctionReading->get();
+    r.correctionCents = correctionWide.load (std::memory_order_relaxed);
+    r.bypassed = bypassedNow.load (std::memory_order_relaxed) != 0;
     r.targetNote = juce::roundToInt (noteReading->get());
     const int packed = juce::roundToInt (keyReading->get());
     r.activeKey = packed % 12;
@@ -463,6 +554,15 @@ void PluginProcessor::pollKeyFileNow()
     }
     using namespace std::chrono;
     follower.poll (duration<double> (system_clock::now().time_since_epoch()).count());
+}
+
+bool PluginProcessor::followedKey (int& key, int& scale) const noexcept
+{
+    if (followKey->load (std::memory_order_relaxed) < 0.5f || ! follower.has())
+        return false;
+    key = follower.key();
+    scale = follower.minor() ? scaleMinor : scaleMajor;
+    return true;
 }
 
 void PluginProcessor::handleAsyncUpdate()
@@ -513,6 +613,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
         xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute (windowHeightAttribute, windowHeight.load (std::memory_order_relaxed));
         xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
+        if (currentProgram >= 0)
+            xml->setAttribute (programAttribute, currentProgram);
         copyXmlToBinary (*xml, dest);
     }
 }
@@ -528,9 +630,15 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             if (xml->hasAttribute (windowHeightAttribute))
                 windowHeight.store (juce::jlimit (minWindowHeight, maxWindowHeight, xml->getIntAttribute (windowHeightAttribute, defaultWindowHeight)), std::memory_order_relaxed);
             advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            // Which preset was chosen, only to name it: its values are already in the state and are not applied again. A session saved
+            // before 1.2.2 does not say, so it names none rather than a wrong one. A damaged number is kept in range.
+            currentProgram = xml->hasAttribute (programAttribute)
+                               ? juce::jlimit (0, getNumPrograms() - 1, xml->getIntAttribute (programAttribute, 0))
+                               : -1;
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (windowHeightAttribute);
             xml->removeAttribute (advancedOpenAttribute);
+            xml->removeAttribute (programAttribute);
             applySafeState (apvts, *xml);
         }
 }

@@ -285,7 +285,11 @@ private:
         else
         {
             const double period = c.inputPeriod;
-            const double wanted = std::clamp (c.outputPeriod > 0.0 ? c.outputPeriod : period, 0.25 * period, 4.0 * period);
+            // Up to 1.2.1 the spacing stopped at 0.25 and 4 periods, exactly +/-24 semitones, so at Transpose +/-24 the correction on top was
+            // cut off (a note sung flat at +24 came out as flat as it was sung). Now +/-30 semitones: Transpose plus the largest correction a
+            // one-note Custom scale asks for. Under 24 semitones nothing changes. At 0.177 periods a grain of two periods overlaps 12 others,
+            // inside the 16 there is room for.
+            const double wanted = std::clamp (c.outputPeriod > 0.0 ? c.outputPeriod : period, period / widestRatio, widestRatio * period);
             spacing = wanted;
             planned = Plan::mapped;
 
@@ -474,6 +478,7 @@ private:
     // take 04 at 60.91 s (Hard Tune, song key) that 10 ms does not have.
     static constexpr double entrySeconds = 0.010;
     static constexpr double lockedWalkShare = 0.001;
+    static constexpr double widestRatio = 5.656854249492381;   // 2 to the power 30/12: 30 semitones
     long long lastMarkUsed = -1;
 };
 } // namespace smoothtune

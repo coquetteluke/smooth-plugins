@@ -14,11 +14,12 @@ class ReadingParameter final : public juce::AudioProcessorParameterWithID
 {
 public:
     using Formatter = juce::String (*) (float);
+    using Parser = float (*) (const juce::String&);   // text back to the value; nullptr reads a plain number
 
-    ReadingParameter (const char* id, const char* name, const char* label, float lowest, float highest, float initial, Formatter f)
+    ReadingParameter (const char* id, const char* name, const char* label, float lowest, float highest, float initial, Formatter f, Parser parse = nullptr)
         : juce::AudioProcessorParameterWithID (juce::ParameterID { id, 1 }, name,
                                                juce::AudioProcessorParameterWithIDAttributes().withLabel (label).withAutomatable (false)),
-          low (lowest), high (highest), start (initial), formatter (f)
+          low (lowest), high (highest), start (initial), formatter (f), parser (parse)
     {
         value.store (initial, std::memory_order_relaxed);
     }
@@ -30,17 +31,23 @@ public:
     void setValue (float) override {}
     float getDefaultValue() const override { return juce::jlimit (0.0f, 1.0f, (start - low) / (high - low)); }
     juce::String getText (float normalised, int) const override { return formatter (low + normalised * (high - low)); }
-    float getValueForText (const juce::String& text) const override { return juce::jlimit (0.0f, 1.0f, (text.getFloatValue() - low) / (high - low)); }
+    // Each reading's own text reads back as the value it shows (since 1.2.2: "no note" read back as C-1, and "B Custom" as C Chromatic).
+    float getValueForText (const juce::String& text) const override
+    {
+        const float v = parser != nullptr ? parser (text) : text.getFloatValue();
+        return juce::jlimit (0.0f, 1.0f, (v - low) / (high - low));
+    }
 
 private:
     float low, high, start;
     Formatter formatter;
+    Parser parser;
     std::atomic<float> value { 0.0f };
 };
 
 // Real time vocal pitch correction. Pitch tracker, shifter and corrector live in their own files.
 // This class holds the parameters, runs them sample by sample, and looks after latency, bypass and the key file.
-class PluginProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater
+class PluginProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     struct Options
@@ -55,6 +62,10 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
+    // A host Reset (a locate, a stop and start, the start of a bounce) clears what prepareToPlay clears: the delay line, the tracker's
+    // marks, the corrector's target and the fades. Allocates nothing. The one Reset JUCE's AU wrapper sends right after the host turns its
+    // own bypass on is left out, so Bypass still fades to the input instead of cutting it off for a whole delay. Since 1.2.2.
+    void reset() override;
     bool isBusesLayoutSupported (const BusesLayout&) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -68,6 +79,7 @@ public:
     double getTailLengthSeconds() const override { return 0.0; }
 
     int getNumPrograms() override;
+    // The preset last chosen, saved with the session since 1.2.2; -1 for a session saved before, which does not say.
     int getCurrentProgram() override { return currentProgram; }
     void setCurrentProgram (int) override;
     const juce::String getProgramName (int) override;
@@ -84,6 +96,7 @@ public:
         float centsOffTarget = 0.0f, detectedHz = 0.0f, correctionCents = 0.0f;
         int targetNote = -1, activeKey = 0, activeScale = 0;
         bool voiced = false;
+        bool bypassed = false;   // the Bypass control or the host's own bypass: Correction Applied is then 0
     };
     Readings getReadings() const noexcept;
 
@@ -116,6 +129,9 @@ public:
     void applyPendingLatencyNow() { handleAsyncUpdate(); }
     void pollKeyFileNow();
 
+    // The key Follow Key has from the key file, if it has one. Safe from any thread, for the window.
+    bool followedKey (int& key, int& scale) const noexcept;
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
@@ -126,6 +142,7 @@ private:
     void applyInputType (int type) noexcept;
     void readSettings() noexcept;
     void handleAsyncUpdate() override;
+    void parameterChanged (const juce::String&, float) override;
     double pitchInLine (double period) const noexcept;
 
     std::atomic<float>* keyParam = nullptr, *scaleParam = nullptr, *retune = nullptr, *humanize = nullptr, *flex = nullptr,
@@ -155,6 +172,11 @@ private:
     double throatRate = 1.0;
     float lastVoicingLimit = -1.0f;
     int activeKeyNow = 0, activeScaleNow = 0;
+    int offlineKeySamples = 0;   // Follow Key in an offline bounce reads the key file by audio time (1.2.2)
+    // The readings the window uses, not limited to the host readings' ranges (1.2.2): Pitch Off Target stops at +/-100 cents as a meter,
+    // and the window adds the two to place the output.
+    std::atomic<float> offWide { 0.0f }, correctionWide { 0.0f };
+    std::atomic<int> bypassedNow { 0 };
 
     std::array<PitchPoint, pitchHistorySize> pitchHistory;
     std::atomic<long long> pitchHistoryCount { 0 };
@@ -163,7 +185,11 @@ private:
     std::atomic<float> levelIn { 0.0f }, levelOut { 0.0f };
     std::atomic<double> preparedRate { 0.0 };
     bool hostLatencyUpdates = true;
-    int currentProgram = 0;
+    int currentProgram = 0;   // a new instance: Natural Pop, as before; -1 for none
+    // JUCE's AU wrapper resets straight after the host turns its own bypass on. That one Reset is left out (see reset()). It is the next
+    // Reset within a quarter second, with no audio block in between.
+    std::atomic<bool> bypassJustSwitchedOn { false }, bypassWasOn { false };
+    std::atomic<juce::uint32> bypassSwitchedAtMs { 0 };
     std::unique_ptr<Worker> worker;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)

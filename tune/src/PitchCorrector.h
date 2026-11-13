@@ -94,8 +94,9 @@ public:
         // Hard Tune's sit 3 to 4.
         const double corrected = p + correction;
         if (freshSlow) { slowPitch = corrected; freshSlow = false; }   // a new note starts its average where it comes out
+        // A note on Bypass is left as sung, so Natural Vibrato leaves it alone too (1.2.2: at -100 it flattened a bypassed note's vibrato).
         double vibrato = 0.0;
-        if (s.naturalVibrato != 0.0)
+        if (s.naturalVibrato != 0.0 && ! isPassed (target, s.passed))
         {
             slowPitch += (1.0 - std::exp (-tickSeconds / 0.1)) * (corrected - slowPitch);
             vibrato = s.naturalVibrato * (corrected - slowPitch) * smoothstep (0.08, 0.25, age);

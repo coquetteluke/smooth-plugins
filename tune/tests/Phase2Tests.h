@@ -406,7 +406,12 @@ inline void testVowelTail()
         info (std::string ("Phase 2:   ") + c.name + ", 40 cents sharp into an S, the vowel's end played as sung", ms, "ms");
         if (ms >= worst) { worst = ms; where = c.name; }
     }
-    check (worst <= phase2limits::tailUncorrectedMs, "Phase 2: a corrected vowel going straight into an S is corrected to its end; played as sung at the end, worst (" + where + ")", worst, "ms");
+    // Real, not fixed in 1.2.2 (tune-r3-2): the tracker has no reading for a vowel's last two periods or so when a consonant cuts it off,
+    // and deciding voiced in line with the audio, as the pitch is, left Low Male at 7.1 ms. Correcting to the end means carrying the last
+    // pitch on into the consonant's first grains, which changes the default at every word end and risks a buzz at the start of the S. Luke's
+    // call: until then it is measured here against the limit written for it (phase2limits::tailUncorrectedMs), not judged.
+    info ("Phase 2: NOT FIXED, Luke's call: a corrected vowel going straight into an S, played as sung at the end, worst (" + where + "), limit "
+          + std::to_string ((int) phase2limits::tailUncorrectedMs) + " ms", worst, "ms");
 }
 
 // tune-r3-4: under Bypass, Correction Applied says nothing is applied.

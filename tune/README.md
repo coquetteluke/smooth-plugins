@@ -18,17 +18,17 @@ Every control is a real AU parameter that a host can find by name.
 | Humanize | Slows correction on the sustained part of a note, up to 400 ms extra, while the start of the note stays quick. Vibrato survives on long notes. |
 | Flex Amount | How far a note may drift before correction applies, 0 to 100 cents. Inside that, the note is left exactly as sung. Outside, it is brought to the edge. 50 or more does little in Chromatic, because no note is ever more than 50 cents from a chromatic target. |
 | Input Type | Voice range. Sets tracking range and latency. Soprano 150 Hz to 1.3 kHz, Alto/Tenor 98 Hz to 1 kHz (and since 1.2.0 notes under it down to 70 Hz, at the same latency), Low Male 65 to 600 Hz, Wide Range 65 Hz to 1.3 kHz. |
-| Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key. Missing, broken, stale (over 10 minutes old, since Smooth Key only writes on a change), future dated or low confidence (under 0.5) data is ignored: the last good key holds, and with none it uses Key and Scale. A Custom scale stays as it is. |
+| Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key. Missing, broken, stale (over 10 minutes old), future dated or low confidence (under 0.5) data is ignored: the last good key holds, and with none it uses Key and Scale. A key set by hand in Key (written with `listening` false) is followed like any other. A Custom scale stays as it is. In an offline bounce or freeze the file is read every 0.3 s of audio rather than of wall time, so a key change lands at the same place in the song as in playback (since 1.2.2). |
 | Natural Vibrato | Scales the vibrato that is left, -100 removes it, +100 doubles it. |
-| Transpose | -24 to +24 semitones, after correction. Formants stay. |
+| Transpose | -24 to +24 semitones, after correction. Formants stay. The correction on top is kept up to 30 semitones in all (since 1.2.2; at +/-24 it was cut off). |
 | Reference A4 | 415 to 466 Hz. |
 | Tracking | Which sounds count as pitched. 0 is choosy and passes rough, breathy sound untouched. 100 tunes it. |
 | Formant Preserve | On keeps the formants. Off lets them follow the pitch. |
 | Throat Length | 60 to 150%. Above 100 lowers the formants, as a longer throat would. Only voiced sound is changed. |
-| Custom C to Custom B | With Scale on Custom: Tune, Remove (never a target) or Bypass (a target, but left uncorrected). |
-| Bypass | Keeps the same delay. |
+| Custom C to Custom B | With Scale on Custom: Tune, Remove (never a target) or Bypass (a target, but left as sung, Natural Vibrato included). |
+| Bypass | Keeps the same delay. A host Reset (a locate, stop and start, or the start of a bounce) clears the delay line and starts tuning afresh; the one Reset that comes with the host's own bypass switching on is left out, so Bypass still fades. |
 
-Readings, which never write automation: Pitch Off Target (cents, the meter), Detected Pitch, Correction Applied, Target Note, Active Key. They read through the host by name and value string, and the window shows all of them live.
+Readings, which never write automation: Pitch Off Target (cents, the meter, up to +/-100), Detected Pitch, Correction Applied (0 while bypassed), Target Note, Active Key. They read through the host by name and value string, each value string reads back as the value it shows, and the window shows all of them live, without the meter's limit.
 
 ## The window
 
@@ -39,13 +39,13 @@ Graphite and one colour, lime, which only ever means the corrected voice or the 
 - **The trace** is the last few seconds on the same scale, with the note as the middle line. Hard tuning is a flat lime line with white wandering around it. Soft tuning has the lime line following the white one. The shaded band is Flex Amount. Each note gets its name once it has lasted long enough to read.
 - **In and Out** are the two levels at the sides.
 - **Notes**: one cell per note. Click to tune to it or remove it, right-click to bypass it. From any scale but Custom, the first click turns the scale showing into a Custom one, with only that note changed. The note being hit lights up.
-- **Advanced** holds Transpose, Reference A4, Tracking, Throat Length and Formant Preserve. When closed, it says which of them have moved.
+- **Advanced** holds Transpose, Reference A4, Tracking, Throat Length and Formant Preserve. When closed, it says which of them have moved: as many as fit by name, then how many more.
 
 Double-click anything to reset it, click a value to type it. Drag the corner to resize. The size and whether Advanced is open are saved with the session, and are not parameters. All 26 controls are the same AU parameters as before, under the same IDs.
 
 ## Presets
 
-Natural Pop, Transparent Ballad, Light Touch, Keep The Vibrato, Tight Modern, Hard Tune, Hard Tune Glide, Robot Flat. Presets only set Retune Speed, Humanize, Flex Amount and Natural Vibrato, so they never fight your Key, Scale, Input Type or Follow Key.
+Natural Pop, Transparent Ballad, Light Touch, Keep The Vibrato, Tight Modern, Hard Tune, Hard Tune Glide, Robot Flat. Presets only set Retune Speed, Humanize, Flex Amount and Natural Vibrato, so they never fight your Key, Scale, Input Type or Follow Key. Since 1.2.2 the preset chosen is saved with the session and named when it is opened again; a session saved before then names none ("Choose a preset") and plays exactly as it did.
 
 ## Signal flow
 

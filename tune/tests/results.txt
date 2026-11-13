@@ -299,7 +299,7 @@ PASS  with the host stopped, the display stops moving
 PASS  60 windows opened, painted and closed, 30 of them with audio running = 60.000 
 PASS  a window opens and paints before the host has prepared the plug-in
 PASS  audio with the window open and painting nulls to exact zero against the window closed = 0.000 
-PASS  CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 0.805 %
+PASS  CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 0.498 %
 PASS  Alto/Tenor, held notes under its range, 78 to 92 Hz, output pitch error at instant speed, worst 95th percentile = 0.004 cents
 INFO    worst case is at = 92.499 Hz
 PASS  Alto/Tenor, 87 Hz with vibrato +/-30 cents and breath, output pitch error at instant speed, 95th percentile = 1.328 cents
@@ -349,4 +349,53 @@ INFO    entries that slide up into the note as his do (18: 60, 105 and 250 cents
 INFO    the slowest = 240.000 ms
 PASS  Robot Flat's settings flatten vibrato, kept = 1.029 %
 PASS  Robot Flat's settings on a slow rise of 2 semitones: the most the output falls in 10 ms = 0.099 cents
+PASS  Phase 2: a vowel, a host Reset, then 50 ms of silence: peak of the old vowel left in the output = -240.000 dB
+PASS  Phase 2: play, reset, play: the second part equals a new instance; samples that differ = 0.000 
+PASS  Phase 2: a host Reset allocates nothing = 0.000 
+PASS  Phase 2: a Reset before the first prepare is harmless
+PASS  Phase 2: the Reset that comes with host bypass switching on changes nothing; largest difference = 0.000 
+PASS  Phase 2: a Reset later on while bypassed is not left out
+PASS  Phase 2: Transpose at +3 st, the 3 typed over with a 5: it reads = 5.000 st
+PASS  Phase 2: a host that types +7 into Transpose gets +7 = 7.000 st
+PASS  Phase 2: -12 and 4 st still read as they did
+PASS  Phase 2: only C on Tune, E3 sung: the output is on C3, off by = -0.001 cents
+PASS  Phase 2:   and the readings put it (Pitch Off Target + Correction Applied) off C by = 0.000 cents
+PASS  Phase 2:   the window's lime mark sits off the note by = 0.000 cents
+PASS  Phase 2:   the note turns lime: 164.8 Hz|400 cents sharp|−400 cents|Pulling down
+PASS  Phase 2:   and Sung says 400 cents sharp: 164.8 Hz|400 cents sharp|−400 cents|Pulling down
+PASS  Phase 2: Transpose +24, A3 sung 30 cents flat: the readings put the output off A5 by = 0.000 cents
+PASS  Phase 2: Transpose +24, A3 sung 30 cents flat comes out on A5, offset = -0.001 cents
+PASS  Phase 2: Transpose -24, A4 sung 30 cents sharp comes out on A2, offset = -0.003 cents
+PASS  Phase 2: a session saved after choosing Hard Tune names it on reload, unedited (program) = 5.000 
+PASS  Phase 2:   and the preset box says so: Hard Tune
+PASS  Phase 2: Hard Tune with Retune moved to 50 ms reloads as Hard Tune, edited, at 50 ms = 50.000 ms
+PASS  Phase 2: a damaged preset number comes back in range = 7.000 
+PASS  Phase 2:   and stays out of the parameter tree
+PASS  Phase 2: a Hard Tune session saved by 1.2.1 names no preset (program) = -1.000 
+PASS  Phase 2:   and the preset box says so: Choose a preset
+PASS  Phase 2:   from no preset the next arrow goes to the first preset and the previous one to the last: next = 0.000 
+PASS  Phase 2: 1.2.1's default session still reads Default: Default
+PASS  Phase 2: the 1.2.1 baseline input is there = 288000.000 
+PASS  Phase 2: the installed 1.2.1's own sessions (default and 8 presets) play bit for bit as 1.2.1 played them, cases = 9.000 
+PASS  Phase 2: every Custom note on Bypass, Natural Vibrato -100 (Robot Flat's): +/-40 cent vibrato kept = 99.082 %
+PASS  Phase 2:   and the output is the input at the reported delay, difference = -330.275 dB
+PASS  Phase 2: a state saved with Advanced open, loaded with the window open and Advanced closed: the drawer shows, and the window grows by = 66.000 pt
+PASS  Phase 2:   and back: the drawer hides, height off the first by = 0.000 pt
+PASS  Phase 2:   then one click on Advanced opens it
+PASS  Phase 2: Follow Key on, no key file, D chosen with the host stopped: the Key field says D
+PASS  Phase 2:   then F# clicked: the Custom notes are D major without F#; notes wrong = 0.000 
+PASS  Phase 2: Follow Key on, E minor in the key file, before any audio: the window says E Minor
+PASS  Phase 2: smallest window, Advanced closed, Transpose -12 and Formant Preserve off: the summary 'Transpose −12 st, Formant off' fits its room, width over room = -47.745 pt
+PASS  Phase 2: smallest window, Advanced closed, all five moved: the summary 'Transpose +3 st, +4 more' fits its room, width over room = -73.168 pt
+PASS  Phase 2: the Sung and Correction readouts fit beside the note at every size, worst 840x1200 '−600 cents', width over room = -6.527 pt
+INFO  Phase 2:   Low Male, 110 Hz, 40 cents sharp into an S, the vowel's end played as sung = 7.146 ms
+INFO  Phase 2:   Wide Range, 110 Hz, 40 cents sharp into an S, the vowel's end played as sung = 7.146 ms
+INFO  Phase 2:   Alto/Tenor, 220 Hz, 40 cents sharp into an S, the vowel's end played as sung = 0.500 ms
+INFO  Phase 2: NOT FIXED, Luke's call: a corrected vowel going straight into an S, played as sung at the end, worst (Wide Range, 110 Hz), limit 2 ms = 7.146 ms
+PASS  Phase 2: Bypass on, a voice 30 cents sharp: Correction Applied reads 0 cents = 0.000 cents
+PASS  Phase 2: the host's own bypass, the same voice: Correction Applied = 0.000 cents
+PASS  Phase 2: every reading's text reads back as the value it shows, at 6 values each; wrong = 0.000 
+PASS  Phase 2: an offline bounce as fast as it goes takes up a Follow Key change from C to D major within, in song time (5 = not in the 5 s rendered) = 0.245 s
+PASS  Phase 2: a Manual key from Key 1.7.2 (listening false, written 200 s ago) is followed
+PASS  Phase 2: a closed Key's last line, 11 minutes old, is not taken up
 RESULT PASS  0 failures

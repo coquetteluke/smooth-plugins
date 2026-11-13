@@ -441,13 +441,15 @@ namespace ui
         const auto hit = zoneAt (e.position.x);
         const int count = processor.getNumPrograms();
 
+        // With no preset known (a session saved before the preset was), the arrows go to the last or the first.
+        const int current = processor.getCurrentProgram();
         if (hit == previous)
         {
-            choose ((processor.getCurrentProgram() + count - 1) % count);
+            choose (current < 0 ? count - 1 : (current + count - 1) % count);
         }
         else if (hit == next)
         {
-            choose ((processor.getCurrentProgram() + 1) % count);
+            choose (current < 0 ? 0 : (current + 1) % count);
         }
         else
         {

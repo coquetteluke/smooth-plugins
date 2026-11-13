@@ -55,6 +55,8 @@ private:
     void updateNotes();
     void updateFollow();
     void updateAdvancedSummary();
+    void showAdvanced (bool open);
+    bool followed (int& key, int& scale) const;
     void showHintFor (juce::Component*);
     void setHint (const juce::String&);
 
@@ -80,6 +82,7 @@ private:
     juce::Rectangle<int> titleArea, notesLabelArea, hintArea;
     juce::String hintText;
     bool constructed = false, fast = false;
+    bool shownAdvanced = false;   // what the layout shows, kept in step with the saved flag a loaded state can change (1.2.2)
     int slowCounter = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TuneEditor)

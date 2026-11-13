@@ -8,7 +8,7 @@ set(SP_NAME    "Tune")
 set(SP_CODE    STun)
 set(SP_BUNDLE  "com.lukegarito.smoothtune")
 set(SP_DESC    "Low latency real time vocal pitch correction with formant preservation")
-set(SP_VERSION 1.2.1)
+set(SP_VERSION 1.2.2)
 set(SP_AU_TYPE kAudioUnitType_Effect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN FALSE)                   # TRUE for MusicEffect and MusicDevice

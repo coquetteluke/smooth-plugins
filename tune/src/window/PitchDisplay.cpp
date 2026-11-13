@@ -104,7 +104,7 @@ bool PitchDisplay::advance (double seconds)
         r.centsOffTarget = r.correctionCents = 0.0f;
     }
 
-    const bool nowBypassed = bypassValue->load (std::memory_order_relaxed) >= 0.5f;
+    const bool nowBypassed = bypassValue->load (std::memory_order_relaxed) >= 0.5f || r.bypassed;
     const float transposeCents = 100.0f * (float) juce::roundToInt (transposeValue->load (std::memory_order_relaxed));
     bool moved = false;
 
@@ -599,9 +599,11 @@ void PitchDisplay::paintNote (juce::Graphics& g)
     g.drawSingleLineText (juce::String (shownNote / 12 - 1), sideX, baseline);
 }
 
+// The readouts grow with the note, and since 1.2.2 never past what fits beside it: in a tall, narrow window the note took the room and
+// "-16 cents" was cut to "-16 cent". The widest they can say, "-600 cents", is 5.4 times the type size.
 float PitchDisplay::readoutValueSize() const noexcept
 {
-    return juce::jlimit (30.0f, 44.0f, noteSize * 0.27f);
+    return juce::jlimit (30.0f, 44.0f, juce::jmin (noteSize * 0.27f, (float) readoutRoom() / 5.5f));
 }
 
 void PitchDisplay::paintSung (juce::Graphics& g)

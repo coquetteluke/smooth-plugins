@@ -390,7 +390,7 @@ Three things changed. Humanize's per note random choices (scoop, detune, glide, 
 | Level curve like the lead's, working set / first session | 0.53 / 0.61 | 0.51 to 0.52 / 0.62 | 0.65 or less |
 | Ends of the two voices apart, working set / first session | 12 / 11 ms | 12 to 14 / 9 ms | 8 or more |
 
-Not at zero: the two runs that still fail fail on H3 (one voice note from 98 to 130 Hz more than at Human 0, of 700) and H7 (octave verdicts, two more allowed). The voice notes behind them are the same five every time (take 02 at 21.797 and 29.722 s, take 04 at 12.432 s, take 10 at 41.242 s), where the tool reads the voice 50 cents or more off for 30 ms and then on its note an octave away. They come and go with the random numbers at Human 0 too: Human 0 against Human 0 with another of the eight seeds fails U9 in 16 of 56 pairs.
+Not at zero: the two runs that still fail fail on H3 (two voice notes from 98 to 130 Hz not sung right beyond Human 0's, of 700, one allowed) and H7 (7 octave verdicts against 4, two more allowed). The voice notes behind them are the same five every time (take 02 at 21.797 and 29.722 s, take 04 at 12.432 s, take 10 at 41.242 s), where the tool reads the voice 50 cents or more off for 30 ms and then on its note an octave away. They come and go with the random numbers at Human 0 too: Human 0 against Human 0 with another of the eight seeds fails U9 in 16 of 56 pairs.
 
 ## Latency
 

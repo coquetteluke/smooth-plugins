@@ -61,6 +61,10 @@ namespace ui
         /** The newest data, for what else in the window needs to read it. */
         const smoothres::GraphFrame& getFrame() const noexcept  { return frame; }
 
+        /** True once no new data has come for a quarter of a second: the host has stopped playing through the plug-in, and
+            the readings that follow the graph let go along with its gold. */
+        bool isStale() const noexcept  { return staleSeconds > staleAfterSeconds; }
+
         /** Lights the part of the graph a side control is about. Empty for none. */
         void setHighlight (const juce::String& paramId);
 
@@ -71,6 +75,9 @@ namespace ui
 
         /** Times the graph has been drawn. For measuring the real frame rate. */
         int getPaintCount() const noexcept  { return paintCount; }
+
+        /** Times the graph asked for a whole repaint straight away, outside the display frames (clicks, menus). For the tests. */
+        int getDirectRepaints() const noexcept  { return directRepaints; }
 
         /** Where the frames' time goes, for the CPU measurements. Wall clock, in seconds, on the message thread. */
         double getPaintSeconds() const noexcept  { return paintSeconds; }
@@ -94,6 +101,8 @@ namespace ui
         juce::Point<float> dotCentre (int band) const;
         juce::Rectangle<float> removeBadge (int band) const;
         juce::Rectangle<float> listenBanner() const;
+        bool bannerShown() const;
+        void selectBand (int, bool moveListening);
         void showDotMenu (int band, juce::Point<float>);
         void showEmptyMenu (juce::Point<float>);
         void selectAnotherIfOff();
@@ -109,6 +118,7 @@ namespace ui
         Grab grabAt (juce::Point<float>) const;
         void updateHover (juce::Point<float>);
         void endGesture();
+        void repaintNow();
         juce::String tagFor (Grab) const;
 
         void refreshCurves();
@@ -168,18 +178,19 @@ namespace ui
         juce::Image voicePicture;
         float pictureScale = 0.0f, pictureLowX = -1.0f, pictureHighX = -1.0f, pictureDelta = -1.0f;
 
+        static constexpr double staleAfterSeconds = 0.25;
         double staleSeconds = 10.0;
         float bypassShown = 0.0f, deltaShown = 0.0f, hintShown = 1.0f, peakDb = 0.0f;
         bool slotsApart = false;
         juce::uint32 paramStamp = 0;
-        int paintCount = 0;
+        int paintCount = 0, directRepaints = 0;
         double paintSeconds = 0.0, paintedArea = 0.0;
 
         int selectedBand = 1;
         Grab hover = Grab::none, drag = Grab::none;
-        juce::Point<float> mousePos { -1.0f, -1.0f }, logicalPos, lastDrag;
+        juce::Point<float> mousePos { -1.0f, -1.0f }, logicalPos, lastDrag, removedAt;
         float dragStartY = 0.0f, widthAtDragStart = 1.0f;
-        bool mouseInside = false, widthDrag = false, overRemove = false;
+        bool mouseInside = false, widthDrag = false, overRemove = false, clickRemovedDot = false;
         juce::String highlight;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ResonanceGraph)

@@ -77,6 +77,10 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
+
+    /** The host's Reset (a stop, a locate, the start of a bounce) clears what prepareToPlay clears: the delay lines, the cuts
+        and their history, and the readings. Allocates nothing. */
+    void reset() override;
     bool isBusesLayoutSupported (const BusesLayout&) const override;
 
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -94,6 +98,9 @@ public:
     double getTailLengthSeconds() const override;
 
     int getNumPrograms() override;
+
+    /** The preset last chosen, saved with the session since 0.8.1. -1 for none: a session saved before that, which does not
+        say. A new instance starts at the preset that equals its defaults. */
     int getCurrentProgram() override  { return currentProgram; }
     void setCurrentProgram (int) override;
     const juce::String getProgramName (int) override;
@@ -118,6 +125,10 @@ public:
     juce::String getLayoutName() const;
     int getLfeChannel() const;
 
+    /** The main bus layout with names. Core Audio has no 7.0.4 tag, so the AU wrapper hands 7.0.4 over as 11 unnamed channels:
+        those are taken as 7.0.4. */
+    juce::AudioChannelSet getNamedLayout() const;
+
     juce::AudioProcessorValueTreeState parameters;
 
     /** Window width in points. The height follows from the fixed shape. Saved with the session. */
@@ -136,13 +147,17 @@ private:
     void render (juce::AudioBuffer<float>&, bool forceBypass) noexcept;
 
     smoothres::ResonanceEngine engine;
-    int currentProgram = 0;
+
+    // The JUCE AU wrapper resets straight after the host turns its own bypass on. That one reset is skipped, so that the bypassed
+    // sound carries on from the delay line instead of dropping out for its length.
+    std::atomic<bool> bypassJustSwitchedOn { false }, bypassWasOn { false };
 
     std::atomic<float>* depth, * sharpness, * selectivity, * attack, * release, * lowFreq, * highFreq,
                       * mix, * outputGain, * delta, * stereoMode, * bypass,
                       * mode, * hardThreshold, * link, * stereoFocus, * sharpnessTilt, * attackTilt, * releaseTilt, * wetTrim,
                       * sideChain, * sideChainListen, * maxCut, * quality, * bandListen, * heldNotes;
     std::atomic<float>* bandFreq[smoothres::Params::numBands], * bandSens[smoothres::Params::numBands], * bandWidth[smoothres::Params::numBands], * bandOn[smoothres::Params::numBands];
+    int currentProgram;   // -1 for none, see getCurrentProgram()
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SmoothResonanceProcessor)
 };

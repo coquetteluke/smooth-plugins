@@ -87,7 +87,7 @@ struct GraphFrame
     std::array<float, numPoints> outputDb {};       // spectrum after the reduction, before Mix
     std::array<float, numPoints> reductionDb[2] {}; // slot 0 is left or mid, slot 1 is right or side. Over stereo: deepest and shallowest of all channels. Positive means turned down
     std::array<float, numPoints> sensitivityDb {};  // the sensitivity curve: bands, plus -96 outside Low and High
-    std::array<float, numPoints> heldNotesDb {};    // the part of the reduction that Held Notes adds, never more than the deepest reduction there. 0 with it off
+    std::array<float, numPoints> heldNotesDb {};    // the part of slot 0's reduction that Held Notes adds, never more than that reduction. 0 with it off
     int numSlots = 1;
     bool midSide = false, keyInUse = false;
     float maxReductionDb = 0.0f, maxReductionHz = 0.0f;

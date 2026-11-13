@@ -2,6 +2,8 @@
 
 #include "../PluginProcessor.h"
 
+#include <utility>
+
 namespace ui
 {
     namespace
@@ -89,6 +91,10 @@ namespace ui
             tilt[i] = tiltDbPerOctave * std::log2 (pointHz[i] / 1000.0f);
             shownLevel[i] = targetLevel[i] = levelFloor - 8.0f;
         }
+
+        // Opens on the dot being listened to, so that the strip and the banner agree and nothing has to move.
+        if (getListeningBand() >= 0)
+            selectedBand = getListeningBand();
     }
 
     ResonanceGraph::~ResonanceGraph()
@@ -182,9 +188,10 @@ namespace ui
 
             slotsApart = slotsApart || std::abs (targetCut[0][i] - targetCut[1][i]) > 0.25f;
 
-            // The share of the deeper cut that Held Notes adds, kept as a share so that Mix shrinks both alike.
-            const float deeper = juce::jmax (0.0f, frame.reductionDb[0][i], frame.reductionDb[1][i]);
-            targetHeld[i] = deeper > 0.05f ? juce::jmax (targetCut[0][i], targetCut[1][i]) * juce::jlimit (0.0f, 1.0f, frame.heldNotesDb[i] / deeper) : 0.0f;
+            // The share of the first slot's cut that Held Notes adds, kept as a share so that Mix shrinks both alike. It is drawn at
+            // the bottom of that slot's gold, the one that is filled, and the engine sends that slot's own share.
+            const float first = juce::jmax (0.0f, frame.reductionDb[0][i]);
+            targetHeld[i] = first > 0.05f ? targetCut[0][i] * juce::jlimit (0.0f, 1.0f, frame.heldNotesDb[i] / first) : 0.0f;
         }
 
         smoothBy (targetLevel, scratch, pointHz, 0.7f, 1, 2);
@@ -206,7 +213,7 @@ namespace ui
         {
             staleSeconds += (double) dt;
 
-            if (staleSeconds > 0.25)    // transport stopped: let everything settle out instead of freezing
+            if (staleSeconds > staleAfterSeconds)    // transport stopped: let everything settle out instead of freezing
             {
                 targetLevel.fill (levelFloor - 8.0f);
                 targetCut[0].fill (0.0f);
@@ -231,7 +238,7 @@ namespace ui
                 deepest = juce::jmax (deepest, nextCut);
             }
 
-            shownHeld[i] = juce::jmin (glide (shownHeld[i], targetHeld[i], 0.018f, 0.070f, dt), juce::jmax (shownCut[0][i], shownCut[1][i]));
+            shownHeld[i] = juce::jmin (glide (shownHeld[i], targetHeld[i], 0.018f, 0.070f, dt), shownCut[0][i]);
             mostHeld = juce::jmax (mostHeld, shownHeld[i]);
         }
 
@@ -330,6 +337,12 @@ namespace ui
         compare (yGold[0], shownGold[0], goldDirty);
         compare (yGold[1], shownGold[1], goldDirty);
         compare (yHeldTop, shownHeldTop, goldDirty);
+    }
+
+    void ResonanceGraph::repaintNow()
+    {
+        ++directRepaints;
+        repaint();
     }
 
     void ResonanceGraph::flushRepaint()
@@ -963,7 +976,7 @@ namespace ui
             status ("Delta: you hear only what is being taken out", tone::goldEdge, deltaShown);
 
         // Band Listen changes what comes out of the track, so it cannot be missed: a solid banner, and a click on it stops it.
-        if (listening >= 0 && bypassShown < 0.99f)
+        if (bannerShown())
         {
             const auto box = listenBanner();
             g.setColour (tone::listen.withMultipliedAlpha (1.0f - bypassShown));
@@ -1026,6 +1039,13 @@ namespace ui
         return { 10.0f, 10.0f, 300.0f, 28.0f };
     }
 
+    // One rule for drawing the banner and for its clicks: while it is hidden, by Bypass or with nothing listened to, its corner
+    // is plain graph.
+    bool ResonanceGraph::bannerShown() const
+    {
+        return getListeningBand() >= 0 && bypassShown < 0.99f;
+    }
+
     int ResonanceGraph::getListeningBand() const noexcept
     {
         return juce::roundToInt (getReal (*listenParam)) - 1;
@@ -1056,7 +1076,7 @@ namespace ui
         setAsGesture (*bands[band].on, 1.0f);
         setSelectedBand (band);
         staticLayerStale = true;
-        repaint();
+        repaintNow();
     }
 
     void ResonanceGraph::removeBand (int band)
@@ -1072,9 +1092,11 @@ namespace ui
         overRemove = false;
         selectAnotherIfOff();
         staticLayerStale = true;
-        repaint();
+        repaintNow();
     }
 
+    // Not the user's choice: a dot went off, by automation, by the host or by Remove. Only what the strip shows moves. Band Listen
+    // is a sound setting, and stays where it is, even on a dot that is off, as it would with the window closed.
     void ResonanceGraph::selectAnotherIfOff()
     {
         if (isBandOn (selectedBand))
@@ -1087,7 +1109,7 @@ namespace ui
             {
                 if (juce::isPositiveAndBelow (candidate, numBands) && isBandOn (candidate))
                 {
-                    setSelectedBand (candidate);
+                    selectBand (candidate, false);
                     return;
                 }
             }
@@ -1097,7 +1119,7 @@ namespace ui
     void ResonanceGraph::toggleListen (int band)
     {
         setAsGesture (*listenParam, getListeningBand() == band ? 0.0f : (float) band + 1.0f);
-        repaint();
+        repaintNow();
     }
 
     void ResonanceGraph::showDotMenu (int band, juce::Point<float> p)
@@ -1224,7 +1246,8 @@ namespace ui
             }
         }
 
-        repaint();
+        // Drawn on the next display frame, not now, so moving the mouse never takes the graph past the frame cap.
+        fullRepaint = true;
     }
 
     void ResonanceGraph::mouseMove (const juce::MouseEvent& e)
@@ -1245,10 +1268,15 @@ namespace ui
         if (onHint != nullptr)
             onHint ({});
 
-        repaint();
+        repaintNow();
     }
 
     void ResonanceGraph::setSelectedBand (int band)
+    {
+        selectBand (band, true);
+    }
+
+    void ResonanceGraph::selectBand (int band, bool moveListening)
     {
         band = juce::jlimit (0, numBands - 1, band);
 
@@ -1256,9 +1284,9 @@ namespace ui
         {
             selectedBand = band;
             staticLayerStale = true;
-            repaint();
+            repaintNow();
 
-            if (getListeningBand() >= 0 && isBandOn (band))
+            if (moveListening && getListeningBand() >= 0 && isBandOn (band))
                 setAsGesture (*listenParam, (float) band + 1.0f);
 
             if (onBandSelected != nullptr)
@@ -1271,7 +1299,7 @@ namespace ui
         if (highlight != paramId)
         {
             highlight = paramId;
-            repaint();
+            repaintNow();
         }
     }
 
@@ -1280,10 +1308,10 @@ namespace ui
         endGesture();
         staticLayerStale = true;
 
-        if (getListeningBand() >= 0 && listenBanner().contains (e.position))
+        if (bannerShown() && listenBanner().contains (e.position))
         {
             setAsGesture (*listenParam, 0.0f);
-            repaint();
+            repaintNow();
             return;
         }
 
@@ -1299,9 +1327,14 @@ namespace ui
             return;
         }
 
+        if (e.getNumberOfClicks() <= 1)
+            clickRemovedDot = false;
+
         if ((int) touched >= (int) Grab::band1 && touched == hover && removeBadge ((int) touched - (int) Grab::band1).expanded (2.0f).contains (e.position))
         {
             removeBand ((int) touched - (int) Grab::band1);
+            clickRemovedDot = true;   // a double-click here is a quick click on the x, not a click on empty graph
+            removedAt = e.position;
             return;
         }
 
@@ -1341,7 +1374,7 @@ namespace ui
             }
         }
 
-        repaint();
+        repaintNow();
     }
 
     void ResonanceGraph::mouseDrag (const juce::MouseEvent& e)
@@ -1378,7 +1411,7 @@ namespace ui
             }
         }
 
-        repaint();
+        fullRepaint = true;   // the next display frame draws it, as for a hover
     }
 
     void ResonanceGraph::mouseUp (const juce::MouseEvent& e)
@@ -1414,9 +1447,14 @@ namespace ui
 
     void ResonanceGraph::mouseDoubleClick (const juce::MouseEvent& e)
     {
+        // JUCE counts a second click within 8 screen pixels of the first as a double-click. 12 here covers that at every
+        // window size, since the graph is drawn scaled.
+        if (std::exchange (clickRemovedDot, false) && e.position.getDistanceFrom (removedAt) < 12.0f)
+            return;
+
         const auto grab = grabAt (e.position);
 
-        if (grab == Grab::none && ! listenBanner().contains (e.position))
+        if (grab == Grab::none && ! (bannerShown() && listenBanner().contains (e.position)))
         {
             addBandAt (e.position);
             return;
@@ -1441,7 +1479,7 @@ namespace ui
             reset (*bands[b].width);
         }
 
-        repaint();
+        repaintNow();
     }
 
     void ResonanceGraph::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
@@ -1455,6 +1493,6 @@ namespace ui
         setSelectedBand (b);
         const float now = getReal (*bands[b].width);
         setAsGesture (*bands[b].width, juce::jlimit (0.1f, 4.0f, now * std::pow (2.0f, wheel.deltaY * (wheel.isReversed ? -1.0f : 1.0f))));
-        repaint();
+        repaintNow();
     }
 }

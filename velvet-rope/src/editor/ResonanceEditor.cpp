@@ -50,9 +50,9 @@ public:
         g.setColour (tone::text.withAlpha (zone != none ? 0.09f : 0.06f));
         g.fillRoundedRectangle (b, 7.0f);
 
-        g.setColour (tone::text);
+        g.setColour (processor.getCurrentProgram() >= 0 ? tone::text : tone::muted);
         g.setFont (font (Weight::regular, 14.0f));
-        g.drawText (processor.getProgramName (processor.getCurrentProgram()), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
+        g.drawText (shownText(), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
 
         const auto chevron = [&] (float cx, float direction, bool lit)
         {
@@ -68,6 +68,13 @@ public:
         chevron (b.getRight() - arrowWidth * 0.5f, 1.0f, zone == next);
     }
 
+    /** A session saved before 0.8.1 does not say which preset it came from, so it names none rather than a wrong one. */
+    juce::String shownText() const
+    {
+        const int current = processor.getCurrentProgram();
+        return current >= 0 ? processor.getProgramName (current) : juce::String ("Choose a preset");
+    }
+
     void mouseMove (const juce::MouseEvent& e) override  { setZone (zoneAt (e.position.x)); }
     void mouseExit (const juce::MouseEvent&) override    { setZone (none); }
 
@@ -76,10 +83,12 @@ public:
         const auto hit = zoneAt (e.position.x);
         const int count = processor.getNumPrograms();
 
+        const int current = processor.getCurrentProgram();   // -1 for none: back goes to the last, on to the first
+
         if (hit == previous)
-            choose ((processor.getCurrentProgram() + count - 1) % count);
+            choose (current < 0 ? count - 1 : (current + count - 1) % count);
         else if (hit == next)
-            choose ((processor.getCurrentProgram() + 1) % count);
+            choose ((current + 1) % count);
         else
             openMenu();
     }
@@ -137,7 +146,7 @@ private:
 class ResonanceEditor::PeakReading final : public juce::Component
 {
 public:
-    explicit PeakReading (SmoothResonanceProcessor& p) : processor (p)
+    PeakReading (SmoothResonanceProcessor& p, const ResonanceGraph& g) : processor (p), graph (g)
     {
         setInterceptsMouseClicks (false, false);
         setOpaque (true);   // so a new number does not repaint the panel behind it
@@ -145,11 +154,14 @@ public:
 
     void advance (double dt)
     {
-        // What you hear after Mix, so this agrees with the graph.
-        const float raw = processor.maxReduction->getReading();
+        // From the graph's data, so this agrees with the graph: it keeps showing what would be cut while bypassed, where the
+        // Max Reduction parameter reads 0, and lets go when playback stops, where the parameter keeps its last value.
+        // What you hear after Mix, as the graph shows it.
+        const auto& frame = graph.getFrame();
+        const float raw = graph.isStale() ? 0.0f : frame.maxReductionDb;
         const float mix = juce::jlimit (0.0f, 1.0f, getReal (*processor.parameters.getParameter ("mix")) * 0.01f);
         const float now = raw <= 0.0f ? 0.0f : -20.0f * std::log10 (juce::jmax (1.0e-4f, 1.0f - mix + mix * std::pow (10.0f, -raw * 0.05f)));
-        const float hz = processor.maxReductionFreq->getReading();
+        const float hz = graph.isStale() ? 0.0f : frame.maxReductionHz;
         const auto seconds = (float) dt;
         const bool isBypassed = processor.parameters.getParameter ("bypass")->getValue() > 0.5f;
 
@@ -205,8 +217,11 @@ public:
         g.drawText (whereText, b.withTrimmedTop (b.getHeight() * 0.5f), juce::Justification::topRight, false);
     }
 
+    juce::String shownText() const  { return (bypassed ? "Would take out " : "Taking out ") + amountText + ", " + whereText; }
+
 private:
     SmoothResonanceProcessor& processor;
+    const ResonanceGraph& graph;
     float shownDb = 0.0f, shownHz = 1000.0f, refreshCountdown = 0.0f;
     bool bypassed = false;
     juce::String amountText { "0.0 dB" }, whereText { "Nothing right now" };
@@ -373,7 +388,11 @@ public:
     {
         setInterceptsMouseClicks (false, false);
         setOpaque (true);
+        setComponentID ("channelMeters");
     }
+
+    const juce::StringArray& getNames() const noexcept  { return names; }
+    int getLfe() const noexcept                         { return lfe; }
 
     void refreshLayout()
     {
@@ -389,17 +408,20 @@ public:
         return 22 + rowHeight * (names.size() > perRow ? 2 : 1);
     }
 
-    void update (const smoothres::GraphFrame& frame, double dt)
+    /** Like the gold and the reading: the cut you hear after Mix, dim while bypassed, and nothing once playback has stopped. */
+    void update (const smoothres::GraphFrame& frame, double dt, float mix, bool isBypassed, bool stale)
     {
-        bool moved = false;
+        bool moved = isBypassed != bypassed;
+        bypassed = isBypassed;
 
         for (int ch = 0; ch < names.size(); ++ch)
         {
-            const float target = ch < frame.numChannels ? frame.channelReductionDb[(size_t) ch] : 0.0f;
+            const float raw = ! stale && ch < frame.numChannels ? frame.channelReductionDb[(size_t) ch] : 0.0f;
+            const float target = raw <= 0.0f ? 0.0f : -20.0f * std::log10 (juce::jmax (1.0e-4f, 1.0f - mix + mix * std::pow (10.0f, -raw * 0.05f)));
             auto& now = shown[(size_t) ch];
             const float next = target > now ? target : now + (target - now) * (1.0f - std::exp (-(float) dt / 0.2f));
-            moved = moved || std::abs (next - drawn[(size_t) ch]) > 0.25f;
-            now = next;
+            moved = moved || std::abs (next - drawn[(size_t) ch]) > 0.25f || (next < 0.05f && drawn[(size_t) ch] > 0.0f);
+            now = next < 0.05f ? 0.0f : next;
         }
 
         if (moved)
@@ -429,9 +451,9 @@ public:
             g.setColour (tone::text.withAlpha (0.08f));
             g.fillRoundedRectangle (bar, 2.0f);
 
-            if (ch != lfe)
+            if (ch != lfe && drawn[(size_t) ch] > 0.0f)
             {
-                g.setColour (tone::gold);
+                g.setColour (bypassed ? tone::faint : tone::gold);
                 g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * juce::jlimit (0.0f, 1.0f, drawn[(size_t) ch] / 24.0f)), 2.0f);
             }
 
@@ -448,6 +470,7 @@ private:
     juce::StringArray names;
     juce::String layout;
     int lfe = -1;
+    bool bypassed = false;
     std::array<float, smoothres::maxEngineChannels> shown {}, drawn {};
 };
 
@@ -550,7 +573,7 @@ ResonanceEditor::Panel::Panel (ResonanceEditor& e, SmoothResonanceProcessor& p)
     setOpaque (true);
 
     presets = std::make_unique<PresetBox> (p);
-    reading = std::make_unique<PeakReading> (p);
+    reading = std::make_unique<PeakReading> (p, graph);
     bandPicker = std::make_unique<BandPicker> (graph);
     advancedHeader = std::make_unique<AdvancedHeader> (e);
     channelMeters = std::make_unique<ChannelMeters> (p);
@@ -665,12 +688,14 @@ void ResonanceEditor::Panel::refreshDots()
 
 void ResonanceEditor::Panel::refreshChannels()
 {
-    const int channels = processor.getMainBusNumOutputChannels();
+    // The layout itself, not only its size: 5.1 and 6.0, or quad and LCRS, have as many channels but other names and LFE.
+    const auto set = processor.getNamedLayout();
 
-    if (channels == channelsShown)
+    if (set == layoutShown)
         return;
 
-    channelsShown = channels;
+    layoutShown = set;
+    const int channels = set.size();
 
     // Mid and side only mean something on two channels.
     const bool surround = channels > 2;
@@ -843,7 +868,7 @@ void ResonanceEditor::Panel::resized()
     graph.setBounds (margin, graphTop, graphRight - margin, graphBottom - graphTop);
 
     // Top bar.
-    presets->setBounds (178, 16, 232, 32);
+    presets->setBounds (178, 16, 264, 32);   // wide enough for the longest preset name, Gentle Polish With Held Notes
     reading->setBounds (graphRight - 340, 10, 340, graphTop - 18);
 
     // Strip below the graph, in the order things sit on the graph: Low, the dot, High.
@@ -1034,7 +1059,9 @@ void ResonanceEditor::tick (double dtSeconds)
     panel.refreshChannels();
 
     if (panel.channelMeters->isVisible())
-        panel.channelMeters->update (panel.graph.getFrame(), dtSeconds);
+        panel.channelMeters->update (panel.graph.getFrame(), dtSeconds,
+                                     juce::jlimit (0.0f, 1.0f, getReal (*processorRef.parameters.getParameter ("mix")) * 0.01f),
+                                     processorRef.parameters.getParameter ("bypass")->getValue() > 0.5f, panel.graph.isStale());
 
     // Advanced glides open and shut, in about a fifth of a second.
     const float target = isAdvancedOpen() ? 1.0f : 0.0f;
@@ -1074,6 +1101,11 @@ void ResonanceEditor::tick (double dtSeconds)
         panel.advancedHeader->setState (panel.advancedAmount, panel.countAdvancedChanges());
     }
 }
+
+juce::String ResonanceEditor::getPresetBoxText() const       { return panel.presets->shownText(); }
+juce::String ResonanceEditor::getReadingText() const         { return panel.reading->shownText(); }
+juce::StringArray ResonanceEditor::getChannelMeterNames() const  { return panel.channelMeters->getNames(); }
+int ResonanceEditor::getChannelMeterLfe() const              { return panel.channelMeters->getLfe(); }
 
 void ResonanceEditor::previewHover (const juce::String& paramId)
 {

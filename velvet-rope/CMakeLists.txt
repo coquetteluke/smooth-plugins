@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "" FORCE)
-project(SmoothResonance VERSION 0.8.0 LANGUAGES C CXX)
+project(SmoothResonance VERSION 0.8.1 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
@@ -19,7 +19,7 @@ else()
 endif()
 
 juce_add_plugin(SmoothResonance
-    VERSION 0.8.0
+    VERSION 0.8.1
     COMPANY_NAME "Luke Garito"
     BUNDLE_ID "com.lukegarito.smoothresonance"
     PLUGIN_MANUFACTURER_CODE Luke
@@ -96,7 +96,7 @@ add_test(NAME speech COMMAND SpeechTest)
 juce_add_console_app(ProcessorTest PRODUCT_NAME "ProcessorTest")
 target_sources(ProcessorTest PRIVATE src/ResonanceEngine.cpp src/PluginProcessor.cpp ${SR_WINDOW_SOURCES} tests/ProcessorTest.cpp)
 target_include_directories(ProcessorTest PRIVATE src)
-target_compile_definitions(ProcessorTest PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0)
+target_compile_definitions(ProcessorTest PRIVATE ${SR_DEFS} JUCE_MODAL_LOOPS_PERMITTED=0 BASELINE_DIR="${CMAKE_SOURCE_DIR}/tests/baseline")
 target_link_libraries(ProcessorTest PRIVATE SmoothResonanceWindowAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME processor COMMAND ProcessorTest)
 

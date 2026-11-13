@@ -52,7 +52,7 @@ struct Unit
 
     ~Unit() { if (au != nullptr) { AudioUnitUninitialize (au); AudioComponentInstanceDispose (au); } }
 
-    bool open (int numChannels, AudioChannelLayoutTag tag)
+    bool open (int numChannels, AudioChannelLayoutTag tag, bool setLayout = true)
     {
         channels = numChannels;
         AudioComponentDescription d {};
@@ -78,6 +78,9 @@ struct Unit
         if (AudioUnitSetProperty (au, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &f, sizeof f) != noErr
             || AudioUnitSetProperty (au, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &f, sizeof f) != noErr)
             return false;
+
+        if (! setLayout)
+            return true;
 
         AudioChannelLayout layout {};
         layout.mChannelLayoutTag = tag;
@@ -196,9 +199,54 @@ int main()
         { "5.1.4", kAudioChannelLayoutTag_Atmos_5_1_4, 10, 3 },
         { "7.1.4", kAudioChannelLayoutTag_Atmos_7_1_4, 12, 3 },
         { "9.1.6", kAudioChannelLayoutTag_Atmos_9_1_6, 16, 3 },
+        // Core Audio has no 7.0.4 tag, so 11 channels can only come as 11 in order. Taken as 7.0.4, which has no LFE (0.8.1).
+        { "7.0.4 as 11 in order", kAudioChannelLayoutTag_DiscreteInOrder | 11, 11, -1 },
     };
 
     const int samples = 96000;
+
+    // Every channel count the AU reports in SupportedNumChannels has to initialise when a host sets only the stream format, as
+    // HostStress and hosts that never send a layout do. 0.8.0 reported 11 in and out and then refused it (-10868).
+    {
+        std::printf ("\n== Every reported channel count, with no layout set\n");
+        AudioComponentDescription d {};
+        d.componentType = kAudioUnitType_Effect;
+        d.componentSubType = 'SmRs';
+        d.componentManufacturer = 'Luke';
+        AudioUnit probe = nullptr;
+        std::vector<AUChannelInfo> infos;
+
+        if (auto* c = AudioComponentFindNext (nullptr, &d); c != nullptr && AudioComponentInstanceNew (c, &probe) == noErr)
+        {
+            UInt32 size = 0;
+            if (AudioUnitGetPropertyInfo (probe, kAudioUnitProperty_SupportedNumChannels, kAudioUnitScope_Global, 0, &size, nullptr) == noErr && size > 0)
+            {
+                infos.resize (size / sizeof (AUChannelInfo));
+                AudioUnitGetProperty (probe, kAudioUnitProperty_SupportedNumChannels, kAudioUnitScope_Global, 0, infos.data(), &size);
+            }
+            AudioComponentInstanceDispose (probe);
+        }
+
+        int refused = 0;
+        std::string which;
+
+        for (const auto& info : infos)
+        {
+            if (info.inChannels != info.outChannels || info.outChannels <= 0)
+                continue;
+
+            Unit u;
+            const std::vector<std::vector<float>> silence ((size_t) info.outChannels, std::vector<float> (kBlock, 0.0f));
+            if (! u.open (info.outChannels, 0, false) || ! u.start (silence))
+            {
+                ++refused;
+                which += " " + std::to_string (info.outChannels);
+            }
+        }
+
+        check (! infos.empty() && refused == 0, "every channel count the AU reports initialises with no layout set (" + std::to_string (infos.size())
+                                                    + " reported, refused:" + (which.empty() ? std::string (" none") : which) + ")", refused);
+    }
 
     for (const auto& l : layouts)
     {

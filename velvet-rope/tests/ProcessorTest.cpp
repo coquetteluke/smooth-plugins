@@ -5,7 +5,12 @@
 #include "PluginProcessor.h"
 #include "editor/ResonanceEditor.h"
 
+#include <map>
 #include <thread>
+
+#ifndef BASELINE_DIR
+ #define BASELINE_DIR "tests/baseline"
+#endif
 
 using namespace testkit;
 using Proc = SmoothResonanceProcessor;
@@ -1410,9 +1415,531 @@ static void testWindowNewFeatures()
     }
 }
 
-int main()
+// ---- 0.8.1: the bugs the Phase 2 hunt kept ------------------------------------------------------------------------
+// Each check here failed on 0.8.0. Run only these with: ProcessorTest phase2
+
+static void prepareSet (Proc& p, const juce::AudioChannelSet& set, int block = 256)
+{
+    p.releaseResources();
+    auto l = p.getBusesLayout();
+    l.inputBuses.getReference (0) = set;
+    l.outputBuses.getReference (0) = set;
+    p.setBusesLayout (l);
+    p.setRateAndBufferSizeDetails (kRate, block);
+    p.prepareToPlay (kRate, block);
+}
+
+/** Plays one signal per channel, delay left in. everyBlock runs after each block. */
+static std::vector<std::vector<float>> runChannels (Proc& p, const std::vector<std::vector<float>>& x, int block = 256,
+                                                    const std::function<void()>& everyBlock = {})
+{
+    const int channels = p.getMainBusNumOutputChannels();
+    const int total = (int) x[0].size();
+    juce::AudioBuffer<float> buf (channels, block);
+    juce::MidiBuffer midi;
+    std::vector<std::vector<float>> out ((size_t) channels, std::vector<float> ((size_t) total, 0.0f));
+
+    for (int pos = 0; pos < total; pos += block)
+    {
+        const int len = std::min (block, total - pos);
+        buf.setSize (channels, len, false, false, true);
+        for (int ch = 0; ch < channels; ++ch)
+            std::copy_n (x[(size_t) std::min (ch, (int) x.size() - 1)].data() + pos, len, buf.getWritePointer (ch));
+        p.processBlock (buf, midi);
+        for (int ch = 0; ch < channels; ++ch)
+            std::copy_n (buf.getReadPointer (ch), len, out[(size_t) ch].data() + pos);
+        if (everyBlock)
+            everyBlock();
+    }
+
+    return out;
+}
+
+static double largestDifference (const std::vector<std::vector<float>>& a, const std::vector<std::vector<float>>& b)
+{
+    if (a.size() != b.size())
+        return 1.0e9;
+
+    double worst = 0.0;
+    for (size_t ch = 0; ch < a.size(); ++ch)
+        for (size_t i = 0; i < std::min (a[ch].size(), b[ch].size()); ++i)
+            worst = std::max (worst, (double) std::abs (a[ch][i] - b[ch][i]));
+    return worst;
+}
+
+/** How much of a surround meter bar is drawn in gold, in dB of its 24 dB scale, read from the pixels. */
+static double meterGoldDb (juce::Component& meters, int channel)
+{
+    juce::Image image (juce::Image::ARGB, meters.getWidth(), meters.getHeight(), true);
+    {
+        juce::Graphics g (image);
+        meters.paintEntireComponent (g, false);
+    }
+
+    const float cell = (float) meters.getWidth() / 8.0f;
+    const int row = 24 + 23 * (channel / 8), from = (int) std::ceil (cell * (float) (channel % 8)), to = (int) (cell * (float) (channel % 8) + cell - 5.0f);
+    int gold = 0;
+
+    for (int x = from; x < to; ++x)
+    {
+        const auto c = image.getPixelAt (x, row);
+        if (std::abs (c.getFloatRed() - ui::tone::gold.getFloatRed()) < 0.1f && std::abs (c.getFloatGreen() - ui::tone::gold.getFloatGreen()) < 0.1f
+            && std::abs (c.getFloatBlue() - ui::tone::gold.getFloatBlue()) < 0.1f)
+            ++gold;
+    }
+
+    return 24.0 * gold / std::max (1, to - from);
+}
+
+static double afterMix (double cutDb, double mix)
+{
+    return cutDb <= 0.0 ? 0.0 : -20.0 * std::log10 (std::max (1.0e-4, 1.0 - mix + mix * std::pow (10.0, -cutDb * 0.05)));
+}
+
+static void testPhase2Dsp()
+{
+    std::puts ("\n== 0.8.1: the processor (bugs the Phase 2 hunt kept)");
+    const auto x = mixOf ({ toneVec (1.5, 2500.0, -12.0), noiseVec (1.5, -50.0, 5) });
+    const auto other = mixOf ({ toneVec (1.0, 3150.0, -10.0), toneVec (1.0, 1700.0, -14.0), noiseVec (1.0, -45.0, 9) });
+
+    // rope-dsp-r1-1: a second prepareToPlay on a plug-in that has played must leave Attack and Release working, so it plays
+    // exactly as a new instance does. Same rate (the buffer size changed) and another rate (the project rate changed).
+    for (const double firstRate : { kRate, 44100.0 })
+    {
+        Proc used, fresh;
+        setParam (used, "depth", 12.0f);
+        setParam (fresh, "depth", 12.0f);
+        prepare (used, 2, firstRate, 256);
+        const auto warm = firstRate == kRate ? other : mixOf ({ toneVec (1.0, 3150.0, -10.0, firstRate), noiseVec (1.0, -45.0, 9, firstRate) });
+        run (used, warm, warm);
+        prepare (used, 2, kRate, 512);
+        prepare (fresh, 2, kRate, 512);
+        const auto a = run (used, x, x), b = run (fresh, x, x);
+        const double diff = largestDifference (a, b);
+        check (diff == 0.0, "prepared again after playing at " + std::to_string ((int) firstRate) + " Hz: plays sample for sample as a new instance (largest difference, dBFS)",
+               toDb (diff), "dBFS");
+    }
+
+    // The same, read as a time: after a re-prepare the cut takes as long to reach half depth as in a new instance.
+    {
+        const auto halfDepthMs = [&] (bool playedFirst)
+        {
+            Proc p;
+            setParam (p, "depth", 12.0f);
+            prepare (p, 2, kRate, 256);
+            if (playedFirst)
+            {
+                run (p, other, other);
+                prepare (p, 2, kRate, 256);
+            }
+            auto tone = mixOf ({ toneVec (1.0, 2500.0, -12.0), noiseVec (1.0, -50.0, 5) });
+            std::fill (tone.begin(), tone.begin() + 4800, 0.0f);
+            juce::AudioBuffer<float> buf (2, 64);
+            juce::MidiBuffer midi;
+            for (int pos = 0; pos + 64 <= (int) tone.size(); pos += 64)
+            {
+                for (int ch = 0; ch < 2; ++ch) std::copy_n (tone.data() + pos, 64, buf.getWritePointer (ch));
+                p.processBlock (buf, midi);
+                if (p.maxReduction->getReading() >= 6.0f)
+                    return 1000.0 * (pos + 64 - 4800) / kRate;
+            }
+            return 999.0;
+        };
+        const double fresh = halfDepthMs (false), again = halfDepthMs (true);
+        info ("a new instance: time for the cut to reach half of a 12 dB Depth after a tone starts", fresh, "ms");
+        check (std::abs (again - fresh) <= 1.0, "prepared again after playing: the same time, so Attack still works (limit 1 ms from a new instance)", again, "ms");
+    }
+
+    // rope-dsp-r1-2: the host's Reset (Logic stop, locate, bounce start) clears what is left of the last place played.
+    {
+        Proc used, fresh;
+        setParam (used, "depth", 12.0f);
+        setParam (fresh, "depth", 12.0f);
+        prepare (used, 2, kRate, 256);
+        prepare (fresh, 2, kRate, 256);
+        run (used, other, other);
+        const long before = allocs.load();
+        used.reset();
+        const long used0 = allocs.load() - before;
+        check (used0 == 0, "reset allocates nothing", (double) used0);
+        const double diff = largestDifference (run (used, x, x), run (fresh, x, x));
+        check (diff == 0.0, "play, reset, play: the second part equals a new instance playing it (largest difference, dBFS)", toDb (diff), "dBFS");
+    }
+
+    {
+        Proc p;
+        setParam (p, "depth", 12.0f);
+        prepare (p, 2, kRate, 256);
+        const auto tone = mixOf ({ toneVec (1.0, 2500.0, -12.0), noiseVec (1.0, -50.0, 5) });
+        runChannels (p, { tone, tone });
+        const bool wasCutting = p.maxReduction->getReading() > 6.0f;
+        p.reset();
+        const auto out = runChannels (p, { std::vector<float> (4096, 0.0f) });
+        double loudest = 0.0;
+        for (const auto& ch : out) loudest = std::max (loudest, peak (ch.data(), (int) ch.size()));
+        check (wasCutting && loudest < 1.0e-6, "after a reset, silence in gives silence out: none of the last 43 ms comes back (limit -120 dBFS)", toDb (loudest), "dBFS");
+        check (p.maxReduction->getReading() == 0.0f, "and Max Reduction reads 0", p.maxReduction->getReading(), "dB");
+    }
+
+    // The AU wrapper resets straight after the host turns its own bypass on. That reset must not empty the delay line, or the
+    // bypassed sound would drop out for 43 ms.
+    {
+        Proc p;
+        prepare (p, 2, kRate, 256);
+        const auto tone = toneVec (1.5, 440.0, -12.0);
+        const std::vector<float> first (tone.begin(), tone.begin() + 48000), next (tone.begin() + 48000, tone.begin() + 48000 + 2048);
+        runChannels (p, { first, first });
+        setParam (p, "bypass", 1.0f);
+        p.reset();
+        const auto out = runChannels (p, { next, next });
+        const double level = toDb (rms (out[0].data() + 1024, 1024)), want = toDb (rms (next.data(), 2048));
+        check (std::abs (level - want) < 1.0, "the reset that comes with host bypass switching on keeps the delayed sound playing (limit 1 dB from the input)", level - want, "dB");
+    }
+
+    // rope-dsp-r1-5: while bypassed nothing is cut, so the readings say so.
+    {
+        Proc p;
+        setParam (p, "depth", 12.0f);
+        prepare (p, 2, kRate, 256);
+        const auto tone = mixOf ({ toneVec (2.0, 2500.0, -12.0), noiseVec (2.0, -50.0, 5) });
+        runChannels (p, { tone, tone });
+        const float before = p.maxReduction->getReading();
+        setParam (p, "bypass", 1.0f);
+        const std::vector<float> half (tone.begin(), tone.begin() + 24000);
+        runChannels (p, { half, half });
+        check (before > 6.0f && p.maxReduction->getReading() < 0.05f, "bypassed: Max Reduction reads 0 (it read " + juce::String (before, 1).toStdString() + " dB before)",
+               p.maxReduction->getReading(), "dB");
+        check (p.maxReductionFreq->getCurrentValueAsText() == "None", "bypassed: Max Reduction Frequency reads None (" + p.maxReductionFreq->getCurrentValueAsText().toStdString() + ")");
+        {
+            Proc q;
+            setParam (q, "depth", 12.0f);
+            prepare (q, 2, kRate, 256);
+            juce::AudioBuffer<float> buf (2, 256);
+            juce::MidiBuffer midi;
+            for (int pos = 0; pos + 256 <= (int) tone.size(); pos += 256)
+            {
+                for (int ch = 0; ch < 2; ++ch) std::copy_n (tone.data() + pos, 256, buf.getWritePointer (ch));
+                q.processBlockBypassed (buf, midi);
+            }
+            check (q.maxReduction->getReading() < 0.05f, "bypassed by the host (processBlockBypassed): Max Reduction reads 0", q.maxReduction->getReading(), "dB");
+        }
+    }
+
+    // HostStress layouts.11to11: the AU reported 11 in and 11 out, and Initialize refused it. Core Audio has no 7.0.4 tag, so 11
+    // channels reach the plug-in as 11 unnamed channels in order. They are taken as 7.0.4, which has no LFE.
+    {
+        Proc probe;
+        auto l = probe.getBusesLayout();
+        const auto withMain = [&] (const juce::AudioChannelSet& set) { auto y = l; y.inputBuses.getReference (0) = set; y.outputBuses.getReference (0) = set; return probe.checkBusesLayoutSupported (y); };
+        check (withMain (juce::AudioChannelSet::discreteChannels (11)), "11 channels in order are accepted, as the AU wrapper hands over 7.0.4");
+        check (! withMain (juce::AudioChannelSet::discreteChannels (6)) && ! withMain (juce::AudioChannelSet::discreteChannels (10)) && ! withMain (juce::AudioChannelSet::discreteChannels (12)),
+               "other unnamed channel counts are still refused, since there the LFE could be any of them");
+
+        const auto named = juce::AudioChannelSet::create7point0point4(), plain = juce::AudioChannelSet::discreteChannels (11);
+        std::vector<std::vector<float>> in;
+        for (int ch = 0; ch < 11; ++ch)
+            in.push_back (mixOf ({ toneVec (1.0, 700.0 + 230.0 * ch, -14.0), noiseVec (1.0, -50.0, (unsigned) (20 + ch)) }));
+        Proc a, b;
+        setParam (a, "stereoFocus", 40.0f);
+        setParam (b, "stereoFocus", 40.0f);
+        prepareSet (a, named);
+        prepareSet (b, plain);
+        const double diff = largestDifference (runChannels (a, in), runChannels (b, in));
+        check (b.getMainBusNumOutputChannels() == 11 && diff == 0.0, "11 channels in order play sample for sample as 7.0.4, Stereo Focus included (largest difference, dBFS)", toDb (diff), "dBFS");
+        check (b.getChannelNames() == a.getChannelNames() && b.getLfeChannel() == -1, "and the window names them as 7.0.4: " + b.getChannelNames().joinIntoString (" ").toStdString());
+    }
+}
+
+static void testPhase2State()
+{
+    std::puts ("\n== 0.8.1: which preset is chosen is saved");
+    const auto valuesOf = [] (Proc& p)
+    {
+        std::map<juce::String, float> v;
+        for (auto* prm : p.getParameters())
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (prm))
+                if (dynamic_cast<ReadingParameter*> (prm) == nullptr)
+                    v[ranged->getParameterID()] = ranged->getValue();
+        return v;
+    };
+
+    // rope-window-r1-3, rope-dsp-r2-1: the preset a new instance names is the one it plays.
+    {
+        Proc fresh;
+        const int n = fresh.getCurrentProgram();
+        Proc chosen;
+        if (n >= 0) chosen.setCurrentProgram (n);
+        check (n >= 0 && valuesOf (fresh) == valuesOf (chosen), "a new instance names a preset, and choosing that preset changes nothing: "
+                                                                    + fresh.getProgramName (n).toStdString(), n);
+    }
+
+    // Saved and loaded, without the preset being applied again over what was changed after it.
+    {
+        Proc a;
+        a.setCurrentProgram (4);
+        setParam (a, "depth", 15.0f);
+        juce::MemoryBlock saved;
+        a.getStateInformation (saved);
+        Proc b;
+        b.setStateInformation (saved.getData(), (int) saved.getSize());
+        check (b.getCurrentProgram() == 4, "a session saved after choosing Sibilance Soother reloads naming it", b.getCurrentProgram());
+        check (valuesOf (a) == valuesOf (b), "and with every value as saved, Depth 15 too (the preset is not applied again)");
+    }
+
+    // A damaged index is kept in range and changes no value.
+    for (const auto& bad : { juce::String ("99"), juce::String ("-5"), juce::String ("x") })
+    {
+        Proc a;
+        a.setCurrentProgram (2);
+        juce::MemoryBlock saved;
+        a.getStateInformation (saved);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+        bool hadIt = false;
+        for (int i = 0; i < xml->getNumAttributes(); ++i)
+            hadIt = hadIt || xml->getAttributeName (i).containsIgnoreCase ("program");
+        for (int i = 0; i < xml->getNumAttributes(); ++i)
+            if (xml->getAttributeName (i).containsIgnoreCase ("program"))
+                xml->setAttribute (xml->getAttributeName (i), bad);
+        juce::MemoryBlock damaged;
+        juce::AudioProcessor::copyXmlToBinary (*xml, damaged);
+        Proc b;
+        b.setStateInformation (damaged.getData(), (int) damaged.getSize());
+        const int got = b.getCurrentProgram();
+        check (hadIt && got >= -1 && got < b.getNumPrograms() && valuesOf (a) == valuesOf (b), "a damaged preset number (" + bad.toStdString() + ") is kept in range and changes no value", got);
+    }
+
+    // Every session saved before 0.8.1 has no preset number. It names no preset, rather than a wrong one, and keeps its sound.
+    {
+        juce::MemoryBlock old;
+        const bool found = juce::File (BASELINE_DIR).getChildFile ("v0.8.0-sibilance-soother.state").loadFileAsData (old);
+        Proc p;
+        p.setStateInformation (old.getData(), (int) old.getSize());
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto* window = dynamic_cast<ResonanceEditor*> (editor.get());
+        const auto shown = window->getPresetBoxText();
+        bool namesOne = false;
+        for (int i = 0; i < p.getNumPrograms(); ++i)
+            namesOne = namesOne || shown == p.getProgramName (i);
+        check (found && ! namesOne && shown.isNotEmpty(), "a session saved by 0.8.0 shows a neutral preset label, not a preset's name: " + shown.toStdString());
+        check (found && std::abs (p.parameters.getRawParameterValue ("depth")->load() - 10.0f) < 0.001f && std::abs (p.parameters.getRawParameterValue ("lowFreq")->load() - 4500.0f) < 0.01f,
+               "and its values are what it saved (Sibilance Soother: Depth 10, Low 4500 Hz)");
+    }
+
+    // rope-window-r1-6: loading a state while the window is open does not leave a saved size that the window does not have.
+    {
+        Proc other;
+        juce::MemoryBlock small;
+        other.getStateInformation (small);   // saved at the default 1160
+        Proc p;
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditorIfNeeded());   // as the AU wrapper opens it, so it is the active editor
+        const double ratio = (double) editor->getWidth() / (double) editor->getHeight();
+        editor->setSize (1500, juce::roundToInt (1500.0 / ratio));
+        p.setStateInformation (small.getData(), (int) small.getSize());
+        juce::MemoryBlock saved;
+        p.getStateInformation (saved);
+        const auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+        const int stored = xml != nullptr ? xml->getIntAttribute ("windowWidth") : -1;
+        check (stored == editor->getWidth(), "a state loaded with the window open: the size saved next is the window's own (" + std::to_string (editor->getWidth()) + ")", stored, "wide");
+    }
+}
+
+static void testPhase2Window()
+{
+    std::puts ("\n== 0.8.1: the window (bugs the Phase 2 hunt kept)");
+    using Editor = ResonanceEditor;
+
+    struct Listener final : juce::AudioProcessorListener
+    {
+        int changes = 0, gestures = 0;
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override { ++changes; }
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+        void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override { ++gestures; }
+    };
+
+    // rope-window-r1-1: opening the window must not move Band Listen, even when the dot the window would select first is off.
+    {
+        Proc p;
+        setParam (p, "band2On", 0.0f);
+        setParam (p, "band5On", 1.0f);
+        setParam (p, "bandListen", 5.0f);
+        Listener listener;
+        p.addListener (&listener);
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto* window = dynamic_cast<Editor*> (editor.get());
+        for (int i = 0; i < 5; ++i) window->tick (1.0 / 30.0);
+        p.removeListener (&listener);
+        const float listen = p.parameters.getRawParameterValue ("bandListen")->load();
+        check (listen == 5.0f && listener.changes == 0 && listener.gestures == 0, "opening the window while listening to dot 5 with dot 2 off leaves Band Listen on dot 5 and sends nothing",
+               listen);
+        check (window->getGraph().getSelectedBand() == 4, "and the window opens with the dot being listened to selected", window->getGraph().getSelectedBand() + 1);
+
+        // Automation turning off the dot being listened to, while the window is open.
+        setParam (p, "band2On", 1.0f);
+        setParam (p, "bandListen", 2.0f);
+        window->getGraph().setSelectedBand (1);
+        window->tick (1.0 / 30.0);
+        setParam (p, "band2On", 0.0f);
+        for (int i = 0; i < 3; ++i) window->tick (1.0 / 30.0);
+        check (p.parameters.getRawParameterValue ("bandListen")->load() == 2.0f, "automation turning off the dot being listened to does not move Band Listen while the window is open",
+               p.parameters.getRawParameterValue ("bandListen")->load());
+    }
+
+    // rope-window-r1-2 and rope-window-r2-4, stereo first: once playback stops, the reading does not stay frozen at the last cut.
+    {
+        Proc p;
+        setParam (p, "depth", 12.0f);
+        prepare (p, 2, kRate, 256);
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto* window = dynamic_cast<Editor*> (editor.get());
+        const auto tone = mixOf ({ toneVec (2.0, 2500.0, -12.0), noiseVec (2.0, -50.0, 5) });
+        int blocks = 0;
+        runChannels (p, { tone, tone }, 256, [&] { if (++blocks % 6 == 0) window->tick (1.0 / 30.0); });
+        const auto playing = window->getReadingText();
+        const double playingDb = playing.fromFirstOccurrenceOf ("out ", false, false).getDoubleValue();
+        for (int i = 0; i < 90; ++i) window->tick (1.0 / 30.0);
+        const auto stopped = window->getReadingText();
+        check (playingDb > 3.0 && stopped.contains ("0.0 dB") && stopped.contains ("Nothing right now"),
+               "playing it read \"" + playing.toStdString() + "\", 3 s after the audio stops it reads \"" + stopped.toStdString() + "\"");
+        check (window->getGraph().getPeakDb() < 0.1f, "and agrees with the graph, which has let its gold go", window->getGraph().getPeakDb(), "dB");
+
+        // While bypassed the window still says what it would take out, from the graph, although the reading parameter is 0.
+        setParam (p, "bypass", 1.0f);
+        blocks = 0;
+        runChannels (p, { tone, tone }, 256, [&] { if (++blocks % 6 == 0) window->tick (1.0 / 30.0); });
+        const auto bypassed = window->getReadingText();
+        check (bypassed.startsWith ("Would take out") && bypassed.fromFirstOccurrenceOf ("out ", false, false).getDoubleValue() > 3.0,
+               "bypassed, the window still says what it would take out: \"" + bypassed.toStdString() + "\"");
+    }
+
+    // Surround: the channel meters let go when playback stops, show the cut after Mix, and are not gold while bypassed.
+    {
+        Proc p;
+        setParam (p, "depth", 12.0f);
+        setParam (p, "mix", 50.0f);
+        prepareSet (p, juce::AudioChannelSet::create5point1());
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto* window = dynamic_cast<Editor*> (editor.get());
+        auto* meters = window->getPanel().findChildWithID ("channelMeters");
+        const auto tone = mixOf ({ toneVec (2.0, 3000.0, -6.0), noiseVec (2.0, -50.0, 5) });
+        int blocks = 0;
+        runChannels (p, { tone }, 256, [&] { if (++blocks % 6 == 0) window->tick (1.0 / 30.0); });
+        const double raw = window->getGraph().getFrame().channelReductionDb[0];
+        const double shown = meters != nullptr ? meterGoldDb (*meters, 0) : -1.0;
+        check (raw > 6.0 && std::abs (shown - afterMix (raw, 0.5)) < 1.5, "at Mix 50 the L meter shows the cut after Mix: " + juce::String (afterMix (raw, 0.5), 1).toStdString()
+                                                                             + " dB, not the " + juce::String (raw, 1).toStdString() + " dB before it (drawn, read from the pixels)", shown, "dB");
+
+        setParam (p, "bypass", 1.0f);
+        blocks = 0;
+        runChannels (p, { std::vector<float> (tone.begin(), tone.begin() + 24000) }, 256, [&] { if (++blocks % 6 == 0) window->tick (1.0 / 30.0); });
+        const double whileBypassed = meters != nullptr ? meterGoldDb (*meters, 0) : -1.0;
+        check (whileBypassed == 0.0, "bypassed, the meters draw no gold, as the graph does", whileBypassed, "dB of gold");
+
+        setParam (p, "bypass", 0.0f);
+        blocks = 0;
+        runChannels (p, { tone }, 256, [&] { if (++blocks % 6 == 0) window->tick (1.0 / 30.0); });
+        for (int i = 0; i < 90; ++i) window->tick (1.0 / 30.0);
+        const double afterStop = meters != nullptr ? meterGoldDb (*meters, 0) : -1.0;
+        check (afterStop < 0.5, "3 s after the audio stops the meters have let go (limit 0.5 dB of gold)", afterStop, "dB");
+
+        // rope-window-r1-5: another layout with the same channel count, with the window open.
+        p.releaseResources();
+        auto l = p.getBusesLayout();
+        l.inputBuses.getReference (0) = juce::AudioChannelSet::create6point0();
+        l.outputBuses.getReference (0) = juce::AudioChannelSet::create6point0();
+        p.setBusesLayout (l);
+        p.prepareToPlay (kRate, 256);
+        window->tick (1.0 / 30.0);
+        check (window->getChannelMeterNames() == p.getChannelNames() && window->getChannelMeterLfe() == p.getLfeChannel(),
+               "5.1 to 6.0 with the window open: the meters name the new channels (" + window->getChannelMeterNames().joinIntoString (" ").toStdString() + ") and LFE "
+                   + std::to_string (window->getChannelMeterLfe()));
+    }
+
+    // rope-window-r1-4: every preset name fits its box, with nothing cut off.
+    {
+        Proc p;
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto* box = dynamic_cast<Editor*> (editor.get())->getPanel().findChildWithID ("presets");
+        float widest = 0.0f;
+        juce::String which;
+        for (int i = 0; i < p.getNumPrograms(); ++i)
+        {
+            const float w = juce::GlyphArrangement::getStringWidth (ui::font (ui::Weight::regular, 14.0f), p.getProgramName (i));
+            if (w > widest) { widest = w; which = p.getProgramName (i); }
+        }
+        const float room = box != nullptr ? (float) box->getWidth() - 60.0f : 0.0f;
+        check (widest <= room, "the longest preset name, " + which.toStdString() + ", fits the preset box (room " + juce::String (room, 0).toStdString() + " points)", widest, "points");
+    }
+
+    // rope-window-r2-2: moving the mouse over the graph waits for the next display frame, so it never goes past 30 a second.
+    {
+        Proc p;
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto* window = dynamic_cast<Editor*> (editor.get());
+        auto& graph = window->getGraph();
+        window->tick (1.0 / 30.0);
+        const int before = graph.getDirectRepaints();
+        for (int i = 0; i < 120; ++i)
+            graph.mouseMove (mouseEventFor (graph, { 40.0f + 4.0f * (float) i, 300.0f }, 0, juce::ModifierKeys()));
+        const int asked = graph.getDirectRepaints() - before;
+        check (asked == 0, "120 mouse moves over the graph ask for no repaint of their own", asked);
+        check (graph.advance (1.0 / 30.0), "the next display frame draws the hover");
+    }
+
+    // rope-window-r2-3: double-clicking a dot's x takes it away and leaves it away.
+    {
+        Proc p;
+        setParam (p, "band2Width", 0.4f);
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto* window = dynamic_cast<Editor*> (editor.get());
+        auto& graph = window->getGraph();
+        const auto xFor = [&graph] (float hz) { return (float) graph.getWidth() * std::log (hz / 20.0f) / std::log (1000.0f); };
+        const auto yFor = [&graph] (float sens) { return (float) graph.getHeight() * (0.5f - sens / 12.0f * 0.30f); };
+        const juce::Point<float> dot (xFor (3000.0f), yFor (0.0f)), badge = dot + juce::Point<float> (15.0f, -15.0f);
+        graph.mouseMove (mouseEventFor (graph, dot, 0, juce::ModifierKeys()));
+        graph.mouseMove (mouseEventFor (graph, badge, 0, juce::ModifierKeys()));
+        graph.mouseDown (mouseEventFor (graph, badge, 1));
+        graph.mouseUp (mouseEventFor (graph, badge, 1));
+        graph.mouseDown (mouseEventFor (graph, badge, 2));
+        graph.mouseUp (mouseEventFor (graph, badge, 2));
+        graph.mouseDoubleClick (mouseEventFor (graph, badge, 2));
+        int on = 0;
+        for (int b = 1; b <= 8; ++b) on += p.parameters.getRawParameterValue ("band" + juce::String (b) + "On")->load() > 0.5f ? 1 : 0;
+        check (p.parameters.getRawParameterValue ("band2On")->load() < 0.5f && on == 2, "a double-click on a dot's x takes it away and puts no dot back (dots on)", on);
+    }
+
+    // rope-window-r2-6: the Listen banner only answers clicks while it is shown.
+    {
+        Proc p;
+        setParam (p, "bandListen", 2.0f);
+        setParam (p, "bypass", 1.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+        auto* window = dynamic_cast<Editor*> (editor.get());
+        auto& graph = window->getGraph();
+        for (int i = 0; i < 30; ++i) window->tick (1.0 / 30.0);
+        graph.mouseDown (mouseEventFor (graph, { 20.0f, 20.0f }));
+        graph.mouseUp (mouseEventFor (graph, { 20.0f, 20.0f }));
+        check (p.parameters.getRawParameterValue ("bandListen")->load() == 2.0f, "bypassed, the hidden Listen banner's corner does not turn Band Listen off",
+               p.parameters.getRawParameterValue ("bandListen")->load());
+
+        setParam (p, "bypass", 0.0f);
+        setParam (p, "bandListen", 0.0f);
+        for (int i = 0; i < 30; ++i) window->tick (1.0 / 30.0);
+        graph.mouseDoubleClick (mouseEventFor (graph, { 100.0f, 20.0f }, 2));
+        check (p.parameters.getRawParameterValue ("band4On")->load() > 0.5f, "with nothing listened to, a double-click in that corner adds a dot like anywhere else on the graph");
+    }
+}
+
+int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+
+    if (argc > 1 && juce::String (argv[1]) == "phase2")
+    {
+        testPhase2Dsp();
+        testPhase2State();
+        testPhase2Window();
+        return finish();
+    }
 
     GenericOptions opt;
     opt.minPresets = 4;
@@ -1435,6 +1962,10 @@ int main()
 
     testWindow();
     testWindowNewFeatures();
+
+    testPhase2Dsp();
+    testPhase2State();
+    testPhase2Window();
 
     return finish();
 }

@@ -31,6 +31,12 @@ public:
     ui::ResonanceGraph& getGraph() noexcept  { return panel.graph; }
     juce::Component& getPanel() noexcept     { return panel; }
 
+    /** For the tests: what the top bar and the surround row show right now. */
+    juce::String getPresetBoxText() const;
+    juce::String getReadingText() const;
+    juce::StringArray getChannelMeterNames() const;
+    int getChannelMeterLfe() const;
+
 private:
     class PresetBox;
     class PeakReading;
@@ -87,7 +93,8 @@ private:
         float advancedAmount = 0.0f;   // 0 closed, 1 open
         bool thresholdShown = false;
         juce::uint32 dotsShown = 0xffffffff;
-        int listenShown = -2, channelsShown = -1;
+        int listenShown = -2;
+        juce::AudioChannelSet layoutShown = juce::AudioChannelSet::disabled();
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Panel)
     };

@@ -375,6 +375,23 @@ static int compare()
         }
     }
 
+    // 0.8.1 saves which preset was chosen. What the installed 0.8.0 really saved has no such thing, so it must load with its sound
+    // untouched: the default, and a session where Sibilance Soother was chosen. Both states were read out of the installed 0.8.0
+    // Audio Unit through the host API (kAudioUnitProperty_ClassInfo, after setting kAudioUnitProperty_PresentPreset to preset 4
+    // for the second), and both renders are that same Audio Unit playing tests/baseline/input.f32 with the state loaded.
+    for (const juce::String name : { "v0.8.0-default", "v0.8.0-sibilance-soother" })
+    {
+        juce::MemoryBlock state;
+        const bool found = baselineFile (name + ".state").loadFileAsData (state);
+        const auto want = readFloats (name + ".f32", 2);
+        Proc p;
+        p.setStateInformation (state.getData(), (int) state.getSize());
+        prepare (p, kRate, 2, false);
+        const double db = nullDb (render (p, in, 2, false), want);
+        check (found && db <= -90.0, (name + ": the session the installed 0.8.0 saved, against what 0.8.0 played with it (limit -90)").toStdString(), db, "dBFS");
+        check (p.getCurrentProgram() < 0, (name + ": names no preset, since 0.8.0 did not save which one").toStdString(), p.getCurrentProgram());
+    }
+
     // The two presets Luke approved new values for (0.7.1): the values by name, and that a session holding the old ones keeps them.
     {
         const auto value = [] (Proc& p, const char* id) { return (double) p.parameters.getRawParameterValue (id)->load(); };

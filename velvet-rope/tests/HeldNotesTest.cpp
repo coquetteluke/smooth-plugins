@@ -608,6 +608,59 @@ static void testGraphMarksIt()
     }
 }
 
+// 0.8.1 (rope-window-r2-5): the window fills only the first channel's gold (left or mid), and draws Held Notes' share in rose at
+// the bottom of it. So the share in the graph data has to be that channel's own. With Link at 0 and the ring on the right only,
+// the left has no ring, and nothing of its gold may be marked as Held Notes' work. With the ring on the left it still shows.
+static void testGraphMarksItsOwnSide()
+{
+    std::puts ("\n== 0.8.1: the part marked as Held Notes' is the first channel's own");
+    const double f0 = 180.0, hz = ringHzFor (f0);
+    const auto ringing = ringingVoice (7.5, f0), plain = ringingVoice (7.5, f0, false);
+
+    for (const bool ringOnLeft : { false, true })
+    {
+        Proc p;
+        setHeld (p, true);
+        setParam (p, "link", 0.0f);
+        prepare (p);
+        juce::AudioBuffer<float> buf (2, kBlock);
+        juce::MidiBuffer midi;
+        smoothres::GraphFrame frame;
+        double overFirst = -1.0e9, cutOnRing = 0.0, markedOnRing = 0.0;
+
+        for (int pos = 0; pos + kBlock <= (int) ringing.size(); pos += kBlock)
+        {
+            std::copy_n ((ringOnLeft ? ringing : plain).data() + pos, kBlock, buf.getWritePointer (0));
+            std::copy_n ((ringOnLeft ? plain : ringing).data() + pos, kBlock, buf.getWritePointer (1));
+            p.processBlock (buf, midi);
+
+            while (p.readGraph (frame))
+            {
+                for (size_t i = 0; i < (size_t) smoothres::GraphFrame::numPoints; ++i)
+                {
+                    overFirst = std::max (overFirst, (double) (frame.heldNotesDb[i] - frame.reductionDb[0][i]));
+
+                    if (std::abs (std::log2 ((double) frame.hz[i] / hz)) < 1.0 / 12.0)
+                    {
+                        cutOnRing = std::max (cutOnRing, (double) frame.reductionDb[ringOnLeft ? 0 : 1][i]);
+                        markedOnRing = std::max (markedOnRing, (double) frame.heldNotesDb[i]);
+                    }
+                }
+            }
+        }
+
+        if (! ringOnLeft)
+        {
+            check (cutOnRing >= 3.0 && overFirst <= 1.0e-4, "ring on the right only, Link 0: the right is cut " + juce::String (cutOnRing, 1).toStdString()
+                                                                 + " dB there, and the marked part never exceeds the left's own cut (largest excess)", overFirst, "dB");
+        }
+        else
+        {
+            check (markedOnRing >= 3.0 && overFirst <= 1.0e-4, "ring on the left, Link 0: the marked part at the ring reaches (limit 3 or more), within the left's cut", markedOnRing, "dB");
+        }
+    }
+}
+
 static void testConsonants()
 {
     std::puts ("\n== On leaves S and T alone: an S straight after every note and a T just before the next");
@@ -935,15 +988,22 @@ static void testWindow()
         check (false, "it has a one line hint");
 }
 
-int main()
+int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
     std::puts ("Held Notes, 48 kHz stereo");
+
+    if (argc > 1 && juce::String (argv[1]) == "phase2")
+    {
+        testGraphMarksItsOwnSide();
+        return finish();
+    }
     testControl();
     testOffIsTheOldSound();
     testOnCutsARing();
     testRingsThatWerePassedOver();
     testGraphMarksIt();
+    testGraphMarksItsOwnSide();
     testConsonants();
     testState();
     testDefaultOnSince080();

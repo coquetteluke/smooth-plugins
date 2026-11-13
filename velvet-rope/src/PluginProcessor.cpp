@@ -9,6 +9,7 @@ namespace
 {
     const juce::Identifier windowWidthAttribute { "windowWidth" };
     const juce::Identifier advancedOpenAttribute { "advancedOpen" };
+    const juce::Identifier programAttribute { "program" };   // since 0.8.1: the preset last chosen, left out when none is known
 
     // These IDs are saved in sessions and automation. Never rename them.
     using Layout = juce::AudioProcessorValueTreeState::ParameterLayout;
@@ -177,7 +178,8 @@ SmoothResonanceProcessor::SmoothResonanceProcessor()
       maxCut (parameters.getRawParameterValue ("maxCut")),
       quality (parameters.getRawParameterValue ("quality")),
       bandListen (parameters.getRawParameterValue ("bandListen")),
-      heldNotes (parameters.getRawParameterValue ("heldNotes"))
+      heldNotes (parameters.getRawParameterValue ("heldNotes")),
+      currentProgram ((int) std::size (presets) - 1)   // Gentle Polish With Held Notes: the defaults of a new instance since 0.8.0
 {
     for (int b = 0; b < smoothres::Params::numBands; ++b)
     {
@@ -198,6 +200,7 @@ SmoothResonanceProcessor::SmoothResonanceProcessor()
     setLatencySamples (smoothres::ResonanceEngine::fftSizeForRate (48000.0));
 
     parameters.addParameterListener ("quality", this);
+    parameters.addParameterListener ("bypass", this);
     startTimerHz (5);
 }
 
@@ -205,6 +208,7 @@ SmoothResonanceProcessor::~SmoothResonanceProcessor()
 {
     stopTimer();
     parameters.removeParameterListener ("quality", this);
+    parameters.removeParameterListener ("bypass", this);
 }
 
 int SmoothResonanceProcessor::latencyForQuality (smoothres::Quality q) const noexcept
@@ -221,8 +225,16 @@ void SmoothResonanceProcessor::syncLatencyToQuality()
         setLatencySamples (want);
 }
 
-void SmoothResonanceProcessor::parameterChanged (const juce::String&, float)
+void SmoothResonanceProcessor::parameterChanged (const juce::String& id, float value)
 {
+    if (id == "bypass")
+    {
+        const bool on = value > 0.5f;
+        const bool was = bypassWasOn.exchange (on, std::memory_order_relaxed);
+        bypassJustSwitchedOn.store (on && ! was, std::memory_order_relaxed);
+        return;
+    }
+
     if (juce::MessageManager::existsAndIsCurrentThread())
         syncLatencyToQuality();
 }
@@ -230,17 +242,24 @@ void SmoothResonanceProcessor::parameterChanged (const juce::String&, float)
 void SmoothResonanceProcessor::timerCallback()
 {
     syncLatencyToQuality();
+    bypassJustSwitchedOn.store (false, std::memory_order_relaxed);   // only the reset that comes with the switch is skipped
+}
+
+juce::AudioChannelSet SmoothResonanceProcessor::getNamedLayout() const
+{
+    const auto set = getChannelLayoutOfBus (false, 0);
+    return set == juce::AudioChannelSet::discreteChannels (11) ? juce::AudioChannelSet::create7point0point4() : set;
 }
 
 juce::String SmoothResonanceProcessor::getLayoutName() const
 {
-    return getChannelLayoutOfBus (false, 0).getDescription();
+    return getNamedLayout().getDescription();
 }
 
 juce::StringArray SmoothResonanceProcessor::getChannelNames() const
 {
     juce::StringArray names;
-    const auto set = getChannelLayoutOfBus (false, 0);
+    const auto set = getNamedLayout();
 
     for (int ch = 0; ch < set.size(); ++ch)
         names.add (juce::AudioChannelSet::getAbbreviatedChannelTypeName (set.getTypeOfChannel (ch)));
@@ -250,7 +269,7 @@ juce::StringArray SmoothResonanceProcessor::getChannelNames() const
 
 int SmoothResonanceProcessor::getLfeChannel() const
 {
-    return getChannelLayoutOfBus (false, 0).getChannelIndexForType (juce::AudioChannelSet::LFE);
+    return getNamedLayout().getChannelIndexForType (juce::AudioChannelSet::LFE);
 }
 
 bool SmoothResonanceProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -259,10 +278,13 @@ bool SmoothResonanceProcessor::isBusesLayoutSupported (const BusesLayout& layout
     const auto out = layouts.getMainOutputChannelSet();
 
     // In and out must match. Discrete channels are left out on purpose: with no names there is no telling which one is the LFE.
-    static const std::array<Set, 16> allowed { Set::mono(), Set::stereo(), Set::quadraphonic(), Set::createLCRS(), Set::create5point0(), Set::create5point1(),
+    // The one exception is 11 in order, which is how the AU wrapper hands over 7.0.4 (Core Audio has no tag for it). Every
+    // channel count the AU reports has to initialise, and 11 is reported because of 7.0.4. Taken as 7.0.4, which has no LFE.
+    static const std::array<Set, 17> allowed { Set::mono(), Set::stereo(), Set::quadraphonic(), Set::createLCRS(), Set::create5point0(), Set::create5point1(),
                                                Set::create6point0(), Set::create6point1(), Set::create7point0(), Set::create7point1(),
                                                Set::create5point1point2(), Set::create7point1point2(), Set::create5point1point4(),
-                                               Set::create7point0point4(), Set::create7point1point4(), Set::create9point1point6() };
+                                               Set::create7point0point4(), Set::create7point1point4(), Set::create9point1point6(),
+                                               Set::discreteChannels (11) };
 
     if (std::find (allowed.begin(), allowed.end(), out) == allowed.end() || layouts.getMainInputChannelSet() != out)
         return false;
@@ -279,7 +301,7 @@ void SmoothResonanceProcessor::prepareToPlay (double sampleRate, int)
     // Which channel is which, from the host's layout. Names decide: the LFE only gets the delay, and left and right side
     // channels follow Stereo Focus and pick a side chain channel. Any other position counts as centre.
     using Set = juce::AudioChannelSet;
-    const auto set = getChannelLayoutOfBus (false, 0);
+    const auto set = getNamedLayout();
     std::array<smoothres::ChannelRole, smoothres::maxEngineChannels> roles {};
 
     for (int ch = 0; ch < juce::jmin (set.size(), smoothres::maxEngineChannels); ++ch)
@@ -308,6 +330,17 @@ void SmoothResonanceProcessor::prepareToPlay (double sampleRate, int)
 
     engine.prepare (sampleRate, getMainBusNumOutputChannels(), roles.data());
     setLatencySamples (latencyForQuality ((smoothres::Quality) juce::jlimit (0, smoothres::numQualities - 1, juce::roundToInt (quality->load()))));
+    maxReduction->setReading (0.0f);
+    maxReductionFreq->setReading (0.0f);
+}
+
+void SmoothResonanceProcessor::reset()
+{
+    if (bypassJustSwitchedOn.exchange (false, std::memory_order_relaxed))
+        return;
+
+    const juce::ScopedLock lock (getCallbackLock());   // the AU wrapper renders under this lock, so a reset never lands mid block
+    engine.reset();
     maxReduction->setReading (0.0f);
     maxReductionFreq->setReading (0.0f);
 }
@@ -370,8 +403,11 @@ void SmoothResonanceProcessor::render (juce::AudioBuffer<float>& buffer, bool fo
 
     engine.process (buffer.getArrayOfWritePointers(), juce::jmin (mainCh, buffer.getNumChannels()), buffer.getNumSamples(), key, usableKey);
 
-    maxReduction->setReading (engine.getMaxReductionDb());
-    maxReductionFreq->setReading (engine.getMaxReductionHz());
+    // Bypassed, nothing is cut, so the readings say so. The engine keeps analysing, and the window's graph shows what it would do.
+    maxReduction->setReading (p.bypass ? 0.0f : engine.getMaxReductionDb());
+    maxReductionFreq->setReading (p.bypass ? 0.0f : engine.getMaxReductionHz());
+    if (bypassJustSwitchedOn.load (std::memory_order_relaxed))
+        bypassJustSwitchedOn.store (false, std::memory_order_relaxed);
 }
 
 void SmoothResonanceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -464,6 +500,10 @@ void SmoothResonanceProcessor::getStateInformation (juce::MemoryBlock& destinati
     {
         xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
+
+        if (currentProgram >= 0)
+            xml->setAttribute (programAttribute, currentProgram);
+
         copyXmlToBinary (*xml, destination);
     }
 }
@@ -475,14 +515,22 @@ void SmoothResonanceProcessor::setStateInformation (const void* data, int size)
         if (xml->hasTagName (parameters.state.getType()))
         {
             // Older sessions have no window state. A damaged size goes back in range. Neither is a parameter, so they stay
-            // out of the value tree.
-            if (xml->hasAttribute (windowWidthAttribute))
+            // out of the value tree. With the window open its own size wins: it is not resized by a loaded preset, so the
+            // size saved next is the one it really has.
+            if (xml->hasAttribute (windowWidthAttribute) && getActiveEditor() == nullptr)
                 windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
 
             advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
 
+            // Which preset was chosen, only to name it: its values are already in the state, and are not applied again. A state
+            // saved before 0.8.1 does not say, so it names none rather than a wrong one. A damaged number is kept in range.
+            currentProgram = xml->hasAttribute (programAttribute)
+                               ? juce::jlimit (0, getNumPrograms() - 1, xml->getIntAttribute (programAttribute, 0))
+                               : -1;
+
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (advancedOpenAttribute);
+            xml->removeAttribute (programAttribute);
 
             // Held Notes is on in a new instance since 0.8.0. A state with no Held Notes value was saved before 0.6.0 and played
             // without it, so it loads with it off and sounds as it was saved. A damaged value counts as none, since otherwise

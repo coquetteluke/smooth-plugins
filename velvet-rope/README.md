@@ -26,7 +26,8 @@ A calm, near-flat dark window with the colour kept for the graph. Your voice is 
 - **Strip under the graph:** Low, High, a button for each dot, the values of the selected dot, Listen and Remove. A faint number is a free dot, and clicking it adds it.
 - **Band Listen on:** a solid mint banner on the graph says so, everything outside the region goes dark, and Listen lights up. A click on the banner stops it.
 - **Side panel:** Depth, Max Cut, Sharpness, Selectivity, Attack, Release, Quality and Mode are always there. Held notes sits at the end of Mode's row and goes grey in Hard mode, where it does nothing. Threshold comes out under Mode in Hard mode.
-- **Surround:** a row under Advanced shows each channel's name and deepest cut. The LFE shows none. The gold on the graph is the deepest of all channels, and the pale line is the shallowest. Stereo Mode is greyed out.
+- **Surround:** a row under Advanced shows each channel's name and deepest cut, after Mix like the gold, grey while bypassed. The LFE shows none. The gold on the graph is the deepest of all channels, and the pale line is the shallowest. Stereo Mode is greyed out.
+- **Top bar:** the preset box, and how much is being taken out and where. That number comes from the graph's data, so it agrees with the gold: bypassed it says what would be taken out, and when playback stops it goes to nothing with the gold. A session saved before 0.8.1 does not say which preset it came from, so the box reads Choose a preset.
 - **Advanced:** click it to open Threshold, Stereo, Link, Focus, the three tilts, Wet trim and Side chain. Closed, it says how many of them are changed from their defaults, and they keep working. Whether it is open is saved with the session.
 - **Footer:** Bypass, Delta, Mix, Gain, and a one-line hint for whatever is under the mouse.
 - **Every control:** drag it, double-click to reset it, click its value to type one (`3k` works for a frequency), hold Shift when you start a drag for a finer one.
@@ -74,12 +75,14 @@ The window's font is Inter, under the SIL Open Font License. See `assets/fonts/O
 
 Read-only readings, real AU parameters so a host can read them by name. Never saved and never written as automation:
 
-- **Max Reduction**: largest cut anywhere right now.
+- **Max Reduction**: largest cut anywhere right now. 0 while bypassed (since 0.8.1), since then nothing is cut.
 - **Max Reduction Frequency**: where it is. Reads None when nothing is being cut.
 
 Parameter IDs are saved in sessions and automation. Never rename them.
 
 ## Presets
+
+Which preset was chosen last is saved with the session since 0.8.1, only to name it: the values are saved as always and the preset is not applied again on load. A new instance names Gentle Polish With Held Notes, which is what it plays.
 
 - **Gentle Vocal Polish**: the default settings with Held Notes off, which was the default up to 0.7.1. It keeps that sound.
 - **Harsh Lead Vocal**: Depth 12, a little more sensitive around 3.2 kHz.
@@ -96,7 +99,9 @@ Parameter IDs are saved in sessions and automation. Never rename them.
 
 ## Surround
 
-Layouts, with the same one in and out: mono, stereo, quad, LCRS, 5.0, 5.1, 6.0, 6.1, 7.0, 7.1, 5.1.2, 7.1.2, 5.1.4, 7.0.4, 7.1.4, 9.1.6. All pass auval. Unnamed channels are refused, since no one could say which is the LFE.
+Layouts, with the same one in and out: mono, stereo, quad, LCRS, 5.0, 5.1, 6.0, 6.1, 7.0, 7.1, 5.1.2, 7.1.2, 5.1.4, 7.0.4, 7.1.4, 9.1.6. All pass auval. Unnamed channels are refused, since no one could say which is the LFE, with one exception: Core Audio has no 7.0.4 tag, so 7.0.4 reaches an Audio Unit as 11 channels in order, and those are taken as 7.0.4, which has no LFE (since 0.8.1; 0.8.0 reported 11 channels and then refused them).
+
+The host's Reset (a stop, a locate, the start of a bounce) clears the delay lines, the cuts and their history and the readings, as a new start does (since 0.8.1). The one reset that the Audio Unit wrapper sends straight after a host turns its own bypass on is skipped, so the bypassed sound carries on from the delay line.
 
 Every channel is analysed on its own, and Stereo Link joins them: at 100% each takes the deepest cut of them all. The LFE is never analysed or treated, cannot affect another channel, and comes out as the input, delayed, exact to the bit. It stays silent in Delta, Band Listen and Side Chain Listen, and Output Gain and Bypass apply to it as to the rest. A stereo key feeds left side channels from its left, right side channels from its right, and center channels from its left.
 
@@ -112,7 +117,7 @@ With Held Notes on, in Soft mode, when the voice has clear harmonics (at least 4
 
 ## Graph data
 
-`SmoothResonanceProcessor::readGraph (smoothres::GraphFrame&)` copies the newest frame without ever blocking the audio thread: 256 log-spaced points from 20 Hz to 20 kHz, about 47 times a second, with input spectrum, output spectrum, gain curve per slot, the sensitivity curve, and `heldNotesDb`, the part of the reduction that Held Notes adds (0 with it off, never more than the reduction there), which the window draws in rose gold at the bottom of the gold. `Max Reduction` and `Max Reduction Frequency` are plain atomics.
+`SmoothResonanceProcessor::readGraph (smoothres::GraphFrame&)` copies the newest frame without ever blocking the audio thread: 256 log-spaced points from 20 Hz to 20 kHz, about 47 times a second, with input spectrum, output spectrum, gain curve per slot, the sensitivity curve, and `heldNotesDb`, the part of slot 0's reduction that Held Notes adds (0 with it off, never more than that reduction; over stereo, the share of the channel with the deepest cut), which the window draws in rose gold at the bottom of the filled gold. Before 0.8.1 it was the largest share of any channel, so with Link low and a ring on the right only, the rose covered the left's ordinary cut. `Max Reduction` and `Max Reduction Frequency` are plain atomics.
 
 ## What was measured
 

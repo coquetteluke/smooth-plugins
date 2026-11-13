@@ -422,8 +422,12 @@ void ResonanceEngine::Core::prepare (double newSampleRate, int size, int normalS
     for (int k = 0; k < numBins; ++k)
         followHalf[(size_t) k] = juce::roundToInt ((double) k * (std::pow (2.0, (double) harmonicFollowOctaves) - 1.0));
 
+    // Instant until the first frame builds them, which it only does when the times differ from those it last built for. A core
+    // that has already run would otherwise keep these at 1, with no attack and no release, after a second prepare.
     attackCoeffs.assign ((size_t) numBins, 1.0f);
     releaseCoeffs.assign ((size_t) numBins, 1.0f);
+    builtAttackMs = builtReleaseMs = -1.0f;
+    builtAttackTilt = builtReleaseTilt = -9.0f;
     logBinFreq.resize ((size_t) numBins);
     envelopeHalf.assign ((size_t) numBins, 1);
 
@@ -2024,15 +2028,20 @@ void ResonanceEngine::Core::fillGraph (GraphFrame& frame, int numGraphChannels) 
             sens += sensitivity[(size_t) k];
             mask = std::max (mask, rangeMask[(size_t) k]);
 
-            if (anyHeldPart)
-                for (int slot = 0; slot < numSlots; ++slot)
-                    heldPart = std::max (heldPart, std::min (slots[(size_t) slot].heldPart[(size_t) k], slots[(size_t) slot].applied[(size_t) k]));
+            // Held Notes' share is taken from the slot whose cut is drawn filled: slot 0 (left or mid), or over stereo the
+            // channel with the deepest cut at this bin. The window draws it at the bottom of that gold, so another channel's share
+            // must not show there.
+            int firstSlot = 0;
 
             if (apart)
             {
                 for (int slot = 0; slot < numSlots; ++slot)
                 {
                     const float r = slots[(size_t) slot].applied[(size_t) k];
+
+                    if (r > deepest)
+                        firstSlot = slot;
+
                     deepest = std::max (deepest, r);
                     shallowest = std::min (shallowest, r);
                 }
@@ -2042,6 +2051,9 @@ void ResonanceEngine::Core::fillGraph (GraphFrame& frame, int numGraphChannels) 
                 for (int slot = 0; slot < numSlots; ++slot)
                     reduction[slot] = std::max (reduction[slot], slots[(size_t) slot].applied[(size_t) k]);
             }
+
+            if (anyHeldPart)
+                heldPart = std::max (heldPart, std::min (slots[(size_t) firstSlot].heldPart[(size_t) k], slots[(size_t) firstSlot].applied[(size_t) k]));
         }
 
         if (apart)
@@ -2056,7 +2068,7 @@ void ResonanceEngine::Core::fillGraph (GraphFrame& frame, int numGraphChannels) 
         frame.outputDb[idx] = inDb - both;
         frame.reductionDb[0][idx] = reduction[0];
         frame.reductionDb[1][idx] = numSlots >= 2 ? reduction[1] : reduction[0];
-        frame.heldNotesDb[idx] = std::min (heldPart, both);
+        frame.heldNotesDb[idx] = std::min (heldPart, reduction[0]);
         frame.sensitivityDb[idx] = mask > 0.0f ? sens / (float) (graphLastBin[idx] - graphFirstBin[idx] + 1) : -96.0f;
     }
 

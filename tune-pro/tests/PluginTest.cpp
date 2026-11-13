@@ -5139,6 +5139,147 @@ void testPhase2Window()
     }
 }
 
+// Round 3 (window-r1-1, 2026-11-13): a double-click on a key puts it back to Tune with no stop at another mode written to the host. Up to
+// 1.8.2 its first click stepped the note at once (Tune to Remove, Remove to Bypass), heard for the double-click time and written as
+// automation, and the second click then wrote Tune: two changes and two gestures. A single click must still be heard at once.
+struct NoteWrites final : juce::AudioProcessorListener
+{
+    int index = -1;
+    std::vector<float> values;
+    int begun = 0, ended = 0;
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int i, float v) override { if (i == index) values.push_back (v); }
+    void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int i) override { if (i == index) ++begun; }
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override { if (i == index) ++ended; }
+};
+
+void testRound3Window()
+{
+    gEngine = 0;
+    const int D = 2, E = 4;
+    const auto modeOf = [] (PluginProcessor& p, int pc) { return juce::roundToInt (p.apvts.getRawParameterValue ("note" + juce::String (pc))->load()); };
+    const auto click = [] (KeyboardView& keys, int pc, int clicks)
+    {
+        const auto at = keys.keyBounds (pc).getBottomLeft().translated (6.0f, -6.0f);
+        juce::Component& c = keys;   // the handlers as the system calls them
+        c.mouseDown (mouseAt (keys, at, clicks));
+        c.mouseUp (mouseAt (keys, at, clicks));
+        if (clicks == 2)
+            c.mouseDoubleClick (mouseAt (keys, at, 2));
+    };
+    // Past the double-click time, then the window's next look (its 5 Hz timer when nothing moves).
+    const auto waitOutDoubleClick = [] (TuneEditor& te)
+    {
+        juce::Thread::sleep (juce::MouseEvent::getDoubleClickTimeout() + 250);
+        te.tick (0.2);
+    };
+    const auto writtenModes = [] (PluginProcessor& p, const NoteWrites& w)
+    {
+        std::vector<int> modes;
+        for (float v : w.values)
+            modes.push_back (juce::roundToInt (p.apvts.getParameter ("note2")->convertFrom0to1 (v)));
+        return modes;
+    };
+
+    // A double-click on D, from each mode.
+    for (int start : { (int) smoothtune::noteTune, (int) smoothtune::noteRemove, (int) smoothtune::noteBypass })
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        setParam (*p, "note2", (float) start);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        NoteWrites writes;
+        writes.index = p->apvts.getParameter ("note2")->getParameterIndex();
+        p->addListener (&writes);
+        click (te->getKeyboard(), D, 1);
+        click (te->getKeyboard(), D, 2);
+        waitOutDoubleClick (*te);
+        p->removeListener (&writes);
+        const auto modes = writtenModes (*p, writes);
+        int strays = 0;
+        for (int m : modes)
+            strays += m != smoothtune::noteTune ? 1 : 0;
+        const std::string from = start == smoothtune::noteTune ? "Tune" : start == smoothtune::noteRemove ? "Remove" : "Bypass";
+        check (modeOf (*p, D) == smoothtune::noteTune && strays == 0,
+               "Round 3: double-click on D from " + from + ": ends on Tune, with no other mode written to the host (other modes written)", strays);
+        const bool countRight = start == smoothtune::noteTune ? modes.size() <= 1 : modes.size() == 1;
+        check (countRight && writes.begun <= 1 && writes.begun == writes.ended,
+               "Round 3: double-click on D from " + from + ": one change at most, in one gesture (changes written)", (double) modes.size());
+        info ("Round 3: double-click on D from " + from + ": gestures begun", writes.begun);
+    }
+
+    // A single click is heard and shown at once, and reaches the host once, as one change in one gesture.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        auto& keys = te->getKeyboard();
+        juce::String hint;
+        keys.onHint = [&hint] (const juce::String& t) { hint = t; };
+        const auto onD = voice::synth (voice::steady (noteHz (62) * std::pow (2.0, 30.0 / 1200.0), 0.6, SR), voice::vowelA, SR);
+        render (*p, onD, 256);
+        const int before = p->getReadings().targetNote;
+        NoteWrites writes;
+        writes.index = p->apvts.getParameter ("note2")->getParameterIndex();
+        p->addListener (&writes);
+        keys.mouseMove (mouseAt (keys, keys.keyBounds (D).getBottomLeft().translated (6.0f, -6.0f), 1));
+        click (keys, D, 1);
+        const bool shownAtOnce = hint.contains ("is removed");
+        render (*p, onD, 256);
+        const int heard = p->getReadings().targetNote;
+        check (before == 62 && heard >= 0 && heard % 12 != D && shownAtOnce,
+               "Round 3: one click on D (a voice on D +30 cents) is heard and shown at once: the target leaves D (target note)", heard);
+        waitOutDoubleClick (*te);
+        p->removeListener (&writes);
+        const auto modes = writtenModes (*p, writes);
+        check (modeOf (*p, D) == smoothtune::noteRemove && modes.size() == 1 && modes[0] == smoothtune::noteRemove && writes.begun == 1 && writes.ended == 1,
+               "Round 3: one click on D reaches the host as one change to Remove in one gesture (changes written)", (double) modes.size());
+    }
+
+    // The window closed straight after a click still tells the host.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        NoteWrites writes;
+        writes.index = p->apvts.getParameter ("note2")->getParameterIndex();
+        p->addListener (&writes);
+        click (dynamic_cast<TuneEditor*> (ed.get())->getKeyboard(), D, 1);
+        ed.reset();
+        p->removeListener (&writes);
+        const auto modes = writtenModes (*p, writes);
+        check (modeOf (*p, D) == smoothtune::noteRemove && modes.size() == 1 && modes[0] == smoothtune::noteRemove,
+               "Round 3: a click, then the window closed at once: the host has the one change to Remove (changes written)", (double) modes.size());
+    }
+
+    // Two keys clicked one after the other each step once.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        CountListener listener;
+        p->addListener (&listener);
+        click (te->getKeyboard(), D, 1);
+        click (te->getKeyboard(), E, 1);
+        waitOutDoubleClick (*te);
+        p->removeListener (&listener);
+        check (modeOf (*p, D) == smoothtune::noteRemove && modeOf (*p, E) == smoothtune::noteRemove && listener.changes.load() == 2,
+               "Round 3: D then E clicked once each: both on Remove, two changes written (changes)", listener.changes.load());
+    }
+
+    // A session loaded straight after a click wins over the click.
+    {
+        auto p = tuner (altoTenor, 0.0f);
+        juce::MemoryBlock state;
+        p->getStateInformation (state);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+        auto* te = dynamic_cast<TuneEditor*> (ed.get());
+        click (te->getKeyboard(), D, 1);
+        p->setStateInformation (state.getData(), (int) state.getSize());
+        waitOutDoubleClick (*te);
+        check (modeOf (*p, D) == smoothtune::noteTune, "Round 3: a click on D, then a session with D on Tune loaded: D stays on Tune (mode)", modeOf (*p, D));
+    }
+}
+
 
 // The held-note fit made quicker (AuBench's worst single block was 37% on 1.8.1, the fit's full search taking about 0.8 ms in one output
 // sample): it must give exactly what it gave. The same series of fits, one walked and costed as up to 1.8.1 (FormantFit::asBefore), one
@@ -5364,5 +5505,6 @@ int main (int argc, char** argv)
     if (want ("llnull")) testLowLatencyNull();
     if (want ("window")) testWindow();
     if (want ("phase2")) { testPhase2Classic(); gEngine = 0; testPhase2Rate(); testPhase2State(); testPhase2Window(); testPhase2Fit(); }
+    if (want ("round3")) testRound3Window();
     return finish();
 }

@@ -217,7 +217,18 @@ static void testLoneVoice()
                            [] (bool ok, const std::string& what, double value, const char* unit) { check (ok, what, value, unit); },
                            [] (const std::string& what, double value, const char* unit) { info (what, value, unit); });
 
-    check (fingerprint::chordsInMixFingerprint() == fingerprint::expectedChordsInMix, "chords in Full Mix: every reading over 96 clips bit identical to 1.5.1");
+    // Changed with Luke's yes on 2026-11-13 ("u can do all of these"): 1.7.3 reads the top log bin instead of drawing it on past the
+    // last bin (key-dsp-r2-1), which moves 3 of the 96 clips, all tuned 25 to 28 cents sharp, by up to 0.000022 in confidence and
+    // never the key on show. The old test, which 1.5.1 to 1.7.2 passed:
+    //     check (fingerprint::chordsInMixFingerprint() == fingerprint::expectedChordsInMix, "chords in Full Mix: every reading over 96 clips bit identical to 1.5.1");
+    // with expectedChordsInMix = 0x6d8feb3810100d9f. It is pinned to 1.7.3's value now, and the next check holds the old value with
+    // that one change taken out.
+    const auto chordsRun = fingerprint::chordsInMixCompare();
+    check (chordsRun.read == fingerprint::expectedChordsInMix173, "chords in Full Mix: every reading over 96 clips bit identical to 1.7.3");
+    check (chordsRun.drawnOn == fingerprint::expectedChordsInMix, "chords in Full Mix with the top log bin drawn on as up to 1.7.2: every reading over 96 clips bit identical to 1.5.1");
+    check (chordsRun.keyDiffers == 0, "chords in Full Mix: clips whose key on show differs at any moment from 1.7.2's top log bin", chordsRun.keyDiffers);
+    info ("chords in Full Mix: clips whose reading differs from 1.7.2's top log bin, of 96", chordsRun.changed);
+    info ("chords in Full Mix: the largest confidence difference from 1.7.2's top log bin", chordsRun.maxConfidenceMove);
 }
 
 // Source: Single Voice ignores a clashing rumble below A2, which Full Mix takes as a bass line.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.3, 2026-11-13
+
+The top of the note range is read, not made up (key-dsp-r2-1). Music tuned more than about 24 cents sharp put the top note's band past the last FFT bin Key reads, and the log spectrum drew a line on past it instead of reading a bin: up to 30 times the bins it is drawn from (30.6 for F# major 45 cents sharp with noise above 5 kHz, 1.000 now). It stops at the last bin now. The check that failed on 1.7.2 is in tests/Phase2Tests.h (`PluginTest --phase2 analyser`). Key's audio passes untouched as before; latency 0.
+
+One test changed, with Luke's yes on 2026-11-13 ("u can do all of these"). "chords in Full Mix: every reading over 96 clips bit identical to 1.5.1" became "chords in Full Mix: every reading over 96 clips bit identical to 1.7.3", pinned to 1.7.3's value (0xecdc4ad4cc3a786a, was 0x6d8feb3810100d9f). 3 of the 96 clips read differently, all tuned 25 to 28 cents sharp (E I IV V I, Ab I vi IV V, Bb i iv V i): confidence moves by at most 0.000022, and the key on show is the same at every moment of every clip (95 of 96 end on their own key, as before). A new check holds the old value: with the top bin drawn on as up to 1.7.2 (a switch for tests only), the 1.7.3 source still gives 1.5.1's value bit for bit. The other fingerprint, every reading over 12 clips bit identical to 1.5.0, is unchanged. The old test's text and number are kept in a comment in tests/PluginTest.cpp.
+
+Luke's real vocal takes, round 1's checks rerun on the working set: realvox `1.7.3-round3` against 1.7.2's `1.7.2-phase2`, the same check file. All 4 pass lines and 4 honesty lines are identical, no pass field went from true to false, and all 44 final keys (11 takes, 4 readings) are the same. Settle times moved by up to 1.4 s and right notes shares by up to 1 point, about as much as two runs of 1.7.1 differ. Clicks 0 and nulls at or under -332.7 dB on every take. Luke's key.json is unchanged. 370 of 370 tests pass.
+
 ## 1.7.2, 2026-11-13
 
 Phase 2 bug check: 23 of the 24 bugs the hunt kept are fixed (the 24th is below), each with a test that failed on 1.7.1 first (tests/Phase2Tests.h, `PluginTest --phase2`). Music reads exactly as in 1.7.1: both reading fingerprints are unchanged. The window's footer now says what key.json holds from this Key and when it was written.
@@ -18,7 +26,7 @@ The reading:
 - After 8 s of silence, or of a host that stops calling, every timer keeps the age it had at the pause. Before, they were left on the old clock: C major, G major, a pause, C major again stayed on G for the whole 30 s; now C is back after 2.4 s (2.9 s with the host stopped).
 - A steady DC offset with no notes counts as silence: confidence falls to 0.025 in 10 s, as in silence, instead of staying at 1.00.
 - In silence the runner up fades with the key on show (0.104 before, 0 after).
-- Not changed: past the top FFT bin the log spectrum draws on rather than reads (music more than about 24 cents sharp, up to 30 times the bin at +45 cents with noise above 5 kHz). Clamping it changes readings of the detuned chord clips the Full Mix fingerprint pins, and no reading was shown to go wrong by it (A, E and C share 0.005 at +45 and -45 cents). Left for Luke.
+- Not changed: past the top FFT bin the log spectrum draws on rather than reads (music more than about 24 cents sharp, up to 30 times the bin at +45 cents with noise above 5 kHz). Clamping it changes readings of the detuned chord clips the Full Mix fingerprint pins, and no reading was shown to go wrong by it (A, E and C share 0.005 at +45 and -45 cents). Left for Luke. Fixed in 1.7.3.
 
 The host: Confidence is a whole percent ("78", not "78.4615"), and each reading's text reads back as the value it shows, so HostStress paramtext passes ("None" and "Minor" read back as 0 before). A host Reset lets go of the audio not analysed yet, as prepareToPlay does, and keeps the reading, Lock and key.json; it allocates nothing. The preset last chosen is saved with the session to name it; a new instance and every older session name none. Seven sessions saved by the installed 1.7.1 (tests/baseline/v1.7.1, made by tests/baseline/capture.mm) load and save again byte for byte as 1.7.1 did, with their held keys held.
 

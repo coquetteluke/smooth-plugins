@@ -157,7 +157,7 @@ Other results:
 - Silence from the start: no key and no file. White noise: no key.
 - key.json: 13573 writes raced against 110816 reads with no partial file seen. A blocked path shows the note and audio stays bit identical.
 - Window created, painted and destroyed 20 times offline, and 30 more times while audio ran, with audio bit identical throughout.
-- Every detection reading is bit identical to the saved 1.6.0 fingerprint over 12 clips, in `tests/ReadingFingerprint.h`, so a window change cannot alter detection unnoticed. Every Full Mix reading over 96 chord clips is bit identical to 1.5.1, so the lone voice reading cannot alter chords unnoticed.
+- Every detection reading is bit identical to the saved 1.6.0 fingerprint over 12 clips, in `tests/ReadingFingerprint.h`, so a window change cannot alter detection unnoticed. Every Full Mix reading over 96 chord clips is bit identical to 1.7.3, so the lone voice reading cannot alter chords unnoticed; with 1.7.3's one change to the reading of music taken out (the top log bin, see the CHANGELOG), they are bit identical to 1.5.1.
 
 ## Held out check for the harmony change, written before it was run
 

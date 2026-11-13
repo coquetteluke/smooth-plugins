@@ -392,8 +392,6 @@ public:
     double clarityNow() const noexcept { return clarityAvg; }       // for tools: the tuning clarity, averaged (-1 before it is judged)
     int voiceKeyChanges() const noexcept { return keyChanges; } // times a lone voice's reading moved because the song changed key
     double secondsHeard() const noexcept { return heardSeconds; }
-    // For tests: how far the newest time stamp lies ahead of the clock, in seconds, or 0. A stamp ahead of the clock was taken on an
-    // older timeline, and the timer it starts waits for that timeline to come round again.
     // For tests: the top log bin of the newest frame against the largest of the bins it is read from. Above 1 it was made up.
     double topBinOvershoot() const noexcept
     {
@@ -404,6 +402,11 @@ public:
         for (int k = std::max (0, (int) std::floor (p - w)); k <= std::min ((int) std::ceil (p + w), maxBin + 1); ++k) largest = std::max (largest, mag[(size_t) k]);
         return largest > 0.0 ? logSpec[(size_t) numLog - 1] / largest : 0.0;
     }
+    // For tests only: true reads the top log bin as 1.7.2 did, drawn on past the last bin, to prove that is the only change 1.7.3
+    // made to the reading of music. Never set by the plug-in.
+    void setDrawPastTopBin (bool on) noexcept { drawPastTopBin = on; }
+    // For tests: how far the newest time stamp lies ahead of the clock, in seconds, or 0. A stamp ahead of the clock was taken on an
+    // older timeline, and the timer it starts waits for that timeline to come round again.
     double stampAhead() const noexcept
     {
         double ahead = std::max ({ 0.0, lastMove - heardSeconds, lastDrift - heardSeconds, shownSetBefore >= 0 ? shownSince - heardSeconds : 0.0 });
@@ -520,10 +523,10 @@ private:
 
     double interpolatedMag (double p) const noexcept
     {
+        // Never past the last bin read. Up to 1.7.2 this drew the line on past it instead, so music tuned more than about 24 cents
+        // sharp read the top log bin as up to 30 times the bins it is drawn from (topBinOvershoot); fixed in 1.7.3.
+        if (! drawPastTopBin) p = std::min (p, (double) (maxBin + 1));
         const int i = std::clamp ((int) p, 0, maxBin);
-        // Past the last bin this draws the line on rather than reading a bin: music tuned more than about 24 cents sharp reads the
-        // top log bin as up to 30 times the bins it is drawn from (topBinOvershoot). Left as it is in 1.7.2: clamping changes
-        // readings of the detuned chord clips that the Full Mix fingerprint pins, and no reading was shown to go wrong by it.
         const double f = p - i;
         return mag[(size_t) i] * (1.0 - f) + mag[(size_t) std::min (i + 1, maxBin + 1)] * f;
     }
@@ -1647,6 +1650,7 @@ private:
     double hostRate = 48000.0, outRate = 12000.0, hopSeconds = 0.17, binHz = 1.46, hannSum = 1.0;
     int decimation = 4, numTaps = 129, firPos = 0, decimCounter = 0;
     int ringPos = 0, hopCounter = 0, windowFilled = 0, maxBin = 3000;
+    bool drawPastTopBin = false;  // for tests: 1.7.2's top log bin (setDrawPastTopBin)
 
     Response response = Response::stable;
     Source source = Source::mix;

@@ -231,9 +231,10 @@ static void testPhase2Analyser()
         const auto flat = outsideShare (-45.0), sharp = outsideShare (45.0), inTune = outsideShare (0.0);
         // First written as the share of A, E and C in the reading, which read 0.005 sharp, 0.005 flat and 0.007 in tune on 1.7.1:
         // the false value reached no key here. What is checked is the value itself: an interpolation never passes the bins it is read from.
-        // Real, and not fixed in 1.7.2: clamping the interpolation changes readings of the detuned chord clips (tuned up to 30 cents
-        // sharp) that the existing check "chords in Full Mix: every reading over 96 clips bit identical to 1.5.1" pins. Kept as INFO.
-        info ("F# major 45 cents sharp with noise above 5 kHz: the top log bin against the largest bin it is read from (1.7.1: 30.6; 1 when read, not drawn on)", sharp.second);
+        // Not fixed in 1.7.2 and kept as INFO there, as fixing it changed readings of the detuned chord clips that the check "chords
+        // in Full Mix: every reading over 96 clips bit identical to 1.5.1" pinned. Fixed in 1.7.3 with Luke's yes on 2026-11-13, and
+        // a check since: 30.6 on 1.7.1 and 1.7.2, 1 now. Rounding aside, a value read between two bins is never above the larger.
+        check (sharp.second <= 1.0 + 1.0e-9, "F# major 45 cents sharp with noise above 5 kHz: the top log bin against the largest bin it is read from (1.7.2: 30.6; 1 when read, not drawn on)", sharp.second);
         info ("the same in tune", inTune.second);
         info ("share of A, E and C in the reading, 45 cents sharp", sharp.first);
         info ("the same 45 cents flat", flat.first);

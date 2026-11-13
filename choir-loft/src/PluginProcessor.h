@@ -169,6 +169,7 @@ private:
         double levelTarget = 1.0, panLTarget = 1.0, panRTarget = 1.0;
 
         bool voicedNow = false;                  // the part of the lead this voice is singing right now is voiced
+        bool leadVoicedNow = false;              // the same before Human's own note end (1.5.4): where its random choices are drawn
         double attackStep = 0.0, wander = 1.0, lagSamples = 0.0;
         double scatterLag = 0.0;                 // where the voice's own consonant reads, held from a start until that consonant has faded out
         bool scatterHeld = false;

@@ -4,7 +4,7 @@ Up to eight harmony voices from one lead vocal. Formants stay where they are, so
 
 **Load it:** Audio Units > Luke Garito > Choir Loft. AU code `aumf SHrm Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. With mono in, the voices still spread across the stereo field.
 
-Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2 and 1.5.0 to 1.5.3 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
+Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2 and 1.5.0 to 1.5.4 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
 
 ## First settings to try
 
@@ -31,7 +31,7 @@ Every control is a real AU parameter that a host can find by name.
 | Voice N Throat | 70 to 140%. Above 100 lowers that voice's formants, as a longer throat would. Defaults differ per voice, about 20% between the extremes. |
 | Voice N Tone | -100 to +100%. Darker or brighter, for good: a shelf at 1.6 kHz. Defaults differ per voice. |
 | Humanize | How a person differs from a machine, note by note. A scoop from below (up to 70 cents, less when coming down), a slow settle (up to 18 cents), landing a little off the note (up to 8 cents at random plus up to 5 cents of the voice's own habit), standing behind the lead (up to 26 ms by voice plus up to 18 ms per note), a slower glide, a softer start to a phrase, its own vibrato depth and timing. Above 0 it also turns on period blending and high end unevenness. 0 is exact. |
-| Human | 0 to 100%. 0, the default, is the robot sound: the plug-in as it was before 1.5.0, with nothing of this running. Above 0 each voice moves the way a singer does: a wander and a flutter of its own inside every note (random, not a steady wobble), a small part of your own movement on the note, a vibrato whose speed and depth no longer hold still, a level of its own instead of an exact copy of yours, and its own place behind you on each note. It never moves a voice off its note on average. Humanize is the note by note character (scoops, landing off the note, standing behind the lead). Human is what happens inside the note. They work together or apart. |
+| Human | 0 to 100%. 0, the default, is the robot sound: the plug-in as it was before 1.5.0, with nothing of this running. Above 0 each voice moves the way a singer does: a wander and a flutter of its own inside every note (random, not a steady wobble), a small part of your own movement on the note, a vibrato whose speed and depth no longer hold still, a level of its own instead of an exact copy of yours, and its own moment of letting go at the end of each note. It never moves a voice off its note on average, and since 1.5.4 never takes a voice more than 40 cents from its note. Humanize is the note by note character (scoops, landing off the note, standing behind the lead). Human is what happens inside the note. They work together or apart. |
 | Vibrato | 0 to 100%, up to +/-60 cents. Starts 180 ms into a note. Each voice's rate is slightly different. |
 | Vibrato Rate | 3 to 8 Hz. Voice 1 runs at this, the others up to 7% away. |
 | Lead Level | -60 (Off) to +6 dB. |
@@ -367,6 +367,30 @@ Fourth pass, Human only; Human at 0 renders Luke's working takes bit for bit as 
 | Level against the lead inside a note, spread | 0.95 dB | 1.02 dB | 1.21 at most |
 
 U1 to U8 and U9 hold at 35, 65 and 100 on the working set (1.5.2 missed U9 at 35 by one octave verdict). U9's octave and late verdicts move with chance: with other random numbers 1.5.2 fails one of its rules at Human 100 in one run of four (9 octave verdicts against 5), 1.5.3 in two (8 octave verdicts against 5, and time on the note from 98 to 130 Hz 95.64% against 95.66% allowed); with the plug-in's own random numbers both pass. On the first session's takes, Human 100 still has 7 late notes against 3 at Human 0, as 1.5.2: voice 2, standing further back, lands 85 to 90 ms into three notes.
+
+## Human: the held notes with any random numbers (1.5.4)
+
+Fifth pass, Human only; Human at 0 renders Luke's working takes and the first session's takes bit for bit as 1.5.3. The held note rule for Human (U9: the held notes no worse than at Human 0, H3 to H9 of `realvox/RealVox.cpp`) held at Human 100 only with the plug-in's own random numbers. Run with other random numbers (`REALVOX_SEED` 0 to 7, the take untouched, each against Human 0 with the same seed):
+
+| Human 100, working set, U9 | 1.5.3 | 1.5.4 |
+|---|---|---|
+| Runs with a rule failed, of 8 | 5 (H5, H7, H3, H8, H3) | 2 (H3; H3 and H7) |
+| Time on note 98 to 130 Hz, against Human 0, worst run | 95.64% against 95.76% | 95.78% against 95.76%, above Human 0 on all 8 |
+| Time on note from 130 Hz, against Human 0 | 94.38% to 94.45% against 94.43% to 94.47% | 94.55% to 94.61% against 94.43% to 94.47% |
+| First session's takes, late notes (Human 0: 3, 5 allowed) | 7 | 3 |
+
+Three things changed. Humanize's per note random choices (scoop, detune, glide, place behind the lead) are now the same at Human 100 as at Human 0 for the same take: a voice's attack and consonant timing are drawn where the lead's note starts and ends for it, not where Human's own note end moves the voice, which used to reshuffle every later choice. Human no longer moves a voice's place behind the lead (a shift per note, and up to 20 ms of falling behind over a long note, given back over the next note): a voice hears the lead through its lag, so a lag that drops just after a note change makes it late by the drop, which is how voice 2 landed 85 to 90 ms into four held notes of the first session. And Human's own wander never takes a voice more than 40 cents from its note, counting the glide still to go and Humanize's scoop, detune and vibrato. So a voice still moves as much: the wander comes back over 80 ms after a note starts (was 150) and each voice follows half as much again of your movement; voice 2 holds a note's end up to 34 ms (was 24) and voice 1 lets go at once.
+
+| Human 100 | 1.5.3 | 1.5.4 | goal |
+|---|---|---|---|
+| Pitch spread inside a note, working set (seeds 0 to 3) | 10.47 | 10.92, 11.50, 10.98, 11.18 | 10 or more |
+| Pitch spread inside a note, the first session's takes | 10.69 | 10.71 | 10 or more |
+| Movement in common, working set (seeds 0 to 3) | 0.27, 0.27, 0.29, 0.24 | 0.28, 0.24, 0.24, 0.26 | 0.30 or less |
+| Movement in common, the first session's takes | 0.18 | 0.23 | 0.30 or less |
+| Level curve like the lead's, working set / first session | 0.53 / 0.61 | 0.51 to 0.52 / 0.62 | 0.65 or less |
+| Ends of the two voices apart, working set / first session | 12 / 11 ms | 12 to 14 / 9 ms | 8 or more |
+
+Not at zero: the two runs that still fail fail on H3 (one voice note from 98 to 130 Hz more than at Human 0, of 700) and H7 (octave verdicts, two more allowed). The voice notes behind them are the same five every time (take 02 at 21.797 and 29.722 s, take 04 at 12.432 s, take 10 at 41.242 s), where the tool reads the voice 50 cents or more off for 30 ms and then on its note an octave away. They come and go with the random numbers at Human 0 too: Human 0 against Human 0 with another of the eight seeds fails U9 in 16 of 56 pairs.
 
 ## Latency
 

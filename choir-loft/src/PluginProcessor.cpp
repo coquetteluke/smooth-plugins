@@ -374,6 +374,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
         voice.match = 1.0;
         voice.fastMatch = 0;
         voice.voicedNow = false;
+        voice.leadVoicedNow = false;
         voice.attackStep = 1.0 / (0.008 * sr);
         voice.leadFast = voice.leadSlow = 0.0;
         voice.wanderNow = 1.0;
@@ -707,20 +708,25 @@ void PluginProcessor::tick() noexcept
 
         auto& singer = brain.singer (v);
 
-        if (sungNow && ! voice.voicedNow)
+        // A voice's own way into a word and its own consonant are drawn from the Singer's random numbers where the lead's note starts and
+        // ends for this voice (1.5.4). Drawn where the voice itself starts and stops, Human's own note end moved those moments, so from the
+        // first held end on every later per note choice of Humanize (scoop, detune, glide, place behind the lead) was another one than at
+        // Human 0 with the same take: the two could not be compared note by note, and the held notes at Human 100 read better or worse than
+        // at Human 0 by chance. With Human at 0 the two moments are the same, so nothing changes there.
+        if (sungRaw && ! voice.leadVoicedNow)
         {
-            // A voice's own way into a phrase or a word
             voice.attackStep = 1.0 / ((0.008 + settings.humanize * 0.03 * (0.5 + 0.5 * singer.nextRandom())) * sr);
-            voice.unvoicedFor = 0.0;
         }
-        else if (! sungNow && voice.voicedNow)
+        else if (! sungRaw && voice.leadVoicedNow)
         {
             // This voice's own timing and strength for this consonant. Scatter 100 is up to about 50 ms later and as low as about half the level.
             static constexpr double standsBack[8] = { 0.0, 0.3, 0.12, 0.45, 0.2, 0.38, 0.06, 0.52 };
             voice.consonantDelay = juce::roundToInt ((standsBack[v] + 0.1 + 0.25 * (singer.nextRandom() + 1.0)) * scatterNow * 0.045 * sr);
             voice.consonantLevel = 1.0 - scatterNow * 0.225 * (singer.nextRandom() + 1.0);
-            voice.unvoicedFor = 0.0;
         }
+        voice.leadVoicedNow = sungRaw;
+        if (sungNow != voice.voicedNow)
+            voice.unvoicedFor = 0.0;
         // At any start the level match still holds the last note's vowel and shift, a few dB off for the new one, and at its usual speed it
         // took up to 150 ms to come round. For 60 ms after a start it reads the levels faster.
         if ((sungNow && ! voice.voicedNow) || brain.startedNow())

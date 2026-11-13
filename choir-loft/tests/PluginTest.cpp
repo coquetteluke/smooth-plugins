@@ -2422,6 +2422,7 @@ using ui::StageView;
 #include "WindowTests.h"
 #include "EightVoiceTests.h"
 #include "OnsetTests.h"
+#include "Phase2Tests.h"
 
 // Before and after files for ears. The before files come from the 1.0.0 source, see README.
 void demo()
@@ -2603,6 +2604,8 @@ int main (int argc, char** argv)
     if (only == "trackertrace" && argc >= 7) { onsets::trackerTrace (std::atoi (argv[2]), std::atoi (argv[3]), std::atoi (argv[4]), std::atof (argv[5]), std::atof (argv[6])); return 0; }
     if (only == "onsettrace" && argc >= 6) { onsets::trace (std::atoi (argv[2]), std::atoi (argv[3]), std::atoi (argv[4]), std::atoi (argv[5]), argc > 6 ? std::atof (argv[6]) : 0.2, argc > 7 ? std::atof (argv[7]) : 0.004); return 0; }
     if (only == "human") { humanNumbers(); return 0; }
+    if (only == "r31probe") { phase2::probePhraseAfterPause(); return 0; }
+    if (only == "lagtrace") { phase2::traceLaggedGrains(); return 0; }
     if (only == "fingerprints")
     {
         for (const int preset : { 0, 3, 4, 7, 10 })
@@ -2645,5 +2648,6 @@ int main (int argc, char** argv)
     if (want ("notrigger")) onsets::testNoTrigger();
     if (want ("aftercreak")) testAfterCreak();
     if (want ("ceiling")) testCeiling();
+    if (want ("phase2")) testPhase2();
     return finish();
 }

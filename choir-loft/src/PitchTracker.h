@@ -76,6 +76,7 @@ public:
         decimation = std::max (1, (int) std::lround (sr / 12000.0));
         slowRate = sr / decimation;
         hop = std::max (1, (int) std::lround (slowRate * 0.00133));
+        forgetAfterQuiet = std::max (1, (int) std::lround (0.1 * slowRate / hop));
         slowSize = 8192;
         slow.assign ((size_t) slowSize * 2, 0.0f);
         fastSize = 1;
@@ -207,6 +208,7 @@ private:
         markValid = false; finePeriod = 0.0; weakMarks = 0; markSeq = 0; lastMarkPosition = -1.0e12; mismatchVotes = 0;
         plainVotes = 0; plainTau = 1.0; plainVotedAt = -1; plainDipSum = 0.0f; lateSamples = 0; nearSince = -1;
         lowEndedAt = -1;
+        quietAnalyses = 0;
     }
 
     void setUnvoiced() noexcept
@@ -234,8 +236,18 @@ private:
         {
             noPitch();
             whyNow = whyQuiet;
+            // A pause (1.6.0, choir-dsp-r3-1): after 100 ms of quiet with no note, the period of the last phrase is forgotten, so the next
+            // phrase starts as it would on a tracker that never heard the last one. Kept, it weighed the new start against a note from
+            // before the pause, and a phrase an octave away could start an octave off or late.
+            if (! voiced && ++quietAnalyses >= forgetAfterQuiet && tauCurrent > 0.0)
+            {
+                tauCurrent = 0.0;
+                pendingVotes = 0;
+                pendingTau = 0.0;
+            }
             return;
         }
+        quietAnalyses = 0;
 
         const int first = tauMin - 1, last = tauMax + 1;
         float e = dotProduct (base - first, base - first, window);
@@ -984,6 +996,9 @@ private:
 
     void noPitch() noexcept
     {
+        // The 1.5.2 rule asks for the longer period twice in a row: an analysis with no pitch in between breaks the row (1.6.0,
+        // choir-dsp-r3-4). Kept through a pause, one vote from before it and one after it called a start one analysis early.
+        longerVotes = 0;
         dipCurrent = 1.0f;
         voicedVotes = 0;
         plainVotes = 0;
@@ -1161,6 +1176,7 @@ private:
     bool voiced = false;
     int whyNow = whyQuiet, startRuleNow = 0;
     int longerVotes = 0;
+    int quietAnalyses = 0, forgetAfterQuiet = 75;   // analyses in a row under the gate, and how many make a pause (100 ms)
     bool longerHeldOk = false;
     long long lowEndedAt = -1;                     // when the last followed note under the range ended, in slow samples
     static constexpr double lowEndedWithin = 0.1;  // seconds

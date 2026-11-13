@@ -23,6 +23,7 @@ namespace
     constexpr float levelOffDb = -60.0f;
 
     const juce::Identifier windowWidthAttribute { "windowWidth" }, advancedOpenAttribute { "advancedOpen" };
+    const juce::Identifier programAttribute { "program" };   // since 1.6.0: the preset last chosen, left out when none is known
 
     // Presets set the arrangement. They leave Key, Scale, Follow Key and Input Type alone, so a preset never fights the song.
     struct Preset
@@ -32,6 +33,7 @@ namespace
         int interval[8];
         float level[8], pan[8], drift[8], throat[8], tone[8];
         float humanize, vibrato, glide, lead, follow, consonantAmount, scatter, breathAmount;
+        float humanAmount = -1.0f;   // Human for the presets that set it (1.6.0); the others leave it alone
     };
     constexpr Preset presets[] = {
         { "Pop Thirds And Fifths", modeScale, 2, { 4, 7, -5, 12 },     { -6, -6, -8, -8 },   { -35, 35, -70, 70 }, { 30, 30, 30, 30 }, { 97, 106, 91, 111 }, { 20, -35, 40, -55 }, 50, 10, 30, 0, 8, 22, 60, 12 },
@@ -56,6 +58,9 @@ namespace
         { "MIDI Eight Part Choir", modeMidi,  8, { 4, 7, -5, 12, -8, 9, -12, 16 },
                                                  { -10, -10, -10, -10, -10, -10, -10, -10 }, { -80, -55, -30, -10, 10, 30, 55, 80 }, { 32, 32, 32, 32, 32, 32, 32, 32 },
                                                  { 114, 108, 104, 100, 97, 94, 91, 88 }, { -40, -30, -15, -5, 5, 15, 25, 35 }, 55, 15, 50, -4, 8, 14, 75, 14 },
+        // 1.6.0, added last so every other preset keeps its number. Pop Thirds And Fifths sung the way people sing it: Human 65, where every
+        // real vocal limit held on Luke's takes (1.5.4, working set and first session).
+        { "Human Thirds And Fifths", modeScale, 2, { 4, 7, -5, 12 },   { -6, -6, -8, -8 },   { -35, 35, -70, 70 }, { 30, 30, 30, 30 }, { 97, 106, 91, 111 }, { 20, -35, 40, -55 }, 50, 10, 30, 0, 8, 22, 60, 12, 65.0f },
     };
 
     juce::String noteText (float v)
@@ -124,6 +129,7 @@ namespace
 
     constexpr int firstVoicesCount = 4;   // Voices counts these. More Voices adds the rest.
     constexpr float hearFadeSeconds = 0.015f;
+    constexpr double lagPeriodMove = 0.0;   // see tick(): how far the period a voice reads must be from the tracker's for now to be used
 }
 
 // One background thread: reads the key file and tells the host when Input Type has changed the latency. Never touches audio.
@@ -293,11 +299,11 @@ PluginProcessor::PluginProcessor (const Options& options)
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
 
     addParameter (hzReading = new ReadingParameter ("detectedPitch", "Detected Pitch", "Hz", 0.0f, 2000.0f, 0.0f, hzText));
-    addParameter (leadReading = new ReadingParameter ("leadNote", "Lead Note", "", -1.0f, 127.0f, -1.0f, noteText));
+    addParameter (leadReading = (new ReadingParameter ("leadNote", "Lead Note", "", -1.0f, 127.0f, -1.0f, noteText))->namedSteps());
     for (int v = 0; v < maxVoices; ++v)
-        addParameter (voiceReading[(size_t) v] = new ReadingParameter (voiceId (v, "Note").toRawUTF8(), "Voice " + juce::String (v + 1) + " Note", "", -1.0f, 127.0f, -1.0f, noteText));
+        addParameter (voiceReading[(size_t) v] = (new ReadingParameter (voiceId (v, "Note").toRawUTF8(), "Voice " + juce::String (v + 1) + " Note", "", -1.0f, 127.0f, -1.0f, noteText))->namedSteps());
     addParameter (soundingReading = new ReadingParameter ("voicesSounding", "Voices Sounding", "", 0.0f, (float) maxVoices, 0.0f, countText));
-    addParameter (keyReading = new ReadingParameter ("activeKey", "Active Key", "", 0.0f, (float) (12 * numScales - 1), 0.0f, keyText));
+    addParameter (keyReading = (new ReadingParameter ("activeKey", "Active Key", "", 0.0f, (float) (12 * numScales - 1), 0.0f, keyText))->namedSteps());
 
     char path[PATH_MAX] {};
     if (options.keyFilePath.isNotEmpty())
@@ -308,6 +314,9 @@ PluginProcessor::PluginProcessor (const Options& options)
     // Prepared values before the host calls prepareToPlay, so asking for the latency early gets a true answer.
     setLatencySamples (latencyFor ((int) inputType->load(), 48000.0));
 
+    bypassWasOn.store (bypass->get(), std::memory_order_relaxed);
+    apvts.addParameterListener ("bypass", this);
+
     worker = std::make_unique<Worker> (*this);
     worker->startThread (juce::Thread::Priority::low);
 }
@@ -316,6 +325,31 @@ PluginProcessor::~PluginProcessor()
 {
     worker->stopThread (2000);
     cancelPendingUpdate();
+    apvts.removeParameterListener ("bypass", this);
+}
+
+void PluginProcessor::parameterChanged (const juce::String& id, float value)
+{
+    if (id != "bypass")
+        return;
+    const bool on = value > 0.5f;
+    const bool was = bypassWasOn.exchange (on, std::memory_order_relaxed);
+    if (on && ! was)
+        bypassSwitchedAtMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+    bypassJustSwitchedOn.store (on && ! was, std::memory_order_relaxed);
+}
+
+void PluginProcessor::reset()
+{
+    // The reset that comes with the host's bypass switching on is left out: clearing then would cut the voices and the delayed lead off
+    // at once instead of the 20 ms fade to the dry lead.
+    if (bypassJustSwitchedOn.exchange (false, std::memory_order_relaxed)
+        && juce::Time::getMillisecondCounter() - bypassSwitchedAtMs.load (std::memory_order_relaxed) < 250)
+        return;
+    if (preparedRate.load (std::memory_order_relaxed) <= 0.0)
+        return;   // never prepared: nothing has been played to clear
+    const juce::ScopedLock lock (getCallbackLock());   // the AU wrapper renders under this lock, so a reset never lands mid block
+    clearState();
 }
 
 int PluginProcessor::latencyFor (int type, double sampleRate) noexcept
@@ -350,6 +384,18 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     sr = sampleRate;
     history.prepare (sr);
     tracker.prepare (sr);
+    for (int v = 0; v < maxVoices; ++v)
+        voices[(size_t) v].shifter.prepare (sr, 0x51EDu * (unsigned) (v + 3) + 77u + randomSeed * 0x2545F491u);
+    clearState();
+    setLatencySamples (latencyNow);
+    preparedRate.store (sr, std::memory_order_relaxed);
+}
+
+// Everything playing leaves behind, back to where prepareToPlay starts. Allocates nothing, so a host Reset can call it too.
+void PluginProcessor::clearState() noexcept
+{
+    history.clear();
+    tracker.reset();
     tickSamples = juce::jmax (1, juce::roundToInt (sr * 0.001));
     tickSeconds = tickSamples / sr;
     rewriteTicks = juce::roundToInt (0.03 / tickSeconds);
@@ -364,7 +410,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     for (int v = 0; v < maxVoices; ++v)
     {
         auto& voice = voices[(size_t) v];
-        voice.shifter.prepare (sr, 0x51EDu * (unsigned) (v + 3) + 77u + randomSeed * 0x2545F491u);
+        voice.shifter.restart();
         for (int a = 0; a < 3; ++a)
             voice.allpass[(size_t) a].set (juce::jmin (allPassHz[v][a], sr * 0.45), 0.8, sr);
         voice.control = {};
@@ -379,6 +425,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
         voice.leadFast = voice.leadSlow = 0.0;
         voice.wanderNow = 1.0;
         voice.wander = 1.0;
+        voice.humanState = 0;
         voice.lagSamples = 0.0;
         voice.scatterLag = 0.0;
         voice.scatterHeld = false;
@@ -407,6 +454,7 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     toneK = 1.0 - std::exp (-2.0 * juce::MathConstants<double>::pi * 1600.0 / sr);
     voicedRing.fill (false);
     pitchRing.fill (0.0);
+    periodRing.fill (0.0);
     pitchRingAt = 0;
     midiHead = midiTail = 0;
     clock = 0;
@@ -423,7 +471,11 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     ceilingRelease = 1.0 - std::exp (-1.0 / (0.2 * sr));
     ceilingGain = 1.0;
     ceilingHold = 0;
+    ceilingSwitchStep = 1.0 / (0.02 * sr);
+    ceilingOnNow = ceilingParam->load (std::memory_order_relaxed) >= 0.5f ? 1.0 : 0.0;
+    firstBlock = true;
     outputPeak.store (0.0f, std::memory_order_relaxed);
+    offlineKeySamples = 0;
     humanSlowK = 1.0 - std::exp (-1.0 / (0.3 * sr));
     fadeGain = 1.0f;
     fading = false;
@@ -450,9 +502,6 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
         voice.panL = voice.panLTarget;
         voice.panR = voice.panRTarget;
     }
-
-    setLatencySamples (latencyNow);
-    preparedRate.store (sr, std::memory_order_relaxed);
 }
 
 void PluginProcessor::applyInputType (int type) noexcept
@@ -467,6 +516,7 @@ void PluginProcessor::applyInputType (int type) noexcept
         voice.control = {};
     }
     pitchRing.fill (0.0);
+    periodRing.fill (0.0);
     voicedRing.fill (false);
     leadRunTicks = 0;
     lateTicks = 0;
@@ -553,6 +603,7 @@ void PluginProcessor::tick() noexcept
 
     pitchRingAt = (pitchRingAt + 1) & (pitchRingSize - 1);
     pitchRing[(size_t) pitchRingAt] = semitones;
+    periodRing[(size_t) pitchRingAt] = period;
 
     // A start is written back to where the tracker says it began: where nearly periodic sound began, or where the plain tests would have
     // called it, since a start is now also checked for breath, which costs a breathy or gliding start a few ms. A voice standing behind the
@@ -567,6 +618,7 @@ void PluginProcessor::tick() noexcept
             const size_t at = (size_t) ((pitchRingAt - k) & (pitchRingSize - 1));
             if (voicedRing[at]) break;
             pitchRing[at] = semitones;
+            periodRing[at] = period;
             voicedRing[at] = true;
             written = k;
         }
@@ -582,7 +634,10 @@ void PluginProcessor::tick() noexcept
     leadRunTicks = voiced ? juce::jmin (leadRunTicks + 1, 1 << 20) : 0;
     if (voiced && leadRunTicks <= rewriteTicks + lateTicks)
         for (int k = 1; k < leadRunTicks; ++k)
+        {
             pitchRing[(size_t) ((pitchRingAt - k) & (pitchRingSize - 1))] = semitones;
+            periodRing[(size_t) ((pitchRingAt - k) & (pitchRingSize - 1))] = period;   // and the period a voice reads there (1.6.0), the same way
+        }
 
     // The tracker's period is old by the time it arrives: two stretches a period apart are compared, the newest mark is known 0.33 periods
     // after it happens, and the value then holds for a period. What is coming out is the input from the latency ago. Look back the difference,
@@ -753,6 +808,18 @@ void PluginProcessor::tick() noexcept
         c.shimmer = settings.drift[(size_t) v] * 0.1;
         c.blendPeriods = settings.humanize > 0.0;
         c.steady = tracker.breathy();
+        // The period of the audio this voice reads (1.6.0, choir-dsp-r3-2): looked up where its pitch is, by its own lag. After a leap the
+        // tracker's period for now and the period of what a voice standing behind the lead still reads differ by the leap, and the grains
+        // were cut with the new period's windows and gain from the old note's pulses. A move smaller than lagPeriodMove is left to the
+        // tracker's period for now, as before: inside that, nothing changes.
+        double periodRead = period;
+        {
+            const int lagTicks = juce::roundToInt (lagMs * 0.001 / tickSeconds);
+            const int back = juce::jlimit (0, pitchRingSize - 1, juce::jmax (0, juce::roundToInt (back0)) + lagTicks);
+            const double there = periodRing[(size_t) ((pitchRingAt - back) & (pitchRingSize - 1))];
+            if (voiced && there > 0.0 && std::abs (there / period - 1.0) > lagPeriodMove)
+                periodRead = there;
+        }
         c.readJitter = settings.humanize * 3.0 * sr / 48000.0;
         voice.wander = brain.levelWander (v);
         if (brain.humanOn())
@@ -769,7 +836,7 @@ void PluginProcessor::tick() noexcept
         if (sungNow)
         {
             if (voiced)
-                c.inputPeriod = period;
+                c.inputPeriod = periodRead;
             c.outputPeriod = brain.periodFor (wanted.pitch, reference_);
             c.grainRate = juce::jlimit (0.5, 2.0, throatRate[(size_t) v]);
         }
@@ -795,7 +862,7 @@ void PluginProcessor::tick() noexcept
             point.voiceLevel[(size_t) v].store ((float) (voice.displayPeak * harmonyGain), std::memory_order_relaxed);
             voice.displayPeak = 0.0;
         }
-        pitchHistoryCount.store (at + 1, std::memory_order_relaxed);
+        pitchHistoryCount.store (at + 1, std::memory_order_release);   // after the point's fields, so a reader that sees the count sees them (1.6.0)
     }
 }
 
@@ -818,9 +885,26 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     if (wantedType != typeNow)
         fading = true;
     const float bypassTarget = (forceBypass || bypass->get()) ? 0.0f : 1.0f;
-    const bool ceilingOn = ceilingParam->load (std::memory_order_relaxed) >= 0.5f;
-    if (! ceilingOn) { ceilingGain = 1.0; ceilingHold = 0; }
+    // Ceiling switched while it is holding the level down (1.6.0): the gain it applies fades in or out over 20 ms instead of stepping by up
+    // to 5 dB in one sample. Its gain keeps being worked out until it has faded out. Steadily on or off, nothing changes.
+    const double ceilingTarget = ceilingParam->load (std::memory_order_relaxed) >= 0.5f ? 1.0 : 0.0;
+    if (firstBlock) ceilingOnNow = ceilingTarget;
+    firstBlock = false;
+    if (ceilingTarget <= 0.0 && ceilingOnNow <= 0.0) { ceilingGain = 1.0; ceilingHold = 0; }
     float blockPeak = 0.0f;
+
+    // Follow Key in an offline bounce or freeze (1.6.0): the worker reads the key file every 0.3 s of wall time, which in a render faster
+    // than real time is many seconds of song. So here the file is read every 0.3 s of audio instead. Offline nothing waits on this thread.
+    if (isNonRealtime() && followKey->load (std::memory_order_relaxed) >= 0.5f)
+    {
+        if (offlineKeySamples <= 0)
+        {
+            pollKeyFileNow();
+            offlineKeySamples = juce::roundToInt (0.3 * sr);
+            readSettings();
+        }
+        offlineKeySamples -= numSamples;
+    }
 
     float* left = buffer.getWritePointer (0);
     float* right = numOut > 1 ? buffer.getWritePointer (1) : nullptr;
@@ -883,6 +967,9 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             // Faded out, or past the voice count with nothing left to fade: this voice does no work at all. Its note logic keeps running, so it comes back on the right note.
             if ((voice.hear <= 0.0 && voice.hearTarget <= 0.0) || (! voice.inCount && voice.gain <= 0.0 && voice.gainTarget <= 0.0))
             {
+                // Nothing comes out of a sleeping voice, so its On switch takes effect here at once (1.6.0). Left at its old value, a singer
+                // switched off while past the voice count woke at full hear when Voices brought it in, and was heard for 15 ms.
+                voice.hear = voice.hearTarget;
                 voice.asleep = true;
                 continue;
             }
@@ -972,14 +1059,35 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
                 // Level of the part of the lead this voice reads, quick and slow, for holding its own level. Smoothed gain, so a step in it
                 // every ms is never heard.
                 const double read = (double) history.delayed (InputHistory::mono, latencyNow + juce::roundToInt (voice.lagSamples));
+                if (voice.humanState == 2)
+                {
+                    // Switched on while playing (1.6.0): the quick and slow levels start alike where the voice reads now, so the voice keeps
+                    // its level and moves off it from here, instead of a ratio left from whenever Human was last on (up to 4 dB for 300 ms).
+                    voice.leadFast = voice.leadSlow = read * read;
+                }
+                voice.humanState = 1;
                 voice.leadFast += humanFastK * (read * read - voice.leadFast);
                 voice.leadSlow += humanSlowK * (read * read - voice.leadSlow);
                 voice.wanderNow += smooth * (voice.wander - voice.wanderNow);
                 y *= voice.wanderNow;
             }
+            else if (voice.humanState == 1)
+            {
+                // Human just went to 0 (1.6.0): the gain glides over to the plain wander as it does while Human is on, instead of dropping
+                // the held level at once, up to 4 dB in one sample on every voice. Once there it is exactly the wander, as it always was.
+                voice.wanderNow += smooth * (voice.wander - voice.wanderNow);
+                if (std::abs (voice.wanderNow - voice.wander) <= 1.0e-5 * voice.wander)
+                {
+                    voice.wanderNow = voice.wander;
+                    voice.humanState = 2;
+                }
+                y *= voice.wanderNow;
+            }
             else
             {
                 y *= voice.wander;
+                voice.wanderNow = voice.wander;   // where a switch to Human on glides from; the sound here is the wander, as always
+                voice.humanState = 2;
             }
 
             const double rise = voice.gainTarget > voice.gain && voice.voicedNow ? voice.attackStep : step;
@@ -1044,7 +1152,8 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         // reach the ceiling. Bypassed, the gain is 1: the vocal comes out untouched.
         float peak = std::abs (left[i]);
         if (right != nullptr) peak = std::max (peak, std::abs (right[i]));
-        if (ceilingOn)
+        ceilingOnNow += juce::jlimit (-ceilingSwitchStep, ceilingSwitchStep, ceilingTarget - ceilingOnNow);
+        if (ceilingOnNow > 0.0)
         {
             if (ceilingHold > 0) --ceilingHold;
             else ceilingGain += ceilingRelease * (1.0 - ceilingGain);
@@ -1059,7 +1168,7 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
                     ceilingHold = ceilingHoldSamples;
                 }
             }
-            const float g = (float) (1.0 + (double) bypassMix * (ceilingGain - 1.0));
+            const float g = (float) (1.0 + (double) bypassMix * ceilingOnNow * (ceilingGain - 1.0));
             left[i] *= g;
             if (right != nullptr) right[i] *= g;
             peak *= g;
@@ -1070,6 +1179,9 @@ void PluginProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffe
     // For the window's output light: the highest sample since the window last looked
     if (blockPeak > outputPeak.load (std::memory_order_relaxed))
         outputPeak.store (blockPeak, std::memory_order_relaxed);
+
+    if (bypassJustSwitchedOn.load (std::memory_order_relaxed))
+        bypassJustSwitchedOn.store (false, std::memory_order_relaxed);   // only the reset that comes with the switch is left out
 
     publishReadings();
 }
@@ -1083,7 +1195,8 @@ void PluginProcessor::publishReadings() noexcept
     for (int v = 0; v < maxVoices; ++v)
     {
         const auto& wanted = brain.voice (v);
-        const bool on = wanted.on && voices[(size_t) v].level > 0.0 && voices[(size_t) v].hearTarget > 0.0;
+        // Level Off is read from the setting (1.6.0): the smoothed level only comes close to 0, so a voice turned Off while playing read on.
+        const bool on = wanted.on && voices[(size_t) v].levelTarget > 0.0 && voices[(size_t) v].hearTarget > 0.0;
         if (on && leadVoiced) ++sounding;
         voiceReading[(size_t) v]->set (on ? (float) wanted.note : -1.0f);
         gainNow[(size_t) v].store ((float) voices[(size_t) v].gain, std::memory_order_relaxed);
@@ -1124,6 +1237,18 @@ void PluginProcessor::pollKeyFileNow()
     follower.poll (duration<double> (system_clock::now().time_since_epoch()).count());
 }
 
+PluginProcessor::FollowedKey PluginProcessor::followedKey() const noexcept
+{
+    FollowedKey k;
+    k.following = followKey->load (std::memory_order_relaxed) >= 0.5f;
+    k.has = follower.has();
+    k.key = follower.key();
+    k.minor = follower.minor();
+    k.writtenUnix = follower.writtenAt();
+    k.listening = follower.listening();
+    return k;
+}
+
 void PluginProcessor::handleAsyncUpdate()
 {
     const double rate = preparedRate.load (std::memory_order_relaxed);
@@ -1143,6 +1268,7 @@ void PluginProcessor::setCurrentProgram (int i)
     if (! juce::isPositiveAndBelow (i, getNumPrograms()))
         return;
     currentProgram = i;
+    programKnown = true;
     const auto set = [this] (const juce::String& id, float v)
     {
         auto* p = apvts.getParameter (id);
@@ -1174,9 +1300,11 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("consonantScatter", preset.scatter);
     set ("breath", preset.breathAmount);
     // Presets leave Human alone, like Key and Input Type: it is how the voices sing whatever the arrangement. Tight is the exception,
-    // since it promises exact tuning.
+    // since it promises exact tuning, and so is the one preset made to show Human off (1.6.0).
     if (juce::String (preset.name) == "Tight")
         set ("human", 0.0f);
+    else if (preset.humanAmount >= 0.0f)
+        set ("human", preset.humanAmount);
 }
 
 juce::AudioProcessorEditor* PluginProcessor::createEditor() { return new HarmonyEditor (*this); }
@@ -1187,6 +1315,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
+        if (programKnown && currentProgram >= 0)
+            xml->setAttribute (programAttribute, currentProgram);
         copyXmlToBinary (*xml, dest);
     }
 }
@@ -1200,8 +1330,13 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             if (xml->hasAttribute (windowWidthAttribute))
                 windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
             advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            // Which preset was chosen, only to name it: its values are already in the state and are not applied again. A session saved
+            // before 1.6.0, or with no preset chosen, does not say, so it names none rather than a wrong one. A damaged number is kept in range.
+            programKnown = xml->hasAttribute (programAttribute);
+            currentProgram = programKnown ? juce::jlimit (0, getNumPrograms() - 1, xml->getIntAttribute (programAttribute, 0)) : -1;
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (advancedOpenAttribute);
+            xml->removeAttribute (programAttribute);
             applySafeState (apvts, *xml);
         }
 }

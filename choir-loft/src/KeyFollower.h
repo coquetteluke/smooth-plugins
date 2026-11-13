@@ -128,19 +128,25 @@ public:
         KeyFileData d;
         if (! parse (text, d) || ! usable (d, nowUnix))
             return false;
-        packed.store (d.key | (d.minor ? 16 : 0) | 32, std::memory_order_relaxed);
+        written.store (d.time, std::memory_order_relaxed);
+        packed.store (d.key | (d.minor ? 16 : 0) | 32 | (d.listening ? 64 : 0), std::memory_order_relaxed);
         return true;
     }
 
-    void forget() noexcept { packed.store (0, std::memory_order_relaxed); }
+    void forget() noexcept { packed.store (0, std::memory_order_relaxed); written.store (0.0, std::memory_order_relaxed); }
 
     // Safe from the audio thread.
     bool has() const noexcept { return (packed.load (std::memory_order_relaxed) & 32) != 0; }
     int key() const noexcept { return packed.load (std::memory_order_relaxed) & 15; }
     bool minor() const noexcept { return (packed.load (std::memory_order_relaxed) & 16) != 0; }
+    // For the window: when Key wrote the key that is held (Unix seconds), and whether Key was listening then. A Manual key is written
+    // with listening false and is used all the same.
+    double writtenAt() const noexcept { return written.load (std::memory_order_relaxed); }
+    bool listening() const noexcept { return (packed.load (std::memory_order_relaxed) & 64) != 0; }
 
 private:
     char path[PATH_MAX] {};
     std::atomic<int> packed { 0 };
+    std::atomic<double> written { 0.0 };
 };
 } // namespace smoothharmony

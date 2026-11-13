@@ -109,6 +109,41 @@ namespace ui
         allButton = std::make_unique<AllButton> (*this);
         addAndMakeVisible (*allButton);
         drawnTo = processor.getPitchHistoryCount();
+        // Opened between phrases (1.6.0): the lines already sung are drawn, so they count as sung, and they scroll on and have no
+        // "Play your vocal" over them.
+        scanSung (juce::jmax (0ll, drawnTo - visiblePoints + 1), drawnTo);
+    }
+
+    // Where in the history something was sung, and the pitches it covers, for points from to before to.
+    void StageView::scanSung (long long from, long long to)
+    {
+        for (long long i = from; i < to; ++i)
+        {
+            const auto& point = processor.getPitchPoint (i);
+            const float leadPitch = point.lead.load (std::memory_order_relaxed);
+            bool any = leadPitch > 0.0f;
+
+            if (any)
+            {
+                linesLow = juce::jmin (linesLow, leadPitch);
+                linesHigh = juce::jmax (linesHigh, leadPitch);
+            }
+
+            for (const auto& v : point.voice)
+            {
+                const float p = v.load (std::memory_order_relaxed);
+
+                if (p > 0.0f)
+                {
+                    any = true;
+                    linesLow = juce::jmin (linesLow, p);
+                    linesHigh = juce::jmax (linesHigh, p);
+                }
+            }
+
+            if (any)
+                lastSung = i;
+        }
     }
 
     StageView::~StageView() = default;
@@ -162,6 +197,7 @@ namespace ui
 
     void StageView::hearAll()
     {
+        // Every singer, those past the voice count too, so a voice switched off and then put past the count is not left off unseen.
         for (int i = 0; i < singers; ++i)
         {
             auto* on = processor.apvts.getParameter (i == leadIndex ? juce::String ("leadOn") : "voice" + juce::String (i + 1) + "On");
@@ -436,6 +472,7 @@ namespace ui
 
         // Who is heard. Their lines dim right away, the whole line, so a line always matches its singer.
         bool someoneOff = false;
+        const int inCount = processor.voiceCount();
 
         for (int i = 0; i < singers; ++i)
         {
@@ -448,7 +485,9 @@ namespace ui
                 repaint();
             }
 
-            someoneOff = someoneOff || ! on;
+            // Only singers on the stage count (1.6.0): one switched off past the voice count is not drawn and has no card.
+            if (i == leadIndex || i < inCount)
+                someoneOff = someoneOff || ! on;
         }
 
         allButton->setSomeoneOff (someoneOff);
@@ -484,33 +523,7 @@ namespace ui
 
         if (count != drawnTo)
         {
-            for (long long i = drawnTo; i < count; ++i)
-            {
-                const auto& point = processor.getPitchPoint (i);
-                const float leadPitch = point.lead.load (std::memory_order_relaxed);
-                bool any = leadPitch > 0.0f;
-
-                if (any)
-                {
-                    linesLow = juce::jmin (linesLow, leadPitch);
-                    linesHigh = juce::jmax (linesHigh, leadPitch);
-                }
-
-                for (const auto& v : point.voice)
-                {
-                    const float p = v.load (std::memory_order_relaxed);
-
-                    if (p > 0.0f)
-                    {
-                        any = true;
-                        linesLow = juce::jmin (linesLow, p);
-                        linesHigh = juce::jmax (linesHigh, p);
-                    }
-                }
-
-                if (any)
-                    lastSung = i;
-            }
+            scanSung (drawnTo, count);
 
             if (! needsRebuild && ring.isValid() && count - drawnTo < visiblePoints)
             {
@@ -1029,6 +1042,7 @@ namespace ui
         }
 
         dragStartY = pressedAt.y;
+        dragStartPan = panParam (dragging)->convertFrom0to1 (panParam (dragging)->getValue());
         setMouseCursor (juce::MouseCursor::DraggingHandCursor);
         repaintStage();
     }
@@ -1046,8 +1060,10 @@ namespace ui
             startDrag (pressed);
         }
 
+        // Pan moves by how far the mouse has moved since the press (1.6.0), as the note does, so grabbing a singer off its centre does not
+        // make it jump to the mouse.
         const auto stage = stageArea().toFloat();
-        const float pan = juce::jlimit (-100.0f, 100.0f, (e.position.x - stage.getX() - stageMargin) / (stage.getWidth() - 2.0f * stageMargin) * 200.0f - 100.0f);
+        const float pan = juce::jlimit (-100.0f, 100.0f, dragStartPan + (e.position.x - pressedAt.x) / (stage.getWidth() - 2.0f * stageMargin) * 200.0f);
         auto* panP = panParam (dragging);
         panP->setValueNotifyingHost (panP->convertTo0to1 (std::abs (pan) < 4.0f ? 0.0f : pan));
 

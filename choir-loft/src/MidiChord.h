@@ -34,7 +34,8 @@ public:
     {
         if (hold == on) return;
         hold = on;
-        if (! hold) releaseLatched();
+        // Notes the sustain pedal still holds stay until it comes up (1.6.0), as a note released under the pedal does.
+        if (! hold && ! pedal) releaseLatched();
     }
 
     void noteOn (int channel, int note) noexcept

@@ -30,18 +30,31 @@ public:
     void setValue (float) override {}
     float getDefaultValue() const override { return juce::jlimit (0.0f, 1.0f, (start - low) / (high - low)); }
     juce::String getText (float normalised, int) const override { return formatter (low + normalised * (high - low)); }
-    float getValueForText (const juce::String& text) const override { return juce::jlimit (0.0f, 1.0f, (text.getFloatValue() - low) / (high - low)); }
+    // A reading's own text reads back as itself (1.6.0): "no note" is no note, not C-1, and "B Mixolydian" is that key, not C Chromatic.
+    // The value whose text matches, among the reading's whole numbers when its formatter shows them by name; a plain number otherwise.
+    float getValueForText (const juce::String& text) const override
+    {
+        const auto wanted = text.trim();
+        if (stepsByName && high - low <= 512.0f)
+            for (int v = (int) std::ceil (low); (float) v <= high; ++v)
+                if (formatter ((float) v).equalsIgnoreCase (wanted))
+                    return juce::jlimit (0.0f, 1.0f, ((float) v - low) / (high - low));
+        return juce::jlimit (0.0f, 1.0f, (wanted.getFloatValue() - low) / (high - low));
+    }
+    // For readings shown by name (a note, a key): their text is looked up instead of read as a number.
+    ReadingParameter* namedSteps() noexcept { stepsByName = true; return this; }
 
 private:
     float low, high, start;
     Formatter formatter;
+    bool stepsByName = false;
     std::atomic<float> value { 0.0f };
 };
 
 // Up to four harmony voices from one lead vocal. Tracker, shifter and the deciding of notes live in their own files.
 // This class holds the parameters, runs them sample by sample, mixes the voices with the delay matched lead, and looks after latency,
 // bypass, MIDI timing and the key file.
-class PluginProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater
+class PluginProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     static constexpr int maxVoices = smoothharmony::HarmonyBrain::maxVoices;   // 8. Voices stays 1 to 4 and More Voices adds up to 4 on top, see makeLayout
@@ -59,6 +72,9 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
+    // The host's Reset (Logic sends one on stop and locate, 1.6.0): clears what prepareToPlay clears, allocates nothing. The Reset JUCE's AU
+    // wrapper sends right after the host turns its own bypass on is left out, so the 20 ms fade to the dry lead goes on.
+    void reset() override;
     bool isBusesLayoutSupported (const BusesLayout&) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -69,10 +85,12 @@ public:
     const juce::String getName() const override { return "Choir Loft"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    // The voices stand behind the lead and sing their own consonants later still (1.6.0): up to about 0.2 s after the lead has stopped.
+    double getTailLengthSeconds() const override { return tailSeconds; }
+    static constexpr double tailSeconds = 0.25;
 
     int getNumPrograms() override;
-    int getCurrentProgram() override { return currentProgram; }
+    int getCurrentProgram() override { return currentProgram; }   // -1: a session that does not say which preset it came from
     void setCurrentProgram (int) override;
     const juce::String getProgramName (int) override;
     void changeProgramName (int, const juce::String&) override {}
@@ -113,7 +131,7 @@ public:
     };
     static constexpr int pitchHistorySize = 2048;
     const PitchPoint& getPitchPoint (long long index) const noexcept { return pitchHistory[(size_t) (index & (pitchHistorySize - 1))]; }
-    long long getPitchHistoryCount() const noexcept { return pitchHistoryCount.load (std::memory_order_relaxed); }
+    long long getPitchHistoryCount() const noexcept { return pitchHistoryCount.load (std::memory_order_acquire); }
 
     // Latency in samples for an Input Type at a sample rate.
     static int latencyFor (int inputType, double sampleRate) noexcept;
@@ -130,6 +148,10 @@ public:
     // Tests only: what the worker thread and message thread do.
     void applyPendingLatencyNow() { handleAsyncUpdate(); }
     void pollKeyFileNow();
+
+    // What Follow Key is following, for the window (1.6.0): the key from Key's file and when Key wrote it. Safe from any thread.
+    struct FollowedKey { bool following = false, has = false, listening = false; int key = 0; bool minor = false; double writtenUnix = 0.0; };
+    FollowedKey followedKey() const noexcept;
 
     juce::AudioProcessorValueTreeState apvts;
 
@@ -177,6 +199,7 @@ private:
         double endHeldMs = 0.0, endHoldMs = 0.0, endFadeMs = 0.0, endNoteLevel = 0.0, endLowest = 0.0;
         // Human (1.5.0): the lead's level, quick and slow, where this voice reads it, and the smoothed gain made from them. Unused with Human at 0.
         double leadFast = 0.0, leadSlow = 0.0, wanderNow = 1.0;
+        int humanState = 0;                      // 1.6.0, Human switched while playing: 0 not yet known since prepare, 1 on, 2 off
 
         // Consonants: this voice's own version of each one, later and softer, and with its own waveform.
         static constexpr int numTaps = 16;
@@ -198,6 +221,8 @@ private:
     };
 
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&, bool forceBypass) noexcept;
+    void clearState() noexcept;
+    void parameterChanged (const juce::String&, float) override;
     void applyInputType (int type) noexcept;
     void readSettings() noexcept;
     void tick() noexcept;
@@ -234,6 +259,8 @@ private:
     static constexpr int pitchRingSize = 256;
     std::array<double, pitchRingSize> pitchRing {};
     std::array<bool, pitchRingSize> voicedRing {};
+    // The tracker's period per tick (1.6.0), so a voice that stands behind the lead sizes its grains for the audio it reads, not for now
+    std::array<double, pitchRingSize> periodRing {};
     int pitchRingAt = 0;
     int leadRunTicks = 0, rewriteTicks = 30;   // ticks the lead has had pitch for, and how many of a stretch's first ticks get rewritten
     int lateTicks = 0, maxLateTicks = 50;      // how far back the newest start was written, and the most it may be
@@ -256,7 +283,8 @@ private:
     float fadeGain = 1.0f, fadeStep = 1.0f / 64.0f, bypassMix = 1.0f, bypassStep = 0.001f;
     // The output ceiling (1.5.2): -0.3 dBFS, a soft knee from 2.5 dB under it
     static constexpr double ceilingLevel = 0.96605, ceilingKnee = 0.72443;
-    double ceilingGain = 1.0, ceilingRelease = 0.0001;
+    double ceilingGain = 1.0, ceilingRelease = 0.0001, ceilingOnNow = 0.0, ceilingSwitchStep = 0.001;   // Ceiling fades in and out over 20 ms (1.6.0)
+    bool firstBlock = true;   // the first block after prepare or a reset starts on the set values, with nothing to fade from
     int ceilingHold = 0, ceilingHoldSamples = 1440;
     std::atomic<float> outputPeak { 0.0f };
     float lastVoicingLimit = -1.0f;
@@ -270,6 +298,10 @@ private:
     bool hostLatencyUpdates = true;
     const unsigned randomSeed = 0;   // Options::randomSeed
     int currentProgram = 0;
+    bool programKnown = false;        // a preset was chosen here or named by the session, so the session saves which one
+    std::atomic<bool> bypassJustSwitchedOn { false }, bypassWasOn { false };
+    std::atomic<juce::uint32> bypassSwitchedAtMs { 0 };
+    int offlineKeySamples = 0;        // Follow Key in an offline bounce reads the key file by audio time
     std::unique_ptr<Worker> worker;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)

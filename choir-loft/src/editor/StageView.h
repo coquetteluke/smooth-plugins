@@ -44,6 +44,8 @@ namespace ui
         bool isLive() const noexcept  { return live; }
         /** True if the last frame drew anything. When nothing is moving the window can look less often. */
         bool isMoving() const noexcept  { return moving; }
+        /** Whether "Play your vocal" is shown over the lines: only while nothing has been sung in the last 8 seconds. For tests. */
+        bool showsPlaceholder() const noexcept  { return emptyShown; }
 
         std::function<void (const juce::String&)> onHint;
 
@@ -76,6 +78,7 @@ namespace ui
         void updateKey();
 
         void rebuild (float scale);
+        void scanSung (long long from, long long to);
         void drawBackground();
         void clearColumns (juce::Graphics&, int fromColumn, int toColumn);
         void drawLines (juce::Graphics&, long long fromPoint, long long toPoint);
@@ -125,7 +128,7 @@ namespace ui
         int hovered = -1, highlight = -1, pressed = -1, dragging = -1;   // pressed, then dragging once the mouse has really moved
         int dragInterval = 0;
         juce::Point<float> pressedAt;
-        float dragStartY = 0.0f;
+        float dragStartY = 0.0f, dragStartPan = 0.0f;
         bool dragMovesInterval = false;
         int paintCount = 0;
         float spriteScale = 0.0f;

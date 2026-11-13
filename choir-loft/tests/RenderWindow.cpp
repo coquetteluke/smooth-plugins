@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <ctime>
 #include <cstdio>
 #include <libproc.h>
 #include <mach/mach.h>
@@ -52,6 +53,14 @@ static void setParam (PluginProcessor& p, const juce::String& id, float value)
     prm->setValueNotifyingHost (prm->convertTo0to1 (value));
 }
 
+// The real key file is never read here: a render that follows a key gets its own file (1.6.0).
+static PluginProcessor::Options optionsFor (const juce::String& keyFile)
+{
+    PluginProcessor::Options o;
+    o.keyFilePath = keyFile.isNotEmpty() ? keyFile : juce::String ("/nonexistent/choir-loft-render-key.json");
+    return o;
+}
+
 struct Session
 {
     PluginProcessor processor;
@@ -59,7 +68,8 @@ struct Session
     juce::AudioBuffer<float> buffer { 2, kBlock };
     juce::MidiBuffer midi;
 
-    explicit Session (int width = 0, bool advanced = false)
+    explicit Session (int width = 0, bool advanced = false, const juce::String& keyFile = {})
+        : processor (optionsFor (keyFile))
     {
         if (width > 0)
             processor.windowWidth.store (width);
@@ -275,6 +285,19 @@ int main (int argc, char** argv)
         Session s;
         s.play (sung, 0, sungEnd);
         s.saveBoth (folder, "active");
+    }
+
+    // Follow Key on (1.6.0): the Mode row says whose key it is and how old.
+    {
+        const auto keyFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("choir-loft-render-key.json");
+        keyFile.replaceWithText ("{\"key\":\"D\",\"scale\":\"minor\",\"confidence\":0.90,\"time\":"
+                                 + juce::String ((double) std::time (nullptr) - 130.0, 1) + ",\"listening\":true}");
+        Session s (0, false, keyFile.getFullPathName());
+        s.processor.apvts.getParameter ("followKey")->setValueNotifyingHost (1.0f);
+        s.processor.pollKeyFileNow();
+        s.play (sung, 0, sungEnd);
+        s.saveBoth (folder, "follow-key");
+        keyFile.deleteFile();
     }
 
     // Four voices, each somewhere else on the stage.

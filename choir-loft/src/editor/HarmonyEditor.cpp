@@ -59,9 +59,11 @@ public:
         g.setColour (tone::text.withAlpha (zone != none ? 0.095f : 0.055f));
         g.fillRoundedRectangle (b, 7.0f);
 
-        g.setColour (tone::text);
+        // A session that does not say which preset it came from names none (1.6.0), rather than the first one.
+        const int current = processor.getCurrentProgram();
+        g.setColour (current >= 0 ? tone::text : tone::muted);
         g.setFont (font (Weight::regular, 14.0f));
-        g.drawText (processor.getProgramName (processor.getCurrentProgram()), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
+        g.drawText (current >= 0 ? processor.getProgramName (current) : juce::String ("Choose a preset"), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
 
         const auto chevron = [&] (float cx, float direction, bool lit)
         {
@@ -85,10 +87,13 @@ public:
         const auto hit = zoneAt (e.position.x);
         const int count = processor.getNumPrograms();
 
+        const int current = processor.getCurrentProgram();
+
+        // From no preset, the arrows go to the last and the first one.
         if (hit == previous)
-            choose ((processor.getCurrentProgram() + count - 1) % count);
+            choose (current < 0 ? count - 1 : (current + count - 1) % count);
         else if (hit == next)
-            choose ((processor.getCurrentProgram() + 1) % count);
+            choose (current < 0 ? 0 : (current + 1) % count);
         else
             openMenu();
     }
@@ -389,6 +394,9 @@ void HarmonyEditor::Panel::paint (juce::Graphics& g)
     g.setFont (font (Weight::regular, 13.0f));
     g.drawText ("Voices", voicesCount.getBounds().translated (-54, 0).withWidth (48), juce::Justification::centredRight, false);
 
+    if (followText.isNotEmpty())
+        g.drawText (followText, followArea(), juce::Justification::centredRight, true);
+
     if (advancedAmount > 0.01f)
     {
         const int top = stage.getBottom() + 16 + stripHeight + 12;
@@ -424,6 +432,24 @@ void HarmonyEditor::Panel::paint (juce::Graphics& g)
             g.setColour (tone::muted.withMultipliedAlpha (dim));
             g.drawText ("as sung", b.withTrimmedLeft (8.0f).withTrimmedTop (5.0f), juce::Justification::centredLeft, false);
         }
+    }
+}
+
+juce::Rectangle<int> HarmonyEditor::Panel::followArea() const
+{
+    // Row two, between the Mode buttons and whichever field sits first by the display
+    const int left = modePicker.getRight() + 16;
+    const int right = juce::jmin (keyField.isVisible() && keyField.getY() == rowTwoY ? keyField.getX() : designWidth,
+                                  chordRootField.isVisible() && chordRootField.getY() == rowTwoY ? chordRootField.getX() : designWidth) - 12;
+    return { left, rowTwoY, juce::jmax (0, right - left), rowTwoHeight };
+}
+
+void HarmonyEditor::Panel::setFollowText (const juce::String& text)
+{
+    if (text != followText)
+    {
+        followText = text;
+        repaint (followArea());
     }
 }
 
@@ -656,6 +682,8 @@ HarmonyEditor::HarmonyEditor (PluginProcessor& p)
     setSize (savedWidth, juce::roundToInt (savedWidth / ratio));
     constructed = true;
 
+    // The loudest output while the window was shut can be minutes old (1.6.0): the light starts from what comes out from now on.
+    processorRef.takeOutputPeak();
     tick (1.0 / 60.0);
 
     // At most one frame per screen refresh, and never over the cap on faster screens. When nothing moves, nothing repaints.
@@ -679,6 +707,24 @@ HarmonyEditor::HarmonyEditor (PluginProcessor& p)
         sinceDrawn = 0.0;
         tick (step);
     });
+}
+
+// A session saved with the window sized on a bigger screen can open taller than this one, with its bottom row and its resize corner out of
+// reach (1.6.0). Once the window is on a screen, it shrinks to fit that screen's free area, with room for the host's own header.
+void HarmonyEditor::fitToScreen()
+{
+    fittedToScreen = true;
+    const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds());
+
+    if (display == nullptr)
+        return;
+
+    const double ratio = (double) designWidth / (double) designHeight;
+    const int roomHeight = display->userArea.getHeight() - hostHeaderRoom;
+    const int widest = juce::jmax (PluginProcessor::minWindowWidth, juce::jmin (display->userArea.getWidth(), (int) std::floor (roomHeight * ratio)));
+
+    if (getWidth() > widest)
+        setSize (widest, juce::roundToInt (widest / ratio));
 }
 
 HarmonyEditor::~HarmonyEditor()
@@ -717,6 +763,9 @@ void HarmonyEditor::setAdvancedOpen (bool shouldBeOpen, bool animate)
 
 void HarmonyEditor::tick (double dtSeconds)
 {
+    if (! fittedToScreen && getPeer() != nullptr)
+        fitToScreen();
+
     panel.stage.advance (dtSeconds);
     panel.outputLight.feed (processorRef.takeOutputPeak(), dtSeconds);
     panel.presets->refresh();
@@ -770,6 +819,30 @@ void HarmonyEditor::tick (double dtSeconds)
     const auto readings = processorRef.getReadings();
     panel.keyField.setOverride (following ? juce::String (noteNames[juce::jlimit (0, 11, readings.activeKey)]) : juce::String());
     panel.scaleField.setOverride (following ? juce::String (scaleNames[juce::jlimit (0, numScales - 1, readings.activeScale)]) : juce::String());
+
+    // Where the key comes from (1.6.0): with Follow Key on, the line beside Key says it is Key's and how long ago Key wrote it, so a key that
+    // moves is never a surprise. Before a first key from Key, it says the window's own Key and Scale are in use.
+    {
+        const auto followed = processorRef.followedKey();
+        juce::String text;
+
+        if (followed.following && panel.modeShown != modeMidi && panel.modeShown != modeChannel)
+            text = followed.has ? "From Key, " + ui::ageText (juce::Time::currentTimeMillis() / 1000.0 - followed.writtenUnix)
+                                : juce::String ("Waiting for Key, using this key");
+
+        panel.setFollowText (text);
+    }
+
+    // In a key of seven notes the interval arrows step by name; in any other they step by semitone.
+    {
+        const auto followed = processorRef.followedKey();
+        const int scale = followed.following && followed.has ? (followed.minor ? (int) scaleMinor : (int) scaleMajor)
+                                                             : juce::jlimit (0, numScales - 1, (int) processorRef.apvts.getRawParameterValue ("scale")->load (std::memory_order_relaxed));
+        const int notes = popCount (scalePattern (scale));
+
+        for (auto& strip : panel.strips)
+            strip->interval.setScaleNotes (notes);
+    }
 
     // Advanced glides open and shut, in about a fifth of a second.
     const float target = isAdvancedOpen() ? 1.0f : 0.0f;

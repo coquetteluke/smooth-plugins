@@ -22,12 +22,14 @@ namespace ui
         // Mode numbers from HarmonyBrain.h, kept apart so the controls do not need the whole brain.
         constexpr int modeScale = 0, modeMidi = 1, modeFixed = 2, modeChord = 3, modeChannel = 4;
 
-        juce::String intervalWords (int semitones)
+        // exact: the semitones are sung as they are (Fixed, or a key without seven notes), so six of them is a tritone, not a 5th (1.6.0)
+        juce::String intervalWords (int semitones, bool exact = false)
         {
             if (semitones == 0)
                 return "Unison";
 
-            return juce::String (smoothharmony::intervalName (semitones)) + (semitones > 0 ? " up" : " down");
+            const juce::String name = exact && std::abs (semitones) % 12 == 6 ? juce::String ("Tritone") : juce::String (smoothharmony::intervalName (semitones));
+            return name + (semitones > 0 ? " up" : " down");
         }
 
         juce::String semitoneText (int semitones)
@@ -37,6 +39,19 @@ namespace ui
 
             return (semitones > 0 ? "+" : "") + juce::String (semitones) + " st";
         }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------
+
+    juce::String ageText (double seconds)
+    {
+        if (seconds < 60.0)
+            return "under a minute ago";
+        if (seconds < 3600.0)
+            return juce::String ((int) (seconds / 60.0)) + " min ago";
+        if (seconds < 86400.0)
+            return juce::String ((int) (seconds / 3600.0)) + " h ago";
+        return "over a day ago";
     }
 
     // ----------------------------------------------------------------------------------------------------------
@@ -171,7 +186,8 @@ namespace ui
 
         // The fill grows from the middle when the range goes both ways, as Pan and Tone do.
         const float proportion = (float) valueToProportionOfLength (getValue());
-        const bool fromMiddle = getMinimum() < 0.0 && getMaximum() > 0.0 && getMinimum() > -60.0;
+        // Two-way ranges are the ones that sit as far below 0 as above it (1.6.0): the level ranges, from -60 dB to +6, are not, and fill from the left.
+        const bool fromMiddle = getMinimum() < 0.0 && getMaximum() > 0.0 && std::abs (getMinimum() + getMaximum()) < 1.0e-6;
         const float origin = fromMiddle ? (float) valueToProportionOfLength (0.0) : 0.0f;
         const float edge = track.getX() + track.getWidth() * proportion;
         const float start = track.getX() + track.getWidth() * origin;
@@ -226,6 +242,15 @@ namespace ui
         stopTimer();
     }
 
+    void IntervalField::setScaleNotes (int notes)
+    {
+        if (notes != scaleNotes)
+        {
+            scaleNotes = notes;
+            repaint();
+        }
+    }
+
     void IntervalField::setMode (int newMode)
     {
         if (mode == newMode)
@@ -276,8 +301,12 @@ namespace ui
         const int arrow = arrowAt (e.position);
         onArrow = arrow != 0;
 
+        // The second press of a double-click is stepped in mouseDoubleClick, so each press steps exactly once (1.6.0).
         if (onArrow)
-            step (arrow);
+        {
+            if (e.getNumberOfClicks() == 1)
+                step (arrow);
+        }
         else
             juce::Slider::mouseDown (e);
     }
@@ -322,12 +351,14 @@ namespace ui
     {
         int next = juce::roundToInt (getValue());
 
-        // Counted in the key, +3 and +4 both mean a third, so one press moves to the next name.
+        // Counted in a seven note key, +3 and +4 both mean a third, so one press moves to the next name. In a key with more or fewer notes,
+        // and in Chord Tones, every semitone can sing another note, so a press moves one semitone (1.6.0).
         const auto words = intervalWords (next);
+        const bool byName = mode == modeScale && scaleNotes == 7;
 
         do
             next += direction;
-        while ((mode == modeScale || mode == modeChord) && next >= -24 && next <= 24 && intervalWords (next) == words);
+        while (byName && next >= -24 && next <= 24 && intervalWords (next) == words);
 
         next = juce::jlimit (-24, 24, next);
         param.beginChangeGesture();
@@ -368,11 +399,11 @@ namespace ui
         else if (mode == modeFixed)
         {
             big = semitoneText (semitones);
-            small = intervalWords (semitones);
+            small = intervalWords (semitones, true);
         }
         else
         {
-            big = intervalWords (semitones);
+            big = intervalWords (semitones, mode == modeScale && scaleNotes != 7);
             small = semitoneText (semitones);
         }
     }

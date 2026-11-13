@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.6.0, 2026-11-13
+
+Phase 2: the bug hunt's 22 kept findings, HostStress's 10 FAILs, the key file items, round 1's last open fault, and two additions: a preset that shows Human off, and the window saying where Follow Key's key came from. Latency unchanged (659 samples, 13.7 ms at Alto/Tenor). Saved sessions open with their settings. No parameter, AU code or Input Type value changed; every older preset keeps its number and its settings. The README section "Phase 2 fixes (1.6.0)" has the detail.
+
+The sound at the default changes, on purpose, in one place and two small ones. Luke left this call to the lead on 2026-11-11. A voice that stands behind the lead read the lead from a moment ago but cut its grains with the tracker's period for now, so for the voice's lag after every note change its grains were sized for one note and cut from another (choir-dsp-r3-2). That was behind round 1's last open fault, low phrase notes that read 50 cents sharp and then an octave off at Human 0: on takes 02, 04 and 10 with 8 runs of random numbers, 9 voice notes from 98 to 130 Hz not sung right in 1.5.4, 3 now (octave verdicts 16 to 9). Not at zero. The tracker also forgets the last phrase's period after 100 ms of quiet (r3-1) and a gap breaks the 1.5.2 rule's run of two longer readings (r3-4). Round 1's real vocal checks were run again on the full working set and the first session, with the same check file, against round 1's final 1.5.4 run: every line that passed on 1.5.4 passes. Human 100, 35 and 65: U1 to U8 and V1 to V4 pass (Human 100: pitch spread 10.96 cents, movement in common 0.26, level curve 0.52, ends apart 14 ms). U9 over random number runs 0 to 7: 7 of 8 pass (1.5.4: 6); run 1 misses H3 by the same one note as 1.5.4 did (0.9957 against 0.9986), run 5 now passes. The first session passes everything at Human 100, and at Human 0 its held notes pass H3 to H10 against 1.5.4 and its leak is 1.5.4's (2.47%). At Human 0 on the working set, the 21 decidable start and breath rules all pass, at the default and with Humanize and Drift 0; held notes from 98 to 130 Hz 700 of 700 (1.5.4: 699), octave verdicts 4 (5), late 0 (1). Behind Duo, which round 1 measured but did not pass or fail: from 98 to 130 Hz 257 of 262 voice notes (258), time on the note 93.95% (93.75%), octave verdicts 5 (4), late 4 (5); the notes that moved are ones that already flicker with the random numbers. The 22 null tests are pinned to 1.6.0's sound; with the three fixes taken out, the 1.6.0 source still gives 1.5.1's numbers bit for bit.
+
+Fixed, each with a check in `tests/Phase2Tests.h` (`PluginTest phase2`) that fails on 1.5.4 (the first number) and passes now:
+- The grains of a voice behind the lead (choir-dsp-r3-2): one voice in unison 20 to 40 ms behind a lead that drops an octave legato came out 2.62 dB over its own level while it still read the high note; now 0.83 dB (1 allowed).
+- A phrase after a pause (choir-dsp-r3-1): on the 8 cases where 1.5.4 read a new phrase otherwise for having heard the one before the pause, 1.33 to 1.52 ms of it read otherwise; now 0. The hunt's own case (A2, a pause, a breathy A3 read an octave low) read the same on 1.5.4 too, and no octave error turned up in 2,700 pairs.
+- Logic's Reset on stop and locate cleared nothing (choir-dsp-r1-1): play, reset, play now equals a new instance, largest difference 0.678 to 0; silence after a reset 0.025 to 0. Allocates nothing. The Reset that comes with Logic's own bypass switching on is left out, so the fade to the dry lead goes on; a later one while bypassed is not.
+- Ceiling switched off while holding the level down stepped the output (choir-dsp-r1-2): largest step against the note's own 2.73 to 1.38 times (2 allowed). It fades over 20 ms each way.
+- Human jumped to 0 clicked (choir-dsp-r2-1): largest step against the render left at 100, 6.93 to 1.00 times; Human back on in a steady note held the voices 5.3 dB off for 300 ms, now 1.3 dB (2 allowed).
+- Tail reported as 0 (choir-dsp-r1-3): output went on 0.041 s after the lead at the defaults and 0.129 s on Eight Part Choir at full Drift, Humanize, Scatter and Human. Reported now as 0.25 s.
+- A voice turned Off while singing still read its note and counted as sounding (choir-dsp-r1-4).
+- Chord Hold switched off dropped the notes the pedal held (choir-dsp-r1-5).
+- A singer switched off past the voice count was heard for 15 ms when Voices brought it in, at -33.7 dBFS (choir-dsp-r2-2), now silent.
+- The newest pitch point was published with relaxed ordering (choir-window-r1-4, choir-dsp-r3-6): release and acquire now.
+- Readings' text read back as a number (HostStress paramtext, 10 FAILs): "no note" read back as C-1, "B Mixolydian" as C Chromatic; 209 of 210 failed, now 0.
+- The interval arrows: two quick clicks stepped three times (+4 to +7, now +6, choir-window-r1-1); in Chromatic the up arrow skipped +7 (+5 to +6 to +8, now +7) and in Chord Tones +4 (choir-window-r2-1).
+- A window saved 1900 wide opened 1235 points tall whatever the screen (choir-window-r3-1); on a screen it now fits the screen's free area with room for Logic's header.
+- Opened a second after a phrase, the window printed "Play your vocal" over the lines and they stood still (choir-window-r1-2).
+- The output light opened lit from a peak while the window was shut, +4.9 dB (choir-window-r1-3).
+- A singer grabbed 14 px off its centre and dragged up jumped from pan -35 to -23 (choir-window-r2-3).
+- Pan and Tone filled from the left, 58 lit pixels on the left quarter of a centred Pan, now 0 (choir-window-r2-4).
+- All stayed lit for a singer off past the voice count, 868 pixels different, now 0 (choir-window-r2-5).
+- The preset box named the first preset after any reload (choir-window-r2-2): the chosen preset is saved, only to name it. Old sessions say "Choose a preset" and sound as their settings say.
+- In an offline bounce, Follow Key took a key change up by wall time (key-file-link-r2-1): 0.4 s of audio after the file changed it still read C, now E.
+
+Added:
+- Human Thirds And Fifths, the 15th preset, added last so every other keeps its number: Pop Thirds And Fifths with Human 65, where every real vocal limit held on Luke's takes. Like Tight it sets Human; every other preset still leaves it alone.
+- With Follow Key on, the window says whose key is in use and how old it is: "From Key, 4 min ago", or "Waiting for Key, using this key". A Manual or Locked key from Key is followed as before; a key written with listening false is not refused, since Manual writes it that way.
+
+Not changed, and why:
+- choir-dsp-r3-5 (a long-lag voice's phrase start scoop drawn on the old note's tail): real, but only at high Drift or Humanize. The fix moves the start of every lagged voice's scoop at the default as well, a sound change of its own that needs its own real vocal run. Left for later.
+
+Tests: 731 pass, 0 fail (1.5.4: 663). No limit was loosened. The 22 null tests hold 1.6.0's numbers (see tests/WindowTests.h). Four of the new checks measured the wrong thing at first and were corrected before the fixes were judged by them (choir-dsp-r2-1 twice, choir-dsp-r3-2, choir-window-r1-2); both versions' numbers are in the comments in tests/Phase2Tests.h. choir-dsp-r3-4 has no check: no synthetic sound was found that sets that rule off.
+
 ## 1.5.4, 2026-11-12
 
 Fifth pass, Human only. Luke left this call to the lead on 2026-11-11: what Human does above 0 sounds a little different (the voices no longer drift behind you over a long note, voice 2 lets go of a note's end a little later than voice 1, a voice's own wander comes back sooner after a note starts but never takes it more than 40 cents off its note, and it follows a little more of your own movement). Human at 0, the default, is untouched: the working set at Human 0 renders bit for bit as 1.5.3 (starts and breaths at the default and with Humanize and Drift 0, held notes, behind Duo), so do the first session's takes, and the 22 null tests read as before. Saved sessions open as they were and keep their settings. Latency unchanged (659 samples, 13.7 ms at Alto/Tenor). The README section "Human: the held notes with any random numbers (1.5.4)" has the tables.

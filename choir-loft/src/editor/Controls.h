@@ -7,6 +7,9 @@
 
 namespace ui
 {
+    /** How long ago, in words a glance can take: "under a minute ago", "4 min ago", "2 h ago". */
+    juce::String ageText (double seconds);
+
     using Apvts = juce::AudioProcessorValueTreeState;
 
     /** The value box a click on a value opens, centred, without the label's own frame. */
@@ -82,6 +85,8 @@ namespace ui
         void mouseDoubleClick (const juce::MouseEvent&) override;
 
         void setMode (int);
+        /** How many notes the scale in use has (seven unless a Scale with more or fewer is chosen): in seven the arrows step by name. */
+        void setScaleNotes (int);
         void setForcedHover (bool shouldShow)  { forcedHover = shouldShow; repaint(); }
         /** Smaller type on two lines, for a narrow card. */
         void setCompact (bool shouldBe)        { if (compact != shouldBe) { compact = shouldBe; repaint(); } }
@@ -105,7 +110,7 @@ namespace ui
         juce::RangedAudioParameter& param;
         const int index;
         const juce::Colour accent;
-        int mode = 0, hoveredArrow = 0;
+        int mode = 0, hoveredArrow = 0, scaleNotes = 7;
         bool forcedHover = false, onArrow = false, compact = false;
         TypeBox typeBox;
         std::unique_ptr<juce::SliderParameterAttachment> attachment;

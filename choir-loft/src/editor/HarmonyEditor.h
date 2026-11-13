@@ -23,11 +23,17 @@ public:
     void previewHover (const juce::String& paramId);
 
     void setAdvancedOpen (bool shouldBeOpen, bool animate);
+
+    /** Shrinks the window to fit the free area of the screen it is on, leaving room for the host's header (1.6.0). Called once the window
+        is on a screen. */
+    void fitToScreen();
+    static constexpr int hostHeaderRoom = 80;
     bool isAdvancedOpen() const noexcept;
 
     ui::StageView& getStage() noexcept        { return panel.stage; }
     juce::Component& getPanel() noexcept      { return panel; }
     juce::String getHintText() const          { return panel.hintLine.getText(); }
+    juce::String getFollowText() const        { return panel.getFollowText(); }
 
 private:
     class PresetBox;
@@ -67,6 +73,9 @@ private:
         void showHint (const juce::String&);
         void hintFromComponent (juce::Component*);
         void placeForMode (int mode);
+        void setFollowText (const juce::String&);
+        juce::Rectangle<int> followArea() const;
+        juce::String getFollowText() const  { return followText; }
         int voiceUnder (juce::Component*) const;
 
         HarmonyEditor& owner;
@@ -98,6 +107,7 @@ private:
         juce::Label hintLine;
         float advancedAmount = 0.0f;   // 0 closed, 1 open
         int modeShown = -1, cardsShown = 4;
+        juce::String followText;   // with Follow Key on: whose key it is and how old (1.6.0)
 
         // The lead's card, first in the row of singers: its switch, what it sings, Level and Pan. Where a voice says its interval, this says it is you.
         juce::Rectangle<int> leadCaption;
@@ -112,7 +122,7 @@ private:
     ui::LookAndFeel lookAndFeel;
     Panel panel;
     double lastFrameTime = 0.0, frameBudget = 0.0, sinceDrawn = 0.0;
-    bool constructed = false;
+    bool constructed = false, fittedToScreen = false;
     std::unique_ptr<juce::VBlankAttachment> vblank;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HarmonyEditor)

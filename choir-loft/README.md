@@ -4,7 +4,7 @@ Up to eight harmony voices from one lead vocal. Formants stay where they are, so
 
 **Load it:** Audio Units > Luke Garito > Choir Loft. AU code `aumf SHrm Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. With mono in, the voices still spread across the stereo field.
 
-Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2 and 1.5.0 to 1.5.4 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
+Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2 and 1.5.0 to 1.6.0 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
 
 ## First settings to try
 
@@ -20,11 +20,11 @@ Every control is a real AU parameter that a host can find by name.
 |---|---|
 | Mode | Where voice pitch comes from. See below. |
 | Key, Scale | Used by Scale Interval. Chromatic, Major, Minor, Harmonic Minor, Melodic Minor, Major Pentatonic, Minor Pentatonic, Blues, Dorian, Mixolydian. |
-| Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key, on a background thread. Missing, broken, stale (over 10 minutes old), future dated or low confidence (under 0.5) data is ignored: the last good key holds, and with none it uses Key and Scale. Picking a Key or Scale by hand in the window turns Follow Key off. |
+| Follow Key | Takes key and scale from `~/Library/Application Support/SmoothPlugins/key.json`, written by Smooth Key, on a background thread. Missing, broken, stale (over 10 minutes old), future dated or low confidence (under 0.5) data is ignored: the last good key holds, and with none it uses Key and Scale. A Manual or Locked key from Key is followed the same way. Picking a Key or Scale by hand in the window turns Follow Key off. With it on, the window says where the key came from and how long ago Key wrote it (1.6.0). In an offline bounce or freeze the file is read every 0.3 s of audio rather than of wall time, so a key change lands at the same place in the song as in playback (1.6.0). |
 | Voices | 1 to 4. Voices fade in and out. |
 | More Voices | 0 to 4, added to Voices: Voices 4 and More Voices 4 is eight singers. Two controls because a host stores automation of Voices as a position in its range, and widening that range would have moved old automation. The window shows them as one row, 1 to 8. |
 | Voice N On, Lead On | Whether you hear that singer. Off fades over 15 ms, and it stops using CPU while its note logic keeps going, so it comes back on the right note. Voices 1 to 8. |
-| Voice N Interval | -24 to +24 semitones. Its value string says both: `+4 st (3rd up)`. Fixed Interval uses the semitones. Scale Interval uses the name, so +3 and +4 both mean a third, and the scale decides its size. |
+| Voice N Interval | -24 to +24 semitones. Its value string says both: `+4 st (3rd up)`. Fixed Interval uses the semitones. Scale Interval uses the name, so +3 and +4 both mean a third, and the scale decides its size. In the window the arrows step to the next name in a seven note key, and one semitone in any other key and in Chord Tones, where every semitone can sing another note (1.6.0). |
 | Voice N Level | -60 (Off) to +6 dB. |
 | Voice N Pan | Constant power, centre at unity. Full left is +3 dB left, nothing right. |
 | Voice N Drift | 0 to 100%. Slow pitch, timing and level wander, plus small grain to grain roughness. 100 is +/-20 cents, up to 40 ms behind the lead and about +/-1.5 dB. Each voice wanders on its own. |
@@ -49,7 +49,7 @@ Every control is a real AU parameter that a host can find by name.
 | Tracking | Which sounds count as pitched. 0 is choosy, 100 lets rough, breathy sound count. |
 | Reference A4 | 415 to 466 Hz. |
 | Bypass | Keeps the same delay. |
-| Ceiling | Off or on, off by default (1.5.2). On, what comes out never passes -0.3 dBFS: one gain for both channels comes down at once when a sample would pass a soft knee, holds for 30 ms and comes back over 200 ms. No look ahead, so no added delay. A take with room to spare is not touched, and Bypass still passes the vocal untouched. |
+| Ceiling | Off or on, off by default (1.5.2). On, what comes out never passes -0.3 dBFS: one gain for both channels comes down at once when a sample would pass a soft knee, holds for 30 ms and comes back over 200 ms. No look ahead, so no added delay. A take with room to spare is not touched, and Bypass still passes the vocal untouched. Switched on or off while it is holding the level down, it fades over 20 ms instead of stepping (1.6.0). |
 
 Readings, which never write automation: Detected Pitch, Lead Note, Voice 1 to 8 Note, Voices Sounding, Active Key. An off singer reads no note and does not count as sounding. The window draws from them live. Hosts read them by name.
 
@@ -75,6 +75,8 @@ The Mode row says In Key where the parameter is called Scale Interval, and Fixed
 
 In the top row, between the presets and the voice count, are the Ceiling switch and the output's loudest moment in words ("Out -3.0 dB"). From -1 dBFS up the words turn warm white and say "near full scale", above 0 "over full scale"; they hold for a second and a half and go out when nothing plays (1.5.2).
 
+With Follow Key on, the space in the Mode row left of Key says whose key is in use: "From Key, 4 min ago", or "Waiting for Key, using this key" before Key has written one (1.6.0). Since a test run once moved Luke's key without him seeing it, a key from Key is never a silent change. Pan and Tone bars fill from their middle (1.6.0). A window saved at a size taller than the screen it opens on shrinks to fit it, with room for Logic's own header (1.6.0).
+
 Every control is a real parameter with the same ID, name and range as before. Double-click resets, click a value to type it, the arrows on an interval step to the next interval, and Shift gives a finer drag. The size and whether Advanced is open are saved with the session, and nothing else was added to saved state. The line under the controls explains whatever is under the mouse.
 
 `src/editor/`: `StageView` is the display, `Controls` the controls, `HarmonyEditor` the layout, `Theme` the colours. Font: Inter, SIL OFL, license in `assets/fonts/`. Pictures are in `docs/window/`: `build/RenderWindow_artefacts/Release/RenderWindow docs/window` draws them again from the `say` recordings in `tests/corpus`, which are not a singer.
@@ -93,7 +95,9 @@ CPU, real window at 2x on this Mac: every run is in `docs/window-cpu.md`. `tests
 
 ## Presets
 
-Pop Thirds And Fifths, Third Above, Third Below, Full Stack, Gang Unison, Wide Octaves, Power Fifths, MIDI Choir, MIDI Chords Only (lead off), Chord Tones Pad, Tight. Six Part Stack, Eight Part Choir, MIDI Eight Part Choir. Presets never change Key, Scale, Follow Key, Input Type or Human, so the robot or human choice stays as you set it while you try presets. Tight alone puts Human at 0, because it promises exact tuning. They all put every singer back on.
+Pop Thirds And Fifths, Third Above, Third Below, Full Stack, Gang Unison, Wide Octaves, Power Fifths, MIDI Choir, MIDI Chords Only (lead off), Chord Tones Pad, Tight. Six Part Stack, Eight Part Choir, MIDI Eight Part Choir. Human Thirds And Fifths (1.6.0): Pop Thirds And Fifths with Human at 65. Presets never change Key, Scale, Follow Key or Input Type. They leave Human alone too, so the robot or human choice stays as you set it while you try presets, with two exceptions: Tight puts Human at 0, because it promises exact tuning, and Human Thirds And Fifths puts it at 65, because showing Human is what it is for. They all put every singer back on.
+
+The session remembers which preset was chosen (1.6.0), only to name it: its values are in the session anyway and are not applied again. A session saved before 1.6.0, or one where no preset was chosen, opens saying "Choose a preset", and the arrows then go to the first and the last one.
 
 Tight is exact tuning: no Drift, Humanize, Vibrato, Tone, Breath or Scatter, Throat 100, Follow Lead 0, Consonants 35. It meets the 1.0.0 limits. It is not a bit for bit copy of 1.0.0, because the vowel end fix below applies everywhere. For the 1.0.0 default sound itself, set Drift 25, Humanize 20, Vibrato 10, Throat 100, 96, 104, 92, Glide 20, Follow Lead 25, Consonants 35, Tone, Breath and Scatter 0.
 
@@ -392,6 +396,31 @@ Three things changed. Humanize's per note random choices (scoop, detune, glide, 
 
 Not at zero: the two runs that still fail fail on H3 (two voice notes from 98 to 130 Hz not sung right beyond Human 0's, of 700, one allowed) and H7 (7 octave verdicts against 4, two more allowed). The voice notes behind them are the same five every time (take 02 at 21.797 and 29.722 s, take 04 at 12.432 s, take 10 at 41.242 s), where the tool reads the voice 50 cents or more off for 30 ms and then on its note an octave away. They come and go with the random numbers at Human 0 too: Human 0 against Human 0 with another of the eight seeds fails U9 in 16 of 56 pairs.
 
+## Phase 2 fixes (1.6.0)
+
+A bug hunt over the whole plug-in (22 findings that survived a skeptic), the shared host stress tool, and round 1's last open fault. Every fix has a check in `tests/Phase2Tests.h` (`PluginTest phase2`) that fails on 1.5.4 and passes now; the 1.5.4 numbers are in the CHANGELOG.
+
+What changes when you play:
+- **Logic's stop and locate.** The host's Reset now clears everything prepareToPlay clears: the input history, the tracker, the note logic, the voices and the MIDI queue, and the random numbers start over, so the same bar plays the same way twice. The one Reset that comes with Logic's own bypass switching on is left out, so the fade to the dry lead goes on.
+- **Ceiling switched while it holds the level down** fades over 20 ms (it stepped up to 5 dB in one sample).
+- **Human jumped to 0** glides the voices' level over 15 ms, and Human switched on again starts from the level the voices have, not from whenever it was last on.
+- **The tail** is reported as 0.25 s: the voices stand behind the lead and sing their own consonants later still.
+- **Chord Hold switched off** keeps the notes the sustain pedal still holds.
+- **A singer switched off while past the voice count** stays off when Voices brings it in (it was heard for 15 ms).
+
+What changes in the sound at the default, on purpose:
+- **A voice behind the lead sizes its grains for the audio it reads** (round 1's last open fault, and the hunt's choir-dsp-r3-2). The tracker's period is for the newest audio; a voice reads the lead from a moment ago, by the latency and its own lag. So for that lag after every note change, its grains were cut from the old note with windows and gains sized for the new one. Now each voice looks its period up where it looks its pitch up, from a per tick record that is rewritten at a start the same way the pitch is. On the low notes round 1 left open (98 to 130 Hz, the voice read 50 cents sharp for 30 ms and then an octave off, at Human 0 too), takes 02, 04 and 10 at Human 0 with 8 runs of random numbers: voice notes not sung right 9 in 1.5.4, 3 now; octave verdicts on those takes 16, now 9. Not at zero: the three left are 02 at 29.722 s, 04 at 12.432 s and 10 at 41.242 s, once each in 8 runs.
+- **The tracker forgets the last phrase after 100 ms of quiet** (choir-dsp-r3-1): a new phrase is read as a tracker that never heard the last one reads it. Of 2,700 synthetic pairs (`PluginTest r31probe`) 20 started one analysis (1.3 to 1.5 ms) otherwise on 1.5.4 because of the phrase before the pause; none an octave off, which the hunt feared.
+- **A gap breaks the 1.5.2 rule's run of two longer readings** (choir-dsp-r3-4), so one reading from before a pause and one after it cannot call a murmur a note. No synthetic sound was found that sets the rule off, so this one has no check of its own.
+
+Before these went in, round 1's real vocal checks were run again on Luke's working set and first session with the same check file: every line that passed on 1.5.4 passes, U9 passes on one more run of random numbers than before, and at Human 0 all 21 decidable start and breath rules hold at the default and with Humanize and Drift 0. The CHANGELOG has the numbers. With the three taken out, the 1.6.0 source plays exactly what 1.5.4 played: the null tests and the sessions 1.5.4 saved come out bit for bit.
+
+What the readings and the window say:
+- Voice N Note and Voices Sounding read a voice turned Off while playing as off.
+- Each reading's own text reads back as itself in a host: "no note" is no note (it read as C-1) and "B Mixolydian" that key (it read as C Chromatic).
+- The interval arrows: two quick clicks step twice, not three times; in a key without seven notes and in Chord Tones they step one semitone.
+- The window opens with the lines already sung moving on, without "Play your vocal" over them; the output light starts from what comes out once it is open; a singer grabbed off its centre keeps its pan when dragged up or down; Pan and Tone fill from the middle; All is lit only for a singer on the stage.
+
 ## Latency
 
 Exact and reported, the same bypassed. At 48 kHz: Soprano 9.0 ms, Alto/Tenor 13.7 ms (default), Low Male and Wide Range 20.6 ms. Since 1.5.0 Alto/Tenor follows notes down to 65 Hz at its 13.7 ms. The lead and dry path are delayed to match. Changing Input Type fades out, jumps and fades in over 4 ms, then tells the host.
@@ -429,7 +458,7 @@ Exact and reported, the same bypassed. At 48 kHz: Soprano 9.0 ms, Alto/Tenor 13.
 
 ## Measured
 
-All in `tests/results.txt`: 616 pass, 0 fail as of 1.5.1 (the 3 breathy high starts that failed from 1.4.0 to 1.5.0 pass: see "Breathy high starts, the creak and the doubler"). Pitch, formant, level, pan, click and timing figures below are on plain settings, which is what Tight gives. Limits are in `tests/PassLimits.h`, committed before any DSP existed. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`.
+All in `tests/results.txt`: 731 pass, 0 fail as of 1.6.0 (616 as of 1.5.1; the 3 breathy high starts that failed from 1.4.0 to 1.5.0 pass: see "Breathy high starts, the creak and the doubler"). Pitch, formant, level, pan, click and timing figures below are on plain settings, which is what Tight gives. Limits are in `tests/PassLimits.h`, committed before any DSP existed. Run: `build/PluginTest_artefacts/Release/PluginTest | tee tests/results.txt`.
 
 - Voice pitch against target, 95th percentile, 24 keys, every degree, 1056 notes: Scale Interval 2.3 cents, Fixed Interval 1.8, MIDI Chord 0.03. Limit 5.
 - Scale intervals: every seven note scale, root, degree and interval, all right. Chord assignment, Chord Hold, pedal and channels: all right, no voice crossings in 2000 random chords.

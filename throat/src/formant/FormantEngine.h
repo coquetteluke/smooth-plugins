@@ -340,11 +340,12 @@ private:
         // that, and a smoother envelope moves less of a formant's shape: a move of a few percent (the width points) came out about
         // 0.6 of the way the tube says on real vocals, against 0.8 for a plain mover. Unvoiced frames keep the tips envelope, whose
         // steadiness Throat Precision sets.
-        // The voice source's fall comes off that envelope as it does off the model and the flattened envelope (fitModel), so it stays
-        // out of what the map moves. In 0.7.0 it stayed in, a shelf from 4 to 8 times the pitch up that followed the note: on a plain
-        // -6 dB per octave source the highs came out 2.9 dB brighter at Length 0.70 and 2.7 dB darker at 1.50. This envelope is only
-        // used on voiced frames, so the whole voiced fall comes off; scaled by how voiced the frame reads, as the model's is, it
-        // jittered with the voicing on speech and moved the first harmonic by 2.02 cents (limit 2).
+        // The voice source's fall stays in this envelope, so a move carries it: on a plain -6 dB per octave source the highs come out
+        // 2.9 dB brighter at Length 0.70 and 2.7 dB darker at 1.50, from 4 to 8 times the pitch up (throat-r1-1, open). 0.7.1 took the
+        // fall off here as fitModel does, and on Luke's takes that broke 7 real vocal checks that 0.7.0 passed: consonant smear at
+        // Length 1.20, 1.50 and Big Chest, late phrase starts at 1.50, and the width points' move (Lips 0.60 0.80 to 0.76 of the tube,
+        // limit 0.8). The real vocal checks read a move against the whole envelope, source slope and all; a fall taken off only part of
+        // the way (60%), or only on clearly voiced frames, still broke them. So 0.7.2 is back to 0.7.0 here.
         float voicedShare = 0.0f;
         if (! identityMap && f0 > 60.0f)
         {
@@ -366,15 +367,18 @@ private:
             std::fill (cepstrumWork.begin() + analysisSize, cepstrumWork.end(), 0.0f);
             cepstrumFft->performRealOnlyForwardTransform (cepstrumWork.data());
             for (int k = 0; k <= analysisHalf; ++k)
-                voicedEnvelope[(size_t) k] = cepstrumWork[(size_t) (2 * k)] - envelope.voicedSourceFall ((float) k);
+                voicedEnvelope[(size_t) k] = cepstrumWork[(size_t) (2 * k)];
         }
 
         // Where the move changes from the model to the envelope (4 to 8 times the pitch, below). On a frame that is not voiced the
         // pitch is only the last one sung, so it is used fully from a voicing of 0.3, as sourceTop is, and not at all under 0.2, as
         // the whistle guard. Before 0.7.1 a consonant was shaped by the note before it: a hiss band passed 1 to 3 kHz came out up to
-        // 1.2 dB different after a 900 Hz note than after a 100 Hz one.
+        // 1.2 dB different after a 900 Hz note than after a 100 Hz one. Under a voicing of 0.2 the change sits as for a 250 Hz note, the
+        // same after any note. 0.7.1 put it as for 60 Hz (the envelope from 240 Hz up), and on Luke's takes Big Chest's consonant smear
+        // after quiet went over its limit (p90 2.96 to 3.01 dB, limit 3); as for 150, 250 or 400 Hz it read 2.98 to 2.99.
+        constexpr float unvoicedPitchHz = 250.0f;
         const float voicedPitch = juce::jlimit (0.0f, 1.0f, (voicing - 0.2f) / 0.1f);
-        const float crossoverHz = 60.0f + voicedPitch * voicedPitch * (3.0f - 2.0f * voicedPitch) * (std::max (f0, 60.0f) - 60.0f);
+        const float crossoverHz = unvoicedPitchHz + voicedPitch * voicedPitch * (3.0f - 2.0f * voicedPitch) * (std::max (f0, 60.0f) - unvoicedPitchHz);
 
         float biggest = 0.0f;
         for (int k = 0; k <= synthHalf; ++k)

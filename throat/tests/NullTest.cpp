@@ -424,7 +424,7 @@ int main (int argc, char** argv)
 
     // Phase 2: states saved by the installed 0.7.0 (tests/baseline/capture.mm: read with ClassInfo, loaded into a new instance before
     // it starts, 3 s of speech on both channels, 512 sample blocks). Each names no preset and loads exactly what choosing that preset
-    // here loads. Where the sound did not change in 0.7.1 it plays what 0.7.0 played; where an engine fix changed it, the difference is
+    // here loads. Where the sound did not change in 0.7.1 it plays what 0.7.0 played; where the consonant fix of 0.7.1 (kept in 0.7.2) changed it, the difference is
     // shown as INFO.
     {
         const juce::File dir (juce::String (BASELINE_DIR));
@@ -481,7 +481,7 @@ int main (int argc, char** argv)
             }
             else
             {
-                std::printf ("INFO  v0.7.0-%-12s against what 0.7.0 played: %.1f dBFS, %d samples differ (the 0.7.1 engine fixes)\n", o.name, against070, differing);
+                std::printf ("INFO  v0.7.0-%-12s against what 0.7.0 played: %.1f dBFS, %d samples differ (the consonant fix kept from 0.7.1)\n", o.name, against070, differing);
             }
         }
     }

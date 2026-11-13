@@ -107,7 +107,7 @@ private:
     float advancedAmount = 0.0f;
     double lastFrameTime = 0.0, frameBudget = 0.0, sinceDrawn = 0.0, stillFor = 0.0;
     // No audio for this long and the readings are old: the host has stopped calling the plug-in (Logic does on a stopped track).
-    static constexpr double staleAfterSeconds = 0.1;
+    static constexpr double staleAfterSeconds = 0.25;
     long long historySeen = -1;
     double quietFor = 0.0;
     int slowCountdown = 0;

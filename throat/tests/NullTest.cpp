@@ -305,6 +305,41 @@ int main (int argc, char** argv)
         expect (handleAfter.getDistanceFrom (to) < 2.0f, "the handle lands under the mouse, within " + juce::String (handleAfter.getDistanceFrom (to), 2) + " pixels");
         expect (counter.begins == 2 && counter.ends == 2, "the drag has one begin and one end for each of its two parameters");
 
+        // Phase 2, throat-r1-2: a handle held at the view's edge. It is drawn and grabbed 12 px inside the view, so the first pixel of a
+        // drag must move its width no more than a pixel's worth where the handle really is: about 1.1% at this radius. Limit 1.5%.
+        // (0.7.0 read the width back from the drawn point: Width 4 at 2.00 fell to about 1.84 on the first pixel.)
+        {
+            struct Grab { const char* name; int point; const char* id; float value; };
+            for (const Grab grab : { Grab { "Roof of Mouth", 3, "width4", 2.0f }, Grab { "Lips", 4, "width5", 3.0f } })
+            {
+                for (const char* id : { "width", "width1", "width2", "width3", "width4", "width5", "place2", "place3", "place4", "place5" })
+                    p.apvts.getParameter (id)->setValueNotifyingHost (p.apvts.getParameter (id)->getDefaultValue());
+                for (const auto& [id, v] : { std::pair<const char*, float> { "width", 2.0f }, std::pair<const char*, float> { grab.id, grab.value } })
+                    p.apvts.getParameter (id)->setValueNotifyingHost (p.apvts.getParameter (id)->convertTo0to1 (v));
+                for (int i = 0; i < 10; ++i) window->tick (1.0 / 30.0);
+                const auto at = view.handlePosition (grab.point);
+                const float before = p.apvts.getRawParameterValue (grab.id)->load();
+                view.mouseDown (event (at));
+                view.mouseDrag (event (at + juce::Point<float> (0.0f, 1.0f)));
+                view.mouseUp (event (at + juce::Point<float> (0.0f, 1.0f)));
+                const float after = p.apvts.getRawParameterValue (grab.id)->load();
+                expect (std::abs (after / before - 1.0f) <= 0.015f, juce::String ("Width 2.00, ") + grab.name + " " + juce::String (grab.value, 2) + " (handle drawn at "
+                            + juce::String (at.x, 0) + ", " + juce::String (at.y, 0) + "): one pixel of drag moves it to " + juce::String (after, 3));
+            }
+            for (const char* id : { "width", "width1", "width2", "width3", "width4", "width5", "place2", "place3", "place4", "place5" })
+                p.apvts.getParameter (id)->setValueNotifyingHost (p.apvts.getParameter (id)->getDefaultValue());
+        }
+
+        // Phase 2, throat-r2-3: a ratio that reads as the singer's own is exactly 1, where the move is off.
+        {
+            auto* lengthSlider = dynamic_cast<ui::ParamSlider*> (panel.findChildWithID ("length"));
+            lengthParam->setValueNotifyingHost (lengthParam->convertTo0to1 (1.004f));
+            const auto shown = lengthSlider->valueText(), said = lengthSlider->describe (1.004f);
+            expect (shown != "1.00" && said != "The singer's own" && lengthSlider->describe (1.0f) == "The singer's own",
+                    "Length at 1.004 reads '" + shown + "', '" + said + "', not 1.00 and the singer's own");
+            lengthParam->setValueNotifyingHost (lengthParam->getDefaultValue());
+        }
+
         // Reset takes the shape home, and nothing else.
         auto* breathParam = p.apvts.getParameter ("breath");
         breathParam->setValueNotifyingHost (0.3f);
@@ -348,8 +383,108 @@ int main (int argc, char** argv)
         expect (loaded && fromBefore.windowWidth.load() == PluginProcessor::defaultWindowWidth && ! fromBefore.advancedOpen.load()
                     && std::abs (fromBefore.apvts.getRawParameterValue ("length")->load() - 1.17f) < 0.002f,
                 "a 0.2.0 session loads its settings and opens the window at the default size");
+
+        // Phase 2, throat-r1-4: a session saved by 0.7.0 does not say which preset it came from, so the box names none, and the
+        // arrows go to the first or the last preset. A session saved on a preset by this build names it again.
+        {
+            juce::MemoryBlock old070;
+            const bool found = juce::File (juce::String (BASELINE_DIR)).getChildFile ("v0.7.0-giant.state").loadFileAsData (old070);
+            for (const bool right : { true, false })
+            {
+                PluginProcessor r;
+                r.setStateInformation (old070.getData(), (int) old070.getSize());
+                std::unique_ptr<ThroatEditor> w (dynamic_cast<ThroatEditor*> (r.createEditor()));
+                w->setVisible (true);
+                w->tick (1.0 / 30.0);
+                const auto text = w->getPresetText();
+                if (right)
+                    expect (found && text == "Choose a preset", "a session saved by 0.7.0 on Giant reads '" + text + "'");
+                auto* box = w->getPanel().findChildWithID ("presets");
+                const juce::Point<float> at (right ? (float) box->getWidth() - 5.0f : 5.0f, (float) box->getHeight() * 0.5f);
+                const auto now = juce::Time::getCurrentTime();
+                box->mouseDown (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
+                                                  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, box, box, now, at, now, 1, false));
+                const int wanted = right ? 0 : r.getNumPrograms() - 1;
+                expect (r.getCurrentProgram() == wanted, juce::String ("from no preset the ") + (right ? "right" : "left") + " arrow loads " + r.getProgramName (wanted)
+                                                             + ", got " + juce::String (r.getCurrentProgram()));
+            }
+            PluginProcessor chosen;
+            chosen.setCurrentProgram (3);
+            juce::MemoryBlock m;
+            chosen.getStateInformation (m);
+            PluginProcessor back;
+            back.setStateInformation (m.getData(), (int) m.getSize());
+            std::unique_ptr<ThroatEditor> w (dynamic_cast<ThroatEditor*> (back.createEditor()));
+            w->setVisible (true);
+            w->tick (1.0 / 30.0);
+            expect (w->getPresetText() == "Big Chest", "a session saved on Big Chest reopens reading '" + w->getPresetText() + "'");
+        }
     }
    #endif
+
+    // Phase 2: states saved by the installed 0.7.0 (tests/baseline/capture.mm: read with ClassInfo, loaded into a new instance before
+    // it starts, 3 s of speech on both channels, 512 sample blocks). Each names no preset and loads exactly what choosing that preset
+    // here loads. Where the sound did not change in 0.7.1 it plays what 0.7.0 played; where an engine fix changed it, the difference is
+    // shown as INFO.
+    {
+        const juce::File dir (juce::String (BASELINE_DIR));
+        juce::MemoryBlock raw;
+        dir.getChildFile ("input.f32").loadFileAsData (raw);
+        const int n = (int) (raw.getSize() / sizeof (float));
+        const auto* input = static_cast<const float*> (raw.getData());
+        const auto play = [&] (PluginProcessor& p)
+        {
+            p.setPlayConfigDetails (2, 2, kRate, kBlock);
+            p.prepareToPlay (kRate, kBlock);
+            std::vector<float> out ((size_t) n * 2);
+            juce::AudioBuffer<float> b (2, kBlock);
+            juce::MidiBuffer midi;
+            for (int at = 0; at < n; at += kBlock)
+            {
+                const int len = juce::jmin (kBlock, n - at);
+                b.setSize (2, len, true, false, true);
+                for (int ch = 0; ch < 2; ++ch) std::copy (input + at, input + at + len, b.getWritePointer (ch));
+                p.processBlock (b, midi);
+                for (int ch = 0; ch < 2; ++ch) std::copy (b.getReadPointer (ch), b.getReadPointer (ch) + len, out.begin() + (size_t) ch * (size_t) n + (size_t) at);
+            }
+            return out;
+        };
+        struct Old { const char* name; int preset; bool soundKept; };
+        for (const Old o : { Old { "default", -1, true }, Old { "big-chest", 3, false }, Old { "pinched", 7, false }, Old { "giant", 11, false }, Old { "subtle-blend", 13, false } })
+        {
+            juce::MemoryBlock state, rendered;
+            const bool found = n > 0 && dir.getChildFile (juce::String ("v0.7.0-") + o.name + ".state").loadFileAsData (state)
+                            && dir.getChildFile (juce::String ("v0.7.0-") + o.name + ".f32").loadFileAsData (rendered) && rendered.getSize() == (size_t) n * 2 * sizeof (float);
+            PluginProcessor p;
+            p.setStateInformation (state.getData(), (int) state.getSize());
+            const bool named = p.getCurrentProgram() == -1;
+            failures += found && named ? 0 : 1;
+            std::printf ("%s  v0.7.0-%-12s names no preset, program %d\n", found && named ? "PASS" : "FAIL", o.name, p.getCurrentProgram());
+            const auto got = play (p);
+            PluginProcessor q;
+            if (o.preset >= 0) q.setCurrentProgram (o.preset);
+            const auto same = play (q);
+            int differing = 0;
+            const double asChosen = nullDb (got, same, differing);
+            failures += asChosen <= -120.0 ? 0 : 1;
+            std::printf ("%s  v0.7.0-%-12s against the same preset chosen here: null %s, %d samples differ\n", asChosen <= -120.0 ? "PASS" : "FAIL", o.name,
+                         asChosen <= -399.0 ? "exact" : (juce::String (asChosen, 1) + " dBFS").toRawUTF8(), differing);
+            std::vector<float> want ((size_t) n * 2);
+            if (found) std::memcpy (want.data(), rendered.getData(), rendered.getSize());
+            const double against070 = nullDb (got, want, differing);
+            const bool pass = against070 <= -120.0;
+            if (o.soundKept || pass)
+            {
+                failures += pass ? 0 : 1;
+                std::printf ("%s  v0.7.0-%-12s against what 0.7.0 played: null %s, %d samples differ\n", pass ? "PASS" : "FAIL", o.name,
+                             against070 <= -399.0 ? "exact" : (juce::String (against070, 1) + " dBFS").toRawUTF8(), differing);
+            }
+            else
+            {
+                std::printf ("INFO  v0.7.0-%-12s against what 0.7.0 played: %.1f dBFS, %d samples differ (the 0.7.1 engine fixes)\n", o.name, against070, differing);
+            }
+        }
+    }
 
     std::printf (failures == 0 ? "null test passed\n" : "%d null test failures\n", failures);
     return failures == 0 ? 0 : 1;

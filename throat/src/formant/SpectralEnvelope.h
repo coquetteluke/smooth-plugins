@@ -31,6 +31,7 @@ class SpectralEnvelope
 public:
     static constexpr int maxPeaks = 5, maxTips = 256;
     static constexpr int modelFftOrder = 9, modelBins = 256, modelOrder = 18, minTipsToFit = 14;
+    static constexpr float voicedFallNepersPerOctave = -6.0f * 0.115129f; // The voice source's fall on a voiced frame, -6 dB per octave
 
     void prepare (double sampleRate, int fftOrder)
     {
@@ -81,6 +82,7 @@ public:
         hasHistory = false;
         pitchHz = 0.0f;
         voicedAmount = 0.0f;
+        fallCornerBin = 1.0f;
         cutSamples = (float) (0.001 * sr);
         peakCount = 0;
         std::fill (env.begin(), env.end(), 0.0f);
@@ -179,6 +181,13 @@ public:
     const float* envelope() const noexcept   { return env.data(); }
     const float* formantModel() const noexcept { return model.data(); }
     const float* flatEnvelope() const noexcept { return flatEnv.data(); } // The envelope, on the formant model's scale: harmonic tips with the source's fall off
+    // The voice source's fall on a fully voiced frame, as fitModel takes it off: -6 dB per octave from 1.5 times this frame's pitch, in
+    // nepers, at a bin of this grid. For anything else that moves a voiced envelope, so the source stays out of the move there too.
+    float voicedSourceFall (float bin) const noexcept
+    {
+        const float f = bin / fallCornerBin;
+        return voicedFallNepersPerOctave * 0.5f * std::log2 (1.0f + f * f);
+    }
     float fundamentalHz() const noexcept     { return pitchHz; }
     float voicing() const noexcept           { return voicedAmount; }
     // The harmonics' tips found in this frame, lowest first: where each sits (in bins, between bins too) and its level in nepers.
@@ -361,14 +370,14 @@ private:
     // voice source anyway, so it also stays out of what the map moves. Above 8 kHz the flattened envelope itself is used.
     void fitModel (float peakWideningHz, float harmonicShare) noexcept
     {
-        constexpr float nepersPerOctave = -6.0f * 0.115129f;
-        const float fall = nepersPerOctave * smoothStep (0.3f, 0.8f, voicedAmount);
+        const float fall = voicedFallNepersPerOctave * smoothStep (0.3f, 0.8f, voicedAmount);
         const auto nepersFall = [fall, this] (float bin)
         {
             const float f = bin / std::max (1.0f, 1.5f * std::max (pitchHz, 60.0f) / (float) binHz());
             return fall * 0.5f * std::log2 (1.0f + f * f);
         };
         const float cornerBin = std::max (1.0f, 1.5f * std::max (pitchHz, 60.0f) / (float) binHz());
+        fallCornerBin = cornerBin;
         for (int k = 0; k <= half; ++k)
         {
             const float f = (float) k / cornerBin;
@@ -583,7 +592,7 @@ private:
     std::vector<double> tipCos, tipSin, tipPower;
     int tipCount = 0;
     int peakCount = 0;
-    float pitchHz = 0.0f, voicedAmount = 0.0f, cutSamples = 48.0f;
+    float pitchHz = 0.0f, voicedAmount = 0.0f, cutSamples = 48.0f, fallCornerBin = 1.0f;
     bool hasHistory = false;
 };
 } // namespace formant

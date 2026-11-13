@@ -10,17 +10,17 @@ In your host: Audio Units > Luke Garito > Throat. AU code `aufx SThr Luke`. Mono
 
 The tube is your singer's vocal tract seen from the side: cords at the bottom, lips at the right. **Bone** is the singer's own shape and **red** is the model. Both move with the voice, because the walls are worked out from where the formants sit. **Gray** is the realistic range: between 0.80 and 1.20 in width and length.
 
-- Drag a point out or in for width, and along the tube for its place. Shift gives a finer drag. Double-click resets a point. Reset puts Length, Width and all five points back to the singer's own.
+- Drag a point out or in for width, and along the tube for its place. Shift gives a finer drag. Double-click resets a point. Reset puts Length, Width and all five points back to the singer's own. A point too wide to fit is drawn 12 px inside the edge, and a drag starts from where it really is, so the first pixel does not change it (since 0.7.1).
 - Under the bend: pitch and F1 to F5 in Hz, original against model, above the two formant curves. Pitch stays the same in both rows.
 - The table under the tube holds every point's numbers. Click one to type, or drag it up and down.
 - Advanced holds the voice types, Pulse, Air tone (Breath High Pass), Range, Precision, Level Match and Peak Guard.
-- Drag the corner to resize. The size and whether Advanced is open are saved with the session, and nothing else is added.
+- Drag the corner to resize. The size and whether Advanced is open are saved with the session, and so is the preset last chosen (since 0.7.1), only to name it again. A session saved before 0.7.1 does not say, so the box reads "Choose a preset" and the arrows go to the first or the last.
 
 The live shape is a picture of the formants through a simple tube formula, compressed to fit. It is the same physics the engine uses, but it is not a measurement of a real throat, and it drives nothing in the sound. Pictures are in `docs/window`.
 
 ## Controls
 
-Ratios read as plain numbers, where 1.00 is the singer's own. Between 0.80 and 1.20 is the realistic range.
+Ratios read as plain numbers, where 1.00 is the singer's own. Between 0.80 and 1.20 is the realistic range. They move in steps of 0.001, and a third decimal shows when it is not 0, so 1.00 and "The singer's own" mean exactly 1, where the move is off (since 0.7.1; before, 0.995 to 1.004 all read 1.00).
 
 - **Throat Length** (0.50 to 2.00, default 1.00): every formant moves by 1 over this number. 1.25 lowers them all to 80%.
 - **Throat Width** (0.50 to 2.00, default 1.00): the whole tract wider or narrower. A wider mouth acts like a slightly longer tube, so formants fall by up to 6% at 2.00 and rise by up to 3% at 0.50. Wider also means less wall loss and so narrower formants, and narrower means broader ones.
@@ -35,7 +35,7 @@ Ratios read as plain numbers, where 1.00 is the singer's own. Between 0.80 and 1
 - **Throat Precision** (Subtle, Medium, Extreme, default Medium): how narrow the model's formant peaks can be. Move to Extreme for big changes or if you hear whistling.
 - **Mix** (0 to 100 %, default 100): blend with the dry signal, delayed to match. The wet path has no phase change, so it blends without combing.
 - **Output Gain** (-24 to +12 dB, default 0).
-- **Level Match** (on or off, default on): holds the level steady as formants and the voice type change. About 150 ms from the input's envelope with the gain each frame gets, then about 2 s from the real spectrum. For 320 ms after a phrase starts it follows each frame's real spectrum, so a phrase starts at its own level (since 0.7.0).
+- **Level Match** (on or off, default on): holds the level steady as formants and the voice type change. About 150 ms from the input's envelope with the gain each frame gets, then about 2 s from the real spectrum. For 320 ms after a phrase starts it follows each frame's real spectrum, so a phrase starts at its own level (since 0.7.0). The same while a control moves, but only one that changes the sound: a position while the widths around it are 1.00, or Air tone while Breathiness is 0, changes nothing at all (since 0.7.1).
 - **Bypass**: fades to the input, delayed by the same amount. Takes Output Gain out too. A host that switches its own bypass gets the same fade, with no gap.
 - **Peak Guard** (on or off, default off): moving formants changes the shape of the wave, so a peak can come out higher than it went in at the same level. On, the output is held at or under the highest peak the input has had since playback started (times Output Gain): the gain drops at once on a sample that would pass it and comes back over about 100 ms. A take that did not clip going in then cannot clip coming out. Off, nothing is added and the sound is as before. No preset changes it.
 
@@ -45,7 +45,7 @@ Read only, for a host to read by name. It never writes automation and is never s
 
 ## Presets
 
-Neutral, A Little Longer, A Little Shorter, Big Chest, Small Bright, Rounded Lips, Open Smile, Pinched Throat, Soft and Airy, Raspy Edge, Full Whisper, Giant, Tiny, Subtle Blend. Every one stays within 0.2 dB of the input level on speech.
+Neutral, A Little Longer, A Little Shorter, Big Chest, Small Bright, Rounded Lips, Open Smile, Pinched Throat, Soft and Airy, Raspy Edge, Full Whisper, Giant, Tiny, Subtle Blend. On speech every one stays within 0.42 dB of the input level (Raspy Edge 0.42, Giant 0.29, the rest 0.11 or less; this read 0.2 dB until 0.7.1, which Raspy Edge and Giant already passed in 0.7.0).
 
 ## Signal flow
 
@@ -65,7 +65,7 @@ input > clean bad samples > dry delay (same length as the engine) --------------
 - The map is computed at every frequency instead of at tracked formants. There is no formant tracker to lose its place on a consonant.
 - The model is an all-pole curve fitted to the harmonics themselves on voiced sound (discrete all-pole fitting), and to a smoothed envelope on unvoiced sound.
 - The further a frequency moves, the more its harmonics take their level from the model. That removes the ghost of the old formant, which simple filtering leaves behind.
-- From 4 times the pitch up (fully from 8 times), where many harmonics sit on each formant, the move reads the envelope through the harmonics instead of the model, which is smoother than the voice there. On real vocals that moves formants the whole way the tube says (since 0.6.0; before, about 0.7 to 0.8 of the way). On voiced frames that envelope is a plain cepstral one, every quefrency under 0.6 of the period kept, so small moves such as the width points carry the formant's whole shape (since 0.7.0).
+- From 4 times the pitch up (fully from 8 times), where many harmonics sit on each formant, the move reads the envelope through the harmonics instead of the model, which is smoother than the voice there. On real vocals that moves formants the whole way the tube says (since 0.6.0; before, about 0.7 to 0.8 of the way). On voiced frames that envelope is a plain cepstral one, every quefrency under 0.6 of the period kept, so small moves such as the width points carry the formant's whole shape (since 0.7.0). The voice source's fall comes off it first, as off the model, so the move does not carry the source's slope (since 0.7.1; in 0.7.0 that added a shelf from 4 to 8 times the pitch up of about +2.9 dB at Length 0.70 and -2.7 dB at 1.50). On frames that are not voiced the last pitch sung is not used to place this change: under a voicing of 0.2 it sits as at 60 Hz, so a consonant is shaped the same whatever note came before it (since 0.7.1).
 - Above 6 kHz the gain is never more than 8 dB over what moving the envelope itself would give (11 dB in 0.4.1). The all-pole fit can make a peak at the top of its band that the voice does not have, and before 0.4.1 that came out as a burst of hiss on some sung vowels.
 - No harmonic from 500 Hz up stands out from its neighbours by more than 8 dB, or 2 dB more than the input's most prominent one, so the voice does not whistle (since 0.5.0; since 0.6.0 the harmonics are read at whole multiples of the pitch).
 - A phrase that starts after a pause gets its own Level Match average, so its first 30 ms are not turned down by the phrase before (since 0.5.0). A start is judged against the level 43 ms before, so one that rises over 30 ms is found too (since 0.7.0).
@@ -91,6 +91,8 @@ Full list in `tests/results.txt`. Synthetic voices are a glottal pulse through f
 - Pitch: 0.003 cents at most on a held voice. On speech the first harmonic moves 0.3 to 1.2 cents (median of voiced frames).
 - Width points: all F1 to F3 shifts of 1.5% or more go the way an exact tube calculation does, within a few percent points.
 - Neutral: -142 dB from the input on voice and speech.
+- Host Reset: play, reset, play gives exactly what a new instance gives, silence after it is silent, and it allocates nothing. The reset that comes with a host switching its own bypass on is left out (since 0.4.0).
+- Old sessions: states read out of the installed 0.7.0 (`tests/baseline/v0.7.0-*`) name no preset and load exactly what choosing that preset here loads. The default plays what 0.7.0 played, bit for bit.
 - Mix: Mix 0 is -141 dB from the delayed input, Mix 50 is -143 dB from half and half, no comb notches.
 - Consonants: no added level movement on hiss (0.1 dB at most), plosive pre-echo at -78 dB, speech consonants move 0.65 to 1.00 times as much as the input.
 - Latency: an impulse lands on the reported sample at all four rates, including bypassed.

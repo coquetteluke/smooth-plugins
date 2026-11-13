@@ -726,14 +726,19 @@ namespace ui
         }
     }
 
-    juce::Point<float> TractView::handlePosition (int point) const
+    juce::Point<float> TractView::handleAt (int point) const
     {
         const float u = place (point);
         juce::Point<float> out;
         const auto centre = spineAt (u, drawnLength (lengthParam), &out);
         const float r = radiusFor (u, std::log (width (point)) + std::log (widthParam));
-        const auto at = centre + out * r;
+        return centre + out * r;
+    }
+
+    juce::Point<float> TractView::handlePosition (int point) const
+    {
         // A handle can always be reached, however extreme the setting.
+        const auto at = handleAt (point);
         return { juce::jlimit (12.0f, viewW - 12.0f, at.x), juce::jlimit (12.0f, viewH - 12.0f, at.y) };
     }
 
@@ -798,7 +803,9 @@ namespace ui
             return;
 
         setHover (dragging);
-        dragTarget = handlePosition (dragging);
+        // The drag starts from where the point really is, not where its handle is drawn: a handle held inside the view's edge would
+        // otherwise read back as a narrower width on the first pixel of the drag (Width 4 at 2.00 fell to 1.82 in 0.7.0).
+        dragTarget = handleAt (dragging);
         dragLast = e.position;
 
         processor.apvts.getParameter (widthIds[dragging])->beginChangeGesture();

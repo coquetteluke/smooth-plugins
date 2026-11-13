@@ -52,7 +52,8 @@ public:
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
-    // These become the AU factory presets.
+    // These become the AU factory presets. The preset last chosen is saved with the session since 0.7.1. -1 for none: a session
+    // saved before that, which does not say. A new Throat starts at Neutral, which is its default state.
     int getNumPrograms() override;
     int getCurrentProgram() override { return currentProgram; }
     void setCurrentProgram (int) override;
@@ -112,7 +113,7 @@ private:
     float meterPeak = 0.0f, meterFall = 0.999f;
     // Peak Guard: the highest input peak since the last reset, and the gain it is holding the output down by.
     float heldInputPeak = 0.0f, guardGain = 1.0f, guardRelease = 0.0f;
-    int currentProgram = 0;
+    int currentProgram = 0;   // -1 for none, see getCurrentProgram()
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)
 };

@@ -39,6 +39,8 @@ namespace ui
 
         /** Where a point's handle is drawn, in this component's pixels. Public for the offline renders and tests. */
         juce::Point<float> handlePosition (int point) const;
+        /** Where the point really is, which can be outside the view: handlePosition() holds the drawn handle 12 px inside. */
+        juce::Point<float> handleAt (int point) const;
 
         // For the live CPU measurement.
         int getPaintCount() const noexcept          { return paintCount; }

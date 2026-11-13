@@ -57,7 +57,7 @@ namespace ui
 
         switch (unit)
         {
-            case Unit::ratio:         return juce::String (v, 2);
+            case Unit::ratio:         return juce::String (v, juce::roundToInt (v * 1000.0f) % 10 != 0 ? 3 : 2);   // 1.00 only when exactly 1
             case Unit::percent:       return juce::String (juce::roundToInt (v)) + "%";
             case Unit::signedPercent: return (juce::roundToInt (v) > 0 ? "+" : "") + juce::String (juce::roundToInt (v)) + "%";
             case Unit::hz:            return hertzText (v);

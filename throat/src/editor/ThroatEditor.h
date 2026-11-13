@@ -31,6 +31,9 @@ public:
     /** Puts the shape back to the singer's own, as one gesture per parameter. Everything else stays. */
     void resetShape();
 
+    /** What the preset box reads. For the tests. */
+    juce::String getPresetText() const;
+
 private:
     class PresetBox;
     class AdvancedHeader;

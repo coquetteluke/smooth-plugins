@@ -1,44 +1,47 @@
 PASS  default    no window          null exact, 0 of 144000 samples differ
 PASS  default    window drawing     null exact, 0 of 144000 samples differ
-PASS  default    window drawing     420 frames drawn, saved state unchanged
+PASS  default    window drawing     752 frames drawn, saved state unchanged
 PASS  default    window reopening   null exact, 0 of 144000 samples differ
-INFO  default    opened and closed the window 752 times during audio
+INFO  default    opened and closed the window 1448 times during audio
 PASS  big-chest  no window          null exact, 0 of 144000 samples differ
 PASS  big-chest  window drawing     null exact, 0 of 144000 samples differ
-PASS  big-chest  window drawing     347 frames drawn, saved state unchanged
+PASS  big-chest  window drawing     752 frames drawn, saved state unchanged
 PASS  big-chest  window reopening   null exact, 0 of 144000 samples differ
-INFO  big-chest  opened and closed the window 714 times during audio
+INFO  big-chest  opened and closed the window 1308 times during audio
 PASS  pinched    no window          null exact, 0 of 144000 samples differ
 PASS  pinched    window drawing     null exact, 0 of 144000 samples differ
-PASS  pinched    window drawing     434 frames drawn, saved state unchanged
+PASS  pinched    window drawing     742 frames drawn, saved state unchanged
 PASS  pinched    window reopening   null exact, 0 of 144000 samples differ
-INFO  pinched    opened and closed the window 1072 times during audio
+INFO  pinched    opened and closed the window 1292 times during audio
 PASS  whisper    no window          null exact, 0 of 144000 samples differ
 PASS  whisper    window drawing     null exact, 0 of 144000 samples differ
-PASS  whisper    window drawing     636 frames drawn, saved state unchanged
+PASS  whisper    window drawing     728 frames drawn, saved state unchanged
 PASS  whisper    window reopening   null exact, 0 of 144000 samples differ
-INFO  whisper    opened and closed the window 1216 times during audio
+INFO  whisper    opened and closed the window 1427 times during audio
 PASS  giant      no window          null exact, 0 of 144000 samples differ
 PASS  giant      window drawing     null exact, 0 of 144000 samples differ
-PASS  giant      window drawing     636 frames drawn, saved state unchanged
+PASS  giant      window drawing     745 frames drawn, saved state unchanged
 PASS  giant      window reopening   null exact, 0 of 144000 samples differ
-INFO  giant      opened and closed the window 932 times during audio
+INFO  giant      opened and closed the window 1269 times during audio
 PASS  blend      no window          null exact, 0 of 144000 samples differ
 PASS  blend      window drawing     null exact, 0 of 144000 samples differ
-PASS  blend      window drawing     495 frames drawn, saved state unchanged
+PASS  blend      window drawing     735 frames drawn, saved state unchanged
 PASS  blend      window reopening   null exact, 0 of 144000 samples differ
-INFO  blend      opened and closed the window 1057 times during audio
+INFO  blend      opened and closed the window 1429 times during audio
 PASS  session    no window          null exact, 0 of 144000 samples differ
 PASS  session    window drawing     null exact, 0 of 144000 samples differ
-PASS  session    window drawing     588 frames drawn, saved state unchanged
+PASS  session    window drawing     743 frames drawn, saved state unchanged
 PASS  session    window reopening   null exact, 0 of 144000 samples differ
-INFO  session    opened and closed the window 1034 times during audio
+INFO  session    opened and closed the window 1234 times during audio
 PASS  window: opening and running it writes no parameter
 PASS  window: every parameter has a place on screen, 24 parameters
 PASS  window: automation moves the Length control
 PASS  window: dragging the roof point out and along moves Width 4 from 1.00 to 1.62 and Position 4 from 68.0 to 73.8
 PASS  window: the handle lands under the mouse, within 0.78 pixels
 PASS  window: the drag has one begin and one end for each of its two parameters
+PASS  window: Width 2.00, Roof of Mouth 2.00 (handle drawn at 341.247, 12): one pixel of drag moves it to 1.978
+PASS  window: Width 2.00, Lips 3.00 (handle drawn at 566.214, 12): one pixel of drag moves it to 2.970
+PASS  window: Length at 1.004 reads '1.004', '0.4% longer', not 1.00 and the singer's own
 PASS  window: Reset puts the shape back and leaves Breath alone
 PASS  window: typing 1.5 sets Width 2
 PASS  window: typing nonsense changes nothing
@@ -46,4 +49,23 @@ PASS  window: window size and Advanced come back with the session
 PASS  window: they stay out of the parameter tree
 PASS  window: a damaged window size is clamped
 PASS  window: a 0.2.0 session loads its settings and opens the window at the default size
+PASS  window: a session saved by 0.7.0 on Giant reads 'Choose a preset'
+PASS  window: from no preset the right arrow loads Neutral, got 0
+PASS  window: from no preset the left arrow loads Subtle Blend, got 13
+PASS  window: a session saved on Big Chest reopens reading 'Big Chest'
+PASS  v0.7.0-default      names no preset, program -1
+PASS  v0.7.0-default      against the same preset chosen here: null exact, 0 samples differ
+PASS  v0.7.0-default      against what 0.7.0 played: null exact, 0 samples differ
+PASS  v0.7.0-big-chest    names no preset, program -1
+PASS  v0.7.0-big-chest    against the same preset chosen here: null -128.8 dBFS, 222032 samples differ
+INFO  v0.7.0-big-chest    against what 0.7.0 played: -26.1 dBFS, 284808 samples differ (the 0.7.1 engine fixes)
+PASS  v0.7.0-pinched      names no preset, program -1
+PASS  v0.7.0-pinched      against the same preset chosen here: null -133.6 dBFS, 213298 samples differ
+INFO  v0.7.0-pinched      against what 0.7.0 played: -32.0 dBFS, 284806 samples differ (the 0.7.1 engine fixes)
+PASS  v0.7.0-giant        names no preset, program -1
+PASS  v0.7.0-giant        against the same preset chosen here: null -128.9 dBFS, 213288 samples differ
+INFO  v0.7.0-giant        against what 0.7.0 played: -23.3 dBFS, 284838 samples differ (the 0.7.1 engine fixes)
+PASS  v0.7.0-subtle-blend names no preset, program -1
+PASS  v0.7.0-subtle-blend against the same preset chosen here: null exact, 0 samples differ
+INFO  v0.7.0-subtle-blend against what 0.7.0 played: -34.5 dBFS, 284772 samples differ (the 0.7.1 engine fixes)
 null test passed

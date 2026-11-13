@@ -56,12 +56,16 @@ namespace
             [] (float start, float end, float v) { return juce::jlimit (start, end, std::round (v * 1000.0f) / 1000.0f); });
     }
 
+    // Two decimals, and the third when it is not 0 (the controls sit on a 0.001 grid), so a ratio that reads 1.00 is exactly 1, where
+    // the move is off, and the text reads back as the same value. Before 0.7.1 anything from 0.995 to 1.004 read 1.00.
     juce::AudioParameterFloatAttributes ratioText()
     {
         return juce::AudioParameterFloatAttributes()
-            .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 2); })
+            .withStringFromValueFunction ([] (float v, int) { return juce::String (v, juce::roundToInt (v * 1000.0f) % 10 != 0 ? 3 : 2); })
             .withValueFromStringFunction ([] (const juce::String& s) { return s.getFloatValue(); });
     }
+
+    const juce::Identifier programAttribute { "program" };   // since 0.7.1: the preset last chosen, left out when none is known
 
     const char* widthId (int i)   { static const char* ids[] = { "width1", "width2", "width3", "width4", "width5" }; return ids[i]; }
     const char* placeId (int i)   { static const char* ids[] = { "place2", "place3", "place4", "place5" }; return ids[i]; }
@@ -359,6 +363,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         xml->setAttribute ("windowWidth", windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute ("advancedOpen", advancedOpen.load (std::memory_order_relaxed));
+        if (currentProgram >= 0)
+            xml->setAttribute (programAttribute, currentProgram);
         copyXmlToBinary (*xml, dest);
     }
 }
@@ -371,8 +377,14 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             // The window's own two values are read here and kept out of the parameter tree. Sessions from before the window have neither.
             windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute ("windowWidth", defaultWindowWidth)), std::memory_order_relaxed);
             advancedOpen.store (xml->getBoolAttribute ("advancedOpen", false), std::memory_order_relaxed);
+            // Which preset was chosen, only to name it: its values are already in the state and are not applied again. A session
+            // saved before 0.7.1 does not say, so it names none rather than a wrong one. A damaged number is kept in range.
+            currentProgram = xml->hasAttribute (programAttribute)
+                               ? juce::jlimit (0, getNumPrograms() - 1, xml->getIntAttribute (programAttribute, 0))
+                               : -1;
             xml->removeAttribute ("windowWidth");
             xml->removeAttribute ("advancedOpen");
+            xml->removeAttribute (programAttribute);
             applySafeState (apvts, *xml);
         }
 }

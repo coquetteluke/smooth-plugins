@@ -23,12 +23,13 @@ namespace
 
     juce::String howMuch (float ratio, const char* more, const char* less)
     {
-        const int percent = juce::roundToInt (std::abs (ratio - 1.0f) * 100.0f);
-
-        if (percent == 0)
+        // Only exactly 1 is the singer's own: anything else still moves the voice, so under 1% it says so with a decimal.
+        if (ratio == 1.0f)
             return "The singer's own";
 
-        return juce::String (percent) + "% " + (ratio > 1.0f ? more : less);
+        const float percent = std::abs (ratio - 1.0f) * 100.0f;
+        const auto amount = percent < 0.95f ? juce::String (percent, 1) : juce::String (juce::roundToInt (percent));
+        return amount + "% " + (ratio > 1.0f ? more : less);
     }
 }
 
@@ -60,9 +61,9 @@ public:
         g.setColour (tone::text.withAlpha (zone != none ? 0.11f : 0.07f));
         g.fillRoundedRectangle (b, 7.0f);
 
-        g.setColour (tone::text);
+        g.setColour (processor.getCurrentProgram() >= 0 ? tone::text : tone::muted);
         g.setFont (font (Weight::regular, 14.0f));
-        g.drawText (processor.getProgramName (processor.getCurrentProgram()), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
+        g.drawText (text(), b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
 
         const auto chevron = [&] (float cx, float direction, bool lit)
         {
@@ -85,13 +86,21 @@ public:
     {
         const auto hit = zoneAt (e.position.x);
         const int count = processor.getNumPrograms();
+        const int current = processor.getCurrentProgram();   // -1 for none: the arrows then go to the last or the first
 
         if (hit == previous)
-            choose ((processor.getCurrentProgram() + count - 1) % count);
+            choose (current < 0 ? count - 1 : (current + count - 1) % count);
         else if (hit == next)
-            choose ((processor.getCurrentProgram() + 1) % count);
+            choose (current < 0 ? 0 : (current + 1) % count);
         else
             openMenu();
+    }
+
+    // A session saved before 0.7.1 does not say which preset it came from, so it names none rather than a wrong one.
+    juce::String text() const
+    {
+        const int current = processor.getCurrentProgram();
+        return current >= 0 ? processor.getProgramName (current) : juce::String ("Choose a preset");
     }
 
 private:
@@ -587,6 +596,11 @@ void ThroatEditor::resetShape()
             p->endChangeGesture();
         }
     }
+}
+
+juce::String ThroatEditor::getPresetText() const
+{
+    return panel.presets->text();
 }
 
 void ThroatEditor::tick (double dtSeconds)

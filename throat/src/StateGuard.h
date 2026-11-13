@@ -3,7 +3,9 @@
 
 // A saved session or preset file is outside input. Drop values that are not finite and clamp the rest to the legal
 // range, so a damaged state can never put NaN or an out of range value into the audio path.
-// A parameter whose value was dropped goes back to its default when the state is applied.
+// A parameter whose value was dropped goes back to its default when the state is applied: JUCE gives a parameter with no child in the
+// new tree an empty one, and adding it reads the parameter's default. Text with no number in it ("garbage", "") counts as dropped
+// too; before 0.7.1 it read as 0 and was clamped to the bottom of the range (Length 0.50).
 inline void applySafeState (juce::AudioProcessorValueTreeState& apvts, const juce::XmlElement& xml)
 {
     auto state = juce::ValueTree::fromXml (xml);
@@ -17,7 +19,7 @@ inline void applySafeState (juce::AudioProcessorValueTreeState& apvts, const juc
             continue;
         const auto value = child.getProperty ("value").toString().trim().getDoubleValue();
         const auto text = child.getProperty ("value").toString().trim().toLowerCase();
-        if (! std::isfinite (value) || text.contains ("nan") || text.contains ("inf"))
+        if (! std::isfinite (value) || text.contains ("nan") || text.contains ("inf") || ! text.containsAnyOf ("0123456789"))
         {
             state.removeChild (i, nullptr);
             continue;

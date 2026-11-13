@@ -1044,9 +1044,282 @@ static void testHighBurst()
     }
 }
 
-int main()
+// ---- Phase 2 (2026-11-13): the hunt's kept bugs. Every limit below was written before the fix was measured. ----
+
+static std::vector<float> channelOf (const juce::AudioBuffer<float>& b, int ch = 0)
+{
+    return std::vector<float> (b.getReadPointer (ch), b.getReadPointer (ch) + b.getNumSamples());
+}
+
+static double largestDifference (const std::vector<float>& a, const std::vector<float>& b)
+{
+    double most = 0.0;
+    for (size_t i = 0; i < std::min (a.size(), b.size()); ++i) most = std::max (most, std::abs ((double) a[i] - (double) b[i]));
+    return a.size() == b.size() ? most : 1.0e9;
+}
+
+// Energy between two frequencies of an average spectrum, in dB.
+static double bandDb (const lab::Spectrum& s, double lowHz, double highHz)
+{
+    double sum = 1.0e-30;
+    for (int k = (int) std::ceil (lowHz / s.binHz); k <= (int) (highHz / s.binHz) && k < (int) s.db.size(); ++k)
+        sum += std::pow (10.0, s.db[(size_t) k] / 10.0);
+    return 10.0 * std::log10 (sum);
+}
+
+// throat-r1-1. A pulse train with a plain -6 dB per octave source and no formants at all, its pitch gliding from 108 to 132 Hz so the
+// harmonics sweep every frequency. The source's fall stays out of what the map moves (fitModel takes it off before the model and the
+// flattened envelope), so from 8 times the pitch up, where the move reads the envelope alone, moving a flat tract must leave the level
+// where it was. 0.7.0's voiced cepstral envelope kept the fall in: a shelf of the fall times log2 of the Length (+3.1 dB at 0.70,
+// -3.5 dB at 1.50) from 4 to 8 times the pitch up, which follows the note. Level Match off, so its one broadband gain is not mixed in.
+// Limit (the hunt's 1 dB): the 2 to 6 kHz band within 1 dB of the input. The hunt's own reading, 2 to 6 kHz against 0.3 to 0.8 kHz with
+// Level Match on, is shown as INFO: below 4 times the pitch the model moves the lowest harmonics' own fall (the source is taken to
+// fall only from 1.5 times the pitch), which is not this fault and is the same in 0.7.0.
+static void testSourceFallStaysPut()
+{
+    const double sr = 48000.0, f0 = 120.0;
+    std::vector<float> x ((size_t) (2.0 * sr), 0.0f);
+    std::vector<double> phase (x.size());
+    double ph = 0.0;
+    for (size_t i = 0; i < x.size(); ++i)
+    {
+        phase[i] = ph;
+        ph += juce::MathConstants<double>::twoPi * f0 * (0.9 + 0.2 * (double) i / (double) x.size()) / sr;
+    }
+    for (int h = 1; f0 * 1.1 * h < 0.45 * sr; ++h)
+        for (size_t i = 0; i < x.size(); ++i)
+            x[i] += (float) (std::sin (h * phase[i]) / h);
+    const double was = peak (x.data(), (int) x.size());
+    for (auto& v : x) v = (float) (v * 0.25 / was);
+    const int from = (int) (0.5 * sr), n = (int) (1.2 * sr);
+    const auto sx = lab::averageSpectrum (x.data() + from, n, sr);
+    for (const float len : { 0.7f, 1.5f })
+    {
+        const auto y = run (x, { { "length", len }, { "levelMatch", 0.0f } }, sr);
+        const auto sy = lab::averageSpectrum (y.data() + from, n, sr);
+        const double high = bandDb (sy, 2000.0, 6000.0) - bandDb (sx, 2000.0, 6000.0);
+        check (std::abs (high) <= 1.0, tag ("Gliding pulse train, -6 dB per octave source, no formants, Length", len) + ": 2 to 6 kHz against the input", high, "dB");
+        const auto z = run (x, { { "length", len } }, sr);
+        const auto sz = lab::averageSpectrum (z.data() + from, n, sr);
+        info (tag ("Gliding pulse train, no formants, Level Match on, Length", len) + ": 2 to 6 kHz against 0.3 to 0.8 kHz moves by",
+              bandDb (sz, 2000.0, 6000.0) - bandDb (sz, 300.0, 800.0) - (bandDb (sx, 2000.0, 6000.0) - bandDb (sx, 300.0, 800.0)), "dB");
+    }
+}
+
+// throat-r1-3. The same consonant after a high note and after a low one. On unvoiced frames the pitch is the last one sung, and 0.7.0
+// placed the change from model to envelope (4 to 8 times the pitch) there, so a consonant was shaped by the note before it. Level
+// Match off, so only the shaping is compared. Limit (the hunt's): the noise's spectra agree within 0.5 dB in every third octave inside
+// its band (a whispered vowel, 1 to 6 kHz; a hiss band passed 1 to 3 kHz, whose steep edges the model follows least well).
+static void testConsonantAfterNote()
+{
+    const double sr = 48000.0;
+    const int toneLength = (int) (0.3 * sr), noiseLength = (int) (0.4 * sr);
+    // A whispered vowel: noise through the first five formants of the neutral vowel.
+    std::vector<float> whisper ((size_t) noiseLength);
+    noise (whisper.data(), noiseLength, 0.3, 11);
+    {
+        const auto v = lab::schwa();
+        std::vector<double> y (whisper.begin(), whisper.end());
+        for (size_t f = 0; f < 5; ++f)
+        {
+            const double r = std::exp (-juce::MathConstants<double>::pi * v.bandwidths[f] / sr);
+            const double c = 2.0 * r * std::cos (juce::MathConstants<double>::twoPi * v.formants[f] / sr), d = -r * r, g = 1.0 - c - d;
+            double y1 = 0, y2 = 0;
+            for (auto& s : y) { const double o = g * s + c * y1 + d * y2; y2 = y1; y1 = o; s = o; }
+        }
+        double most = 1.0e-9;
+        for (auto s : y) most = std::max (most, std::abs (s));
+        for (size_t i = 0; i < y.size(); ++i) whisper[i] = (float) (y[i] * 0.2 / most);
+    }
+    std::vector<float> hiss ((size_t) noiseLength);
+    noise (hiss.data(), noiseLength, 0.3, 11);
+    lab::bandPass (hiss, sr, 1000.0, 3000.0);
+    struct Noise { const char* name; const std::vector<float>* x; double lo, hi; };
+    for (const Noise nz : { Noise { "Whispered vowel", &whisper, 1000.0, 6000.0 }, Noise { "Hiss 1 to 3 kHz", &hiss, 1000.0, 3000.0 } })
+        for (const float len : { 1.2f, 0.75f })
+        {
+            std::vector<lab::Spectrum> heard;
+            for (const double note : { 900.0, 100.0 })
+            {
+                auto x = lab::voice (lab::schwa(), sr, 0.3, note, note, 0.2);
+                x.insert (x.end(), nz.x->begin(), nz.x->end());
+                const auto y = run (x, { { "length", len }, { "levelMatch", 0.0f } }, sr);
+                const int from = toneLength + (int) (0.1 * sr);
+                heard.push_back (lab::averageSpectrum (y.data() + from, toneLength + noiseLength - from, sr, 40.0, 11));
+            }
+            double worst = 0.0;
+            for (double centre = 1000.0; centre <= 6000.0 * 1.01; centre *= std::pow (2.0, 1.0 / 3.0))
+            {
+                const double lo = centre * std::pow (2.0, -1.0 / 6.0), hi = centre * std::pow (2.0, 1.0 / 6.0);
+                if (lo < nz.lo * 0.99 || hi > nz.hi * 1.01) continue;
+                worst = std::max (worst, std::abs (bandDb (heard[0], lo, hi) - bandDb (heard[1], lo, hi)));
+            }
+            check (worst <= 0.5, std::string (nz.name) + ", after a 900 Hz note against after a 100 Hz note, Length " + juce::String (len, 2).toStdString() + ": largest third octave difference", worst, "dB");
+        }
+}
+
+// throat-r1-4. The chosen preset is saved with the session and named again on reload, without being applied a second time. A session
+// saved before 0.7.1 does not say, so it names none (-1) rather than Neutral. A new instance names Neutral, which is its default.
+static void testPresetSaved()
+{
+    const auto stateOf = [] (PluginProcessor& p) { juce::MemoryBlock m; p.getStateInformation (m); return m; };
+    const auto load = [] (PluginProcessor& p, const juce::XmlElement& xml) { juce::MemoryBlock m; juce::AudioProcessor::copyXmlToBinary (xml, m); p.setStateInformation (m.getData(), (int) m.getSize()); };
+    {
+        PluginProcessor fresh;
+        check (fresh.getCurrentProgram() == 0, "A new instance names Neutral, its default state", fresh.getCurrentProgram());
+    }
+    PluginProcessor p;
+    p.setCurrentProgram (3);
+    const auto saved = stateOf (p);
+    PluginProcessor q;
+    q.setStateInformation (saved.getData(), (int) saved.getSize());
+    check (q.getCurrentProgram() == 3, "A session saved after choosing Big Chest reloads naming it, program", q.getCurrentProgram());
+    check (! q.apvts.state.hasProperty ("program"), "The preset number stays out of the parameter tree");
+
+    auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+    xml->removeAttribute ("program");
+    PluginProcessor old;
+    load (old, *xml);
+    check (old.getCurrentProgram() == -1, "A session saved before 0.7.1 (no preset number) names no preset, program", old.getCurrentProgram());
+
+    bool inRange = true;
+    for (const char* bad : { "99", "-5", "x" })
+    {
+        xml->setAttribute ("program", bad);
+        PluginProcessor r;
+        load (r, *xml);
+        inRange = inRange && juce::isPositiveAndBelow (r.getCurrentProgram(), r.getNumPrograms());
+    }
+    check (inRange, "A damaged preset number (99, -5, x) is kept in range");
+
+    // Named, not applied: Neutral's values with Big Chest's number keep Neutral's values.
+    PluginProcessor neutral;
+    const auto neutralState = stateOf (neutral);
+    auto neutralXml = juce::AudioProcessor::getXmlFromBinary (neutralState.getData(), (int) neutralState.getSize());
+    neutralXml->setAttribute ("program", 3);
+    PluginProcessor s;
+    load (s, *neutralXml);
+    check (s.getCurrentProgram() == 3 && s.apvts.getRawParameterValue ("length")->load() == 1.0f, "The preset is not applied again on reload, Length", s.apvts.getRawParameterValue ("length")->load());
+}
+
+// throat-r2-1. A parameter missing from a loaded state, or with a value that is not a number, goes to its default, as StateGuard.h
+// promises, instead of keeping whatever the instance had (0.7.0: Length stayed at 1.60, Peak Guard stayed on, and "garbage" read as
+// 0 and was clamped to Length 0.50).
+static void testStateDefaults()
+{
+    for (const char* bad : { "nan", "garbage", "" })
+    {
+        PluginProcessor p;
+        apply (p, { { "peakGuard", 1.0f }, { "length", 1.6f } });
+        juce::MemoryBlock m;
+        p.getStateInformation (m);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (m.getData(), (int) m.getSize());
+        for (auto* child : xml->getChildIterator())
+        {
+            if (child->getStringAttribute ("id") == "length") child->setAttribute ("value", bad);
+        }
+        if (auto* guard = xml->getChildByAttribute ("id", "peakGuard")) xml->removeChildElement (guard, true);
+        juce::MemoryBlock damaged;
+        juce::AudioProcessor::copyXmlToBinary (*xml, damaged);
+        p.setStateInformation (damaged.getData(), (int) damaged.getSize());
+        check (p.apvts.getRawParameterValue ("length")->load() == 1.0f, std::string ("A loaded state with Length '") + bad + "' gives the default 1.00, Length", p.apvts.getRawParameterValue ("length")->load());
+        check (p.apvts.getRawParameterValue ("peakGuard")->load() == 0.0f, std::string ("A loaded state with no Peak Guard (as before 0.4.0) gives its default, off; case '") + bad + "'", p.apvts.getRawParameterValue ("peakGuard")->load());
+    }
+}
+
+// throat-r2-2. Moving a control that does nothing in the setting it is in must not change the sound. 0.7.0 counted any move as a
+// control moving, which starts Level Match's slow average again and puts its quick step into its moving mode. Limit (the hunt's): as
+// for block size changes, -100 dB or better against the still render.
+static void testStillControls (const std::vector<float>& speech)
+{
+    const double sr = 48000.0;
+    const std::vector<float> x (speech.begin(), speech.begin() + (int) (3.0 * sr));
+    struct Case { const char* name; Settings s; const char* id; float to; };
+    const Case cases[] = { { "Giant (Breathiness 0), Air tone moved from 1500 to 3000 Hz", {}, "breathHp", 3000.0f },
+                           { "Length 1.10, all widths 1.00, Position 3 moved from 45 to 55", { { "length", 1.1f } }, "place3", 55.0f } };
+    for (const auto& c : cases)
+    {
+        const auto make = [&] (bool move)
+        {
+            PluginProcessor p;
+            if (c.s.empty()) p.setCurrentProgram (11);
+            apply (p, c.s);
+            prepare (p, 1, sr, 512);
+            return channelOf (render (p, x, 512, nullptr, [&] (int idx)
+            {
+                if (move && idx == 94) apply (p, { { c.id, c.to } });
+            }));
+        };
+        const auto still = make (false), moved = make (true);
+        check (nullDb (still, moved, 0, (int) still.size()) <= -100.0, std::string (c.name) + " under audio: difference from the still render", nullDb (still, moved, 0, (int) still.size()), "dB");
+    }
+}
+
+// throat-r2-3. A ratio control's text must say what it is: one that reads 1.00 is exactly 1, where the move is off, and the text
+// reads back as the value it came from.
+static void testRatioText()
+{
+    PluginProcessor p;
+    auto* prm = p.apvts.getParameter ("length");
+    prm->setValueNotifyingHost (prm->convertTo0to1 (1.004f));
+    const auto text = prm->getText (prm->getValue(), 32);
+    const float back = prm->convertFrom0to1 (prm->getValueForText (text));
+    check (std::abs (back - 1.004f) < 0.0005f, ("Length at 1.004 reads '" + text + "', which reads back as").toStdString(), back);
+    int misleading = 0;
+    for (int i = 990; i <= 1010; ++i)
+    {
+        prm->setValueNotifyingHost (prm->convertTo0to1 ((float) i / 1000.0f));
+        if (prm->getText (prm->getValue(), 32) == "1.00" && p.apvts.getRawParameterValue ("length")->load() != 1.0f) ++misleading;
+    }
+    check (misleading == 0, "Length from 0.990 to 1.010: values that read 1.00 but are not exactly 1", misleading);
+}
+
+// The host's Reset (Logic sends one when playback starts and before a bounce) clears what prepareToPlay clears, and allocates nothing.
+static void testReset()
+{
+    const double sr = 48000.0;
+    const auto a = lab::voice (lab::vowelA(), sr, 1.5, 110.0, 150.0), b = lab::voice (lab::schwa(), sr, 1.5, 180.0, 160.0);
+    const Settings giant { { "length", 1.6f }, { "width", 1.4f }, { "width2", 1.4f }, { "breath", 30.0f }, { "peakGuard", 1.0f } };
+    PluginProcessor used;
+    apply (used, giant);
+    prepare (used, 2, sr, 512);
+    render (used, a, 512);
+    const long before = testkit::allocs.load();
+    used.reset();
+    const long allocated = testkit::allocs.load() - before;
+    const auto afterReset = channelOf (render (used, b, 512));
+    PluginProcessor fresh;
+    apply (fresh, giant);
+    prepare (fresh, 2, sr, 512);
+    const auto fromNew = channelOf (render (fresh, b, 512));
+    check (largestDifference (afterReset, fromNew) == 0.0, "Play, reset, play: the second part equals a new instance, largest difference", largestDifference (afterReset, fromNew));
+    check (allocated == 0, "Reset allocates nothing", (double) allocated);
+    used.reset();
+    const std::vector<float> quiet ((size_t) sr, 0.0f);
+    const auto silence = render (used, quiet, 512);
+    check (peak (silence.getReadPointer (0), silence.getNumSamples()) == 0.0, "After a reset, silence in gives silence out, peak", peak (silence.getReadPointer (0), silence.getNumSamples()));
+}
+
+static void testPhase2 (const std::vector<float>& speech)
+{
+    testSourceFallStaysPut();
+    testConsonantAfterNote();
+    testPresetSaved();
+    testStateDefaults();
+    testStillControls (speech);
+    testRatioText();
+    testReset();
+}
+
+int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+    // "PluginTest phase2" runs only the Phase 2 checks.
+    if (argc > 1 && juce::String (argv[1]) == "phase2")
+    {
+        testPhase2 (lab::loadWav (juce::File (SPEECH_DIR).getChildFile ("samantha.wav")));
+        return finish();
+    }
 
     GenericOptions opt;
     opt.minPresets = 4;
@@ -1088,6 +1361,7 @@ int main()
     testPeakGuard();
     testHighBurst();
     testPresets (speech[0].second);
+    testPhase2 (speech[0].second);
     testCpu (speech[0].second);
     return finish();
 }

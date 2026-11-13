@@ -434,15 +434,57 @@ inline std::vector<float> doubled (const std::vector<float>& x)
     return y;
 }
 
+// Formant scale of out against in, frame by frame (85 ms Hann frames every 20 ms, 300 Hz smoothed log spectra, 300 to 3500 Hz, the
+// frames within 20 dB of the loudest), as the share each frame is off 2^(st/12): the 90th percentile.
+inline double frameFormantP90 (const std::vector<float>& in, const std::vector<float>& out, double sr, double st)
+{
+    int order = 10;
+    while ((1 << order) < (int) (0.085 * sr)) ++order;
+    const int N = 1 << order, hop = (int) (0.02 * sr);
+    juce::dsp::FFT fft (order);
+    std::vector<float> buf ((size_t) N * 2);
+    const double binHz = sr / N;
+    const int reach = std::max (1, (int) std::lround (150.0 / binHz));
+    const auto spectrum = [&] (const float* x)
+    {
+        for (int i = 0; i < N; ++i) buf[(size_t) i] = x[i] * (float) (0.5 - 0.5 * std::cos (2.0 * M_PI * i / (N - 1)));
+        std::fill (buf.begin() + N, buf.end(), 0.0f);
+        fft.performFrequencyOnlyForwardTransform (buf.data());
+        std::vector<double> power ((size_t) N / 2 + 1), smooth (power.size());
+        for (int k = 0; k <= N / 2; ++k) power[(size_t) k] = (double) buf[(size_t) k] * buf[(size_t) k];
+        for (int k = 0; k <= N / 2; ++k)
+        {
+            double sum = 0.0; int c = 0;
+            for (int j = std::max (0, k - reach); j <= std::min (N / 2, k + reach); ++j) { sum += power[(size_t) j]; ++c; }
+            smooth[(size_t) k] = 10.0 * std::log10 (sum / c + 1.0e-20);
+        }
+        std::vector<double> perHz;
+        for (double hz = 0.0; hz < 4000.0; hz += 1.0) { const double at = hz / binHz; const int i = (int) at; perHz.push_back (smooth[(size_t) i] + (at - i) * (smooth[(size_t) i + 1] - smooth[(size_t) i])); }
+        return perHz;
+    };
+    const long n = (long) std::min (in.size(), out.size());
+    double loudest = 0.0;
+    std::vector<double> levels;
+    for (long i = 0; i + N <= n; i += hop) { levels.push_back (rms (in.data() + i, N)); loudest = std::max (loudest, levels.back()); }
+    std::vector<double> errors;
+    size_t f = 0;
+    for (long i = 0; i + N <= n; i += hop, ++f)
+        if (levels[f] > 0.1 * loudest)
+            errors.push_back (std::abs (shapeScale (spectrum (in.data() + i), spectrum (out.data() + i), 300.0, 3500.0) / std::pow (2.0, st / 12.0) - 1.0));
+    return percentile (errors, 90.0);
+}
+
 // alterego-dsp-r2-1: from 88.2 kHz up the envelope stayed at 80 poles, so 1.2.5's Formant Shift fix never applied there and formants
-// moved less than in a 48 kHz project. Real speech with held vowels, Formant Shift -4 and +4, at 48 kHz and the same doubled to 96 kHz.
+// moved less than in a 48 kHz project. Held vowels (the corpus's two), Formant Shift -4 and +4, at 48 kHz and the same doubled to 96 kHz.
+// First written on the long term spectrum of the whole file, which did not tell the two apart (1.2.5 read 0.8% at worst, limit 1): the
+// fault is in a share of the frames, as round 1 found it on real takes, so it is read frame by frame.
 inline void testHighRateFormants()
 {
     double worstGap = 0.0;
-    for (const char* name : { "held_kathy.wav", "held_fred.wav", "speech_samantha.wav" })
+    for (const char* name : { "held_kathy.wav", "held_fred.wav" })
         for (double st : { -4.0, 4.0 })
         {
-            double err[2] = { 0.0, 0.0 };
+            double p90[2] = { 0.0, 0.0 };
             for (int k = 0; k < 2; ++k)
             {
                 const double sr = k == 0 ? SR : 2.0 * SR;
@@ -452,15 +494,13 @@ inline void testHighRateFormants()
                 setParam (*p, "formant", (float) st);
                 const auto out = run (*p, in, sr);
                 const int L = p->getLatencySamples();
-                const long n = (long) out.size() - L - 8192;
-                std::vector<float> aligned (out.begin() + L, out.begin() + L + n);
-                const auto a = smoothSpectrumDb (in.data(), n, sr, 300.0 * sr / SR), b = smoothSpectrumDb (aligned.data(), n, sr, 300.0 * sr / SR);
-                err[k] = std::abs (shapeScale (a, b, 300.0, 3500.0) / std::pow (2.0, st / 12.0) - 1.0);
+                std::vector<float> aligned (out.begin() + L, out.end());
+                p90[k] = frameFormantP90 (in, aligned, sr, st);
             }
-            info ("Phase 2:   " + std::string (name) + " Formant Shift " + std::to_string ((int) st) + ": scale off at 48 kHz (%) " + std::to_string (100.0 * err[0]) + ", at 96 kHz", 100.0 * err[1], "%");
-            worstGap = std::max (worstGap, err[1] - err[0]);
+            info ("Phase 2:   " + std::string (name) + " Formant Shift " + std::to_string ((int) st) + ": frames off, 90th percentile, at 48 kHz (%) " + std::to_string (100.0 * p90[0]) + ", at 96 kHz", 100.0 * p90[1], "%");
+            worstGap = std::max (worstGap, p90[1] - p90[0]);
         }
-    check (worstGap <= phase2limits::highRateFormantGapFraction, "Phase 2: Formant Shift +/-4 on real speech moves formants at 96 kHz as far as at 48 kHz: shortfall, worst", 100.0 * worstGap, "%");
+    check (worstGap <= phase2limits::highRateFormantGapFraction, "Phase 2: Formant Shift +/-4 on held vowels moves formants at 96 kHz as far as at 48 kHz, frame by frame: 90th percentile over 48 kHz's, worst", 100.0 * worstGap, "%");
 }
 
 // From the lead's list: at 192 kHz the window's copy of the voice tore, because a whole block landed while the mirror read its longest

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2, 2026-11-13
+
+- Slice Mode set to Manual by a host or automation now gets the slices the processor holds (the default transient slices until a marker is moved), the same with the window open as closed. 1.2.1 gave the slices on show when the window was open, so an open window changed what a host set. Clicking Manual in the window still keeps the markers on show. New test in `tests/Phase2Tests.h`: Manual set through the parameter with the window open and closed must give the same slices and save the same bytes; on 1.2.1 8 slice starts differed.
+- Changed test: the 1.0.0 test "picking Manual keeps the markers on show" picked Manual through the parameter, the way a host sets it, so it required the old behaviour. It now clicks Manual in the window, as a person picks it, with the same check plus that the click turned Slice Mode to Manual; the old lines are kept in a comment above it. Changed with Luke's yes on 2026-11-13: "u can do all of these".
+- Nothing else changed: every slice is cut where 1.2.1 cuts it, the 17 sessions saved by 1.2.0 play bit for bit and save back byte for byte, and all 14 presets render the same.
+
 ## 1.2.1, 2026-11-13
 
 Fixes for the bugs the Phase 2 hunt kept, each with a test in `tests/Phase2Tests.h` that failed on 1.2.0. Every slice is cut where 1.2.0 cuts it and, up to 8 times the file's speed, every voice plays exactly as in 1.2.0. 17 sessions saved by the installed 1.2.0 (the default, all 14 presets, Manual and Grid) play bit for bit, keep their sample, cuts and every slot, and save back byte for byte.

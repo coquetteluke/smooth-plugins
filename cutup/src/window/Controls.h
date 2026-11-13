@@ -113,9 +113,13 @@ namespace ui
         void choose (int index)  { attachment.setValueAsCompleteGesture ((float) index); }
         juce::Point<float> centreOf (int index) const;
 
+        /** Called with the choice a click makes in this control, just before it is set. A host's change never calls it. */
+        std::function<void (int)> onUserChoice;
+
     private:
         juce::Rectangle<float> buttonsArea() const;
         int segmentAt (juce::Point<float>) const;
+        void chooseByHand (int index);
 
         juce::RangedAudioParameter& param;
         const juce::String label;

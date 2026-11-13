@@ -374,9 +374,14 @@ SliceEditor::SliceEditor (PluginProcessor& p)
     setSize (juce::jlimit (P::minWindowWidth, P::maxWindowWidth, p.windowWidth.load (std::memory_order_relaxed)),
              juce::jlimit (P::minWindowHeight, P::maxWindowHeight, p.windowHeight.load (std::memory_order_relaxed)));
 
+    // Picking Manual in the window before any edit keeps the markers that were on show.
+    sliceMode.onUserChoice = [this] (int choice)
+    {
+        if (choice == PluginProcessor::modeManual && ! processor.isManualEdited())
+            processor.adoptAsManual (shownTable);
+    };
+
     constructed = true;
-    shownMode = (int) p.apvts.getRawParameterValue ("slice_mode")->load();
-    shownRestore = p.getRestoreCount();
     shownAdvanced = isAdvancedOpen();
     refresh();
     startTimerHz ((int) slowRate);
@@ -751,18 +756,9 @@ void SliceEditor::pollFast()
 {
     const int actualMode = (int) processor.apvts.getRawParameterValue ("slice_mode")->load();
 
-    // A restored session brings its own Slice Mode and markers: they are taken as they are, never replaced by what was on show.
-    if (processor.getRestoreCount() != shownRestore)
-    {
-        shownRestore = processor.getRestoreCount();
-        shownMode = actualMode;
-    }
-
-    // Picking Manual before any edit starts from the markers that were on show.
-    if (actualMode == PluginProcessor::modeManual && shownMode != PluginProcessor::modeManual && ! processor.isManualEdited())
-        processor.adoptAsManual (shownTable);
-
-    shownMode = actualMode;
+    // Slice Mode set from outside the window (a host, automation, a restored session) takes the slices the processor
+    // holds, the same as with the window closed. Only Manual picked in the window itself starts from the markers on show (see the
+    // constructor).
 
     // Advanced opened or closed by a restored session lays the drawer out to match.
     if (isAdvancedOpen() != shownAdvanced)

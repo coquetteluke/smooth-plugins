@@ -98,7 +98,7 @@ private:
 
     juce::Rectangle<int> titleArea, infoArea, manualNoteArea, hintArea, ampLabel, pitchLabel;
     juce::String statusText, hintText, summaryText;
-    int boundSlot = -1, shownMode = -1, shownLayout = -1, shownRestore = 0, slowCounter = 0;
+    int boundSlot = -1, shownLayout = -1, slowCounter = 0;
     bool shownAdvanced = false;
     int longestHint = 0;
     slicecore::SliceTable shownTable;

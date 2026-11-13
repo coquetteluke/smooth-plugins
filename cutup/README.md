@@ -41,7 +41,7 @@ Every control is a real AU parameter with a value string. The sample and hand-mo
 
 | Control | What it does |
 |---|---|
-| Slice Mode | Transient, Grid or Manual. Manual uses the markers moved by hand. Until something has been moved it starts from the slices on show when it is picked with the window open, or the default transient slices when the window is closed. A restored session keeps its own markers either way |
+| Slice Mode | Transient, Grid or Manual. Manual uses the markers moved by hand. Until something has been moved, Manual clicked in the window starts from the slices on show; Manual set by a host or automation gets the default transient slices, with the window open or closed. A restored session keeps its own markers either way |
 | Sensitivity | 0 to 100%. How weak an onset can be and still cut. Transient mode |
 | Min Slice | 5 to 1000 ms. Two cuts never come closer than this, and the stronger one stays. Transient mode |
 | Slice Start | 0 to 60000 ms. Nothing before this point is sliced. Works in Transient and Grid |

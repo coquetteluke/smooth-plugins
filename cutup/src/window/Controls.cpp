@@ -334,12 +334,19 @@ namespace ui
         const int hit = segmentAt (e.position);
 
         if (hit >= 0 && hit != selected && e.getNumberOfClicks() == 1)
-            choose (hit);
+            chooseByHand (hit);
     }
 
     void Segments::mouseDoubleClick (const juce::MouseEvent&)
     {
-        choose (juce::roundToInt (param.convertFrom0to1 (param.getDefaultValue())));
+        chooseByHand (juce::roundToInt (param.convertFrom0to1 (param.getDefaultValue())));
+    }
+
+    void Segments::chooseByHand (int index)
+    {
+        if (onUserChoice != nullptr && index != selected)
+            onUserChoice (index);
+        choose (index);
     }
 
     void Segments::paint (juce::Graphics& g)

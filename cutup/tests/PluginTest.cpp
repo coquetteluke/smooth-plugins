@@ -1871,6 +1871,14 @@ static void testEditor()
     check (err < 1.0e-6, "the audio uses the moved marker, worst difference", err);
 
     // Picking Manual before any edit starts from what was on show.
+    // Changed with Luke's yes on 2026-11-13 ("u can do all of these"): 1.0.0 picked Manual through the parameter, as a host sets it, so
+    // it required a host's Manual to take the window's slices whenever the window was open (with it closed a host got the processor's).
+    // From 1.2.2 a host's Manual always gets the slices the processor holds, and picking Manual is a person clicking Manual in the
+    // window, so the test clicks it. The check is the same, plus that the click did turn Slice Mode to Manual. The 1.0.0 lines were:
+    //     const auto grid = q.getShownTable();
+    //     setP (q, "slice_mode", (float) PluginProcessor::modeManual);
+    //     qEditor.refresh();
+    //     check (q.getShownTable() == grid, "picking Manual keeps the markers on show");
     {
         PluginProcessor q;
         load (q, file);
@@ -1879,9 +1887,24 @@ static void testEditor()
         auto& qEditor = dynamic_cast<SliceEditor&> (*qe);
         qEditor.refresh();
         const auto grid = q.getShownTable();
-        setP (q, "slice_mode", (float) PluginProcessor::modeManual);
+        std::function<ui::Segments* (juce::Component&)> modes = [&] (juce::Component& c) -> ui::Segments*
+        {
+            if (c.getComponentID() == "slice_mode")
+                if (auto* s = dynamic_cast<ui::Segments*> (&c)) return s;
+            for (auto* child : c.getChildren())
+                if (auto* s = modes (*child)) return s;
+            return nullptr;
+        };
+        auto& segments = *modes (qEditor);
+        const auto at = segments.centreOf (PluginProcessor::modeManual);
+        const auto now = juce::Time::getCurrentTime();
+        const juce::MouseEvent down (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys::leftButtonModifier, 1.0f, 0.0f,
+                                     0.0f, 0.0f, 0.0f, &segments, &segments, now, at, now, 1, false);
+        segments.mouseDown (down);
+        segments.mouseUp (down);
         qEditor.refresh();
-        check (q.getShownTable() == grid, "picking Manual keeps the markers on show");
+        check ((int) q.apvts.getRawParameterValue ("slice_mode")->load() == PluginProcessor::modeManual && q.getShownTable() == grid,
+               "picking Manual keeps the markers on show");
     }
 
     // Load during a window, destroyed while still loading.

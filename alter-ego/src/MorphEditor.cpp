@@ -51,6 +51,14 @@ public:
 
     juce::String getSummary() const  { return summary; }
 
+    float summaryOverflow() const
+    {
+        if (summary.isEmpty())
+            return -1.0e6f;
+        const float room = (float) getWidth() - 16.0f - 64.0f - 8.0f;
+        return juce::GlyphArrangement::getStringWidth (font (Weight::regular, 13.0f), summary) - room;
+    }
+
     void paint (juce::Graphics& g) override
     {
         const bool lit = isMouseOver (true);
@@ -297,6 +305,9 @@ void MorphEditor::setAdvancedOpen (bool shouldBeOpen)
     resized();
     advancedHeader->repaint();
 }
+
+juce::String MorphEditor::presetText() const   { return presets.nameNow != nullptr ? presets.nameNow() : juce::String(); }
+float MorphEditor::advancedSummaryOverflow() const { return advancedHeader->summaryOverflow(); }
 
 juce::String MorphEditor::readingText() const
 {

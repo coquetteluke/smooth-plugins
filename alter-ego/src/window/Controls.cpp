@@ -159,6 +159,12 @@ namespace ui
         g.fillEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre ({ x, line.getCentreY() }));
     }
 
+    float DotSlider::labelValueOverlap() const
+    {
+        return juce::GlyphArrangement::getStringWidth (font (Weight::regular, 13.0f), label) + 6.0f
+               + juce::GlyphArrangement::getStringWidth (font (Weight::medium, 18.0f, true), valueText()) - (float) getWidth();
+    }
+
     // ---- the big value --------------------------------------------------------------------------------------
 
     ValueField::ValueField (Apvts& state, const juce::String& paramId, const juce::String& labelText, const juce::String& hintText)

@@ -173,6 +173,8 @@ public:
     float outputHz() const noexcept { return readOutput.load (std::memory_order_relaxed); }
     float rangeOffset() const noexcept { return readRange.load (std::memory_order_relaxed); }
     const EnvelopeEngine& envelopeReadout() const noexcept { return envelope; }
+    // For the tests only (1.2.6): see PsolaShifter::furthestPastNewestPulse.
+    double grainsPastNewestPulse() const noexcept { return shifter.furthestPastNewestPulse(); }
 
     // Runs in place. Input is cleaned here: not finite goes to 0, the rest is clamped to +/-16.
     void process (float* const* audio, int numSamples) noexcept

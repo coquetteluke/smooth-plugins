@@ -86,3 +86,11 @@ namespace limits
     constexpr double padResetNullDb = -100.0;         // double-click on the pad: output against the delayed input
     constexpr double padVibratoSemitones = 1.0;       // Vibrato 100 cents: the disc swings at least this far, end to end (2 st true)
 }
+
+// Phase 2 (1.2.6), written before the Phase 2 tests were first run.
+namespace phase2limits
+{
+    constexpr double grainPastNewestPulsePeriods = 0.6;  // the shifter's own rule: a grain reads the pulse nearest it, never over 0.6 periods away
+    constexpr double voicedIntoConsonantMs = 5.0;        // a vowel crossfading into an S over 5 ms: by the end of it there is no vowel left to shift
+    constexpr double highRateFormantGapFraction = 0.01;  // Formant Shift at 96 kHz against 48 kHz on the same speech: within 1 point of the 5% limit
+}

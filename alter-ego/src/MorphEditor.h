@@ -26,6 +26,10 @@ public:
     bool isAdvancedOpen() const noexcept;
     void setAdvancedOpen (bool);
 
+    /** For the tests: the preset box's text, and how much wider the closed Advanced summary is than its room (over 0 it is cut off). */
+    juce::String presetText() const;
+    float advancedSummaryOverflow() const;
+
     /** What the window says now, in words. Used by the tests. */
     juce::String readingText() const;
     juce::String statusText() const  { return status; }

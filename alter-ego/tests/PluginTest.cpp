@@ -2015,6 +2015,11 @@ void writeDemos()
 }
 } // namespace
 
+namespace
+{
+#include "Phase2Tests.h"
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -2048,6 +2053,7 @@ int main (int argc, char** argv)
     if (want ("presets")) testOutputAndPresets();
     if (want ("blocks")) testBlocksAndStereo();
     if (want ("window")) testWindow();
+    if (want ("phase2")) phase2::run();
     if (want ("cpu")) testCpu();
     return finish();
 }

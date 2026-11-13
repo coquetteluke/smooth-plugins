@@ -30,6 +30,8 @@ namespace ui
         juce::String valueText() const;
         void startTyping();
         void applyTyped (const juce::String&);
+        /** For the tests: how much wider the name, a 6 point gap and the value are than the slider, as painted now. Over 0 they overlap. */
+        float labelValueOverlap() const;
         void setForcedHover (bool shouldShow)  { forcedHover = shouldShow; repaint(); }
 
         /** Quieter when this control has nothing to do right now, such as Robot Note without Robot. It still works. */

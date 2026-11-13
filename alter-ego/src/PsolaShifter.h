@@ -53,12 +53,17 @@ public:
     }
 
     void setLatency (int samples) noexcept { latency = samples; }
+
+    // For the tests only, never read by audio: how far past the newest pulse the tracker has marked a grain has sat while it read a
+    // pulse, in periods, since reset (1.2.6).
+    double furthestPastNewestPulse() const noexcept { return pastNewest; }
     int getLatency() const noexcept { return latency; }
 
     void reset() noexcept
     {
         for (auto& b : delay) std::fill (b.begin(), b.end(), 0.0f);
         written = 0;
+        pastNewest = 0.0;
         restart();
     }
 
@@ -425,6 +430,7 @@ private:
             {
                 g.offset = offset;
                 lastMarkUsed = q;
+                pastNewest = std::max (pastNewest, (g.mark - (tracker.mark (tracker.lastMark()).position + shift)) / period);
             }
         }
         splitOffset (g);
@@ -445,7 +451,7 @@ private:
     Grain pending;
     bool havePending = false, needDecision = true, firstGrain = true;
     Plan planned = Plan::pass;
-    double peakOfNewest = 0.0, pulseShift = 0.0;
+    double peakOfNewest = 0.0, pulseShift = 0.0, pastNewest = 0.0;
     long long lastMarkUsed = -1;
     bool flip = false, pulseKnown = false;
 };

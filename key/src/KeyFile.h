@@ -72,7 +72,8 @@ public:
     // Room for the longest line there can be, with some to spare. A test checks the longest one fits.
     static constexpr size_t lineSize = 384;
     // A held key never changes, and a follower ignores a file older than ten minutes. So while a key is held the file is
-    // written again this often, and a plug-in added later still finds a fresh one.
+    // written again this often, and a plug-in added later still finds a fresh one. Since 1.7.2 the same goes for every key that is
+    // fixed on purpose: set by hand, or frozen with Listening off or Bypass.
     static constexpr double lockedRefreshSeconds = 240.0;
 
     // Formats one line. The first five fields are exactly as other plug-ins have always read them. The rest were added in
@@ -97,7 +98,8 @@ public:
     }
 
     // Call often. Writes only when something changed and enough time has passed. monotonic is any steady clock in seconds.
-    void update (const KeyState& s, double monotonic, double unixSeconds) noexcept
+    // atOnce skips the wait between writes (not the wait after a failure), for a bounce that runs faster than real time.
+    void update (const KeyState& s, double monotonic, double unixSeconds, bool atOnce = false) noexcept
     {
         const bool sameAlt = (s.altKey < 0 && written.altKey < 0) || (s.altKey == written.altKey && s.altMinor == written.altMinor);
         const bool changed = ! hasWritten || s.key != written.key || s.minor != written.minor || s.listening != written.listening
@@ -105,10 +107,12 @@ public:
                              || (s.confidence == 0.0 && written.confidence != 0.0)
                              || ! sameAlt || s.unsure != written.unsure || s.locked != written.locked || s.source != written.source
                              || (s.altKey >= 0 && (std::abs (s.altConfidence - written.altConfidence) >= 0.05 || std::abs (s.margin - written.margin) >= 0.05));
-        const bool refresh = hasWritten && s.locked && monotonic - lastWrite >= lockedRefreshSeconds;
-        if (! changed && ! refresh)
+        const bool fixed = s.locked || s.source == 1 || ! s.listening;
+        const bool refresh = hasWritten && fixed && monotonic - lastWrite >= lockedRefreshSeconds;
+        // After a failure it tries again even if the state went back to the line on disk, so the failure does not stay up for good.
+        if (! changed && ! refresh && ! failed)
             return;
-        const double wait = failed ? std::fmax (minInterval, 5.0) : minInterval;
+        const double wait = failed ? std::fmax (minInterval, 5.0) : (atOnce ? 0.0 : minInterval);
         if (attempted && monotonic - lastAttempt < wait)
             return;
         attempted = true;
@@ -128,12 +132,41 @@ public:
         }
     }
 
-    // Writes regardless of the timer, for the last word as the plug-in closes.
+    // Writes regardless of the timer.
     void flush (const KeyState& s, double unixSeconds) noexcept
     {
         if (writeNow (s, unixSeconds)) { written = s; hasWritten = true; failed = false; ++writes; }
         else { failed = true; ++failures; }
     }
+
+    // The last word as the plug-in closes: the line it last wrote, now saying it no longer listens, with the time that line had.
+    // Only while key.json still holds that line, so a Key that closes never writes over a newer line from another Key, and never
+    // makes an old key look new to a follower. Since 1.7.2; before, it wrote its last line again stamped with the time of closing.
+    void close() noexcept
+    {
+        if (! hasWritten || written.listening == false || ! stillHolds())
+            return;
+        KeyState s = written;
+        s.listening = false;
+        flush (s, writtenUnix);
+    }
+
+    // Whether key.json still holds exactly the line this one last wrote. Reads the file.
+    bool stillHolds() const noexcept
+    {
+        if (! hasWritten || lastLineLength <= 0)
+            return false;
+        const int fd = open (path, O_RDONLY);
+        if (fd < 0)
+            return false;
+        char text[lineSize + 1];
+        const ssize_t n = read (fd, text, sizeof text);
+        ::close (fd);
+        return n == (ssize_t) lastLineLength && std::memcmp (text, lastLine, (size_t) lastLineLength) == 0;
+    }
+
+    // The Unix time of the line last written, as it is in the file.
+    double lastWrittenTime() const noexcept { return writtenUnix; }
 
     bool hasFailed() const noexcept { return failed; }
     bool everWritten() const noexcept { return hasWritten; }
@@ -163,7 +196,7 @@ private:
         return mkdir (folder, 0755) == 0 || errno == EEXIST;
     }
 
-    bool writeNow (const KeyState& s, double unixSeconds) const noexcept
+    bool writeNow (const KeyState& s, double unixSeconds) noexcept
     {
         if (path[0] == 0 || ! makeFolders())
             return false;
@@ -176,12 +209,15 @@ private:
         if (fd < 0)
             return false;
         const bool wroteAll = write (fd, line, (size_t) length) == (ssize_t) length;
-        const bool closed = close (fd) == 0;
+        const bool closed = ::close (fd) == 0;
         if (! wroteAll || ! closed || rename (tempPath, path) != 0)
         {
             unlink (tempPath);
             return false;
         }
+        std::memcpy (lastLine, line, (size_t) length);
+        lastLineLength = length;
+        writtenUnix = (double) std::llround (unixSeconds * 10.0) / 10.0;   // as the line says it
         return true;
     }
 
@@ -191,5 +227,8 @@ private:
     bool attempted = false, hasWritten = false, failed = false;
     KeyState written;
     long writes = 0, failures = 0;
+    char lastLine[lineSize] {};
+    int lastLineLength = 0;
+    double writtenUnix = 0.0;
 };
 } // namespace smoothkey

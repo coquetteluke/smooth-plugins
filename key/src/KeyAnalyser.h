@@ -369,6 +369,19 @@ public:
         fade (seconds);
     }
 
+    // A host Reset: the audio still in the window came from before a stop or a jump, so it is let go and what follows is heard on its
+    // own. What was heard stays: the memories, the reading and the tempo.
+    void clearInput() noexcept
+    {
+        std::fill (firHistory.begin(), firHistory.end(), 0.0f);
+        firPos = 0;
+        decimCounter = 0;
+        std::fill (ring.begin(), ring.end(), 0.0);
+        ringPos = 0;
+        hopCounter = 0;
+        windowFilled = 0;
+    }
+
     const Reading& reading() const noexcept { return current; }
     // For tools and tests: the note a lone voice is holding in the newest frame (pitch class 0 to 11, or -1) and its weight.
     int heldNoteNow() const noexcept { return heldNow > 0.0 ? lastTopPc : -1; }
@@ -379,6 +392,27 @@ public:
     double clarityNow() const noexcept { return clarityAvg; }       // for tools: the tuning clarity, averaged (-1 before it is judged)
     int voiceKeyChanges() const noexcept { return keyChanges; } // times a lone voice's reading moved because the song changed key
     double secondsHeard() const noexcept { return heardSeconds; }
+    // For tests: how far the newest time stamp lies ahead of the clock, in seconds, or 0. A stamp ahead of the clock was taken on an
+    // older timeline, and the timer it starts waits for that timeline to come round again.
+    // For tests: the top log bin of the newest frame against the largest of the bins it is read from. Above 1 it was made up.
+    double topBinOvershoot() const noexcept
+    {
+        const double ratio = std::pow (2.0, tuning / 12.0);
+        const double halfWidth = std::pow (2.0, 1.0 / (12.0 * binsPerNote * 2.0)) - 1.0;
+        const double p = logFreqs[(size_t) numLog - 1] * ratio / binHz, w = p * halfWidth;
+        double largest = 0.0;
+        for (int k = std::max (0, (int) std::floor (p - w)); k <= std::min ((int) std::ceil (p + w), maxBin + 1); ++k) largest = std::max (largest, mag[(size_t) k]);
+        return largest > 0.0 ? logSpec[(size_t) numLog - 1] / largest : 0.0;
+    }
+    double stampAhead() const noexcept
+    {
+        double ahead = std::max ({ 0.0, lastMove - heardSeconds, lastDrift - heardSeconds, shownSetBefore >= 0 ? shownSince - heardSeconds : 0.0 });
+        for (size_t n = 0; n < 12; ++n)
+            if (changeScore[n] > 0.0) ahead = std::max (ahead, changeStart[n] - heardSeconds);
+        for (const auto& row : transitionHeard)
+            for (double t : row) ahead = std::max (ahead, t - heardSeconds);
+        return ahead;
+    }
 
 private:
     static constexpr int fftSize = 8192, hop = 2048;
@@ -487,6 +521,9 @@ private:
     double interpolatedMag (double p) const noexcept
     {
         const int i = std::clamp ((int) p, 0, maxBin);
+        // Past the last bin this draws the line on rather than reading a bin: music tuned more than about 24 cents sharp reads the
+        // top log bin as up to 30 times the bins it is drawn from (topBinOvershoot). Left as it is in 1.7.2: clamping changes
+        // readings of the detuned chord clips that the Full Mix fingerprint pins, and no reading was shown to go wrong by it.
         const double f = p - i;
         return mag[(size_t) i] * (1.0 - f) + mag[(size_t) std::min (i + 1, maxBin + 1)] * f;
     }
@@ -687,7 +724,13 @@ private:
         }
         // Compare with the part of the window that has audio in it, so the first frames are not called silence.
         const double rms = std::sqrt (energy / std::max (windowFilled, 1));
-        const bool hasSignal = rms > silenceRms && std::isfinite (rms);
+        // A steady offset is not sound: the gate goes by what moves, the window with its mean taken off. Only the gate: everything
+        // after it still weighs a frame by its whole level, exactly as before.
+        double sum = 0.0;
+        for (int i = 0; i < fftSize; ++i) sum += ring[(size_t) i];
+        const double filled = std::max (windowFilled, 1);
+        const double moving = std::sqrt (std::max (0.0, energy - sum * sum / filled) / filled);
+        const bool hasSignal = moving > silenceRms && std::isfinite (rms);
         current.signal = hasSignal;
         if (! hasSignal)
         {
@@ -1544,6 +1587,8 @@ private:
         current.confidence = (float) smoothedConfidence;
         current.signal = false;
         for (auto& c : current.candidates) c *= (float) f;
+        // The runner up fades with the key it runs behind, on the same scale, and is gone when that is.
+        current.altConfidence = smoothedConfidence > 0.0 ? current.altConfidence * (float) f : 0.0f;
         const float noteFade = (float) std::exp (-seconds / 0.2);
         for (auto& n : current.liveNotes) n *= noteFade;
     }
@@ -1562,7 +1607,17 @@ private:
         cadence.fill (0.0);
         heldChord = pendingChord = -1;
         pendingFrames = 0;
-        heardSeconds = std::min (heardSeconds, knobs.openingSeconds);
+        // The clock goes back to the opening. Every time stamp taken on it goes back by as much, so each timer keeps the age it had at
+        // the pause: one stamped on the old clock would otherwise wait for the new clock to come round to it, holding the reading
+        // still (or not sure) for as long as the song had played.
+        const double rewound = heardSeconds - std::min (heardSeconds, knobs.openingSeconds);
+        heardSeconds -= rewound;
+        lastMove -= rewound;
+        lastDrift -= rewound;
+        shownSince -= rewound;
+        for (auto& t : changeStart) t -= rewound;
+        for (auto& row : transitionHeard)
+            for (auto& t : row) t -= rewound;
         openingBorn = 0.0;
         historyCount = 0;
         changeCount = 0;

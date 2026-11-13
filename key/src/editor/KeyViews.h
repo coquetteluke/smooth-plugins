@@ -21,6 +21,7 @@ namespace keyui
         void setDot (bool shouldShow);
 
         const juce::String& getText() const noexcept  { return text; }
+        juce::Colour getColour() const noexcept  { return colour; }
         void paint (juce::Graphics&) override;
 
     private:
@@ -52,6 +53,7 @@ namespace keyui
         ~HeroView() override;
 
         bool set (const Content&);
+        const Content& get() const noexcept  { return content; }
         juce::Rectangle<int> swapBounds() const;    // where the swap button goes, in this view
         juce::Rectangle<int> keyLetterBounds() const;
 

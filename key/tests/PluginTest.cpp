@@ -974,6 +974,7 @@ static void testEditor()
 
 #include "WindowTests.h"
 #include "LockTests.h"
+#include "Phase2Tests.h"
 
 int main (int argc, char** argv)
 {
@@ -984,6 +985,7 @@ int main (int argc, char** argv)
     if (argc > 2 && juce::String (argv[1]) == "--seed") heldOutSeed = (unsigned) juce::String (argv[2]).getLargeIntValue();
     if (heldOutSeed != limits::heldOutSeed) std::printf ("INFO  accuracy runs on seed %u, not the held out seed %u\n", heldOutSeed, limits::heldOutSeed);
 
+    if (argc > 1 && juce::String (argv[1]) == "--phase2") { runPhase2Tests (argc, argv); testFolder().deleteRecursively(); return finish(); }   // PluginTest --phase2 runs only those
     if (runLockTests (argc, argv)) { testFolder().deleteRecursively(); return finish(); }   // PluginTest --lock runs only those
 
     GenericOptions opt;
@@ -1013,6 +1015,8 @@ int main (int argc, char** argv)
         testMelodyAccuracy();
         testChordAccuracy();
     }
+
+    runPhase2Tests (1, argv);   // since 1.7.2, after every older test so their lines keep their places
 
     testFolder().deleteRecursively();
     return finish();

@@ -32,15 +32,36 @@ namespace
         return i >= 0 && i < 12 ? juce::String (smoothkey::keyNames[i]) : juce::String ("None");
     }
     juce::String scaleText (float v) { return v >= 0.5f ? "Minor" : "Major"; }
-    juce::String percentText (float v) { return juce::String (v, 0); }
+    juce::String percentText (float v) { return juce::String (juce::roundToInt (v)); }   // a whole percent (String (v, 0) printed 78.4615)
     juce::String hertzText (float v) { return juce::String (v, 1); }
     juce::String bpmText (float v) { return v < 1.0f ? juce::String ("None") : juce::String (v, 1); }
+
+    // Text back to a reading's value, so each reading's own text reads back as what it shows.
+    float keyFromText (const juce::String& text)
+    {
+        static constexpr const char* flats[12] = { "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B" };
+        const auto t = text.trim();
+        for (int i = 0; i < 12; ++i)
+            if (t.equalsIgnoreCase (smoothkey::keyNames[i]) || t.equalsIgnoreCase (flats[i]))
+                return (float) i;
+        return t.containsOnly ("-0123456789.") && t.isNotEmpty() ? t.getFloatValue() : -1.0f;   // "None", or anything else, is no key
+    }
+    float scaleFromText (const juce::String& text)
+    {
+        const auto t = text.trim();
+        if (t.startsWithIgnoreCase ("min")) return 1.0f;
+        if (t.startsWithIgnoreCase ("maj")) return 0.0f;
+        return t.getFloatValue();
+    }
+    float bpmFromText (const juce::String& text) { return text.trim().equalsIgnoreCase ("None") ? 0.0f : text.getFloatValue(); }
 
     const juce::Identifier windowWidthAttribute { "windowWidth" }, advancedOpenAttribute { "advancedOpen" };
     // Lock is saved only when it is on, and the held key only when there is one, so a session with Lock off is saved exactly as before.
     const juce::Identifier lockAttribute { "lock" }, lockedKeyAttribute { "lockedKey" }, lockedScaleAttribute { "lockedScale" };
 
     int packKey (int key, bool minor) noexcept { return (key + 1) | (minor ? 1 << 8 : 0); }
+
+    const juce::Identifier programAttribute { "program" };   // since 1.7.2: the preset last chosen, left out when none is known
 }
 
 // The one background thread: drains the queue, runs the analyser, publishes readings and writes the shared file.
@@ -55,6 +76,9 @@ public:
         else if (! smoothkey::KeyFile::overridePath (path, sizeof path) && ! smoothkey::KeyFile::defaultPath (path, sizeof path))
             path[0] = 0;
         file.setPath (path, minWriteSeconds);
+        owner.filePath = juce::String (juce::CharPointer_UTF8 (path));
+        // A click on Mode or Lock is held back from key.json this long: a double-click's second half comes within it.
+        clickSettle = (juce::MouseEvent::getDoubleClickTimeout() + 50) * 0.001;
     }
 
     void run() override
@@ -68,6 +92,13 @@ public:
             {
                 if (rate != currentRate) { analyser.configure (rate); currentRate = rate; }
                 owner.queue.discard();
+            }
+
+            // A host Reset: the audio not analysed yet came from before a stop or a jump.
+            if (owner.inputReset.exchange (false, std::memory_order_acq_rel))
+            {
+                owner.queue.discard();
+                analyser.clearInput();
             }
 
             const bool resetOn = owner.resetParam->load (std::memory_order_relaxed) >= 0.5f;
@@ -102,13 +133,9 @@ public:
             wait (25);
         }
 
-        // The last word as the plug-in closes: nothing is listening here any more. Only if it has ever had something to say.
-        if (file.everWritten())
-        {
-            auto last = file.lastWritten();
-            last.listening = false;
-            file.flush (last, unixNow());
-        }
+        // The last word as the plug-in closes: nothing is listening here any more. Only if it has ever had something to say, only
+        // while key.json still holds its own last line, and with that line's time (KeyFile::close).
+        file.close();
     }
 
 private:
@@ -148,15 +175,36 @@ private:
             s.unsure = s.locked = false;
             s.source = 0;
         }
-        file.update (s, now, unixNow());
+        // A double-click on Mode or Lock does what its first click did and then puts it back. Nothing is written until a click has
+        // outlived a double-click, so key.json never carries the step between. A bounce has no clicks and writes at once.
+        const bool offline = owner.isNonRealtime();
+        if (! offline && now - owner.lastControlClick.load (std::memory_order_acquire) < clickSettle)
+            return;
+        const long before = file.writeCount();
+        file.update (s, now, unixNow(), offline);
         owner.fileFailed.store (file.hasFailed(), std::memory_order_relaxed);
         owner.fileWrites.store (file.writeCount(), std::memory_order_relaxed);
+
+        if (file.writeCount() != before)
+        {
+            const auto& w = file.lastWritten();
+            owner.fileTime.store (file.lastWrittenTime(), std::memory_order_relaxed);
+            owner.filePacked.store ((w.key + 1) | (w.minor ? 1 << 8 : 0) | ((w.source & 3) << 9) | (w.confidence >= 0.5 ? 1 << 11 : 0), std::memory_order_release);
+            owner.fileOurs.store (true, std::memory_order_relaxed);
+            lastCheck = now;
+        }
+        else if (file.everWritten() && now - lastCheck >= 2.0)
+        {
+            // Another Key may have written since: the window says so.
+            owner.fileOurs.store (file.stillHolds(), std::memory_order_relaxed);
+            lastCheck = now;
+        }
     }
 
     PluginProcessor& owner;
     smoothkey::KeyAnalyser analyser;
     smoothkey::KeyFile file;
-    double currentRate = 0.0;
+    double currentRate = 0.0, clickSettle = 0.45, lastCheck = 0.0;
     float buffer[4096] {};
 };
 
@@ -196,11 +244,11 @@ PluginProcessor::PluginProcessor (const juce::String& jsonPath, double minWriteS
     tempoScale = apvts.getRawParameterValue ("tempoScale");
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
 
-    addParameter (keyReading = new ReadingParameter ("detectedKey", "Detected Key", "", -1.0f, 11.0f, -1.0f, keyText));
-    addParameter (scaleReading = new ReadingParameter ("detectedScale", "Detected Scale", "", 0.0f, 1.0f, 0.0f, scaleText));
+    addParameter (keyReading = new ReadingParameter ("detectedKey", "Detected Key", "", -1.0f, 11.0f, -1.0f, keyText, keyFromText));
+    addParameter (scaleReading = new ReadingParameter ("detectedScale", "Detected Scale", "", 0.0f, 1.0f, 0.0f, scaleText, scaleFromText));
     addParameter (confidenceReading = new ReadingParameter ("confidence", "Confidence", "%", 0.0f, 100.0f, 0.0f, percentText));
     addParameter (referenceReading = new ReadingParameter ("referencePitch", "Reference Pitch", "Hz", 415.0f, 466.0f, 440.0f, hertzText));
-    addParameter (tempoReading = new ReadingParameter ("detectedTempo", "Detected Tempo", "BPM", 0.0f, 480.0f, 0.0f, bpmText));
+    addParameter (tempoReading = new ReadingParameter ("detectedTempo", "Detected Tempo", "BPM", 0.0f, 480.0f, 0.0f, bpmText, bpmFromText));
 
     // Added in 1.7.0, after every parameter there was, so none of them moves. An Audio Unit lists its parameters by version
     // hint and then by a hash of the ID, and "lock" has the smallest hash of all: with hint 1 it would go first and push the
@@ -237,6 +285,39 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
 {
     pendingRate.store (sampleRate, std::memory_order_relaxed);
     setLatencySamples (0); // nothing is delayed at any rate, bypassed or not
+}
+
+void PluginProcessor::reset()
+{
+    // The background thread drops the queue and the analyser's window. The Reset JUCE sends as the host's own bypass turns on is not
+    // skipped, as other plug-ins skip it: Key's audio passes untouched either way, nothing is heard while bypassed, and the audio from
+    // before the bypass should not be joined to what comes after it.
+    inputReset.store (true, std::memory_order_release);
+}
+
+void PluginProcessor::noteControlClick() noexcept
+{
+    lastControlClick.store (steadyNow(), std::memory_order_release);
+}
+
+void PluginProcessor::offerLockKey (int key, bool minor) noexcept
+{
+    lockOfferAt.store (steadyNow(), std::memory_order_relaxed);
+    lockOffer.store (key >= 0 && key < 12 ? (key | (minor ? 1 << 8 : 0)) : -1, std::memory_order_release);
+}
+
+PluginProcessor::FileStatus PluginProcessor::getFileStatus() const noexcept
+{
+    FileStatus f;
+    const int packed = filePacked.load (std::memory_order_acquire);
+    f.written = (packed & 0xff) > 0;
+    f.key = (packed & 0xff) - 1;
+    f.minor = (packed & (1 << 8)) != 0;
+    f.source = (packed >> 9) & 3;
+    f.sure = (packed & (1 << 11)) != 0;
+    f.unixTime = fileTime.load (std::memory_order_relaxed);
+    f.ours = fileOurs.load (std::memory_order_relaxed);
+    return f;
 }
 
 void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -276,14 +357,25 @@ void PluginProcessor::processBlockBypassed (juce::AudioBuffer<float>&, juce::Mid
 
 void PluginProcessor::workerPublish (const smoothkey::Reading& r) noexcept
 {
-    // The key a loaded session held is taken first and the control read second. setStateInformation sets the control first and
-    // the key second, so a held key that has arrived always finds Lock already on, and is never thrown away as if Lock were off.
-    const int fromSession = heldFromSession.exchange (-1, std::memory_order_acq_rel);
-    if (fromSession >= 0)
-        publisher.restore ((fromSession & 0xff) - 1, (fromSession & (1 << 8)) != 0);
-
+    // The control is read first and a loaded session second. setStateInformation hands the session over first and sets the control
+    // second, so a Lock that came with a session always arrives with it, and is never taken for a click on Lock (since 1.7.2). The
+    // session carries its own Lock, which the publisher goes by until the control has caught up.
     smoothkey::ShowControls controls;
     controls.lock = lock->get();
+    const int fromSession = heldFromSession.exchange (-1, std::memory_order_seq_cst);
+    if (fromSession >= 0)
+        publisher.restoreSession ((fromSession & 0xff) - 1, (fromSession & (1 << 8)) != 0, (fromSession & (1 << 9)) != 0);
+
+    // Lock clicked on in the window: the key it showed. Only fresh, so an offer whose click never turned Lock on is not used later.
+    if (controls.lock)
+    {
+        const int offer = lockOffer.exchange (-2, std::memory_order_acquire);
+        if (offer != -2 && steadyNow() - lockOfferAt.load (std::memory_order_relaxed) < 1.0)
+        {
+            controls.offeredKey = offer >= 0 ? (offer & 0xff) : -1;
+            controls.offeredMinor = offer >= 0 && (offer & (1 << 8)) != 0;
+        }
+    }
 
     controls.manual = isManual();
     controls.manualKey = juce::roundToInt (manualKey->load (std::memory_order_relaxed));
@@ -299,7 +391,7 @@ void PluginProcessor::workerPublish (const smoothkey::Reading& r) noexcept
 
     packedReading.store ((key + 1) | (minor ? 1 << 8 : 0) | (r.signal ? 1 << 9 : 0)
                              | ((shown.altKey + 1) << 10) | (shown.altMinor ? 1 << 14 : 0) | (shown.unsure ? 1 << 15 : 0) | (held ? 1 << 16 : 0)
-                             | ((shown.heardKey + 1) << 17) | (shown.heardMinor ? 1 << 21 : 0),
+                             | ((shown.heardKey + 1) << 17) | (shown.heardMinor ? 1 << 21 : 0) | (shown.lockWaiting ? 1 << 22 : 0),
                          std::memory_order_relaxed);
     shownConfidence.store (confidence, std::memory_order_relaxed);
     altConfidence.store (shown.altConfidence, std::memory_order_relaxed);
@@ -338,6 +430,7 @@ PluginProcessor::Display PluginProcessor::getDisplay() const noexcept
     d.unsure = (packed & (1 << 15)) != 0;
     d.locked = (packed & (1 << 16)) != 0;
     d.lockOn = lock->get();
+    d.lockWaiting = (packed & (1 << 22)) != 0;
     d.heardKey = ((packed >> 17) & 0xf) - 1;
     d.heardMinor = (packed & (1 << 21)) != 0;
     d.heardConfidence = heardConfidence.load (std::memory_order_relaxed);
@@ -387,6 +480,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         xml->setAttribute (windowWidthAttribute, windowWidth.load (std::memory_order_relaxed));
         xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
+        if (currentProgram >= 0)
+            xml->setAttribute (programAttribute, currentProgram);
 
         if (lock->get())
         {
@@ -413,6 +508,9 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             if (xml->hasAttribute (windowWidthAttribute))
                 windowWidth.store (juce::jlimit (minWindowWidth, maxWindowWidth, xml->getIntAttribute (windowWidthAttribute, defaultWindowWidth)), std::memory_order_relaxed);
             advancedOpen.store (xml->getBoolAttribute (advancedOpenAttribute, false), std::memory_order_relaxed);
+            // Which preset was chosen, only to name it: its values are in the state already and are not applied again. A session saved
+            // before 1.7.2 does not say, so it names none rather than a wrong one. A damaged number is kept in range.
+            currentProgram = xml->hasAttribute (programAttribute) ? juce::jlimit (0, getNumPrograms() - 1, xml->getIntAttribute (programAttribute, 0)) : -1;
             // A session from before 1.7.0 has none of these: Lock is off, and it loads exactly as it always did.
             // A saved session is outside input: Lock is on only for exactly 1, and a held key is a whole number from 0 to 11.
             const bool lockOn = xml->getStringAttribute (lockAttribute).trim() == "1";
@@ -425,10 +523,11 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             xml->removeAttribute (lockAttribute);
             xml->removeAttribute (lockedKeyAttribute);
             xml->removeAttribute (lockedScaleAttribute);
+            xml->removeAttribute (programAttribute);
             applySafeState (apvts, *xml);
-            // The control first, then the key. workerPublish reads them the other way round, and says why.
+            // The session first, with its Lock, then the control. workerPublish reads them the other way round, and says why.
+            heldFromSession.store ((holds ? packKey (lockedKey, lockedMinor) : 0) | (lockOn ? 1 << 9 : 0), std::memory_order_seq_cst);
             lock->setValueNotifyingHost (lockOn ? 1.0f : 0.0f);
-            heldFromSession.store (holds ? packKey (lockedKey, lockedMinor) : 0, std::memory_order_release);
         }
 }
 

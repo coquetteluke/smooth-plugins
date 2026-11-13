@@ -18,6 +18,10 @@ struct ShowControls
     bool manualMinor = false;
     bool swapRelative = false;
     bool lock = false;
+    // Since 1.7.2: the key the window showed when Lock was clicked on there, taken in place of the newest one when Lock goes on.
+    // -2 for none (Lock switched by the host or automation), -1 when the window showed no key, so Lock waits for a sure one.
+    int offeredKey = -2;
+    bool offeredMinor = false;
 };
 
 struct Shown
@@ -51,6 +55,17 @@ public:
     {
         held = key >= 0 ? key % 12 : -1;
         heldMinor = minor;
+    }
+
+    // A loaded session, with the Lock it was saved with. Lock is taken as that for a few ticks while the control catches up, and
+    // a Lock that comes on with the session is never a click on Lock: it holds the session's key, or waits, and never takes the key
+    // that happened to be on show. Since 1.7.2.
+    void restoreSession (int key, bool minor, bool lockOn) noexcept
+    {
+        restore (key, minor);
+        wasLocked = lockOn;
+        sessionLock = lockOn;
+        sessionTicks = 8;
     }
 
     int heldKey() const noexcept { return held; }
@@ -107,7 +122,14 @@ public:
             s.heardConfidence = s.confidence;
         }
 
-        if (! c.lock)
+        bool lockOn = c.lock;
+        if (sessionTicks > 0)
+        {
+            if (lockOn == sessionLock) sessionTicks = 0;
+            else { lockOn = sessionLock; --sessionTicks; }
+        }
+
+        if (! lockOn)
         {
             held = -1;
         }
@@ -115,9 +137,15 @@ public:
         {
             if (held < 0)
             {
-                // Switched on with a key on show: that key, sure or not, because it was chosen by hand.
+                // Switched on with a key on show: that key, sure or not, because it was chosen by hand. Clicked on in the window,
+                // the key the window showed, which may be older than the newest one by a redraw.
                 // Switched on with nothing on show: it waits, and takes the first key a follower would have acted on anyway.
-                if (! wasLocked && lastKey >= 0)
+                if (! wasLocked && c.offeredKey >= 0)
+                {
+                    held = c.offeredKey % 12;
+                    heldMinor = c.offeredMinor;
+                }
+                else if (! wasLocked && c.offeredKey == -2 && lastKey >= 0)
                 {
                     held = lastKey;
                     heldMinor = lastMinor;
@@ -147,7 +175,7 @@ public:
             }
         }
 
-        wasLocked = c.lock;
+        wasLocked = lockOn;
         lastKey = s.key;
         lastMinor = s.minor;
         return s;
@@ -160,7 +188,7 @@ private:
         minor = ! minor;
     }
 
-    int held = -1, lastKey = -1;
-    bool heldMinor = false, lastMinor = false, wasLocked = false;
+    int held = -1, lastKey = -1, sessionTicks = 0;
+    bool heldMinor = false, lastMinor = false, wasLocked = false, sessionLock = false;
 };
 } // namespace smoothkey

@@ -39,6 +39,7 @@ public:
     juce::Component& getPanel();
     juce::Rectangle<int> getKeyLetterBounds();   // in panel coordinates
     void previewHover (const juce::String& componentId);
+    void previewHover (juce::Component*);
 
 private:
     struct Panel;

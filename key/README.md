@@ -24,7 +24,7 @@ All are AU parameters, so they can be automated and set by name.
 | Bypass | on, off | Audio is unchanged either way. Bypassed, it does not listen |
 | Lock | on, off | Holds the key on show at confidence 100% until turned off, through Reset, silence and reloading the session. It goes on listening underneath. Switched on with no key yet, it holds the first reading at 50% or more |
 
-Readings, which ignore writes and never write automation: Detected Key, Detected Scale, Confidence, Reference Pitch, Detected Tempo.
+Readings, which ignore writes and never write automation: Detected Key, Detected Scale, Confidence, Reference Pitch, Detected Tempo. Each one's text reads back as the value it shows ("None", "C#", "Minor", "78"), and Confidence is a whole percent.
 
 ## Presets
 
@@ -41,8 +41,9 @@ A sheet of paper with the key on it. See `docs/window/`.
 - Tuning, red when the music is 1 Hz or more from A 440, with how many cents. Tempo, with Half, Normal and Double.
 - Top row: Mode, Listening, Reset, Source, and what it is doing now. Advanced, in the footer: Manual Key, Manual Scale, Response, Bypass. Controls that do nothing in Manual dim but still work.
 - In Manual, click a key on the circle or a note on the keyboard, or click the big letters and type a key such as F# minor, Bb or Am. Manual Key can also be typed, dragged or scrolled.
-- Double-click a control to put it back. A one line hint explains whatever is under the mouse. If key.json can't be written, a small red note says so in the footer.
-- Resize from the corner. The size and whether Advanced is open are saved with the session. Nothing else was added to saved state.
+- Double-click a control to put it back. A one line hint explains whatever is under the mouse, and follows it as it changes.
+- The footer says what key.json holds from this Key and when it was written, such as `key.json: E major, locked, 3 min ago`: what Choir Loft and the tuners follow. It says `not sure` under 50%, which they ignore, `by hand` in Manual, and `changed by another Key` in red when another one wrote over it. Hover it for the folder. If key.json can't be written, a red note says so in its place.
+- Resize from the corner. The size and whether Advanced is open are saved with the session. Since 1.7.2 so is the preset last chosen, only to name it (a session from before names none). Nothing else was added to saved state.
 
 The window sets only real parameters, with begin and end gestures, and automation moves it. It reads the processor without locks and never touches the audio thread.
 
@@ -69,12 +70,15 @@ Proofs of what a lone voice cannot give: `python3 tests/proofs/ideal_reader.py s
 ```
 
 - `key`: C C# D D# E F F# G G# A A# B. `scale`: major or minor. `confidence`: 0 to 1. `time`: Unix seconds of this write. `listening`: true while detecting, false when paused, manual, bypassed or closed.
-- `altKey`, `altScale`: the runner up, or null. `altConfidence`: 0 to 1, same scale as confidence. `margin`: 0 a tie, 1 no contest. `unsure`: two keys fit about equally, and confidence is then under 0.5. `locked`: the key is held by Lock. `source`: heard, manual or locked. The first five fields never move; new ones are only ever added after them. While locked the file is rewritten every 4 minutes.
+- `altKey`, `altScale`: the runner up, or null. `altConfidence`: 0 to 1, same scale as confidence. `margin`: 0 a tie, 1 no contest. `unsure`: two keys fit about equally, and confidence is then under 0.5. `locked`: the key is held by Lock. `source`: heard, manual or locked. The first five fields never move; new ones are only ever added after them. While a key is fixed (locked, set by hand, or frozen with Listening off or Bypass) the file is rewritten every 4 minutes, so a follower added later never finds it older than its 10 minute limit (since 1.7.2; before, only a locked key).
 - Written from the background thread only, at most about twice a second, only when something changes (key, scale, listening, or confidence by 0.02). Atomic: a temp file in the same folder, then rename. The folder is made if missing.
+- A click on Mode or Lock in the window reaches the file after the double-click time (about half a second), so a double-click, which puts the control back, never writes the step between.
+- In an offline bounce or freeze, faster than real time, a new reading is written at once. A follower's own polling still runs on wall time, so for a bounce of a song that changes key, set Lock or Manual first.
 - The home folder comes from `getpwuid`, not HOME.
 - Nothing is written until there is a key. The format has no empty key, so after Reset the last key stays with confidence 0. Treat low confidence as no key.
 - `time` is the last change, not a heartbeat: a steady old time can just mean nothing changed.
-- With several instances, the last one to write wins. If a write fails, the plug-in carries on, shows a note and retries every 5 s.
+- With several instances, the last one to write wins. If a write fails, the plug-in carries on, shows a note and retries every 5 s, also when the key goes back to the line already on disk.
+- Closing writes `listening` false into its own last line, keeping that line's time, and only if the file still holds that line: since 1.7.2 a Key that closes never writes over another Key's newer line and never makes an old key look new.
 - Writing from inside Logic has not been tested. Only offline tests have written this file.
 - For tests: if the environment variable `SMOOTH_KEY_JSON` holds an absolute path, the file is written there instead, so a test run cannot change what a live session follows. Logic never sets it.
 
@@ -91,6 +95,8 @@ A lone voice is read differently, since 1.6.0. It applies in Single Voice, and i
 - When the held notes fit no key's seven notes (rap, speech) there is no reading, or the confidence stays low. Confidence, for a lone voice, is how sure the seven notes are: the key and its relative together.
 - A new key must lead by twice the usual margin, and the old key is only let go when about three seconds of held notes in a row sit mostly outside it and make a key of their own.
 - Sure, for a lone voice (confidence 0.5 or more, what Choir Loft and the tuners act on), since 1.7.1 also needs the held notes counted as notes, not seconds: each held note once however long, the notes that tell the shown key from every rival must pass a one sided 1% sign test, (a - b) / sqrt (a + b) of 2.33 or more. Two or three long notes no longer make it sure. On Luke's lone voice that test is never passed, so on a vocal track Key informs and says Not sure, and Lock or Manual decides. A key change move needs the same kind of count at 2.0.
+
+After 8 s of silence, or of a host that stops calling, the next audio may be another song: old memory is weakened and the reading may move as early as at the start. Since 1.7.2 every timer keeps the age it had at the pause, so a key change heard minutes before no longer holds the reading still afterwards. A steady offset with no notes (a DC offset) counts as silence. A host Reset (a stop, a locate, the start of a bounce) lets go of the audio not analysed yet; the reading, Lock and key.json stay.
 
 Why not plain profile correlation: a note's own harmonics add false fifths and thirds, and relative keys have the same notes, so correlation alone can't separate them.
 

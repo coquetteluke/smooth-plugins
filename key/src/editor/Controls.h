@@ -27,6 +27,9 @@ namespace keyui
         // Still works, but says it has no effect right now.
         void setDimmed (bool shouldBe)  { if (dimmed != shouldBe) { dimmed = shouldBe; repaint(); } }
 
+        // Called as a click changes the choice, just before the parameter moves. Not for a double-click.
+        std::function<void()> onUserClick;
+
     private:
         int segmentAt (juce::Point<float>) const;
 
@@ -55,7 +58,12 @@ namespace keyui
 
         void setDimmed (bool shouldBe)  { if (dimmed != shouldBe) { dimmed = shouldBe; repaint(); } }
 
+        // Called as a click toggles it, with the new state, just before the parameter moves. Not when the host or automation moves it.
+        std::function<void (bool nowOn)> onUserClick;
+
     private:
+        void clicked() override;
+
         juce::RangedAudioParameter& param;
         const bool strong;
         bool dimmed = false;
@@ -107,11 +115,15 @@ namespace keyui
 
     private:
         void timerCallback() override;
+        void endGesture();
 
         juce::RangedAudioParameter& param;
         std::function<void (int, int)> typed;
         int value = 0, dragStartValue = 0;
         float wheelOwed = 0.0f;
+        // A drag is one gesture from press to let go. The wheel has no let go, so its gesture ends after a pause in turning, or
+        // when the field is pressed, or when the window closes. The one timer either starts typing or ends the wheel's gesture.
+        bool inGesture = false, timerEndsWheel = false;
         TypeBox typeBox;
         juce::ParameterAttachment attachment;
 

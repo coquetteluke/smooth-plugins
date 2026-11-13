@@ -121,7 +121,10 @@ namespace keyui
         juce::SharedResourcePointer<Assets> assets;
         tallest = juce::jmax (0.7f, -assets->shape ("ACDEFGB", heavy).path.getBounds().getY() * 0.001f);
         const float byWidth = (float) getWidth() / (textWidth ("A#", heavy, 1000.0f) * 0.001f);
-        const float byHeight = (float) getHeight() / (tallest + 0.34f);
+        // Room under the scale line for the tails of j, g and y, from their real outlines: the bottom of the view clips, and before
+        // 1.7.2 it cut the j of major and the y of no key yet flat.
+        const float descent = juce::jmax (0.2f, assets->shape ("jgy", bold).path.getBounds().getBottom() * 0.001f);
+        const float byHeight = (float) getHeight() / (tallest + 0.075f + 0.30f * (0.72f + descent) + 0.01f);
         keySize = juce::jmin (byWidth, byHeight);
         scaleSize = keySize * 0.30f;
         keyBaseline = keySize * tallest;

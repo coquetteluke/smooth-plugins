@@ -13,11 +13,12 @@ class ReadingParameter final : public juce::AudioProcessorParameterWithID
 {
 public:
     using Formatter = juce::String (*) (float);
+    using Parser = float (*) (const juce::String&);   // text back to the value; nullptr reads a plain number
 
-    ReadingParameter (const char* id, const char* name, const char* label, float lowest, float highest, float initial, Formatter f)
+    ReadingParameter (const char* id, const char* name, const char* label, float lowest, float highest, float initial, Formatter f, Parser parse = nullptr)
         : juce::AudioProcessorParameterWithID (juce::ParameterID { id, 1 }, name,
                                                juce::AudioProcessorParameterWithIDAttributes().withLabel (label).withAutomatable (false)),
-          low (lowest), high (highest), start (initial), formatter (f)
+          low (lowest), high (highest), start (initial), formatter (f), parser (parse)
     {
         value.store (initial, std::memory_order_relaxed);
     }
@@ -29,11 +30,17 @@ public:
     void setValue (float) override {}
     float getDefaultValue() const override { return juce::jlimit (0.0f, 1.0f, (start - low) / (high - low)); }
     juce::String getText (float normalised, int) const override { return formatter (low + normalised * (high - low)); }
-    float getValueForText (const juce::String& text) const override { return juce::jlimit (0.0f, 1.0f, (text.getFloatValue() - low) / (high - low)); }
+    // Each reading's own text reads back as the value it shows (since 1.7.2: "None", "C#" and "Minor" read back as 0 before).
+    float getValueForText (const juce::String& text) const override
+    {
+        const float v = parser != nullptr ? parser (text) : text.getFloatValue();
+        return juce::jlimit (0.0f, 1.0f, (v - low) / (high - low));
+    }
 
 private:
     float low, high, start;
     Formatter formatter;
+    Parser parser;
     std::atomic<float> value { 0.0f };
 };
 
@@ -48,6 +55,10 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
+    // A host Reset (a stop, a locate, the start of a bounce) lets go of the audio not analysed yet, as prepareToPlay does, so what
+    // follows is not heard joined to what came before. The reading, Lock and key.json stay: a song's key does not change because the
+    // host jumped in it, and Key's own Reset control is the one that forgets. Allocates nothing. Since 1.7.2.
+    void reset() override;
     bool isBusesLayoutSupported (const BusesLayout&) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -94,6 +105,7 @@ public:
         bool unsure = false;       // two sets of notes fit about equally
         bool lockOn = false;       // the Lock control
         bool locked = false;       // a key is held: key and minor are that key, and confidence is 1
+        bool lockWaiting = false;  // Lock is on and holds nothing yet, as the background thread last saw it (since 1.7.2)
         int heardKey = -1;         // what it hears right now, after Relative Swap, whatever is held. -1 for nothing, and in Manual
         bool heardMinor = false;
         float heardConfidence = 0.0f;
@@ -107,6 +119,25 @@ public:
     unsigned getDroppedSamples() const noexcept { return queue.droppedCount(); }
     long getFileWrites() const noexcept { return fileWrites.load (std::memory_order_relaxed); }
     void requestReset() noexcept { resetRequest.store (true, std::memory_order_relaxed); }
+
+    // What key.json holds from this plug-in, for the window. Since 1.7.2.
+    struct FileStatus
+    {
+        bool written = false;      // this plug-in has written a line
+        int key = 0;
+        bool minor = false;
+        int source = 0;            // 0 heard, 1 manual, 2 locked
+        bool sure = false;         // confidence 0.5 or more: what followers act on
+        double unixTime = 0.0;     // the time in that line
+        bool ours = true;          // the file still holds that line, as last checked (another Key may have written since)
+    };
+    FileStatus getFileStatus() const noexcept;
+    const juce::String& getFilePath() const noexcept { return filePath; }
+
+    // From the window, as it happens. A click on Mode or Lock may be the first half of a double-click that puts it back, so key.json
+    // waits out a double-click before it takes what the click did. And Lock clicked on holds the key the window showed.
+    void noteControlClick() noexcept;
+    void offerLockKey (int key, bool minor) noexcept;
 
     juce::AudioProcessorValueTreeState apvts;
 
@@ -145,19 +176,26 @@ private:
 
     smoothkey::SampleQueue queue { 1 << 19 };  // over 5 s at 96 kHz
     std::atomic<double> pendingRate { 0.0 };
-    std::atomic<bool> resetRequest { false };
+    std::atomic<bool> resetRequest { false }, inputReset { false };
+    std::atomic<double> lastControlClick { -1.0e9 }, lockOfferAt { -1.0e9 };
+    std::atomic<int> lockOffer { -2 };   // key | minor << 8, -1 for no key shown, -2 for none
+    juce::String filePath;              // set before the background thread starts, read only after
+    std::atomic<double> fileTime { 0.0 };
+    std::atomic<int> filePacked { 0 };   // key + 1, minor in bit 8, source in bits 9 and 10, sure in bit 11. 0: nothing written
+    std::atomic<bool> fileOurs { true };
     std::atomic<bool> fileFailed { false };
     std::atomic<long> fileWrites { 0 };
 
     // Packed so key and scale can never be seen half updated: key + 1, then minor in bit 8, signal in bit 9.
     // Then the runner up + 1 in bits 10 to 13 and its minor in bit 14, unsure in bit 15, a held key in bit 16,
-    // and what it hears + 1 in bits 17 to 20 with its minor in bit 21.
+    // and what it hears + 1 in bits 17 to 20 with its minor in bit 21. Lock waiting for a key in bit 22.
     std::atomic<int> packedReading { 0 };
     std::atomic<float> shownConfidence { 0.0f }, referenceHz { 440.0f }, detectedBpm { 0.0f };
     std::atomic<float> altConfidence { 0.0f }, shownMargin { 1.0f }, heardConfidence { 0.0f };
 
     // Lock. The held key belongs to the background thread, in the publisher. A loaded session hands its held key over through
-    // heldFromSession (key + 1, minor in bit 8, or -1 for nothing waiting), and heldNow says what is held, for saving.
+    // heldFromSession (key + 1, minor in bit 8, the session's Lock in bit 9, or -1 for nothing waiting), and heldNow says what is
+    // held, for saving.
     smoothkey::Publisher publisher;
     smoothkey::Shown shown;   // the last one published. Background thread only
     std::atomic<int> heldFromSession { -1 }, heldNow { 0 };
@@ -166,7 +204,9 @@ private:
     std::array<std::atomic<float>, 24> candidates {};
     std::array<std::atomic<float>, 12> liveNotes {};
 
-    int currentProgram = 0;
+    // The preset last chosen, saved with the session since 1.7.2 only to name it. -1 for none: a new instance, or a session that does
+    // not say, as every one before 1.7.2.
+    int currentProgram = -1;
     std::unique_ptr<Worker> worker;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)

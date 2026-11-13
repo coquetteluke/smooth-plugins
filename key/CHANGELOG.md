@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.7.2, 2026-11-13
+
+Phase 2 bug check: 23 of the 24 bugs the hunt kept are fixed (the 24th is below), each with a test that failed on 1.7.1 first (tests/Phase2Tests.h, `PluginTest --phase2`). Music reads exactly as in 1.7.1: both reading fingerprints are unchanged. The window's footer now says what key.json holds from this Key and when it was written.
+
+Luke's real vocal takes, round 1's checks rerun on the working set (realvox `1.7.2-phase2`, against `1.7.1-p4-final-installed`): every pass and honesty line is the same, nothing that passed fails, and no take is ever sure on other notes. The takes' numbers move by about as much as two runs of 1.7.1 differ from each other (a settle time by up to 1.4 s, a right notes share by up to 2 points). 367 of 367 tests pass.
+
+key.json, what the followers read:
+- A key set by hand, or frozen with Listening off or Bypass, is written again every 4 minutes, as a locked one was. Before, it was written once, and a Tune, Choir Loft or Tune Pro added 10 minutes later took it for stale and fell back to its own key.
+- Closing writes `listening` false into its own last line with that line's time, and only while the file still holds that line. Before, it wrote its last key stamped as brand new, over any newer line from another Key.
+- After a failed write, a key that goes back to the line on disk clears the note.
+- In an offline bounce or freeze a new reading is written at once instead of up to half a second of wall time later (0.13 s against 0.49 s). The followers' own polling is theirs to fix; the README says to set Lock or Manual before bouncing a song that changes key.
+- A double-click on Manual or Lock in the window no longer puts the step between into key.json at confidence 1 (21 and 17 reads of it before, 0 after). A click on Mode or Lock reaches the file after the double-click time, 0.49 s against a 1.5 s limit.
+- A session saved with Lock on and waiting, recalled while a guess is on show, waits for a sure key instead of holding the guess. The session now carries its Lock to the background thread with its key.
+
+The reading:
+- After 8 s of silence, or of a host that stops calling, every timer keeps the age it had at the pause. Before, they were left on the old clock: C major, G major, a pause, C major again stayed on G for the whole 30 s; now C is back after 2.4 s (2.9 s with the host stopped).
+- A steady DC offset with no notes counts as silence: confidence falls to 0.025 in 10 s, as in silence, instead of staying at 1.00.
+- In silence the runner up fades with the key on show (0.104 before, 0 after).
+- Not changed: past the top FFT bin the log spectrum draws on rather than reads (music more than about 24 cents sharp, up to 30 times the bin at +45 cents with noise above 5 kHz). Clamping it changes readings of the detuned chord clips the Full Mix fingerprint pins, and no reading was shown to go wrong by it (A, E and C share 0.005 at +45 and -45 cents). Left for Luke.
+
+The host: Confidence is a whole percent ("78", not "78.4615"), and each reading's text reads back as the value it shows, so HostStress paramtext passes ("None" and "Minor" read back as 0 before). A host Reset lets go of the audio not analysed yet, as prepareToPlay does, and keeps the reading, Lock and key.json; it allocates nothing. The preset last chosen is saved with the session to name it; a new instance and every older session name none. Seven sessions saved by the installed 1.7.1 (tests/baseline/v1.7.1, made by tests/baseline/capture.mm) load and save again byte for byte as 1.7.1 did, with their held keys held.
+
+The window: the footer line (`key.json: E major, locked, 3 min ago`, `not sure`, `by hand`, or in red `changed by another Key`), with the folder in its hint. An empty note no longer paints over the end of a long hint (61 pt cut before). The hint follows the part under the mouse as it changes. Lock clicked holds the key the window showed, not one that arrived since. Clicking Lock with a key on show no longer says it is waiting for one. Tempo is black while the beat is heard and grey when not, whatever the key. The tuning shown and its red agree (A 439.0 Hz is red). With no key, Listening off and Bypass say paused and bypassed in the big reading. The tails of j and y under the reading are drawn whole (the key letters are 3% smaller for it). Dragging or scrolling Manual Key is one gesture.
+
 ## 1.7.1, 2026-11-12
 
 A lone voice is called sure only on real evidence, so a follower never acts on a guess. Luke left this call to the lead on 2026-11-11. Music reads exactly as in 1.7.0 and 1.5.0: both reading fingerprints are unchanged, and every music alone, voice under and voice as loud line of the music with a voice test is identical to 1.7.0.

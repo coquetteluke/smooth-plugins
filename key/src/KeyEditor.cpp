@@ -36,6 +36,34 @@ namespace
         return margin < veryCloseBelow ? "very close" : (margin < closeBelow ? "close" : "well behind");
     }
 
+    // What key.json holds from this plug-in, in one line for the footer: what the other plug-ins follow, and since when.
+    juce::String fileLine (const PluginProcessor::FileStatus& f, double nowUnix)
+    {
+        if (! f.written)
+            return "key.json: nothing written yet";
+        if (! f.ours)
+            return "key.json: changed by another Key";
+
+        juce::String line = "key.json: " + keyName (f.key, f.minor);
+        if (f.source == 2) line << ", locked";
+        else if (f.source == 1) line << ", by hand";
+        else if (! f.sure) line << ", not sure";
+
+        const double age = juce::jmax (0.0, nowUnix - f.unixTime);
+        line << ", " << (age < 60.0 ? juce::String ("just now")
+                                    : (age < 3600.0 ? juce::String ((int) (age / 60.0)) + " min ago" : juce::String ((int) (age / 3600.0)) + " h ago"));
+        return line;
+    }
+
+    // The folder key.json is in, in words, for the hint.
+    juce::String fileHint (const juce::String& path)
+    {
+        const juce::File f (path);
+        const auto folder = f.getParentDirectory();
+        const bool usual = folder.getParentDirectory().getFileName() == "Application Support";
+        return "Other plug-ins follow this key, from " + (usual ? "Application Support, " + folder.getFileName() : folder.getFileName() + ", " + f.getFileName()) + ".";
+    }
+
     juce::String centsText (float hz)
     {
         const int cents = juce::roundToInt (1200.0f * std::log2 (hz / 440.0f));
@@ -127,7 +155,9 @@ struct KeyEditor::Panel final : juce::Component
         };
 
         addAll ({ &hero, &circle, &centreBig, &centreSmall, &keyboard, &title, &status, &tuningLabel, &tuningValue, &tuningNote, &tempoLabel, &tempoValue,
-                  &hintLine, &noteLine, &mode, &listening, &reset, &lock, &source, &swap, &tempoScale, &advancedHeader, &second });
+                  &hintLine, &mode, &listening, &reset, &lock, &source, &swap, &tempoScale, &advancedHeader, &second });
+        // Shown only with something to say: an empty note would still paint paper over the end of the hint beside it.
+        addChildComponent (noteLine);
         addChildComponent (response);
         addChildComponent (manualKey);
         addChildComponent (manualScale);
@@ -137,6 +167,10 @@ struct KeyEditor::Panel final : juce::Component
         addChildComponent (manualScaleLabel);
 
         noteLine.setComponentID ("note");
+        hintLine.setComponentID ("hint");
+        tuningValue.setComponentID ("tuningValue");
+        tuningNote.setComponentID ("tuningNote");
+        tempoValue.setComponentID ("tempoValue");
         status.setComponentID ("status");
         centreBig.setComponentID ("centreBig");
         centreSmall.setComponentID ("centreSmall");
@@ -147,8 +181,9 @@ struct KeyEditor::Panel final : juce::Component
         manualKeyLabel.setText ("Manual key");
         manualScaleLabel.setText ("Manual scale");
 
-        for (auto* r : { &title, &tuningLabel, &tuningNote, &tempoLabel, &hintLine, &noteLine, &responseLabel, &manualKeyLabel, &manualScaleLabel, &centreSmall })
+        for (auto* r : { &title, &tuningLabel, &tuningNote, &tempoLabel, &hintLine, &responseLabel, &manualKeyLabel, &manualScaleLabel, &centreSmall })
             r->setInterceptsMouseClicks (false, false);
+        noteLine.hint = fileHint (p.getFilePath());
 
         tuningValue.hint = "Where the music sits against A at 440 Hz. Red means it is 1 Hz or more away.";
         tempoValue.hint = "The tempo it hears, after Half or Double.";
@@ -182,6 +217,15 @@ struct KeyEditor::Panel final : juce::Component
                 owner.useKey (offeredKey, offeredMinor);
         };
         keyboard.onPick = [&e] (int note) { e.setManualKey (note, -1); };
+
+        // A click on Mode or Lock may be half of a double-click: key.json waits that out. Lock clicked on holds the key on screen.
+        mode.onUserClick = [&p] { p.noteControlClick(); };
+        lock.onUserClick = [this, &p] (bool nowOn)
+        {
+            p.noteControlClick();
+            if (nowOn)
+                p.offerLockKey (drawnKey, drawnMinor);
+        };
 
         // Hovering anything in the window updates the hint line.
         addMouseListener (this, true);
@@ -267,15 +311,28 @@ struct KeyEditor::Panel final : juce::Component
         place (&responseLabel, response, 168);
         place (nullptr, bypass, 96);
 
-        hintLine.setBounds (margin, footerTop, hintRoom(), 28);
-        noteLine.setBounds (W - margin - 170 - noteWidth, footerTop, noteWidth, 28);
         advancedHeader.setBounds (W - margin - 170, footerTop, 170, 28);
+        placeFooter();
     }
 
-    // The footer shares its line with the note about key.json, and the note always wins.
+    // The footer shares its line with the note about key.json, and the note always wins. The note's place is as wide as the longest
+    // line it can show, so the hint beside it does not change room as the note's words change.
+    int noteRoom() const
+    {
+        return noteLine.isVisible() ? (failureShown ? noteWidth : infoWidth) : 0;
+    }
+
+    void placeFooter()
+    {
+        const int footerTop = advancedHeader.getY();
+        const int w = noteRoom();
+        noteLine.setBounds (advancedHeader.getX() - w, footerTop, w, 28);
+        hintLine.setBounds (36, footerTop, hintRoom(), 28);
+    }
+
     int hintRoom() const
     {
-        return designWidth - 2 * 36 - 170 - (noteLine.getText().isNotEmpty() ? noteWidth + 12 : 12);
+        return designWidth - 2 * 36 - 170 - (noteRoom() > 0 ? noteRoom() + 12 : 12);
     }
 
     void showHint (const juce::String& text)
@@ -286,6 +343,7 @@ struct KeyEditor::Panel final : juce::Component
 
     void hintFromComponent (juce::Component* c)
     {
+        hovered = c;   // the hint follows this part as it changes
         for (; c != nullptr && c != this; c = c->getParentComponent())
         {
             if (auto* hinted = dynamic_cast<Hinted*> (c))
@@ -302,7 +360,7 @@ struct KeyEditor::Panel final : juce::Component
     }
 
     void mouseEnter (const juce::MouseEvent& e) override  { hintFromComponent (e.eventComponent); }
-    void mouseExit (const juce::MouseEvent&) override     { showHint ({}); }
+    void mouseExit (const juce::MouseEvent&) override     { hovered = nullptr; showHint ({}); }
 
     int countAdvancedChanges() const
     {
@@ -318,9 +376,13 @@ struct KeyEditor::Panel final : juce::Component
         return count;
     }
 
-    static constexpr int noteWidth = 400, secondH = 34, secondGap = 8;
+    static constexpr int noteWidth = 400, infoWidth = 300, secondH = 34, secondGap = 8;
     int offeredKey = -1;
     bool offeredMinor = false;
+    int drawnKey = -1;          // the key last drawn, for Lock clicked on
+    bool drawnMinor = false;
+    bool failureShown = false;
+    juce::Component::SafePointer<juce::Component> hovered;
 
     KeyEditor& owner;
     PluginProcessor& processor;
@@ -473,6 +535,11 @@ void KeyEditor::previewHover (const juce::String& componentId)
         panel->hintFromComponent (c);
 }
 
+void KeyEditor::previewHover (juce::Component* c)
+{
+    panel->hintFromComponent (c);
+}
+
 void KeyEditor::timerCallback()
 {
     refresh();
@@ -511,8 +578,10 @@ void KeyEditor::refresh()
 
     const bool bypassed = processor.apvts.getRawParameterValue ("bypass")->load (std::memory_order_relaxed) >= 0.5f;
 
-    // A key is held, or Lock is on and still waiting for one.
-    const bool waiting = d.lockOn && ! d.locked;
+    // Lock is on and still waiting for a key. With a key on show this goes by the background thread, which will hold that key on its
+    // next tick: the control alone runs a tick ahead, and said it was waiting for a key it was about to hold. With none on show there is
+    // nothing to hold, so the control says it at once.
+    const bool waiting = d.lockWaiting || (d.lockOn && ! d.locked && d.key < 0);
     // Picking a key by hand is for Manual, and not while a key is held: the held one would stay on show whatever was clicked.
     const bool picking = d.manual && ! d.locked;
 
@@ -546,8 +615,12 @@ void KeyEditor::refresh()
     else
     {
         keyText = "--";
-        hero.scale = d.signal && d.active ? "no key yet" : "waiting for audio";
+        // Not listening on purpose says so, as the status does: it is not waiting for audio.
+        hero.scale = ! d.active ? (bypassed ? "bypassed" : "paused") : (d.signal ? "no key yet" : "waiting for audio");
     }
+
+    p.drawnKey = d.key;
+    p.drawnMinor = d.minor;
 
     hero.key = d.key >= 0 ? keyText : juce::String ("?");
     moved = p.hero.set (hero) || moved;
@@ -655,13 +728,19 @@ void KeyEditor::refresh()
     moved = p.status.set (statusText, dimmed && ! d.manual && ! d.locked ? tone::soft : tone::ink) || moved;
     p.status.setDot (d.active && d.signal);
 
-    noteText = processor.hasFileFailed() ? "Could not save key.json, so other plug-ins will not see this key" : "";
+    // The footer note: what key.json holds from here and when it was written, or that it could not be saved.
+    const bool failed = processor.hasFileFailed();
+    const auto file = processor.getFileStatus();
+    noteText = failed ? juce::String ("Could not save key.json, so other plug-ins will not see this key")
+                      : fileLine (file, (double) juce::Time::currentTimeMillis() * 0.001);
+    const auto noteColour = failed || (file.written && ! file.ours) ? tone::red : tone::soft;
 
-    if (p.noteLine.setText (noteText))
+    if (p.noteLine.set (noteText, noteColour) || ! p.noteLine.isVisible() || p.failureShown != failed)
     {
         moved = true;
+        p.failureShown = failed;
         p.noteLine.setVisible (noteText.isNotEmpty());
-        p.hintLine.setBounds (p.hintLine.getBounds().withWidth (p.hintRoom()));
+        p.placeFooter();
         p.showHint ({});
     }
 
@@ -680,16 +759,20 @@ void KeyEditor::refresh()
         // Tuning is measured from the music, so under a held key it goes by what is heard.
         const bool measured = d.locked ? d.heardKey >= 0 : d.key >= 0;
         const bool live = d.locked ? hearing : ! dimmed;
-        tuning = measured ? "A " + juce::String (d.referenceHz, 1) + " Hz" : "No reading";
-        referenceOff = measured && std::abs (d.referenceHz - 440.0f) >= 1.0f;
+        // Rounded once, to what is shown, so the number and its verdict agree: A 439.0 Hz is 1 Hz away and red, whatever the hidden decimals.
+        const float shownHz = std::round (d.referenceHz * 10.0f) * 0.1f;
+        tuning = measured ? "A " + juce::String (shownHz, 1) + " Hz" : "No reading";
+        referenceOff = measured && std::abs (shownHz - 440.0f) >= 1.0f - 1.0e-3f;
         tempo = d.shownBpm >= 1.0f ? juce::String (d.shownBpm, 1) + " BPM" : "No beat";
-        tuningNote = referenceOff ? centsText (d.referenceHz) : (measured ? "In tune with A 440" : juce::String());
+        tuningNote = referenceOff ? centsText (shownHz) : (measured ? "In tune with A 440" : juce::String());
         tuningInk = measured && live;
     }
 
     moved = p.tuningValue.set (tuning, referenceOff ? tone::red : (tuningInk ? tone::ink : tone::faint)) || moved;
     moved = p.tuningNote.set (tuningNote, referenceOff ? tone::red : tone::soft) || moved;
-    moved = p.tempoValue.set (tempo, d.shownBpm >= 1.0f && ! d.manual && ! dimmed ? tone::ink : tone::faint) || moved;
+    // Tempo is black while the beat is heard now, whatever the key: a held key does not make an old tempo live, and no key yet does
+    // not make a live one old.
+    moved = p.tempoValue.set (tempo, d.shownBpm >= 1.0f && ! d.manual && d.active && d.signal ? tone::ink : tone::faint) || moved;
 
     // These do nothing in Manual, and say so. They still work, and automation still moves them.
     p.listening.setDimmed (d.manual);
@@ -699,6 +782,10 @@ void KeyEditor::refresh()
     p.tempoScale.setDimmed (d.manual);
 
     p.advancedHeader.setState (advancedAmount, p.countAdvancedChanges());
+
+    // The hint line follows the part under the mouse, whose hint may have changed with the state.
+    if (p.hovered != nullptr)
+        p.hintFromComponent (p.hovered);
 
     quietTicks = moved ? 0 : quietTicks + 1;
 }

@@ -54,7 +54,11 @@ namespace keyui
         const int hit = segmentAt (e.position);
 
         if (hit >= 0 && values[(size_t) hit] != selected)
+        {
+            if (onUserClick != nullptr)
+                onUserClick();
             attachment.setValueAsCompleteGesture ((float) values[(size_t) hit]);
+        }
     }
 
     void Segments::mouseDoubleClick (const juce::MouseEvent&)
@@ -104,6 +108,13 @@ namespace keyui
         setComponentID (param.getParameterID());
         setTitle (param.getName (64));
         attachment = std::make_unique<juce::ButtonParameterAttachment> (param, *this);
+    }
+
+    void Pill::clicked()
+    {
+        // The toggle has already flipped, and the attachment sets the parameter after this.
+        if (onUserClick != nullptr)
+            onUserClick (getToggleState());
     }
 
     void Pill::mouseDoubleClick (const juce::MouseEvent&)
@@ -201,11 +212,22 @@ namespace keyui
     KeyField::~KeyField()
     {
         stopTimer();
+        endGesture();
+    }
+
+    void KeyField::endGesture()
+    {
+        if (inGesture)
+        {
+            inGesture = false;
+            attachment.endGesture();
+        }
     }
 
     void KeyField::mouseDown (const juce::MouseEvent&)
     {
         stopTimer();
+        endGesture();   // a wheel turned just before
         dragStartValue = value;
     }
 
@@ -215,19 +237,33 @@ namespace keyui
         const int next = juce::jlimit (0, 11, dragStartValue + steps);
 
         if (next != value)
-            attachment.setValueAsCompleteGesture ((float) next);
+        {
+            // One gesture for the whole drag, from the first step to the let go, as a slider gives the host.
+            if (! inGesture)
+            {
+                inGesture = true;
+                attachment.beginGesture();
+            }
+            attachment.setValueAsPartOfGesture ((float) next);
+        }
     }
 
     void KeyField::mouseUp (const juce::MouseEvent& e)
     {
+        endGesture();
+
         // Wait to see whether this is the first half of a double-click, which resets instead.
         if (! e.mouseWasDraggedSinceMouseDown() && e.getNumberOfClicks() == 1)
+        {
+            timerEndsWheel = false;
             startTimer (juce::MouseEvent::getDoubleClickTimeout() + 30);
+        }
     }
 
     void KeyField::mouseDoubleClick (const juce::MouseEvent&)
     {
         stopTimer();
+        endGesture();
         attachment.setValueAsCompleteGesture (defaultOf (param));
     }
 
@@ -241,13 +277,31 @@ namespace keyui
             wheelOwed -= (float) (int) wheelOwed;
 
             if (next != value)
-                attachment.setValueAsCompleteGesture ((float) next);
+            {
+                if (! inGesture)
+                {
+                    inGesture = true;
+                    attachment.beginGesture();
+                }
+                attachment.setValueAsPartOfGesture ((float) next);
+                // The gesture ends when the wheel has rested this long.
+                timerEndsWheel = true;
+                startTimer (400);
+            }
         }
     }
 
     void KeyField::timerCallback()
     {
         stopTimer();
+
+        if (timerEndsWheel)
+        {
+            timerEndsWheel = false;
+            endGesture();
+            return;
+        }
+
         startTyping();
     }
 

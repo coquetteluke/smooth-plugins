@@ -34,7 +34,7 @@ PASS  no click when Age jumps, biggest step = 0.014
 PASS  no click when Low Cut jumps, biggest step = 0.004 
 PASS  no click when High Cut jumps, biggest step = 0.004 
 PASS  no click when Mix jumps, biggest step = 0.004 
-PASS  no click when Output jumps, biggest step = 0.058 
+PASS  no click when Output jumps, biggest step = 0.057 
 PASS  no click when Auto Level jumps, biggest step = 0.014 
 PASS  no click when Bypass jumps, biggest step = 0.004 
 PASS  no click when Tape Hardness jumps, biggest step = 0.004 
@@ -47,7 +47,7 @@ PASS  no click when Dropout Rate jumps, biggest step = 0.004
 PASS  no click when Compander jumps, biggest step = 0.004 
 PASS  no click when Encode Amount jumps, biggest step = 0.004 
 PASS  no click when Decode Amount jumps, biggest step = 0.004 
-PASS  no click when Texture jumps, biggest step = 0.025 
+PASS  no click when Texture jumps, biggest step = 0.024 
 PASS  no click when Device jumps, biggest step = 0.004 
 PASS  no click when Device Mix jumps, biggest step = 0.004 
 PASS  THD rises, Bias 0, Drive 0 dB, 1 kHz at -18 dBFS = 0.040 %
@@ -341,8 +341,8 @@ PASS  non harmonic energy, 15100 Hz at -6 dBFS, Drive 30, Bias 0, 96.0 kHz = -73
 PASS  non harmonic energy, 15100 Hz at -6 dBFS, Drive 30, Bias -100, 48.0 kHz = -73.800 dB
 PASS  non harmonic energy, 15100 Hz at -6 dBFS, Drive 30, Bias 100, 48.0 kHz = -71.063 dB
 PASS  non harmonic energy with Auto Level on, 9700 Hz at -6 dBFS = -77.448 dB
-PASS  Auto Level RMS spread across Drive 0 to 30, 220 Hz at -18 dBFS = 0.035 dB
-PASS  Auto Level loudness weighted spread, 220 Hz at -18 dBFS = 0.022 dB
+PASS  Auto Level RMS spread across Drive 0 to 30, 220 Hz at -18 dBFS = 0.027 dB
+PASS  Auto Level loudness weighted spread, 220 Hz at -18 dBFS = 0.014 dB
 PASS  Auto Level RMS spread across Drive 0 to 30, 1 kHz at -18 dBFS = 0.045 dB
 PASS  Auto Level loudness weighted spread, 1 kHz at -18 dBFS = 0.039 dB
 PASS  Auto Level RMS spread across Drive 0 to 30, 1 kHz at -6 dBFS = 0.142 dB
@@ -351,18 +351,18 @@ PASS  Auto Level RMS spread across Drive 0 to 30, 1 kHz at -30 dBFS = 0.001 dB
 PASS  Auto Level loudness weighted spread, 1 kHz at -30 dBFS = 0.001 dB
 PASS  Auto Level RMS spread across Drive 0 to 30, 3 kHz at -18 dBFS = 0.027 dB
 PASS  Auto Level loudness weighted spread, 3 kHz at -18 dBFS = 0.030 dB
-PASS  Auto Level RMS spread across Drive 0 to 30, white noise = 0.289 dB
-PASS  Auto Level loudness weighted spread, white noise = 0.520 dB
-PASS  Auto Level RMS spread across Drive 0 to 30, voice like test signal = 0.720 dB
-PASS  Auto Level loudness weighted spread, voice like test signal = 0.232 dB
+PASS  Auto Level RMS spread across Drive 0 to 30, white noise = 0.287 dB
+PASS  Auto Level loudness weighted spread, white noise = 0.518 dB
+PASS  Auto Level RMS spread across Drive 0 to 30, voice like test signal = 0.585 dB
+PASS  Auto Level loudness weighted spread, voice like test signal = 0.097 dB
 PASS  Auto Level spread, Bias -100, 44.1 kHz = 0.039 dB
 PASS  Auto Level spread, Bias 100, 44.1 kHz = 0.107 dB
 PASS  Auto Level spread, Bias -100, 96.0 kHz = 0.039 dB
 PASS  Auto Level spread, Bias 100, 96.0 kHz = 0.106 dB
 PASS  with Auto Level off, Drive really does change the level = 24.783 dB
-PASS  Auto Level on against off, what Age 100 takes off 3000 Hz = 0.056 dB
-PASS  Auto Level on against off, what Age 100 takes off 6000 Hz = 0.008 dB
-PASS  Auto Level on against off, what Age 100 takes off 10000 Hz = 0.059 dB
+PASS  Auto Level on against off, what Age 100 takes off 3000 Hz = 0.026 dB
+PASS  Auto Level on against off, what Age 100 takes off 6000 Hz = -0.021 dB
+PASS  Auto Level on against off, what Age 100 takes off 10000 Hz = 0.030 dB
 PASS  the same reading on the old response, Age 100, 10 kHz (the fault is still seen) = 14.105 dB
 PASS  Auto Level on against off, what 3.75 ips takes off 3000 Hz = 0.001 dB
 PASS  Auto Level on against off, what 3.75 ips takes off 6000 Hz = -0.012 dB
@@ -372,9 +372,9 @@ PASS  Auto Level on against off, what Head Spacing 100 takes off 3000 Hz = -0.00
 PASS  Auto Level on against off, what Head Spacing 100 takes off 6000 Hz = -0.002 dB
 PASS  Auto Level on against off, what Head Spacing 100 takes off 10000 Hz = 0.015 dB
 PASS  the same reading on the old response, Head Spacing 100, 10 kHz (the fault is still seen) = 11.977 dB
-PASS  Auto Level on against off, what Age 50, 7.5 ips, Head Spacing 30 takes off 3000 Hz = 0.002 dB
-PASS  Auto Level on against off, what Age 50, 7.5 ips, Head Spacing 30 takes off 6000 Hz = -0.054 dB
-PASS  Auto Level on against off, what Age 50, 7.5 ips, Head Spacing 30 takes off 10000 Hz = -0.195 dB
+PASS  Auto Level on against off, what Age 50, 7.5 ips, Head Spacing 30 takes off 3000 Hz = -0.005 dB
+PASS  Auto Level on against off, what Age 50, 7.5 ips, Head Spacing 30 takes off 6000 Hz = -0.061 dB
+PASS  Auto Level on against off, what Age 50, 7.5 ips, Head Spacing 30 takes off 10000 Hz = -0.202 dB
 PASS  the same reading on the old response, Age 50, 7.5 ips, Head Spacing 30, 10 kHz (the fault is still seen) = 8.031 dB
 PASS  Mix 50 against the quieter path, worst across 30 Hz to 16 kHz, still, 44.1 kHz = -0.010 dB
 PASS  Mix 50 against the quieter path, worst across 30 Hz to 16 kHz, Wow and Flutter 100, 44.1 kHz = -0.009 dB
@@ -481,7 +481,7 @@ PASS  the tape stays on the reported latency, 7.5 ips, worst of 300 Hz to 1 kHz 
 PASS  the tape stays on the reported latency, Bias +100, worst of 300 Hz to 1 kHz and 1 to 3 kHz at 96.0 kHz = 0.970 microseconds
 PASS  the tape stays on the reported latency, Bias -100, worst of 300 Hz to 1 kHz and 1 to 3 kHz at 96.0 kHz = 0.298 microseconds
 PASS  the tape stays on the reported latency, Hardness 100, worst of 300 Hz to 1 kHz and 1 to 3 kHz at 96.0 kHz = 0.902 microseconds
-PASS  the tape stays on the reported latency, 30 ips, Bias +100, worst of 300 Hz to 1 kHz and 1 to 3 kHz at 96.0 kHz = 1.496 microseconds
+PASS  the tape stays on the reported latency, 30 ips, Bias +100, worst of 300 Hz to 1 kHz and 1 to 3 kHz at 96.0 kHz = 1.495 microseconds
 PASS  the tape stays on the reported latency, Clean Reel's settings, worst of 300 Hz to 1 kHz and 1 to 3 kHz at 96.0 kHz = 1.520 microseconds
 PASS  room to line the tape up at 44.1 kHz, samples at the high rate = 14.000 
 PASS  room to line the tape up at 48.0 kHz, samples at the high rate = 14.000 
@@ -535,10 +535,10 @@ PASS  Stereo Drift 100, left against right RMS, set 2.37 ms = 2.364 ms
 PASS  Stereo Drift 50 against 100, ratio = 0.500 
 PASS  Stereo Drift 0, channels move together = 0.000 ms
 PASS  Stereo Drift leaves the left channel's motion alone = 0.000 ms
-PASS  Dropout Rate 2 per second, dips in 30 s, set 60 = 49.000 
-PASS  Dropout Depth 100, deepest dip = -23.825 dB
-PASS  Dropout Rate 0.5 per second, dips in 30 s, set 15 = 15.000 
-PASS  Dropout Depth 50, deepest dip = -11.913 dB
+PASS  Dropout Rate 2 per second, dips in 30 s, set 60 = 55.000 
+PASS  Dropout Depth 100, deepest dip = -23.827 dB
+PASS  Dropout Rate 0.5 per second, dips in 30 s, set 15 = 16.000 
+PASS  Dropout Depth 50, deepest dip = -11.914 dB
 PASS  Dropout Depth 0: no dips, biggest change = -0.005 dB
 PASS  Dropout Depth 100 at 2 per second: largest move of the gain between two samples = 0.007 
 PASS  Dropout Depth 100 at 10 per second: largest move of the gain between two samples = 0.007 
@@ -625,34 +625,34 @@ PASS  Device Mix 100: Telephone removes 8 kHz = -32.393 dB
 PASS  audio processing leaves every parameter alone
 PASS  input peak reading = 0.250 
 PASS  output peak reading = 0.203 
-PASS  Auto Level reading at Drive 30 = 10.177 dB
+PASS  Auto Level reading at Drive 30 = 10.176 dB
 PASS  read head reading is in range = -1.734 ms
 PASS  Output -12 dB measures = -12.000 dB
 PASS  Output -6 dB measures = -6.000 dB
 PASS  Output 6 dB measures = 6.000 dB
 PASS  Output 12 dB measures = 12.000 dB
-PASS  block size 7 gives the same output = -145.854 dB
-PASS  block size 32 gives the same output = -322.970 dB
-PASS  block size 64 gives the same output = -322.970 dB
-PASS  block size 1000 gives the same output = -322.970 dB
-PASS  block size 4096 gives the same output = -322.970 dB
+PASS  block size 7 gives the same output = -145.873 dB
+PASS  block size 32 gives the same output = -322.971 dB
+PASS  block size 64 gives the same output = -322.971 dB
+PASS  block size 1000 gives the same output = -322.971 dB
+PASS  block size 4096 gives the same output = -322.971 dB
 PASS  calling prepare again gives the same output, biggest difference = 0.000 
 PASS  mono matches the left channel of stereo = -335.636 dB
 PASS  THD at 44.1 against 96 kHz, ratio = 0.999 
 PASS  THD at 48 against 96 kHz, ratio = 0.999 
 PASS  level at 44.1 against 96 kHz = -0.033 dB
-PASS  preset 'Tape Start' level against dry = -0.004 dB
-PASS  preset 'Clean Reel' level against dry = 0.037 dB
-PASS  preset 'Vocal Glue' level against dry = -0.005 dB
-PASS  preset 'Warm Lead' level against dry = -0.032 dB
-PASS  preset 'Airy Encode' level against dry = 0.005 dB
-PASS  preset 'Parallel Body' level against dry = -0.236 dB
-PASS  preset 'Slow Reel Haze' level against dry = -0.017 dB
-PASS  preset 'Starved Grit' level against dry = -0.140 dB
-PASS  preset 'Worn Cassette' level against dry = -1.820 dB
-PASS  preset 'Old Radio Voice' level against dry = -4.739 dB
-PASS  preset 'Phone Call' level against dry = -3.666 dB
-PASS  CPU of one stereo instance at 48 kHz, percent of one core = 8.289 %
+PASS  preset 'Tape Start' level against dry = -0.068 dB
+PASS  preset 'Clean Reel' level against dry = 0.132 dB
+PASS  preset 'Vocal Glue' level against dry = -0.070 dB
+PASS  preset 'Warm Lead' level against dry = -0.104 dB
+PASS  preset 'Airy Encode' level against dry = 0.102 dB
+PASS  preset 'Parallel Body' level against dry = -0.289 dB
+PASS  preset 'Slow Reel Haze' level against dry = -0.051 dB
+PASS  preset 'Starved Grit' level against dry = -0.164 dB
+PASS  preset 'Worn Cassette' level against dry = -2.052 dB
+PASS  preset 'Old Radio Voice' level against dry = -4.778 dB
+PASS  preset 'Phone Call' level against dry = -3.746 dB
+PASS  CPU of one stereo instance at 48 kHz, percent of one core = 4.214 %
 PASS  window: drawn tone against real tones, default, worst at 10000 Hz = -0.006 dB
 PASS  window: every point of the line could be read over the hiss, default, points that could not = 0.000 
 PASS  window: drawn tone against real tones, 3.75 ips, worst at 10000 Hz = -0.004 dB
@@ -679,7 +679,7 @@ PASS  window: drawn tone against real tones, Mix 50, Age 40, worst at 40 Hz = -0
 PASS  window: every point of the line could be read over the hiss, Mix 50, Age 40, points that could not = 0.000 
 PASS  window: Top end at Age 50 against 14.1 kHz measured = 13994.093 Hz
 PASS  window: Top end at Age 100 against 4.6 kHz measured = 4503.234 Hz
-PASS  window: Hiss at Age 50 against the real floor, difference = 0.319 dB
+PASS  window: Hiss at Age 50 against the real floor, difference = 0.176 dB
 PASS  window: saturation number at Drive 12, peak 0.25, said 0.7 dB, difference = 0.019 dB
 PASS  window: saturation number at Drive 12, peak 0.70, said 4.0 dB, difference = 0.029 dB
 PASS  window: saturation number at Drive 24, peak 0.25, said 6.3 dB, difference = 0.027 dB
@@ -717,4 +717,95 @@ PASS  window: closing it turns the tap off
 PASS  window: opened and closed 40 times with audio running = 40.000 
 PASS  window: opened and closed 10 times with no audio prepared = 10.000 
 PASS  window: a window opened straight after another still gets the tap
+PASS  Auto Level on against off, 15 ips, the bump at 70 Hz against 1 kHz = 0.013 dB
+PASS  Auto Level on against off, 30 ips, the bump at 110 Hz against 1 kHz = 0.007 dB
+PASS  Auto Level on against off, 3.75 ips, the bump at 30 Hz against 1 kHz = 0.066 dB
+PASS  Auto Level on against off, 15 ips, the dip at 200 Hz against 1 kHz = 0.003 dB
+PASS  Auto Level on against off, Age 100, its low cut at 30 Hz against 1 kHz = 0.086 dB
+PASS  the old response still gives Auto Level 0.3.1's low end (the bump taken back) = -2.396 dB
+PASS  Dropout Rate 10 per second: dropouts that begin, per second over 60 s = 9.950 
+PASS  Dropout Rate 5 per second: dropouts that begin, per second over 120 s = 5.008 
+PASS  Dropout Rate 2 per second: dropouts that begin, per second over 120 s = 1.883 
+PASS  Head Azimuth 100 at 3.75 ips, Mix 0 nulls with the delayed input, left = -140.724 dB
+PASS  Head Azimuth 100 at 3.75 ips, Mix 0 nulls with the delayed input, right = -140.724 dB
+PASS  Age 100 taken to 0 while a 60 Hz tone plays, then silence: offset left = -165.182 dBFS
+PASS  and the peak of the last half second = -143.200 dBFS
+PASS  Texture brought back up in a silent gap: grain on the silence = -172.429 dBFS
+PASS  Dynamic Soft, Encode 100, Decode 60: block size 7 gives the same output as 512 = -147.697 dB
+PASS  Dynamic Soft, Encode 100, Decode 60: block size 100 gives the same output as 512 = -321.201 dB
+PASS  Dynamic Soft, Encode 100, Decode 60: block size 1000 gives the same output as 512 = -321.201 dB
+PASS  a pre-0.4.0 session at Mix 100, Mix then automated to 50: plays 0.3.1's blend, largest difference = -240.000 dBFS
+PASS  the same session saved again in this version first: still 0.3.1's blend, largest difference = -240.000 dBFS
+PASS  a factory preset chosen in a pre-0.4.0 session keeps the new response
+PASS  play, host Reset, play: the second part equals a new instance, largest difference = 0.000 
+PASS  a host Reset allocates nothing = 0.000 
+PASS  after a host Reset, silence in gives silence out, loudest sample = -240.000 dBFS
+PASS  the Reset that comes with host bypass switching on: the fade to dry plays as it does without it, largest difference = -240.000 dB
+PASS  a host Reset later on while bypassed still clears: against a new instance after the fade = -240.000 dBFS
+PASS  a session saved after choosing Worn Cassette reopens on preset 8 = 8.000 
+PASS  and the preset is not applied again: Drive stays at 20 = 20.000 dB
+PASS  its window reads 'Worn Cassette, edited', reads 'Worn Cassette, edited'
+PASS  a session saved by 0.4.3 names no preset = -1.000 
+PASS  and once edited its window reads 'Choose a preset', reads 'Choose a preset'
+PASS  a damaged preset number reads as no preset, wrong = 0.000 
+PASS  a session saved by 0.4.3 (default) plays the same samples as 0.4.3 played it, hash fa4fae96c7e13ab5 against fa4fae96c7e13ab5
+PASS  a session saved by 0.4.3 (default) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (tape-start) plays the same samples as 0.4.3 played it, hash fa4fae96c7e13ab5 against fa4fae96c7e13ab5
+PASS  a session saved by 0.4.3 (tape-start) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (clean-reel) plays the same samples as 0.4.3 played it, hash 99fb11d199149ad5 against 99fb11d199149ad5
+PASS  a session saved by 0.4.3 (clean-reel) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (vocal-glue) plays the same samples as 0.4.3 played it, hash 26203f75ad1d04a5 against 26203f75ad1d04a5
+PASS  a session saved by 0.4.3 (vocal-glue) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (warm-lead) plays the same samples as 0.4.3 played it, hash e35432b7f3873a99 against e35432b7f3873a99
+PASS  a session saved by 0.4.3 (warm-lead) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (airy-encode) plays the same samples as 0.4.3 played it, hash c823f844b7cd82d9 against c823f844b7cd82d9
+PASS  a session saved by 0.4.3 (airy-encode) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (parallel-body) plays the same samples as 0.4.3 played it, hash d86ecc47eb403cfd against d86ecc47eb403cfd
+PASS  a session saved by 0.4.3 (parallel-body) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (slow-reel-haze) plays the same samples as 0.4.3 played it, hash 3f46cdd37f682c1a against 3f46cdd37f682c1a
+PASS  a session saved by 0.4.3 (slow-reel-haze) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (starved-grit) plays the same samples as 0.4.3 played it, hash faf137bc0f9dad3f against faf137bc0f9dad3f
+PASS  a session saved by 0.4.3 (starved-grit) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (worn-cassette) plays the same samples as 0.4.3 played it, hash 49d0e0687d81cd51 against 49d0e0687d81cd51
+PASS  a session saved by 0.4.3 (worn-cassette) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (old-radio-voice) plays the same samples as 0.4.3 played it, hash 0fefe1999de7b78c against 0fefe1999de7b78c
+PASS  a session saved by 0.4.3 (old-radio-voice) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (phone-call) plays the same samples as 0.4.3 played it, hash b87d7466d70b9c43 against b87d7466d70b9c43
+PASS  a session saved by 0.4.3 (phone-call) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (pre040-default) plays the same samples as 0.4.3 played it, hash fa4fae96c7e13ab5 against fa4fae96c7e13ab5
+PASS  a session saved by 0.4.3 (pre040-default) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (pre040-mix50) plays the same samples as 0.4.3 played it, hash 5474d97c5369460d against 5474d97c5369460d
+PASS  a session saved by 0.4.3 (pre040-mix50) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (pre040-age60) plays the same samples as 0.4.3 played it, hash 1091dee5d2575d41 against 1091dee5d2575d41
+PASS  a session saved by 0.4.3 (pre040-age60) names no preset = -1.000 
+PASS  a session saved by 0.4.3 (saved043-old-mix50) plays the same samples as 0.4.3 played it, hash 5474d97c5369460d against 5474d97c5369460d
+PASS  a session saved by 0.4.3 (saved043-old-mix50) names no preset = -1.000 
+PASS  a state saved with Advanced open, loaded with the window open: the drawer shows
+PASS  and the smallest height makes room for it = 670.000 
+PASS  a state saved with Advanced shut, loaded with the drawer open: the drawer goes
+PASS  then one click on Advanced opens it
+PASS  window 1200 high: Advanced opened and shut, height = 1200.000 
+PASS  window 700 high: Advanced opened and shut, height = 700.000 
+PASS  window 960 wide, Advanced open: text that does not fit where it is drawn = 0.000 
+PASS  window 1040 wide, Advanced open: text that does not fit where it is drawn = 0.000 
+PASS  the session moves from 48 to 44.1 kHz with the window open: Top end reads 22.0 kHz, reads 22.0 kHz
+PASS  and the picture is drawn for 44.1 kHz and the old response
+PASS  window: Hiss with Noise 50, Compander Fixed reads -75 dB against the real floor, difference = 0.011 dB
+PASS  window: Hiss with Noise 50, Compander Dynamic Strong reads -80 dB against the real floor, difference = -0.305 dB
+PASS  window: Hiss with Noise 50, Mix 50 reads -74 dB against the real floor, difference = -0.118 dB
+PASS  window: Hiss with Noise 50, Output +12 reads -56 dB against the real floor, difference = -0.139 dB
+PASS  window: Hiss with Age 50, High Cut 3 kHz reads -70 dB against the real floor, difference = -0.137 dB
+PASS  automation from the host's thread: the Advanced line reads 'Hardness 70%, Compander Fixed Emphasis'
+PASS  and Encode is no longer shown faint
+PASS  Age 29.7 then 30: the window reads '30% Old reel', want '30% Old reel'
+PASS  Age 30.2 then 30.6: the window reads '31% Old reel', want '31% Old reel'
+PASS  typing -20 into Age sets 0 = 0.000 %
+PASS  typing a true minus sign and 20% into Age sets 0 = 0.000 %
+PASS  reopened on silence: the saturation number = 0.000 dB
+PASS  reopened on silence: the loudest part of the spectrum on show = -127.592 dB
+PASS  Output and Texture moving for 30 frames: times the pictures were drawn again = 0.000 
+PASS  Airy Encode, the boost moving: the response line follows it = 16.000 
+PASS  and the grid and the saturation curve are not drawn again, times = 0.000 
+PASS  Device block: the list waits for a double-click to finish, ms = 430.000 
+PASS  and the second press of a double-click stops the list opening
 RESULT PASS  0 failures

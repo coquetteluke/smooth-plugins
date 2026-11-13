@@ -2333,6 +2333,704 @@ static void testOldResponse()
 }
 
 
+// ---- Phase 2 (0.4.4): the faults the 2026-11-13 bug hunt kept, each check written to fail on 0.4.3 ----------------------------
+// Run alone: PluginTest phase2. Limits were set before the first run, from the hunt's own figures or from an existing limit.
+
+static juce::MemoryBlock stateOf (PluginProcessor& p)
+{
+    juce::MemoryBlock m;
+    p.getStateInformation (m);
+    return m;
+}
+
+// The settings alone, as a session from before 0.4.0 wrote them: no eight bytes after the XML.
+static juce::MemoryBlock untaggedStateOf (PluginProcessor& p)
+{
+    auto m = stateOf (p);
+    auto xml = juce::AudioProcessor::getXmlFromBinary (m.getData(), (int) m.getSize());
+    juce::MemoryBlock old;
+    juce::AudioProcessor::copyXmlToBinary (*xml, old);
+    return old;
+}
+
+static double largestDifference (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b, int from = 0)
+{
+    double d = 0.0;
+    for (int ch = 0; ch < std::min (a.getNumChannels(), b.getNumChannels()); ++ch)
+        for (int i = from; i < std::min (a.getNumSamples(), b.getNumSamples()); ++i)
+            d = std::max (d, (double) std::abs (a.getSample (ch, i) - b.getSample (ch, i)));
+    return d;
+}
+
+// tape-color-dsp-r2-1. Auto Level learns the saturation loss only. The head bump, the dip and Age's low cut are tone, so a low tone keeps
+// them with Auto Level on. Limit: on against off within 0.2 dB (the hunt measured about 2.5 dB at 15 ips and about 4 dB at Age 100).
+static void testPhase2AutoLevelLowEnd()
+{
+    // Each tone read on its own, with the hiss in its band taken off (toneAloneGainDb): Age 100 adds hiss only 14 dB under the tone, and
+    // plain RMS put 0.75 dB of that into the Age case. The other cases have no hiss and read the same either way.
+    const auto lowAgainstMid = [] (Settings s, double hz, bool autoOn)
+    {
+        s.drive = 12.0f; s.autoLevel = autoOn;
+        return toneAloneGainDb (s, hz, 48000.0, -36.0) - toneAloneGainDb (s, 1000.0, 48000.0, -36.0);
+    };
+    struct Case { const char* name; Settings s; double hz; };
+    std::vector<Case> cases;
+    { Settings s; cases.push_back ({ "15 ips, the bump at 70 Hz", s, 70.0 }); }
+    { Settings s; s.speed = 3; cases.push_back ({ "30 ips, the bump at 110 Hz", s, 110.0 }); }
+    { Settings s; s.speed = 0; cases.push_back ({ "3.75 ips, the bump at 30 Hz", s, 30.0 }); }
+    { Settings s; s.speed = 2; cases.push_back ({ "15 ips, the dip at 200 Hz", s, 200.0 }); }
+    // At 60 Hz, the hunt's figure, the bump (+2.3 dB) and Age's cut (-2.3 dB) cancel, so 0.4.3 read 0.19 dB there. 30 Hz shows the cut.
+    { Settings s; s.age = 100.0f; cases.push_back ({ "Age 100, its low cut at 30 Hz", s, 30.0 }); }
+    for (const auto& c : cases)
+    {
+        const double on = lowAgainstMid (c.s, c.hz, true), off = lowAgainstMid (c.s, c.hz, false);
+        check (std::abs (on - off) <= 0.2, std::string ("Auto Level on against off, ") + c.name + " against 1 kHz", on - off, "dB");
+    }
+    // The old response keeps what 0.3.1 did, as it keeps everything else (README, The old response).
+    {
+        Settings s; s.old = true;
+        const double on = lowAgainstMid (s, 70.0, true), off = lowAgainstMid (s, 70.0, false);
+        check (on - off < -1.0, "the old response still gives Auto Level 0.3.1's low end (the bump taken back)", on - off, "dB");
+    }
+}
+
+// tape-color-dsp-r2-2. Dropout Rate is starts per second. Limit: within 10 percent of the set rate over 60 or 120 s (the hunt worked out
+// 6.8 a second at a setting of 10).
+static void testPhase2DropoutRate()
+{
+    const double sr = 48000.0;
+    for (const auto [rate, seconds] : { std::pair<float, double> { 10.0f, 60.0 }, { 5.0f, 120.0 }, { 2.0f, 120.0 } })
+    {
+        Settings s; s.dropD = 100.0f; s.dropR = rate;
+        auto p = makeProc (s, sr);
+        const int n = (int) (sr * seconds);
+        std::vector<float> in ((size_t) n);
+        sine (in.data(), n, 1000.0, sr, fromDb (-30.0));
+        render (*p, in, 512);
+        const double got = p->getDropoutsStarted() / seconds;
+        check (std::abs (got / rate - 1.0) <= 0.1, "Dropout Rate " + num (rate) + " per second: dropouts that begin, per second over " + num (seconds) + " s", got);
+    }
+}
+
+// tape-color-dsp-r2-3. Mix 0 is the input, delayed, with Head Azimuth too. Limit: the existing Mix 0 null, -120 dB, on each channel.
+static void testPhase2AzimuthAtMixZero()
+{
+    const double sr = 48000.0;
+    Settings s; s.mix = 0.0f; s.tilt = 100.0f; s.speed = 0;
+    auto p = makeProc (s, sr);
+    const int n = (int) sr * 2, lat = p->getLatencySamples();
+    std::vector<float> in ((size_t) n);
+    noise (in.data(), n, 0.3);
+    auto out = render (*p, in, 512);
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        double err = 0, sig = 0;
+        for (int i = lat + (int) sr / 2; i < n; ++i)
+        {
+            err += juce::square ((double) out.getSample (ch, i) - (double) in[(size_t) (i - lat)]);
+            sig += juce::square ((double) in[(size_t) (i - lat)]);
+        }
+        check (10.0 * std::log10 ((err + 1.0e-30) / sig) <= -120.0, std::string ("Head Azimuth 100 at 3.75 ips, Mix 0 nulls with the delayed input, ") + (ch == 0 ? "left" : "right"),
+               10.0 * std::log10 ((err + 1.0e-30) / sig), "dB");
+    }
+}
+
+// tape-color-dsp-r3-1 and r3-2. A control brought back to 0 while playing leaves nothing behind on silence. Limits: Age taken to 0 leaves no
+// offset, mean and peak of the last half second under -120 dBFS (the real vocal silence check's limit with no hiss); Texture brought back up
+// in a silent gap adds no grain, under -100 dBFS against the same render with Texture left at 0.
+static void testPhase2NothingLeftOnSilence()
+{
+    const double sr = 48000.0;
+    {
+        Settings s; s.age = 100.0f;
+        auto p = makeProc (s, sr);
+        const int n = (int) (sr * 4.0);
+        std::vector<float> in ((size_t) n, 0.0f);
+        sine (in.data(), (int) (sr * 3.0), 60.0, sr, fromDb (-12.0));
+        const auto out = render (*p, in, 512, nullptr, [&] (int idx) { if (idx == (int) (sr * 2.0) / 512) setParam (*p, "age", 0.0f); });
+        const int from = n - (int) (sr * 0.5);
+        double mean = 0.0;
+        for (int i = from; i < n; ++i) mean += out.getSample (0, i);
+        mean /= (double) (n - from);
+        check (toDb (std::abs (mean)) <= -120.0, "Age 100 taken to 0 while a 60 Hz tone plays, then silence: offset left", toDb (std::abs (mean)), "dBFS");
+        check (toDb (peak (out.getReadPointer (0) + from, n - from)) <= -120.0, "and the peak of the last half second", toDb (peak (out.getReadPointer (0) + from, n - from)), "dBFS");
+    }
+    {
+        const int n = (int) (sr * 2.2);
+        std::vector<float> in ((size_t) n, 0.0f);
+        sine (in.data(), (int) (sr * 1.2), 700.0, sr, fromDb (-6.0));
+        const auto run = [&] (bool backUp)
+        {
+            Settings s; s.tex = 100.0f;
+            auto p = makeProc (s, sr);
+            return render (*p, in, 512, nullptr, [&] (int idx)
+            {
+                if (idx == (int) sr / 512) setParam (*p, "texture", 0.0f);                       // during the tone
+                if (backUp && idx == (int) (sr * 1.7) / 512) setParam (*p, "texture", 100.0f);  // half a second into the silence
+            });
+        };
+        const auto back = run (true), left = run (false);
+        const int from = (int) (sr * 1.7);
+        check (toDb (largestDifference (back, left, from)) <= -100.0, "Texture brought back up in a silent gap: grain on the silence", toDb (largestDifference (back, left, from)), "dBFS");
+    }
+}
+
+// tape-color-dsp-r3-3. A dynamic compander gives the same output at any host block size. Limit: the existing block size check, -100 dB.
+static void testPhase2CompanderBlockSize()
+{
+    const double sr = 48000.0;
+    Settings s; s.comp = 2; s.enc = 100.0f; s.dec = 60.0f; s.drive = 12.0f; s.autoLevel = true;
+    const int n = (int) sr * 2;
+    std::vector<float> in ((size_t) n);
+    noise (in.data(), n, 0.1);
+    for (int i = 0; i < n; ++i)
+        in[(size_t) i] *= (float) (0.55 + 0.45 * std::sin (juce::MathConstants<double>::twoPi * 3.0 * i / sr)); // the level moves, so the shelf moves
+    auto a = makeProc (s, sr);
+    const auto ref = render (*a, in, 512);
+    for (int block : { 7, 100, 1000 })
+    {
+        auto b = makeProc (s, sr, 2, block);
+        const auto out = render (*b, in, block);
+        double err = 0, sig = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            err += juce::square ((double) out.getSample (0, i) - (double) ref.getSample (0, i));
+            sig += juce::square ((double) ref.getSample (0, i));
+        }
+        check (10.0 * std::log10 ((err + 1.0e-30) / sig) <= -100.0, "Dynamic Soft, Encode 100, Decode 60: block size " + num (block) + " gives the same output as 512",
+               10.0 * std::log10 ((err + 1.0e-30) / sig), "dB");
+    }
+}
+
+// tape-color-dsp-r1-3. A session saved before 0.4.0 at Mix 100, High Cut off and the compander off gets 0.3.1's response as soon as automation
+// brings one of them in. Limit: the same samples as the old response set from the start, within -100 dBFS, once Mix has moved.
+static void testPhase2OldResponseFollowsAutomation()
+{
+    const double sr = 48000.0;
+    Settings base; base.speed = 0; base.age = 40.0f; base.bias = 50.0f; base.wow = 40.0f; base.flutter = 40.0f;
+    const int n = (int) sr * 2;
+    std::vector<float> in ((size_t) n);
+    noise (in.data(), n, 0.2);
+    const auto play = [&] (bool fromState)
+    {
+        PluginProcessor source;
+        apply (source, base);
+        const auto m = untaggedStateOf (source);
+        auto p = std::make_unique<PluginProcessor>();
+        if (fromState)
+            p->setStateInformation (m.getData(), (int) m.getSize());
+        else
+        {
+            apply (*p, base);
+            p->oldResponse.store (true);
+        }
+        prepare (*p, 2, sr, 512);
+        return render (*p, in, 512, nullptr, [&] (int idx) { if (idx == 40) setParam (*p, "mix", 50.0f); });
+    };
+    const auto loaded = play (true), old = play (false);
+    check (toDb (largestDifference (loaded, old, 41 * 512)) <= -100.0, "a pre-0.4.0 session at Mix 100, Mix then automated to 50: plays 0.3.1's blend, largest difference",
+           toDb (largestDifference (loaded, old, 41 * 512)), "dBFS");
+
+    // Saved again as it stands, before anything moved: it still follows automation when reopened.
+    {
+        PluginProcessor source;
+        apply (source, base);
+        const auto m = untaggedStateOf (source);
+        PluginProcessor q;
+        q.setStateInformation (m.getData(), (int) m.getSize());
+        const auto again = stateOf (q);
+        auto r = std::make_unique<PluginProcessor>();
+        r->setStateInformation (again.getData(), (int) again.getSize());
+        prepare (*r, 2, sr, 512);
+        const auto out = render (*r, in, 512, nullptr, [&] (int idx) { if (idx == 40) setParam (*r, "mix", 50.0f); });
+        check (toDb (largestDifference (out, old, 41 * 512)) <= -100.0, "the same session saved again in this version first: still 0.3.1's blend, largest difference",
+               toDb (largestDifference (out, old, 41 * 512)), "dBFS");
+    }
+    // A factory preset chosen in such a session gives the preset's own response, as it always has.
+    {
+        PluginProcessor source;
+        apply (source, base);
+        const auto m = untaggedStateOf (source);
+        PluginProcessor q;
+        q.setStateInformation (m.getData(), (int) m.getSize());
+        q.setCurrentProgram (5);   // Parallel Body, Mix 40
+        prepare (q, 2, sr, 512);
+        render (q, in, 512);
+        check (! q.oldResponse.load(), "a factory preset chosen in a pre-0.4.0 session keeps the new response");
+    }
+}
+
+// Velvet Rope, Duo, Tape Chorus and Tape Flanger: a host Reset clears what prepare clears and allocates nothing, but not the Reset JUCE sends
+// straight after the host's own bypass turns on. Limits: identical to a new instance; silence after a Reset is silence; 0 allocations; the
+// switch to bypass plays the same with or without that Reset; a Reset later on while bypassed still clears.
+static void testPhase2HostReset()
+{
+    const double sr = 48000.0;
+    const int n = 48000;
+    std::vector<float> noiseIn ((size_t) n), toneIn ((size_t) n), silence ((size_t) n, 0.0f);
+    noise (noiseIn.data(), n, 0.25, 3);
+    sine (toneIn.data(), n, 440.0, sr, 0.25);
+    Settings busy; busy.drive = 18.0f; busy.wow = 30.0f; busy.flutter = 30.0f; busy.age = 30.0f; busy.comp = 2; busy.dec = 60.0f; busy.dropD = 50.0f; busy.dropR = 3.0f;
+    busy.tex = 20.0f; busy.dev = 1; busy.autoLevel = true; busy.mix = 70.0f;
+    {
+        auto p = makeProc (busy, sr);
+        render (*p, noiseIn, 512);
+        const long before = allocs.load();
+        p->reset();
+        const long during = allocs.load() - before;
+        auto q = makeProc (busy, sr);
+        check (largestDifference (render (*p, toneIn, 512), render (*q, toneIn, 512)) == 0.0, "play, host Reset, play: the second part equals a new instance, largest difference",
+               largestDifference (render (*p, toneIn, 512), render (*q, toneIn, 512)));
+        check (during == 0, "a host Reset allocates nothing", (double) during);
+    }
+    {
+        Settings quiet = busy; quiet.age = 0.0f; quiet.tex = 0.0f;
+        auto p = makeProc (quiet, sr);
+        render (*p, noiseIn, 512);
+        p->reset();
+        auto out = render (*p, silence, 512);
+        check (peak (out.getReadPointer (0), n) == 0.0, "after a host Reset, silence in gives silence out, loudest sample", toDb (peak (out.getReadPointer (0), n)), "dBFS");
+    }
+    {
+        const auto run = [&] (bool withReset)
+        {
+            Settings s; s.drive = 12.0f; s.autoLevel = true;
+            auto p = makeProc (s, sr, 2, 128);
+            std::vector<float> tone ((size_t) n);
+            sine (tone.data(), n, 1000.0, sr, 0.25);
+            return render (*p, tone, 128, nullptr, [&] (int idx)
+            {
+                if (idx == 150)
+                {
+                    p->getBypassParameter()->setValueNotifyingHost (1.0f);
+                    if (withReset) p->reset();
+                }
+            });
+        };
+        const auto plain = run (false), withReset = run (true);
+        check (largestDifference (plain, withReset) == 0.0, "the Reset that comes with host bypass switching on: the fade to dry plays as it does without it, largest difference",
+               toDb (largestDifference (plain, withReset)), "dB");
+    }
+    {
+        auto p = makeProc (busy, sr);
+        render (*p, noiseIn, 512);
+        p->getBypassParameter()->setValueNotifyingHost (1.0f);
+        std::vector<float> oneBlock (noiseIn.begin(), noiseIn.begin() + 512);
+        render (*p, oneBlock, 512);
+        juce::Thread::sleep (60);
+        p->reset();
+        p->getBypassParameter()->setValueNotifyingHost (0.0f);
+        auto q = makeProc (busy, sr);
+        const auto a = render (*p, toneIn, 512), b = render (*q, toneIn, 512);
+        check (largestDifference (a, b, 4800) <= 1.0e-6, "a host Reset later on while bypassed still clears: against a new instance after the fade", toDb (largestDifference (a, b, 4800)), "dBFS");
+    }
+}
+
+// tape-color-window-r2-2. The chosen preset travels with the session, in the bytes after the XML (the saved XML stays exactly as 0.3.1 wrote
+// it, which testWindowControls holds). Not applied again on reload. A session saved without it names no preset.
+static void testPhase2PresetSaved()
+{
+    {
+        PluginProcessor a;
+        a.setCurrentProgram (8);
+        setParam (a, "drive", 20.0f);
+        const auto m = stateOf (a);
+        PluginProcessor b;
+        b.setStateInformation (m.getData(), (int) m.getSize());
+        check (b.getCurrentProgram() == 8, "a session saved after choosing Worn Cassette reopens on preset 8", b.getCurrentProgram());
+        check (std::abs (b.apvts.getRawParameterValue ("drive")->load() - 20.0f) < 0.01f, "and the preset is not applied again: Drive stays at 20", b.apvts.getRawParameterValue ("drive")->load(), "dB");
+        auto editor = std::unique_ptr<juce::AudioProcessorEditor> (b.createEditor());
+        auto* window = dynamic_cast<TapeColorEditor*> (editor.get());
+        check (window != nullptr && window->getPresetName() == "Worn Cassette, edited", "its window reads 'Worn Cassette, edited', reads '" + (window != nullptr ? window->getPresetName().toStdString() : std::string()) + "'");
+    }
+    {
+        // A session saved by 0.4.3: it names no preset.
+        const auto dir = juce::File (__FILE__).getSiblingFile ("baseline").getChildFile ("v0.4.3");
+        juce::MemoryBlock m;
+        dir.getChildFile ("worn-cassette.state").loadFileAsData (m);
+        PluginProcessor b;
+        b.setStateInformation (m.getData(), (int) m.getSize());
+        setParam (b, "drive", 20.0f);
+        auto editor = std::unique_ptr<juce::AudioProcessorEditor> (b.createEditor());
+        auto* window = dynamic_cast<TapeColorEditor*> (editor.get());
+        check (b.getCurrentProgram() == -1, "a session saved by 0.4.3 names no preset", b.getCurrentProgram());
+        check (window != nullptr && window->getPresetName() == "Choose a preset", "and once edited its window reads 'Choose a preset', reads '" + (window != nullptr ? window->getPresetName().toStdString() : std::string()) + "'");
+    }
+    {
+        // Damaged numbers stay in range.
+        PluginProcessor a;
+        a.setCurrentProgram (3);
+        auto m = stateOf (a);
+        auto* bytes = static_cast<juce::uint8*> (m.getData());
+        int wrong = 0;
+        for (const int stored : { 99, 12, 255 })
+        {
+            bytes[m.getSize() - 3] = (juce::uint8) stored;
+            PluginProcessor b;
+            b.setStateInformation (m.getData(), (int) m.getSize());
+            wrong += b.getCurrentProgram() == -1 ? 0 : 1;
+        }
+        check (wrong == 0, "a damaged preset number reads as no preset, wrong", (double) wrong);
+    }
+}
+
+// The old-session proof: each state was read out of the installed 0.4.3 and played by it, at 48 kHz in 512 sample blocks (tests/baseline/
+// capture.mm, renders-0.4.3.fnv64). The pre040 ones are sessions from before 0.4.0 made by hand from the default one (no bytes after the XML), and saved043-old-mix50
+// is one 0.4.3 saved with the old response. Loaded here, each plays the same samples, bit for bit, and names no preset.
+static void testPhase2Saved043()
+{
+    const auto dir = juce::File (__FILE__).getSiblingFile ("baseline").getChildFile ("v0.4.3");
+    const auto readFloats = [] (const juce::File& f)
+    {
+        juce::MemoryBlock m;
+        f.loadFileAsData (m);
+        std::vector<float> v (m.getSize() / sizeof (float));
+        std::memcpy (v.data(), m.getData(), v.size() * sizeof (float));
+        return v;
+    };
+    const auto in = readFloats (dir.getChildFile ("input.f32"));
+    const int n = (int) in.size();
+    // The renders themselves (98 MB) are kept out of the repo, in ~/Bug Fixing/smooth-plugins/after/tape-color/renders-0.4.3/. Here is the
+    // FNV-1a 64 bit hash of each, over its bytes: left then right as 32 bit floats.
+    juce::StringPairArray wanted;
+    for (const auto& line : juce::StringArray::fromLines (dir.getChildFile ("renders-0.4.3.fnv64").loadFileAsString()))
+        if (line.isNotEmpty() && ! line.startsWith ("#"))
+            wanted.set (line.upToFirstOccurrenceOf (" ", false, false), line.fromFirstOccurrenceOf (" ", false, false).trim());
+    for (const char* name : { "default", "tape-start", "clean-reel", "vocal-glue", "warm-lead", "airy-encode", "parallel-body", "slow-reel-haze", "starved-grit",
+                              "worn-cassette", "old-radio-voice", "phone-call", "pre040-default", "pre040-mix50", "pre040-age60", "saved043-old-mix50" })
+    {
+        juce::MemoryBlock st;
+        dir.getChildFile (juce::String (name) + ".state").loadFileAsData (st);
+        PluginProcessor p;
+        p.setStateInformation (st.getData(), (int) st.getSize());
+        prepare (p, 2, 48000.0, 512);
+        const auto out = render (p, in, 512);
+        std::uint64_t h = 0xcbf29ce484222325ull;
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            const auto* bytes = reinterpret_cast<const unsigned char*> (out.getReadPointer (ch));
+            for (size_t i = 0; i < (size_t) n * sizeof (float); ++i)
+                h = (h ^ bytes[i]) * 0x100000001b3ull;
+        }
+        const auto got = juce::String::toHexString ((juce::int64) h).paddedLeft ('0', 16);
+        const std::string label = std::string ("a session saved by 0.4.3 (") + name + ")";
+        check (wanted[name].isNotEmpty() && got == wanted[name], label + " plays the same samples as 0.4.3 played it, hash " + got.toStdString() + " against " + wanted[name].toStdString());
+        check (p.getCurrentProgram() == -1, label + " names no preset", p.getCurrentProgram());
+    }
+}
+
+// ---- the window ----
+
+static std::unique_ptr<juce::AudioProcessorEditor> openWindow (PluginProcessor& p, TapeColorEditor*& window)
+{
+    auto editor = std::unique_ptr<juce::AudioProcessorEditor> (p.createEditor());
+    window = dynamic_cast<TapeColorEditor*> (editor.get());
+    return editor;
+}
+
+// tape-color-window-r1-1 and r3-3. A state loaded with the window open sets the drawer the way the state says, and opening then closing
+// Advanced gives back the height it had. Limits: drawer shown as the flag says after one frame; the smallest height follows; one click opens.
+static void testPhase2Drawer()
+{
+    PluginProcessor p;
+    prepare (p, 2, 48000.0, 512);
+    PluginProcessor openOne;
+    openOne.advancedOpen.store (true);
+    const auto openState = stateOf (openOne);
+    PluginProcessor shutOne;
+    const auto shutState = stateOf (shutOne);
+
+    TapeColorEditor* window = nullptr;
+    auto editor = openWindow (p, window);
+    auto* hardness = findById<ui::Tile> (*window, "hardness");
+    p.setStateInformation (openState.getData(), (int) openState.getSize());
+    window->tick (1.0 / 30.0);
+    check (hardness->isVisible(), "a state saved with Advanced open, loaded with the window open: the drawer shows");
+    check (window->getConstrainer() != nullptr && window->getConstrainer()->getMinimumHeight() == PluginProcessor::minWindowHeight + TapeColorEditor::drawerHeight,
+           "and the smallest height makes room for it", window->getConstrainer() != nullptr ? window->getConstrainer()->getMinimumHeight() : -1);
+    p.setStateInformation (shutState.getData(), (int) shutState.getSize());
+    window->tick (1.0 / 30.0);
+    check (! hardness->isVisible(), "a state saved with Advanced shut, loaded with the drawer open: the drawer goes");
+    window->setAdvancedOpen (! window->isAdvancedOpen());
+    check (hardness->isVisible(), "then one click on Advanced opens it");
+    window->setAdvancedOpen (false);
+
+    window->setSize (1040, 1200);
+    window->setAdvancedOpen (true);
+    window->setAdvancedOpen (false);
+    check (window->getHeight() == 1200 && p.windowHeight.load() == 1200, "window 1200 high: Advanced opened and shut, height", window->getHeight());
+    window->setSize (1040, 700);
+    window->setAdvancedOpen (true);
+    window->setAdvancedOpen (false);
+    check (window->getHeight() == 700, "window 700 high: Advanced opened and shut, height", window->getHeight());
+}
+
+// tape-color-window-r1-2 and r1-5. Every name, value, choice and hint fits where it is drawn, at the smallest window and at the default.
+static void testPhase2TextFits()
+{
+    using namespace ui;
+    PluginProcessor p;
+    prepare (p, 2, 48000.0, 512);
+    p.advancedOpen.store (true);
+    TapeColorEditor* window = nullptr;
+    auto editor = openWindow (p, window);
+    for (const int width : { PluginProcessor::minWindowWidth, PluginProcessor::defaultWindowWidth })
+    {
+        window->setSize (width, PluginProcessor::minWindowHeight + TapeColorEditor::drawerHeight);
+        int cut = 0;
+        std::string which;
+        const auto fits = [&] (const juce::Font& f, const juce::String& text, float room, const juce::String& what)
+        {
+            if (juce::GlyphArrangement::getStringWidth (f, text) > room)
+            {
+                ++cut;
+                which += " " + what.toStdString() + " '" + text.toStdString() + "'";
+            }
+        };
+        for (auto* prm : p.getParameters())
+        {
+            auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (prm);
+            if (auto* tile = findById<Tile> (*window, ranged->getParameterID()))
+            {
+                const juce::String compactIds[] = { "hardness", "texture", "dropdepth", "droprate", "encode", "decode", "lowcut", "highcut", "spacing", "azimuth", "devicemix", "random", "stereodrift" };
+                const bool isCompact = std::find (std::begin (compactIds), std::end (compactIds), ranged->getParameterID()) != std::end (compactIds);
+                const float room = (float) tile->getWidth() - 2.0f * (isCompact ? 9.0f : 11.0f);
+                const double was = tile->getValue();
+                for (const double v : { tile->getMinimum(), tile->getMaximum(), tile->getMinimum() + 0.37 * (tile->getMaximum() - tile->getMinimum()) })
+                {
+                    tile->setValue (v, juce::dontSendNotification);
+                    fits (font (Weight::medium, isCompact ? 16.0f : 20.0f, true), tile->valueText(), room, ranged->getParameterID() + " value");
+                }
+                tile->setValue (was, juce::dontSendNotification);
+            }
+            if (auto* list = findById<ChoiceTile> (*window, ranged->getParameterID()))
+                for (const auto& choice : dynamic_cast<juce::AudioParameterChoice*> (ranged)->choices)
+                    fits (font (Weight::medium, 15.0f), choice, (float) list->getWidth() - 18.0f - 16.0f, "device choice");
+        }
+        // The names on the blocks, as each block draws them.
+        const std::pair<const char*, const char*> names[] = { { "droprate", "Dropout rate" }, { "dropdepth", "Dropouts" }, { "devicemix", "Device mix" }, { "hardness", "Hardness" },
+                                                             { "texture", "Texture" }, { "lowcut", "Low cut" }, { "highcut", "High cut" }, { "spacing", "Head gap" }, { "azimuth", "Head tilt" },
+                                                             { "random", "Random" }, { "stereodrift", "Stereo" }, { "encode", "Encode" }, { "decode", "Decode" } };
+        for (const auto& [id, name] : names)
+            if (auto* tile = findById<Tile> (*window, id))
+                fits (font (Weight::regular, 12.0f), name, (float) tile->getWidth() - 18.0f, juce::String (id) + " name");
+        const std::pair<const char*, const char*> mainNames[] = { { "drive", "Drive" }, { "bias", "Bias" }, { "noise", "Noise" }, { "wow", "Wow" }, { "flutter", "Flutter" },
+                                                                 { "mix", "Mix" }, { "output", "Output" } };
+        for (const auto& [id, name] : mainNames)
+            if (auto* tile = findById<Tile> (*window, id))
+                fits (font (Weight::regular, 13.0f), name, (float) tile->getWidth() - 22.0f, juce::String (id) + " name");
+        // Every hint, on the hint line.
+        std::function<void (juce::Component&)> hints = [&] (juce::Component& c)
+        {
+            if (auto* h = dynamic_cast<Hinted*> (&c))
+                fits (font (Weight::regular, 13.0f), h->hint, (float) window->getHintArea().getWidth(), c.getComponentID().isNotEmpty() ? c.getComponentID() : juce::String ("hint"));
+            for (int i = 0; i < c.getNumChildComponents(); ++i)
+                hints (*c.getChildComponent (i));
+        };
+        hints (*window);
+        check (cut == 0, "window " + num (width) + " wide, Advanced open: text that does not fit where it is drawn" + which, (double) cut);
+    }
+}
+
+// tape-color-window-r1-3, r1-4, r1-6, r1-7, r2-5. The numbers and words in the window follow what is really there.
+static void testPhase2Readouts()
+{
+    // The sample rate and the old response reach the picture without a control moving.
+    {
+        PluginProcessor p;
+        prepare (p, 2, 48000.0, 512);
+        TapeColorEditor* window = nullptr;
+        auto editor = openWindow (p, window);
+        window->tick (1.0 / 30.0);
+        prepare (p, 2, 44100.0, 512);   // as a host does it: the rate, then prepare
+        p.oldResponse.store (true);
+        window->tick (1.0 / 30.0);
+        check (window->getTopEndText() == "22.0 kHz", "the session moves from 48 to 44.1 kHz with the window open: Top end reads 22.0 kHz, reads " + window->getTopEndText().toStdString());
+        check (window->getResponse().getSettings().sampleRate == 44100.0 && window->getResponse().getSettings().oldResponse, "and the picture is drawn for 44.1 kHz and the old response");
+    }
+    // Hiss: the number against the real floor (silence through the real processor), with what comes after the hiss in use. Limit: the
+    // existing Hiss check's 2 dB.
+    {
+        struct Case { const char* name; Settings s; };
+        std::vector<Case> cases;
+        { Settings s; s.noiseAmt = 50.0f; s.comp = 1; cases.push_back ({ "Noise 50, Compander Fixed", s }); }
+        { Settings s; s.noiseAmt = 50.0f; s.comp = 3; cases.push_back ({ "Noise 50, Compander Dynamic Strong", s }); }
+        { Settings s; s.noiseAmt = 50.0f; s.mix = 50.0f; cases.push_back ({ "Noise 50, Mix 50", s }); }
+        { Settings s; s.noiseAmt = 50.0f; s.output = 12.0f; cases.push_back ({ "Noise 50, Output +12", s }); }
+        { Settings s; s.age = 50.0f; s.high = 3000.0f; cases.push_back ({ "Age 50, High Cut 3 kHz", s }); }
+        for (const auto& c : cases)
+        {
+            auto p = makeProc (c.s, 48000.0);
+            TapeColorEditor* window = nullptr;
+            auto editor = openWindow (*p, window);
+            window->tick (1.0 / 30.0);
+            const auto text = window->getHissText().replace (juce::String::fromUTF8 ("\xe2\x88\x92"), "-");
+            const double said = text.getDoubleValue(), real = silenceRmsDb (c.s, 48000.0);
+            check (std::abs (said - real) <= 2.0, std::string ("window: Hiss with ") + c.name + " reads " + text.toStdString() + " against the real floor, difference", said - real, "dB");
+        }
+    }
+    // Automation from another thread: the Advanced line and the faint blocks are worked out from the parameters, not from the blocks' own
+    // copies, which catch up later.
+    {
+        PluginProcessor p;
+        prepare (p, 2, 48000.0, 512);
+        TapeColorEditor* window = nullptr;
+        auto editor = openWindow (p, window);
+        window->tick (1.0 / 30.0);
+        std::thread host ([&p]
+        {
+            auto* comp = p.apvts.getParameter ("compander");
+            comp->setValueNotifyingHost (comp->convertTo0to1 (1.0f));
+            auto* hard = p.apvts.getParameter ("hardness");
+            hard->setValueNotifyingHost (hard->convertTo0to1 (70.0f));
+        });
+        host.join();
+        window->tick (1.0 / 30.0);
+        const auto summary = window->getSummary();
+        check (summary.contains ("Hardness 70%") && summary.contains ("Compander"), "automation from the host's thread: the Advanced line reads '" + summary.toStdString() + "'");
+        check (! findById<ui::Tile> (*window, "encode")->isResting(), "and Encode is no longer shown faint");
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (5);
+    }
+    // Age: the number and the word follow every move, and a typed minus is a minus.
+    {
+        PluginProcessor p;
+        prepare (p, 2, 48000.0, 512);
+        TapeColorEditor* window = nullptr;
+        auto editor = openWindow (p, window);
+        setParam (p, "age", 29.7f);
+        window->tick (1.0 / 30.0);
+        setParam (p, "age", 30.0f);
+        window->tick (1.0 / 30.0);
+        check (window->getAgeText() == "30% Old reel", "Age 29.7 then 30: the window reads '" + window->getAgeText().toStdString() + "', want '30% Old reel'");
+        setParam (p, "age", 30.2f);
+        window->tick (1.0 / 30.0);
+        setParam (p, "age", 30.6f);
+        window->tick (1.0 / 30.0);
+        check (window->getAgeText() == "31% Old reel", "Age 30.2 then 30.6: the window reads '" + window->getAgeText().toStdString() + "', want '31% Old reel'");
+        setParam (p, "age", 50.0f);
+        window->typeAge ("-20");
+        check (p.apvts.getRawParameterValue ("age")->load() == 0.0f, "typing -20 into Age sets 0", p.apvts.getRawParameterValue ("age")->load(), "%");
+        setParam (p, "age", 50.0f);
+        window->typeAge (juce::String::fromUTF8 ("\xe2\x88\x92") + "20%");
+        check (p.apvts.getRawParameterValue ("age")->load() == 0.0f, "typing a true minus sign and 20% into Age sets 0", p.apvts.getRawParameterValue ("age")->load(), "%");
+    }
+}
+
+// tape-color-window-r2-3. A window opened again shows nothing from the last time it was open. Limits: no squash reading and nothing on the
+// spectrum after one block of silence (the shown level stays under -100 dB on the tilted scale).
+static void testPhase2Reopen()
+{
+    PluginProcessor p;
+    prepare (p, 2, 48000.0, 512);
+    juce::AudioBuffer<float> loud (2, 512), quiet (2, 512);
+    for (int ch = 0; ch < 2; ++ch)
+        sine (loud.getWritePointer (ch), 512, 300.0, 48000.0, 1.0);
+    juce::MidiBuffer midi;
+    {
+        TapeColorEditor* window = nullptr;
+        auto editor = openWindow (p, window);
+        for (int i = 0; i < 20; ++i)
+        {
+            auto b = loud;
+            p.processBlock (b, midi);
+            window->tick (1.0 / 30.0);
+        }
+        auto b = loud;
+        p.processBlock (b, midi);   // after the last frame, before the window shuts
+    }
+    for (int i = 0; i < 40; ++i)
+    {
+        quiet.clear();
+        p.processBlock (quiet, midi);
+    }
+    TapeColorEditor* window = nullptr;
+    auto editor = openWindow (p, window);
+    quiet.clear();
+    p.processBlock (quiet, midi);
+    window->tick (0.13);
+    check (window->getCurve().getSquashDb() == 0.0f, "reopened on silence: the saturation number", window->getCurve().getSquashDb(), "dB");
+    check (window->getResponse().getLoudestShownDb() <= -100.0f, "reopened on silence: the loudest part of the spectrum on show", window->getResponse().getLoudestShownDb(), "dB");
+}
+
+// tape-color-window-r2-4 and r3-2. The cached pictures are drawn again only when what they show changes. Limits: Output and Texture moving every
+// frame redraw neither picture; a dynamic compander's boost moving redraws the response line only, never its grid or the curve.
+static void testPhase2Redraws()
+{
+    PluginProcessor p;
+    prepare (p, 2, 48000.0, 512);
+    TapeColorEditor* window = nullptr;
+    auto editor = openWindow (p, window);
+    window->setSize (1040, 576);
+    const auto frame = [&] (double seconds)
+    {
+        window->tick (seconds);
+        juce::ignoreUnused (window->createComponentSnapshot (window->getLocalBounds()));
+    };
+    frame (1.0 / 30.0);
+    const int back0 = window->getResponse().getBackBuilds(), line0 = window->getResponse().getLineBuilds(), curve0 = window->getCurve().getBuilds();
+    for (int i = 0; i < 30; ++i)
+    {
+        setParam (p, "output", (float) (i % 2 == 0 ? 3.0 : -3.0));
+        setParam (p, "texture", (float) (i % 2 == 0 ? 20.0 : 40.0));
+        frame (1.0 / 30.0);
+    }
+    check (window->getResponse().getLineBuilds() == line0 && window->getCurve().getBuilds() == curve0,
+           "Output and Texture moving for 30 frames: times the pictures were drawn again", (double) (window->getResponse().getLineBuilds() - line0 + window->getCurve().getBuilds() - curve0));
+
+    p.setCurrentProgram (4);   // Airy Encode: Dynamic Soft, Encode 30, Decode 0
+    frame (1.0 / 30.0);
+    const int back1 = window->getResponse().getBackBuilds(), line1 = window->getResponse().getLineBuilds(), curve1 = window->getCurve().getBuilds();
+    for (int i = 0; i < 16; ++i)
+    {
+        p.readingCompanderDb.store (i % 2 == 0 ? 2.0f : 8.0f);
+        frame (0.13);
+    }
+    check (window->getResponse().getLineBuilds() > line1, "Airy Encode, the boost moving: the response line follows it", (double) (window->getResponse().getLineBuilds() - line1));
+    check (window->getResponse().getBackBuilds() == back1 && window->getCurve().getBuilds() == curve1,
+           "and the grid and the saturation curve are not drawn again, times", (double) (window->getResponse().getBackBuilds() - back1 + window->getCurve().getBuilds() - curve1));
+    juce::ignoreUnused (back0);
+}
+
+// tape-color-window-r3-1. The Device list waits as long as a double-click can take before it opens, and a second press stops it opening.
+static void testPhase2DeviceDoubleClick()
+{
+    PluginProcessor p;
+    p.advancedOpen.store (true);
+    TapeColorEditor* window = nullptr;
+    auto editor = openWindow (p, window);
+    auto* dev = findById<ui::ChoiceTile> (*window, "device");
+    const auto at = dev->getLocalBounds().getCentre().toFloat();
+    const auto now = juce::Time::getCurrentTime();
+    auto source = juce::Desktop::getInstance().getMainMouseSource();
+    const juce::MouseEvent up (source, at, {}, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, dev, dev, now, at, now, 1, false);
+    dev->mouseUp (up);
+    const int wait = dev->getMenuWait();
+    check (wait >= juce::MouseEvent::getDoubleClickTimeout(), "Device block: the list waits for a double-click to finish, ms", wait);
+    dev->mouseDown (up);
+    check (dev->getMenuWait() == 0, "and the second press of a double-click stops the list opening");
+    dev->mouseDoubleClick (up);   // whatever happened above, no list opens on the screen
+}
+
+static void testPhase2()
+{
+    testPhase2AutoLevelLowEnd();
+    testPhase2DropoutRate();
+    testPhase2AzimuthAtMixZero();
+    testPhase2NothingLeftOnSilence();
+    testPhase2CompanderBlockSize();
+    testPhase2OldResponseFollowsAutomation();
+    testPhase2HostReset();
+    testPhase2PresetSaved();
+    testPhase2Saved043();
+    testPhase2Drawer();
+    testPhase2TextFits();
+    testPhase2Readouts();
+    testPhase2Reopen();
+    testPhase2Redraws();
+    testPhase2DeviceDoubleClick();
+}
+
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -2381,6 +3079,7 @@ int main (int argc, char** argv)
         if (only == "picture") testWindowPictureIsTrue();
         if (only == "latency") testLatency();
         if (only == "mix") testMix();
+        if (only == "phase2") testPhase2();
         if (only == "window")
         {
             testWindowPictureIsTrue();
@@ -2421,5 +3120,6 @@ int main (int argc, char** argv)
     testWindowPictureIsTrue();
     testWindowControls();
     testWindowLeavesAudioAlone();
+    testPhase2();
     return finish();
 }

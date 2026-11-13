@@ -25,6 +25,8 @@ namespace ui
         void mouseDoubleClick (const juce::MouseEvent&) override;
 
         juce::String valueText() const;
+        /** The text a value would show, for whatever is worked out from the parameter itself rather than this block's copy of it. */
+        juce::String textFor (float value) const  { return formatter (value); }
         void startTyping();
         void applyTyped (const juce::String&);
         void setForcedHover (bool shouldShow)  { forcedHover = shouldShow; repaint(); }
@@ -35,6 +37,7 @@ namespace ui
 
         /** Shown fainter when nothing else lets it do anything right now. It still works. */
         void setResting (bool shouldRest);
+        bool isResting() const noexcept  { return resting; }
 
         /** A control whose word means a value: "Off" on the cuts. */
         juce::String offWord;
@@ -107,11 +110,15 @@ namespace ui
         void paint (juce::Graphics&) override;
         void mouseEnter (const juce::MouseEvent&) override  { repaint(); }
         void mouseExit (const juce::MouseEvent&) override   { repaint(); }
+        void mouseDown (const juce::MouseEvent&) override;
         void mouseUp (const juce::MouseEvent&) override;
         void mouseDoubleClick (const juce::MouseEvent&) override;
 
         int getSelected() const noexcept  { return selected; }
         void choose (int index)  { attachment.setValueAsCompleteGesture ((float) index); }
+
+        /** How long until the list opens, in ms, or 0 when it is not waiting to. For the tests. */
+        int getMenuWait() const noexcept  { return isTimerRunning() ? getTimerInterval() : 0; }
 
     private:
         void timerCallback() override;
@@ -159,6 +166,12 @@ namespace ui
 
         /** What to call the current settings is asked of the owner, which knows the processor's type. */
         std::function<juce::String()> nameNow;
+
+        /** The preset the arrows step from and the list ticks, or -1 for none. The processor's current one if the owner says nothing. */
+        std::function<int()> indexNow;
+
+        /** What the box says when no preset is known. Shown in the quieter colour. */
+        static juce::String noneName()  { return "Choose a preset"; }
 
         void refresh();
         void paint (juce::Graphics&) override;

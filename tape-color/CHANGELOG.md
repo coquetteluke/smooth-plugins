@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.4.4, 2026-11-13
+
+Fixes from the 2026-11-13 bug hunt (21 kept, all real, all fixed). Every fix has a check in `tests/PluginTest.cpp` (run alone with `PluginTest phase2`) that fails on 0.4.3 and passes now.
+
+Luke left this call to the lead on 2026-11-11. Three of the fixes change what the default and the presets play, so like the old response they travel with the session: a new instance and every preset get them, and a session saved before 0.4.4 keeps what it had. All 16 states read out of the installed 0.4.3 (`tests/baseline/v0.4.3/`) play the same samples, bit for bit.
+
+The sound:
+
+- Auto Level leaves the head bump, the dip and Age's low cut alone, as the README always said. It heard the tape after them, so it took the bump for a level gain and the low cut for a loss. Auto Level on against off, a low tone against 1 kHz: 70 Hz at 15 ips -2.40 dB in 0.4.3, 0.01 now; 110 Hz at 30 ips -1.42, 0.01; 30 Hz at 3.75 ips -2.84, 0.07; 200 Hz (the dip) +0.31, 0.00; 30 Hz at Age 100 +5.32, +0.09. The old response keeps 0.3.1's.
+- Dropout Rate is the number of dropouts that begin each second. A new one cannot begin while one is on, and the chance did not count that: 10 gave 6.6 a second, 5 gave 4.0, 2 gave 1.73. Now 9.95, 5.01, 1.88. Worn Cassette (0.7) and Old Radio Voice (0.5) get 3 and 2 percent more, and their dropouts fall at other moments.
+- Head Azimuth follows Mix like the rest of the read head. At Mix 0 with Head Azimuth 100 at 3.75 ips each side was 0.2 ms off the input (null +2.8 dB); now -140.7 dB. No preset uses it.
+
+Also fixed in the sound, for any session:
+
+- A pre-0.4.0 session saved at Mix 100 with High Cut and the compander off takes 0.3.1's response when automation brings Mix, High Cut or the compander in. It got the new one for good (-24.2 dBFS apart after Mix went to 50); now the same samples as the old response.
+- Age brought back to 0 while playing left its low cut's last value as an offset on everything after it (-65 dBFS on silence). It now lets go of it over a few tens of milliseconds (-165 dBFS).
+- Texture turned back up in a quiet place used the level from when it was turned down: -36.7 dBFS of grain on silence. Its level follower now runs with Texture at 0 (-172 dBFS).
+- With a dynamic compander, a block of 7, 100 or 1000 samples gave different samples than 512 (-54.7, -54.3, -62.8 dB). The shelves now move every 32 samples from the last reset (-148, -321, -321 dB). Blocks of a multiple of 32 give exactly what 0.4.3 gave.
+- Host Reset: the Reset JUCE sends straight after the host turns its own bypass on is skipped, so the fade to dry plays out instead of cutting to an empty delay line (it differed by -12.1 dB from the plain switch; now identical). A Reset now takes the lock the host renders under. It already cleared everything prepare clears and allocated nothing.
+
+The preset and the window:
+
+- The preset last chosen is saved with the session, in the eight bytes after the settings (the saved XML stays as 0.3.1 wrote it). Reopened, it reads "Worn Cassette, edited", not "Tape Start, edited", and the arrows step from it. It is not applied again. A session saved before 0.4.4, or one whose number is damaged, names none: the box reads Choose a preset in the quieter colour, and the arrows go to the first or the last.
+- A setting loaded with the window open opens or shuts Advanced as it was saved (the drawer stayed as it was while the arrow said the other, and the smallest height did not make room for it).
+- Opening and shutting Advanced gives back the height it had. It took off the whole drawer even when the top of the window or the screen had cut the opening short (1200 high came back at 789 on this screen).
+- Output has room for "+24.0 dB" (Tape speed gives it 26 of its 214 parts), and at the smallest window "Dictation Machine", "Dropout rate" and the curve's hint fit (the drawer's columns moved by up to 16 parts, and the hint is shorter).
+- Top end and the picture follow a change of sample rate and of the response with no control moving (Top end read 24.0 kHz at 44.1 kHz).
+- Hiss is the hiss leaving the plug-in: after the compander's decode, the cuts, the Device, Mix and Output. Against the real floor: Compander Fixed +7.0 dB off, now 0.0; Dynamic Strong +11.7, now -0.3; Mix 50 +5.9, now -0.1; Output +12 -12.1, now -0.1; High Cut 3 kHz +7.9, now -0.1. At Age 50 0.32, now 0.18.
+- The Advanced line and the faint blocks are worked out from the parameters, so automation from the host's thread cannot leave them on the values before.
+- Age shows every move: 29.7 then 30 kept saying Used reel, 30.2 then 30.6 kept 30%. Typing -20 sets 0, not 20.
+- A window opened again shows nothing from the last time it was open (the saturation number read 2.2 dB and the spectrum -9 dB on silence).
+- The pictures are drawn again only when what they show changes: an Output or Texture ride redrew both on every frame (60 rebuilds in 30 frames, now 0), and a dynamic compander's boost redrew the grid and the curve too (32 in 16 moves, now 0; the line still follows it).
+- Double-clicking the Device block resets it: the list waited 200 ms, shorter than many double-clicks, and now waits for the double-click to finish (430 ms) and a second press stops it.
+
+Tests: 91 new lines in `tests/results.txt`, all passing. Of the existing lines only the readings moved, all within their limits: Auto Level spread on the voice like signal 0.72 to 0.59 dB, dips at Dropout Rate 2 in 30 s 49 to 55 (set 60), the presets' level against dry by up to 0.23 dB (Worn Cassette -1.82 to -2.05), Hiss at Age 50 0.32 to 0.18 dB. No limit was touched.
+
 ## 0.4.3, 2026-11-11
 
 Luke said yes to both on 2026-11-11.

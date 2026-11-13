@@ -71,7 +71,7 @@ namespace ui
 
     void ResponseView::resized()
     {
-        layersValid = false;
+        backValid = overValid = false;
         pathsValid = false;
     }
 
@@ -79,7 +79,7 @@ namespace ui
     {
         settings = s;
         bypassed = isBypassed;
-        layersValid = false;
+        overValid = false;
         repaint();
     }
 
@@ -137,11 +137,29 @@ namespace ui
         build (outPath, shownOut);
     }
 
+    float ResponseView::getLoudestShownDb() const noexcept
+    {
+        float loudest = -400.0f;
+        for (int i = 0; i < columns; ++i)
+            loudest = juce::jmax (loudest, shownIn[(size_t) i], shownOut[(size_t) i]);
+        return loudest;
+    }
+
     void ResponseView::rebuild (float scale)
     {
-        using namespace tapecolor::display;
-        layersValid = true;
+        if (std::abs (scale - layerScale) > 0.001f)
+            backValid = overValid = false;
         layerScale = scale;
+        if (! backValid)
+            buildBack (scale);
+        if (! overValid)
+            buildOver (scale);
+    }
+
+    void ResponseView::buildBack (float scale)
+    {
+        ++backBuilds;
+        backValid = true;
 
         const auto bounds = getLocalBounds().toFloat();
         const auto p = plot();
@@ -170,6 +188,17 @@ namespace ui
             for (int db : { 6, 0, -6, -12, -18, -24 })
                 g.drawText (decibelLabel (db), juce::Rectangle<float> (p.getRight() + 2.0f, yForResponse ((float) db) - 8.0f, 28.0f, 16.0f), juce::Justification::centredRight, false);
         }
+    }
+
+    void ResponseView::buildOver (float scale)
+    {
+        using namespace tapecolor::display;
+        ++lineBuilds;
+        overValid = true;
+
+        const auto bounds = getLocalBounds().toFloat();
+        const auto p = plot();
+        const int w = juce::jmax (1, juce::roundToInt (bounds.getWidth() * scale)), h = juce::jmax (1, juce::roundToInt (bounds.getHeight() * scale));
 
         // Over the sound: the response, what Age took, the legend and the panel's corners.
         over = juce::Image (juce::Image::ARGB, w, h, true);
@@ -259,7 +288,7 @@ namespace ui
         ++paintCount;
         const float scale = juce::jlimit (1.0f, 4.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
 
-        if (! layersValid || std::abs (scale - layerScale) > 0.001f)
+        if (! backValid || ! overValid || std::abs (scale - layerScale) > 0.001f)
             rebuild (scale);
         if (! pathsValid)
             buildSpectrumPaths();
@@ -282,7 +311,7 @@ namespace ui
 
     CurveView::CurveView()
     {
-        hint = "How the tape bends the level. Amber is the part of the curve the sound is using. The number is how far its loudest moment is held down.";
+        hint = "How the tape bends the level. Amber is the part in use. The number is how far the loudest moment is held down.";
         setOpaque (true);
         setInterceptsMouseClicks (true, false);
     }
@@ -350,6 +379,7 @@ namespace ui
 
     void CurveView::rebuild (float scale)
     {
+        ++builds;
         layersValid = true;
         layerScale = scale;
 

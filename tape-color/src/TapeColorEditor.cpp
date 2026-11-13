@@ -73,12 +73,16 @@ public:
 
     void setValue (float newValue)
     {
-        if (std::abs (newValue - shown) >= 0.5f || (newValue == 0.0f && shown != 0.0f))
-        {
-            shown = newValue;
+        // Every move is kept. It is drawn again when the number or the word it shows changes. Up to 0.4.3 a move under 0.5 was dropped,
+        // so 29.7 then 30 kept saying Used reel.
+        const bool looksDifferent = percent (newValue) != percent (shown) || ageWord (newValue) != ageWord (shown);
+        shown = newValue;
+        if (looksDifferent)
             repaint();
-        }
     }
+
+    juce::String shownText() const  { return percent (shown) + " " + ageWord (shown); }
+    void typeText (const juce::String& text)  { box.setText (text, juce::sendNotificationSync); }
 
     void startTyping()
     {
@@ -95,9 +99,9 @@ public:
         const int w = juce::roundToInt ((float) getWidth() * scale), h = juce::roundToInt ((float) getHeight() * scale);
 
         // Drawn once for each value and kept. The reel's repaints can stretch the area being drawn over this, and text is what costs.
-        if (! picture.isValid() || picture.getWidth() != w || picture.getHeight() != h || pictureValue != shown || pictureTyping != box.isVisible())
+        if (! picture.isValid() || picture.getWidth() != w || picture.getHeight() != h || pictureText != shownText() || pictureTyping != box.isVisible())
         {
-            pictureValue = shown;
+            pictureText = shownText();
             pictureTyping = box.isVisible();
             picture = juce::Image (juce::Image::RGB, juce::jmax (1, w), juce::jmax (1, h), true);
             juce::Graphics p (picture);
@@ -164,7 +168,8 @@ private:
         const auto text = box.getText().trim();
         if (! text.containsAnyOf ("0123456789"))
             return;
-        const double value = juce::jlimit (0.0, 100.0, text.retainCharacters ("0123456789.").getDoubleValue());
+        // A minus sign is kept, as the other blocks keep it, so "-20" is under the bottom and lands on 0 instead of turning into 20.
+        const double value = juce::jlimit (0.0, 100.0, text.replace (minusSign(), "-").retainCharacters ("0123456789.-").getDoubleValue());
         param.beginChangeGesture();
         ribbon.setValue (value, juce::sendNotificationSync);
         param.endChangeGesture();
@@ -174,7 +179,8 @@ private:
     AgeRibbon& ribbon;
     juce::Label box;
     juce::Image picture;
-    float shown = -1.0f, pictureValue = -2.0f;
+    float shown = -1.0f;
+    juce::String pictureText;
     bool pictureTyping = false;
 };
 
@@ -190,6 +196,8 @@ public:
         setComponentID ("advanced");
         setTitle ("Advanced");
     }
+
+    juce::String getSummary() const  { return summary; }
 
     void setSummary (const juce::String& text)
     {
@@ -289,6 +297,7 @@ TapeColorEditor::TapeColorEditor (PluginProcessor& p)
     setLookAndFeel (&lookAndFeel);
     setWantsKeyboardFocus (false);
     setOpaque (true);
+    drawerShown = p.advancedOpen.load (std::memory_order_relaxed);
 
     lowCut.offWord = highCut.offWord = "off";
     lowCut.acceptsKilo = highCut.acceptsKilo = true;
@@ -297,6 +306,11 @@ TapeColorEditor::TapeColorEditor (PluginProcessor& p)
         t->setCompact (true);
 
     presets.nameNow = [this] { return presetNameNow(); };
+    presets.indexNow = [this]
+    {
+        const int matching = processorRef.programMatchingSettings();
+        return matching >= 0 ? matching : processorRef.getCurrentProgram();
+    };
 
     ageValue = std::make_unique<AgeValue> (*p.apvts.getParameter ("age"), ribbon);
     advancedHeader = std::make_unique<AdvancedHeader> (*this);
@@ -334,7 +348,9 @@ TapeColorEditor::TapeColorEditor (PluginProcessor& p)
     constructed = true;
     resized();
 
-    lastWritten = p.tapWritten.load (std::memory_order_acquire);
+    // Nothing from the last time a window was open: the peak the audio left after that window's last frame, and the old sound in the tap.
+    p.tapPeak.store (0.0f, std::memory_order_relaxed);
+    lastWritten = openedAt = p.tapWritten.load (std::memory_order_acquire);
     p.tapWanted.store (true, std::memory_order_relaxed);
 
     lastTime = juce::Time::getMillisecondCounterHiRes() * 0.001;
@@ -353,23 +369,39 @@ TapeColorEditor::~TapeColorEditor()
 
 bool TapeColorEditor::isAdvancedOpen() const noexcept
 {
-    return processorRef.advancedOpen.load (std::memory_order_relaxed);
+    return drawerShown;
 }
 
 void TapeColorEditor::setAdvancedOpen (bool shouldOpen)
 {
-    if (shouldOpen == isAdvancedOpen())
-        return;
-
     processorRef.advancedOpen.store (shouldOpen, std::memory_order_relaxed);
+    if (shouldOpen != drawerShown)
+        showDrawer (shouldOpen);
+}
+
+void TapeColorEditor::showDrawer (bool open)
+{
+    drawerShown = open;
 
     using P = PluginProcessor;
-    const int extra = shouldOpen ? drawerHeight : 0;
-    int wanted = juce::jlimit (P::minWindowHeight + extra, P::maxWindowHeight, getHeight() + (shouldOpen ? drawerHeight : -drawerHeight));
+    const int extra = open ? drawerHeight : 0;
+    int wanted = 0;
+    if (open)
+    {
+        wanted = juce::jlimit (P::minWindowHeight + extra, P::maxWindowHeight, getHeight() + drawerHeight);
 
-    // On a small screen the picture gives up room rather than the window running off the bottom.
-    if (auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds()))
-        wanted = juce::jlimit (P::minWindowHeight + extra, juce::jmax (P::minWindowHeight + extra, display->userArea.getHeight() - 60), wanted);
+        // On a small screen the picture gives up room rather than the window running off the bottom.
+        if (auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds()))
+            wanted = juce::jlimit (P::minWindowHeight + extra, juce::jmax (P::minWindowHeight + extra, display->userArea.getHeight() - 60), wanted);
+        drawerAdded = wanted - getHeight();
+    }
+    else
+    {
+        // Shutting it takes off what opening it added, so open then shut is the height it was. Up to 0.4.3 it took off the whole drawer
+        // even when the top of the window or the screen had cut the opening short.
+        wanted = juce::jlimit (P::minWindowHeight, P::maxWindowHeight, getHeight() - drawerAdded);
+        drawerAdded = drawerHeight;
+    }
 
     setResizeLimits (P::minWindowWidth, P::minWindowHeight + extra, P::maxWindowWidth, P::maxWindowHeight);
     setSize (getWidth(), wanted);
@@ -386,40 +418,45 @@ juce::String TapeColorEditor::presetNameNow() const
     const int matching = processorRef.programMatchingSettings();
     if (matching >= 0)
         return processorRef.getProgramName (matching);
-    return processorRef.getProgramName (processorRef.getCurrentProgram()) + ", edited";
+    const int current = processorRef.getCurrentProgram();
+    return current >= 0 ? processorRef.getProgramName (current) + ", edited" : PresetBox::noneName();
 }
 
+// Both of these read the parameters themselves. The blocks' own copies catch up with automation from the host's thread a moment later, and
+// up to 0.4.3 these read those copies, so they could be built from the values before and stay that way until something else moved.
 void TapeColorEditor::updateRestingTiles()
 {
-    const bool companderOn = compander.getSelected() != 0;
+    auto& a = processorRef.apvts;
+    const bool companderOn = juce::roundToInt (a.getRawParameterValue ("compander")->load()) != 0;
     encode.setResting (! companderOn);
     decode.setResting (! companderOn);
-    deviceMix.setResting (device.getSelected() == 0);
-    dropRate.setResting (dropDepth.getValue() <= 0.0);
+    deviceMix.setResting (juce::roundToInt (a.getRawParameterValue ("device")->load()) == 0);
+    dropRate.setResting (a.getRawParameterValue ("dropdepth")->load() <= 0.0f);
 }
 
 void TapeColorEditor::updateSummary()
 {
     juce::StringArray changed;
-    const auto add = [&changed] (const char* name, const juce::RangedAudioParameter& param, const juce::String& text)
-    {
-        if (std::abs (param.getValue() - param.getDefaultValue()) > 1.0e-4f)
-            changed.add (juce::String (name) + " " + text);
-    };
     auto& a = processorRef.apvts;
-    add ("Hardness", *a.getParameter ("hardness"), hardness.valueText());
-    add ("Texture", *a.getParameter ("texture"), texture.valueText());
-    add ("Dropouts", *a.getParameter ("dropdepth"), dropDepth.valueText());
-    if (compander.getSelected() != 0)
+    const auto add = [&changed, &a] (const char* name, const char* id, const ui::Tile& tile)
+    {
+        const auto& param = *a.getParameter (id);
+        if (std::abs (param.getValue() - param.getDefaultValue()) > 1.0e-4f)
+            changed.add (juce::String (name) + " " + tile.textFor (a.getRawParameterValue (id)->load()));
+    };
+    add ("Hardness", "hardness", hardness);
+    add ("Texture", "texture", texture);
+    add ("Dropouts", "dropdepth", dropDepth);
+    if (juce::roundToInt (a.getRawParameterValue ("compander")->load()) != 0)
         changed.add (juce::String ("Compander ") + a.getParameter ("compander")->getCurrentValueAsText());
-    add ("Low cut", *a.getParameter ("lowcut"), lowCut.valueText());
-    add ("High cut", *a.getParameter ("highcut"), highCut.valueText());
-    add ("Head gap", *a.getParameter ("spacing"), spacing.valueText());
-    add ("Head tilt", *a.getParameter ("azimuth"), azimuth.valueText());
-    if (device.getSelected() != 0)
+    add ("Low cut", "lowcut", lowCut);
+    add ("High cut", "highcut", highCut);
+    add ("Head gap", "spacing", spacing);
+    add ("Head tilt", "azimuth", azimuth);
+    if (juce::roundToInt (a.getRawParameterValue ("device")->load()) != 0)
         changed.add (a.getParameter ("device")->getCurrentValueAsText());
-    add ("Random", *a.getParameter ("random"), randomDrift.valueText());
-    add ("Stereo", *a.getParameter ("stereodrift"), stereoDrift.valueText());
+    add ("Random", "random", randomDrift);
+    add ("Stereo", "stereodrift", stereoDrift);
     advancedHeader->setSummary (changed.joinIntoString (", "));
 }
 
@@ -436,6 +473,17 @@ void TapeColorEditor::updateSettings()
         }
     }
 
+    // Not parameters, so watched here: the session's rate (a host can change it with the window open, or open the window before it says)
+    // and the response a loaded state or automation has set.
+    const double rate = processorRef.getSampleRate() > 0.0 ? processorRef.getSampleRate() : 48000.0;
+    const bool old = processorRef.oldResponse.load (std::memory_order_relaxed);
+    if (rate != lastRate || old != lastOld)
+    {
+        lastRate = rate;
+        lastOld = old;
+        changed = true;
+    }
+
     using namespace tapecolor::display;
     const int companderMode = (int) std::round (lastValues[12]);
     const double encodeAmount = (double) lastValues[13] * 0.01, decodeAmount = (double) lastValues[14] * 0.01;
@@ -448,7 +496,6 @@ void TapeColorEditor::updateSettings()
     if (! changed && ! boostMoved)
         return;
 
-    sinceMoved = 0.0;
     sinceBoostUpdate = 0.0;
     usedBoost = boostNow;
 
@@ -472,12 +519,24 @@ void TapeColorEditor::updateSettings()
     s.companderBoostDb = (double) (companderMode == 0 ? 0.0f : boostNow);
     s.device = (int) std::round (lastValues[15]);
     s.deviceMix = (double) lastValues[16] * 0.01;
-    s.sampleRate = processorRef.getSampleRate() > 0.0 ? processorRef.getSampleRate() : 48000.0;
-    settings = s;
+    s.sampleRate = rate;
+    s.outputDb = (double) lastValues[18];
+    s.autoLevel = lastValues[19] >= 0.5f;
 
+    // Each picture is drawn again only when something it shows has changed. Up to 0.4.3 any of the 26 controls redrew both, so an Output or
+    // Texture ride rebuilt them on every frame.
     const bool bypassed = lastValues[17] >= 0.5f;
-    response.setSettings (s, bypassed);
-    curve.setSettings (s, bypassed);
+    const bool responseMoved = ! drawnOnce || bypassed != lastBypassed || ! sameResponse (s, settings);
+    const bool curveMoved = ! drawnOnce || bypassed != lastBypassed || ! sameCurve (s, settings);
+    settings = s;
+    lastBypassed = bypassed;
+    drawnOnce = true;
+    if (responseMoved)
+        response.setSettings (s, bypassed);
+    if (curveMoved)
+        curve.setSettings (s, bypassed);
+    if (responseMoved || curveMoved)
+        sinceMoved = 0.0;
     reel.setAge ((float) s.age);
     ageValue->setValue (lastValues[3]);
 
@@ -561,11 +620,17 @@ void TapeColorEditor::readAudio (double seconds)
     if (fresh == 0)
         return;
 
+    // Until a whole transform's worth has come in since the window opened, the older part of the tap is from the last time it was open,
+    // perhaps at another rate. That part reads as silence.
+    if (! tapFilled && written - openedAt >= (std::uint32_t) fftSize)
+        tapFilled = true;
+    const int stale = tapFilled ? 0 : fftSize - (int) (written - openedAt);
+
     // Both signals through one complex transform, then pulled apart. That is half the work of two.
     for (int i = 0; i < fftSize; ++i)
     {
         const std::uint32_t at = (written - (std::uint32_t) fftSize + (std::uint32_t) i) & mask;
-        const float w = hann[(size_t) i];
+        const float w = i < stale ? 0.0f : hann[(size_t) i];
         fftIn[(size_t) i] = { processorRef.tapIn[at].load (std::memory_order_relaxed) * w, processorRef.tapOut[at].load (std::memory_order_relaxed) * w };
     }
     fft.perform (fftIn.data(), fftOut.data(), false);
@@ -629,6 +694,10 @@ bool TapeColorEditor::tick (double seconds)
     sinceMoved += seconds;
     sinceBoostUpdate += seconds;
     textAge += seconds;
+
+    // A state loaded while the window is open can open or shut Advanced.
+    if (const bool flag = processorRef.advancedOpen.load (std::memory_order_relaxed); flag != drawerShown)
+        showDrawer (flag);
 
     updateSettings();
     readAudio (seconds);
@@ -730,6 +799,10 @@ void TapeColorEditor::startTypingAge()
 {
     ageValue->startTyping();
 }
+
+juce::String TapeColorEditor::getAgeText() const    { return ageValue->shownText(); }
+void TapeColorEditor::typeAge (const juce::String& text)  { ageValue->typeText (text); }
+juce::String TapeColorEditor::getSummary() const    { return advancedHeader->getSummary(); }
 
 // ---- drawing and layout -------------------------------------------------------------------------------------------
 
@@ -870,7 +943,9 @@ void TapeColorEditor::resized()
             e.setBounds (bottom.withTrimmedLeft (inner));
         };
 
-        twoRows (column (190.0f, surfaceLabel), hardness, texture, dropDepth, dropRate);
+        // Weights out of 870. Up to 0.4.3 Surface 190, Playback 200, Device 160 and Drift 110, which cut "Dictation Machine" and
+        // "Dropout rate" at the smallest window.
+        twoRows (column (200.0f, surfaceLabel), hardness, texture, dropDepth, dropRate);
 
         {
             auto c = column (210.0f, companderLabel);
@@ -882,17 +957,17 @@ void TapeColorEditor::resized()
             decode.setBounds (bottom.withTrimmedLeft (inner));
         }
 
-        twoRows (column (200.0f, playbackLabel), lowCut, highCut, spacing, azimuth);
+        twoRows (column (194.0f, playbackLabel), lowCut, highCut, spacing, azimuth);
 
         {
-            auto c = column (160.0f, deviceLabel);
+            auto c = column (176.0f, deviceLabel);
             device.setBounds (c.removeFromTop (small));
             c.removeFromTop (inner);
             deviceMix.setBounds (c.removeFromTop (small));
         }
 
         {
-            auto c = column (110.0f, driftLabel);
+            auto c = column (90.0f, driftLabel);
             randomDrift.setBounds (c.removeFromTop (small));
             c.removeFromTop (inner);
             stereoDrift.setBounds (c.removeFromTop (small));
@@ -917,7 +992,7 @@ void TapeColorEditor::resized()
         const int tapeX = x;
         place (drive, 148.0f, inner);
         place (bias, 104.0f, inner);
-        place (speed, 214.0f, inner);
+        place (speed, 188.0f, inner);   // 214 up to 0.4.3, when Output had no room for "+12.0 dB"
         place (noise, 88.0f, groupGap);
         const int motionX = x;
         place (wow, 88.0f, inner);

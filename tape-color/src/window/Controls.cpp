@@ -4,7 +4,6 @@ namespace ui
 {
     namespace
     {
-        constexpr int menuDelayMs = 200;   // long enough to see the second half of a double-click, short enough not to feel late
         constexpr float tileRadius = 9.0f;
 
         juce::String minusSign() { return juce::String::fromUTF8 ("\xe2\x88\x92"); }
@@ -355,10 +354,17 @@ namespace ui
         g.strokePath (chevron, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
+    void ChoiceTile::mouseDown (const juce::MouseEvent&)
+    {
+        stopTimer();   // the second press of a double-click: the reset comes on its release, and no list opens
+    }
+
     void ChoiceTile::mouseUp (const juce::MouseEvent& e)
     {
-        if (e.getNumberOfClicks() == 1 && contains (e.getPosition()))
-            startTimer (menuDelayMs);
+        // Wait to see whether this is the first half of a double-click, as Tile does. 200 ms was shorter than many double-clicks, so the list
+        // opened under the second click and the reset never came.
+        if (e.getNumberOfClicks() == 1 && getLocalBounds().contains (e.getPosition()))
+            startTimer (juce::MouseEvent::getDoubleClickTimeout() + 30);
     }
 
     void ChoiceTile::mouseDoubleClick (const juce::MouseEvent&)
@@ -446,7 +452,7 @@ namespace ui
         g.setColour (tone::text.withAlpha (zone != none ? 0.12f : 0.07f));
         g.fillRoundedRectangle (b, 8.0f);
 
-        g.setColour (tone::text);
+        g.setColour (shown == noneName() ? tone::muted : tone::text);
         g.setFont (font (Weight::medium, 14.0f));
         g.drawText (shown, b.reduced (arrowWidth, 0.0f), juce::Justification::centred, true);
 
@@ -487,14 +493,16 @@ namespace ui
     {
         const auto hit = zoneAt (e.position.x);
         const int count = processor.getNumPrograms();
+        const int now = indexNow != nullptr ? indexNow() : processor.getCurrentProgram();
 
+        // With no preset known the arrows go to the first or the last one.
         if (hit == previous)
         {
-            choose ((processor.getCurrentProgram() + count - 1) % count);
+            choose (now < 0 ? count - 1 : (now + count - 1) % count);
         }
         else if (hit == next)
         {
-            choose ((processor.getCurrentProgram() + 1) % count);
+            choose (now < 0 ? 0 : (now + 1) % count);
         }
         else
         {
@@ -502,7 +510,7 @@ namespace ui
             menu.setLookAndFeel (&getLookAndFeel());
 
             for (int i = 0; i < count; ++i)
-                menu.addItem (i + 1, processor.getProgramName (i), true, i == processor.getCurrentProgram());
+                menu.addItem (i + 1, processor.getProgramName (i), true, i == now);
 
             juce::Component::SafePointer<PresetBox> safe (this);
             menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMinimumWidth (getWidth()).withStandardItemHeight (26),

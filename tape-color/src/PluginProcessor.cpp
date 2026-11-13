@@ -69,18 +69,23 @@ namespace
     const juce::Identifier windowWidthAttribute { "windowWidth" }, windowHeightAttribute { "windowHeight" }, advancedOpenAttribute { "advancedOpen" };
     // Which response a saved session uses: 1 is 0.3.1's, 2 is the lined up one. It is written after the settings, as eight bytes that
     // follow the XML, so the settings themselves read exactly as before in every version. A session from before 0.4.0 has no such bytes.
+    // Since 0.4.4 the next byte is the preset last chosen plus one (0 for none), and the one after it is 1 when the session has 0.4.4's fixes
+    // (fixedIn044). 0.4.0 to 0.4.3 wrote zeros there and read only the response. A response of 0 is a session from before 0.4.0 still
+    // waiting to see whether it needs the old response (responsePending), so an older version reading it decides just as it did.
     constexpr char responseTag[4] = { 'T', 'C', 'r', 's' };
     constexpr int responseOld = 1, responseLinedUp = 2;
 
-    int savedResponse (const void* data, int size) noexcept
+    struct SavedTail { int response = 0, program = 0, fixed = 0; };
+
+    SavedTail savedTail (const void* data, int size) noexcept
     {
         if (size < 9)
-            return 0;
+            return {};
         const auto* bytes = static_cast<const juce::uint8*> (data);
         const size_t tailAt = 8 + (size_t) juce::ByteOrder::littleEndianInt (bytes + 4) + 1; // magic, length, the XML and its closing zero
         if (tailAt + 8 > (size_t) size || std::memcmp (bytes + tailAt, responseTag, 4) != 0)
-            return 0;
-        return (int) bytes[tailAt + 4];
+            return {};
+        return { (int) bytes[tailAt + 4], (int) bytes[tailAt + 5], (int) bytes[tailAt + 6] };
     }
 
     constexpr Preset presets[] = {
@@ -201,6 +206,24 @@ PluginProcessor::PluginProcessor()
         tapIn[(size_t) i].store (0.0f, std::memory_order_relaxed);
         tapOut[(size_t) i].store (0.0f, std::memory_order_relaxed);
     }
+
+    apvts.addParameterListener ("bypass", this);
+}
+
+PluginProcessor::~PluginProcessor()
+{
+    apvts.removeParameterListener ("bypass", this);
+}
+
+void PluginProcessor::parameterChanged (const juce::String& id, float value)
+{
+    if (id != "bypass")
+        return;
+    const bool on = value > 0.5f;
+    if (on && ! bypassWasOn.exchange (true, std::memory_order_relaxed))
+        bypassOnAt.store (juce::Time::getMillisecondCounterHiRes(), std::memory_order_relaxed);
+    else if (! on)
+        bypassWasOn.store (false, std::memory_order_relaxed);
 }
 
 bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -334,8 +357,10 @@ void PluginProcessor::prepareToPlay (double sampleRate, int)
     companderSlewPerSample = 1.0 / (0.005 * sr);
     dropDownC = 1.0 - std::exp (-1.0 / (0.008 * sr));
     dropUpC = 1.0 - std::exp (-1.0 / (0.04 * sr));
+    dropHoldMean = kDropHoldSeconds * sr - 0.5;   // whole samples, so half a sample less on average
+    ageBleed = 1.0 - onePoleCoef (4.0, sr);
 
-    reset();
+    clearState();
 }
 
 // Turns each device's shape in dB into a short minimum phase filter, through the cepstrum, so it adds no latency.
@@ -379,7 +404,19 @@ void PluginProcessor::buildDeviceFilters()
         c.deviceLine.assign ((size_t) deviceLength * 2, 0.0f);
 }
 
+// A host Reset (Logic's stop, start or locate) clears what prepare clears, without allocating, under the lock the AU wrapper renders under.
 void PluginProcessor::reset()
+{
+    // The Reset that comes with the host's own bypass switching on is skipped (see bypassOnAt). JUCE calls it within microseconds.
+    const double since = juce::Time::getMillisecondCounterHiRes() - bypassOnAt.exchange (-1.0e9, std::memory_order_relaxed);
+    if (since >= 0.0 && since < 50.0)
+        return;
+
+    const juce::ScopedLock lock (getCallbackLock());
+    clearState();
+}
+
+void PluginProcessor::clearState() noexcept
 {
     for (size_t ch = 0; ch < chans.size(); ++ch)
     {
@@ -405,6 +442,7 @@ void PluginProcessor::reset()
         t = Lanes { 0.0, 0.0 };
     trimPos = 0;
     dryPos = linePos = gainPos = 0;
+    chunkPhase = 0;
     phaseWow = phaseWow2 = phaseFlutter = phaseFlutter2 = phaseWander1 = phaseWander2 = phaseWander3 = 0.0;
     flutterRandom.reset (0x3C6EF372u);
     flutterRandomR.reset (0x6A09E667u);
@@ -544,6 +582,13 @@ void PluginProcessor::snapControls() noexcept
 
 void PluginProcessor::pushTargets (bool forceBypass) noexcept
 {
+    // A session from before 0.4.0 takes 0.3.1's response the moment it starts to use something the two treat differently, as 0.3.1 played it.
+    if (responsePending.load (std::memory_order_relaxed) && responseMatters())
+    {
+        oldResponse.store (true, std::memory_order_relaxed);
+        responsePending.store (false, std::memory_order_relaxed);
+    }
+
     const float a = age->load() * 0.01f;
     const float low = lowCut->load(), high = highCut->load();
     driveSm.setTargetValue (drive->load());
@@ -593,6 +638,11 @@ bool PluginProcessor::responseMatters() const noexcept
     return lookupLog (kGapHz, pos) * overBiasGapScale ((double) bias->load() * 0.01) < kDetectToneHz
         || ageLowpassHz ((double) age->load() * 0.01) < kDetectToneHz
         || (space > 0.0 && space < kDetectToneHz);
+}
+
+bool PluginProcessor::fixesMatter() const noexcept
+{
+    return autoLevel->get() || dropDepth->load() > 0.0f || (tiltAmount (azimuth->load()) != 0.0f && mix->load() < 99.95f);
 }
 
 bool PluginProcessor::statesAreFinite() const noexcept
@@ -749,7 +799,7 @@ void PluginProcessor::runHighRate (float* left, float* right, int numChannels, i
     }
 }
 
-void PluginProcessor::processChunk (float* const* channels, int numChannels, int n) noexcept
+void PluginProcessor::processChunk (float* const* channels, int numChannels, int n, bool onGrid) noexcept
 {
     // 1. Slow controls for this piece. Filters only recalculate while a control is moving.
     const bool moving = biasSm.isSmoothing() || speedSm.isSmoothing() || ageSm.isSmoothing() || lowCutSm.isSmoothing() || highCutSm.isSmoothing() || spacingSm.isSmoothing();
@@ -793,8 +843,11 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
         for (auto& c : chans)
             c.encoder.coefsSet = c.decoder.coefsSet = false;
     }
-    const double compSlew = juce::jmin (1.0, companderSlewPerSample * (double) n);
-    for (int ch = 0; ch < numChannels; ++ch)
+    // The shelves move once every 32 samples, counted from the last reset and not from the start of each host block, so a bounce, a
+    // different buffer size and a block cut short at a cycle point all give the same samples. With blocks of a multiple of 32 this is just
+    // what 0.4.3 did.
+    const double compSlew = juce::jmin (1.0, companderSlewPerSample * (double) kChunk);
+    for (int ch = 0; ch < numChannels && onGrid; ++ch)
     {
         auto& c = chans[(size_t) ch];
         const auto update = [&] (CompanderSide& side, double amount)
@@ -885,6 +938,8 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
     oversampler->processSamplesDown (lowBlock);
 
     // 4. Back at the session rate.
+    const bool fixed = fixedIn044.load (std::memory_order_relaxed);
+    const bool lowEndAlone = fixed && ! companderOld;   // the old response keeps 0.3.1's Auto Level, low end and all
     const double chanScale = 1.0 / (double) numChannels;
     const double delaySamplesPerMs = sr * 0.001;
     const double wanderStep = (wanderTarget - wanderDb) / (double) n;
@@ -913,8 +968,21 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
                     fresh += oldBlend * (passed - fresh);
             }
             double v = c.dc.high ((double) fresh, dcC);
+            const double beforeLowEnd = v;
             v = c.dip.bell (c.bump.bell (v, bumpCoefs), dipCoefs);
-            v = c.ageHp.high (v, ageHpC);
+            if (ageHpC > 0.0 || c.ageHp.lp == 0.0)
+            {
+                v = c.ageHp.high (v, ageHpC);
+            }
+            else
+            {
+                // Age has come back to 0, where the cut has no corner and would hold its last value for ever, an offset on everything after
+                // it. It lets go of it instead, over a few tens of milliseconds.
+                c.ageHp.lp *= ageBleed;
+                if (std::abs (c.ageHp.lp) < 1.0e-30)
+                    c.ageHp.lp = 0.0;
+                v -= c.ageHp.lp;
+            }
             wet[ch] = v;
             // Auto Level compares the dry signal with the tape. Up to 0.3.1 the dry side had none of the tape's top end losses, so on sound
             // that is mostly top end (an S through Age, slow tape or Head Spacing) it read the loss as saturation and turned it back up.
@@ -926,7 +994,8 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
                 if (detectSpaceOn) heard = c.detectSpace.mixed (heard, detectSpaceCoefs);
             }
             const double a = c.detectIn.bell (c.detectInHp.high (heard, detectHpC), detectCoefs);
-            const double b = c.detectOut.bell (c.detectOutHp.high (v / g, detectHpC), detectCoefs);
+            // Since 0.4.4 it hears the tape before the head bump, the dip and Age's low cut, which are tone, as the top end losses are.
+            const double b = c.detectOut.bell (c.detectOutHp.high ((lowEndAlone ? beforeLowEnd : v) / g, detectHpC), detectCoefs);
             powerIn += a * a;
             powerOut += b * b;
         }
@@ -985,7 +1054,8 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
             swingRightMs += stereoAmt * (other - swingMs);
         }
 
-        const double tiltMs = numChannels > 1 && tilt != 0.0 ? 0.5 * azimuthMs (tilt, (double) speedSm.getCurrentValue()) : 0.0;
+        // Since 0.4.4 Head Azimuth follows Mix too, so Mix 0 is the input, delayed, on both sides.
+        const double tiltMs = numChannels > 1 && tilt != 0.0 ? 0.5 * azimuthMs (tilt, (double) speedSm.getCurrentValue()) * (fixed ? depth : 1.0) : 0.0;
         lastSwingMs = swingMs * depth;
         double readDelays[2];
         readDelays[0] = (double) modCentre + (juce::jlimit (-kModLimitMs, kModLimitMs, swingMs * depth) - tiltMs) * delaySamplesPerMs;
@@ -996,12 +1066,16 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
         double dropGain = 1.0;
         if (dropAmt > 0.0)
         {
-            const double chance = (double) dropRate->load() / sr;
+            // A new dropout can only begin while none is on. Up to 0.4.3 the chance each free sample took no account of that, so Dropout Rate
+            // 10 gave 6.6 a second. Now the chance makes the set number begin each second, on average.
+            const double rate = (double) dropRate->load();
+            const double chance = fixed ? rate / (sr - rate * (dropHoldMean - 1.0)) : rate / sr;
             if (! dropActive && 0.5 * (dropRng.bipolar() + 1.0) < chance)
             {
                 dropActive = true;
+                ++dropoutsStarted;
                 dropSeverity = 0.7 + 0.3 * dropRng.bipolar();
-                dropHold = (int) ((0.0475 + 0.0325 * dropRng.bipolar()) * sr);
+                dropHold = (int) ((kDropHoldSeconds + 0.0325 * dropRng.bipolar()) * sr);
             }
             if (dropActive && --dropHold <= 0)
                 dropActive = false;
@@ -1027,12 +1101,11 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
             auto& c = chans[(size_t) ch];
             double v = wet[ch] * comp * wander * dropGain;
 
-            // Texture: grain that follows the level of the signal, so silence stays silent.
+            // Texture: grain that follows the level of the signal, so silence stays silent. The level is followed with Texture at 0 too, so
+            // turning it back up in a quiet place does not bring back the level of whatever played when it was turned down.
+            c.grainEnv += grainEnvC * (std::abs (v) - c.grainEnv);
             if (grainAmt > 0.0)
-            {
-                c.grainEnv += grainEnvC * (std::abs (v) - c.grainEnv);
                 v += grainAmt * c.grainEnv * grainNorm * c.grainHp.high (c.grainLp.low (c.grainRng.bipolar(), grainLpC), grainHpC);
-            }
             if (noiseAmount > 0.0)
                 v += noiseAmount * noiseNorm * c.noiseHp.high (c.noiseLp.low (c.rng.bipolar(), noiseLpC), noiseHpC);
 
@@ -1094,12 +1167,16 @@ void PluginProcessor::processChunk (float* const* channels, int numChannels, int
     readingCompanderDb.store ((float) chans[0].encoder.boostDb, std::memory_order_relaxed);
 
     if (! statesAreFinite())
-        reset();
+        clearState();
 }
 
 void PluginProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool forceBypass) noexcept
 {
     juce::ScopedNoDenormals noDenormals;
+    // A block played well after the switch: a Reset from now on is a real one. Not cleared at once, because the audio thread can play a
+    // block between JUCE setting the bypass and calling Reset on the host's thread.
+    if (juce::Time::getMillisecondCounterHiRes() - bypassOnAt.load (std::memory_order_relaxed) > 5.0)
+        bypassOnAt.store (-1.0e9, std::memory_order_relaxed);
     sanitiseInput (buffer);
     if (oversampler == nullptr)
         return;
@@ -1127,11 +1204,14 @@ void PluginProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool fo
     float* const* data = buffer.getArrayOfWritePointers();
     float* ptrs[2] = { nullptr, nullptr };
     const int total = buffer.getNumSamples();
-    for (int pos = 0; pos < total; pos += kChunk)
+    for (int pos = 0; pos < total;)
     {
+        const int n = juce::jmin (kChunk - chunkPhase, total - pos);
         for (int ch = 0; ch < numChannels; ++ch)
             ptrs[ch] = data[ch] + pos;
-        processChunk (ptrs, numChannels, juce::jmin (kChunk, total - pos));
+        processChunk (ptrs, numChannels, n, chunkPhase == 0);
+        chunkPhase = (chunkPhase + n) % kChunk;
+        pos += n;
     }
     readingOutputPeak.store (buffer.getMagnitude (0, 0, total), std::memory_order_relaxed);
 
@@ -1205,6 +1285,8 @@ void PluginProcessor::setCurrentProgram (int i)
     set ("device", (float) v.dev);
     set ("devicemix", v.devMix);
     oldResponse.store (v.old, std::memory_order_relaxed);
+    responsePending.store (false, std::memory_order_relaxed);
+    fixedIn044.store (true, std::memory_order_relaxed);
 }
 
 int PluginProcessor::programMatchingSettings() const
@@ -1221,7 +1303,8 @@ int PluginProcessor::programMatchingSettings() const
             && same ("output", v.out) && same ("autolevel", v.autoOn ? 1.0f : 0.0f) && same ("hardness", v.hard) && same ("spacing", v.space)
             && same ("azimuth", v.tilt) && same ("random", v.rnd) && same ("stereodrift", v.stereo) && same ("dropdepth", v.dropD) && same ("droprate", v.dropR)
             && same ("compander", (float) v.comp) && same ("encode", v.enc) && same ("decode", v.dec) && same ("texture", v.tex) && same ("device", (float) v.dev)
-            && same ("devicemix", v.devMix) && (! responseMatters() || oldResponse.load (std::memory_order_relaxed) == v.old);
+            && same ("devicemix", v.devMix) && (! responseMatters() || oldResponse.load (std::memory_order_relaxed) == v.old)
+            && (fixedIn044.load (std::memory_order_relaxed) || ! fixesMatter());
     };
 
     if (juce::isPositiveAndBelow (currentProgram, (int) std::size (presets)) && matches (presets[currentProgram]))
@@ -1242,8 +1325,10 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& dest)
         xml->setAttribute (windowHeightAttribute, windowHeight.load (std::memory_order_relaxed));
         xml->setAttribute (advancedOpenAttribute, advancedOpen.load (std::memory_order_relaxed));
         copyXmlToBinary (*xml, dest);
+        const int response = responsePending.load (std::memory_order_relaxed) ? 0 : (oldResponse.load (std::memory_order_relaxed) ? responseOld : responseLinedUp);
+        const int program = juce::isPositiveAndBelow (currentProgram, getNumPrograms()) ? currentProgram + 1 : 0;
         const char tail[8] = { responseTag[0], responseTag[1], responseTag[2], responseTag[3],
-                               (char) (oldResponse.load (std::memory_order_relaxed) ? responseOld : responseLinedUp), 0, 0, 0 };
+                               (char) response, (char) program, (char) (fixedIn044.load (std::memory_order_relaxed) ? 1 : 0), 0 };
         dest.append (tail, sizeof (tail));
     }
 }
@@ -1262,11 +1347,17 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             xml->removeAttribute (windowWidthAttribute);
             xml->removeAttribute (windowHeightAttribute);
             xml->removeAttribute (advancedOpenAttribute);
-            const int response = savedResponse (data, size);
+            const auto tail = savedTail (data, size);
             applySafeState (apvts, *xml);
             // A session saved before 0.4.0 says nothing about its response. It keeps 0.3.1's if it uses anything the two treat differently,
-            // so it sounds as it did. With Mix at 100, High Cut off and the compander off there is nothing to keep.
-            oldResponse.store (response == responseOld || (response != responseLinedUp && responseMatters()), std::memory_order_relaxed);
+            // so it sounds as it did. With Mix at 100, High Cut off and the compander off there is nothing to keep yet: it waits, and takes
+            // 0.3.1's response if automation or a hand brings one of them in later (responsePending).
+            const bool old = tail.response == responseOld || (tail.response != responseLinedUp && responseMatters());
+            oldResponse.store (old, std::memory_order_relaxed);
+            responsePending.store (! old && tail.response != responseLinedUp, std::memory_order_relaxed);
+            fixedIn044.store (tail.fixed == 1, std::memory_order_relaxed);
+            // The preset last chosen, never applied again: the settings above are what was saved. A session from before 0.4.4 names none.
+            currentProgram = tail.program >= 1 && tail.program <= getNumPrograms() ? tail.program - 1 : -1;
         }
 }
 

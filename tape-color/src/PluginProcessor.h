@@ -11,10 +11,12 @@
 
 // Oversampled tape saturation with Drive, Bias, Tape Speed, Wow, Flutter, Noise, Age, Low Cut, High Cut, Mix and Output.
 // The oversampling and the wow and flutter tape path are reported as latency, and the dry path is matched to them.
-class PluginProcessor final : public juce::AudioProcessor
+class PluginProcessor final : public juce::AudioProcessor,
+                              private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     PluginProcessor();
+    ~PluginProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -48,6 +50,8 @@ public:
     int getTapePathLatency() const noexcept { return modCentre; }
     /** How much delay of the top end filters the wet path can take off, in samples at the high rate (see tapecolor::trimRoomFor). */
     double getTrimRoom() const noexcept { return trimRoom; }
+    /** How many dropouts have begun since the instance was made. For the tests only: nothing reads it back. */
+    int getDropoutsStarted() const noexcept { return dropoutsStarted; }
 
     // For the window. Written by the audio thread, safe to read from anywhere. Not parameters, so they never write automation.
     std::atomic<float> readingInputPeak { 0.0f }, readingOutputPeak { 0.0f }, readingAutoLevelDb { 0.0f }, readingHeadMs { 0.0f }, readingCompanderDb { 0.0f };
@@ -76,13 +80,26 @@ public:
     /** True while a setting is in use that the two responses treat differently. */
     bool responseMatters() const noexcept;
 
+    // A session saved before 0.4.0 that used none of those things when it was saved. It gets 0.3.1's response the moment automation or a
+    // hand brings one of them in, as 0.3.1 would have played it, and keeps it. Until then the two responses are the same.
+    std::atomic<bool> responsePending { false };
+
+    // What 0.4.4 fixed in the sound: Auto Level leaves the head bump, the dip and Age's low cut alone, Dropout Rate is the number of dropouts
+    // that begin each second, and Head Azimuth follows Mix like the rest of the read head. A new instance and every preset have it. A session
+    // saved before 0.4.4 keeps what it had, so it plays the same samples. Not a control: it travels in the bytes after the saved settings.
+    std::atomic<bool> fixedIn044 { true };
+    /** True while a setting is in use that 0.4.4's fixes change. */
+    bool fixesMatter() const noexcept;
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
     void processInternal (juce::AudioBuffer<float>&, bool forceBypass) noexcept;
+    void clearState() noexcept;
+    void parameterChanged (const juce::String&, float) override;
     void writeTap (std::array<std::atomic<float>, tapSize>&, const juce::AudioBuffer<float>&, int numChannels) noexcept;
-    void processChunk (float* const* channels, int numChannels, int n) noexcept;
+    void processChunk (float* const* channels, int numChannels, int n, bool onGrid) noexcept;
     void updateCoefs() noexcept;
     void snapControls() noexcept;
     void pushTargets (bool forceBypass) noexcept;
@@ -159,7 +176,8 @@ private:
     double wanderDb = 0, wanderTarget = 0;
     double spacingC = 1, grainLpC = 0, grainHpC = 0, grainNorm = 1, grainEnvC = 0;
     double sideHpC = 0, sideAttackC = 0, sideReleaseC = 0, companderSlewPerSample = 0;
-    double dropDownC = 0, dropUpC = 0;
+    double dropDownC = 0, dropUpC = 0, dropHoldMean = 0, ageBleed = 1;
+    static constexpr double kDropHoldSeconds = 0.0475;   // how long a dropout holds, on average
 
     // One half of the compander: a top end shelf whose boost comes from the top end level at its side chain.
     struct CompanderSide
@@ -208,14 +226,24 @@ private:
     // Dropouts
     tapecolor::Random dropRng;
     double dropEnv = 0, dropSeverity = 1;
-    int dropHold = 0;
+    int dropHold = 0, dropoutsStarted = 0;
     bool dropActive = false;
 
     // Auto level
     double envIn = 0, envOut = 0, ratio = 1;
     double lastSwingMs = 0;
 
-    int currentProgram = 0;
+    int currentProgram = 0;   // -1 when no preset is known: a session saved before 0.4.4, or one with a damaged number
+
+    // Where the next piece of 32 samples starts, counted across host blocks, so the compander's shelf moves at the same moments whatever
+    // size of block the host sends.
+    int chunkPhase = 0;
+
+    // JUCE's AU wrapper resets straight after the host turns its own bypass on. That one Reset is skipped, so the fade to dry plays out from
+    // the running tape instead of cutting to an empty delay line. Only a Reset within 50 ms of the switch, with no block more than 5 ms after
+    // it, counts (as Tape Chorus 0.6.0 and Tape Flanger 1.2.7).
+    std::atomic<double> bypassOnAt { -1.0e9 };
+    std::atomic<bool> bypassWasOn { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)
 };

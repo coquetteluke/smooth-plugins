@@ -17,7 +17,23 @@ namespace tapecolor::display
         double encode = 1.0, decode = 1.0, companderBoostDb = 0.0, deviceMix = 1.0;
         double sampleRate = 48000.0;
         bool oldResponse = false; // 0.3.1's Mix, High Cut and compander, as the processor's oldResponse
+        double outputDb = 0.0;    // only the Hiss number uses these two
+        bool autoLevel = true;
     };
+
+    /** True when the response line would be drawn the same for both. */
+    inline bool sameResponse (const Settings& a, const Settings& b) noexcept
+    {
+        return a.speedPos == b.speedPos && a.bias == b.bias && a.age == b.age && a.spacing == b.spacing && a.lowCut == b.lowCut && a.highCut == b.highCut
+            && a.mix == b.mix && a.compander == b.compander && a.device == b.device && a.encode == b.encode && a.decode == b.decode
+            && a.companderBoostDb == b.companderBoostDb && a.deviceMix == b.deviceMix && a.sampleRate == b.sampleRate && a.oldResponse == b.oldResponse;
+    }
+
+    /** True when the saturation curve would be drawn the same for both. */
+    inline bool sameCurve (const Settings& a, const Settings& b) noexcept
+    {
+        return a.driveDb == b.driveDb && a.hardness == b.hardness && a.age == b.age && a.bias == b.bias;
+    }
 
     inline int oversamplingFor (double sr) noexcept { return sr <= 50000.0 ? 16 : (sr <= 100000.0 ? 8 : 4); }
 
@@ -143,10 +159,79 @@ namespace tapecolor::display
         return low;
     }
 
-    /** All the hiss there is, from Noise and Age together, in dBFS. Below -200 means none. */
+    /** All the hiss there is, from Noise and Age together, as it leaves the plug-in, in dBFS. Below -200 means none.
+        The hiss goes on after the tape, so it takes what follows it: the compander's decode, Low Cut and High Cut, the Device, Mix and Output.
+        Up to 0.4.3 this was the hiss as it went on, so with the compander, a cut, Mix or Output in use it was off by up to 12 dB. */
     inline double hissDb (const Settings& s) noexcept
     {
-        const double rms = std::sqrt (noiseRms (s.noisePercent) * noiseRms (s.noisePercent) + ageNoiseRms (s.age) * ageNoiseRms (s.age));
+        const double made = std::sqrt (noiseRms (s.noisePercent) * noiseRms (s.noisePercent) + ageNoiseRms (s.age) * ageNoiseRms (s.age));
+        if (made <= 0.0)
+            return -400.0;
+
+        // The processor's hiss: white, through a one pole low pass at the lowest of the top end losses, set to this level, then a one pole
+        // high pass at 150 Hz. Everything here is worked out on 512 bands up to half the sample rate.
+        const double sr = s.sampleRate;
+        const double gapHz = lookupLog (kGapHz, s.speedPos) * overBiasGapScale (s.bias), ageHz = ageLowpassHz (s.age), space = spacingHz (s.spacing, s.speedPos);
+        const double lowPassHz = space <= 0.0 ? std::min (gapHz, ageHz) : std::min ({ gapHz, ageHz, space });
+        constexpr int bands = 512;
+        const auto bandHz = [&] (int k) { return (k + 0.5) * 0.5 * sr / bands; };
+        const auto power = [] (Cx h) { return std::norm (h); };
+
+        // The decode shelf's boost. A dynamic one sets it from the level its side chain hears: the decoded hiss above 1 kHz, with Drive's gain
+        // taken back out when Auto Level is off. Found by going round a few times, as the side chain does.
+        double decodeDb = 0.0;
+        if (s.compander != compOff)
+        {
+            double boost = companderBoostDb (s.compander, -200.0);
+            if (s.compander != compFixed)
+            {
+                const double side = s.autoLevel ? 1.0 : std::pow (10.0, s.driveDb / 20.0);
+                for (int round = 0; round < 6; ++round)
+                {
+                    double heard = 0.0, all = 0.0;
+                    for (int k = 0; k < bands; ++k)
+                    {
+                        const double hz = bandHz (k), lp = power (onePoleLow (hz, lowPassHz, sr));
+                        heard += lp * power (onePoleHigh (hz, 150.0, sr)) * power (shelf (hz, boost * s.decode, sr, true, s.oldResponse)) * power (onePoleHigh (hz, 1000.0, sr));
+                        all += lp;
+                    }
+                    const double level = made * made * heard / all / (side * side);
+                    boost = companderBoostDb (s.compander, 10.0 * std::log10 (level + 1.0e-12) + 3.0);
+                }
+            }
+            decodeDb = boost * s.decode;
+        }
+
+        double kept = 0.0, all = 0.0;
+        for (int k = 0; k < bands; ++k)
+        {
+            const double hz = bandHz (k), lp = power (onePoleLow (hz, lowPassHz, sr));
+            double after = power (onePoleHigh (hz, 150.0, sr));
+            if (s.compander != compOff)
+                after *= power (shelf (hz, decodeDb, sr, true, s.oldResponse));
+            if (s.lowCut > 20.01)
+                after *= power (svfHigh (hz, s.lowCut, sr));
+            if (s.highCut < 19999.5)
+            {
+                if (s.oldResponse)
+                    after *= power (svfLow (hz, s.highCut, sr));
+                else
+                {
+                    MatchedLow m;
+                    m.set (s.highCut, sr);
+                    const Cx z = zInverse (hz, sr);
+                    after *= power ((m.b0 + m.b1 * z) / (1.0 + m.a1 * z + m.a2 * z * z));
+                }
+            }
+            if (s.device > 0)
+            {
+                const double blend = 1.0 + s.deviceMix * (std::pow (10.0, deviceShapeDb (s.device - 1, hz) / 20.0) - 1.0);
+                after *= blend * blend;
+            }
+            kept += lp * after;
+            all += lp;
+        }
+        const double rms = made * std::sqrt (kept / all) * s.mix * std::pow (10.0, s.outputDb / 20.0);
         return rms > 0.0 ? 20.0 * std::log10 (rms) : -400.0;
     }
 

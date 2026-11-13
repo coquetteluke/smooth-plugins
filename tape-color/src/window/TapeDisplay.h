@@ -30,22 +30,32 @@ namespace ui
 
         int getPaintCount() const noexcept  { return paintCount; }
 
+        // For the tests: how often each cached layer was drawn again, what it was last given, and the loudest column on show.
+        int getBackBuilds() const noexcept  { return backBuilds; }
+        int getLineBuilds() const noexcept  { return lineBuilds; }
+        const tapecolor::display::Settings& getSettings() const noexcept  { return settings; }
+        float getLoudestShownDb() const noexcept;
+
     private:
         juce::Rectangle<float> plot() const;
         float xFor (float hz) const;
         float yForResponse (float db) const;
         float yForLevel (float db) const;
         void rebuild (float scale);
+        void buildBack (float scale);
+        void buildOver (float scale);
         void buildSpectrumPaths();
 
         tapecolor::display::Settings settings;
-        bool bypassed = false, layersValid = false;
+        // The grid and scales depend only on the size. The line, the legend and what Age took depend on the settings, so only they are
+        // drawn again when a setting or the compander's boost moves.
+        bool bypassed = false, backValid = false, overValid = false;
         juce::Image back, over;
         float layerScale = 0.0f;
         Column inDb, outDb, shownIn, shownOut;
         juce::Path inPath, outPath;
         bool pathsValid = false;
-        int paintCount = 0;
+        int paintCount = 0, backBuilds = 0, lineBuilds = 0;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ResponseView)
     };
@@ -70,6 +80,7 @@ namespace ui
 
         float getSquashDb() const noexcept  { return squashDb; }
         int getPaintCount() const noexcept  { return paintCount; }
+        int getBuilds() const noexcept      { return builds; }
 
     private:
         juce::Rectangle<float> plot() const;
@@ -81,7 +92,7 @@ namespace ui
         juce::Image back, lit, reading;
         float layerScale = 0.0f, peak = 0.0f, shownPeak = -1.0f, squashDb = 0.0f, shownSquash = -1.0f;
         juce::String squashText;
-        int paintCount = 0;
+        int paintCount = 0, builds = 0;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CurveView)
     };

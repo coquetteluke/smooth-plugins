@@ -370,6 +370,16 @@ int main (int argc, char** argv)
     }
 
     {
+        // The smallest window with Advanced open and the longest words in it (0.4.4: these were cut off before).
+        Session s (PluginProcessor::minWindowWidth, PluginProcessor::minWindowHeight + TapeColorEditor::drawerHeight, true);
+        s.processor.setCurrentProgram (8);   // Worn Cassette
+        s.set ("device", 4.0f);              // Dictation Machine
+        s.set ("output", -12.0f);
+        s.play (voice, 0, words);
+        s.saveBoth (folder, "smallest-advanced-open");
+    }
+
+    {
         Session s (1500, 900);
         s.processor.setCurrentProgram (3);
         s.play (voice, 0, words);

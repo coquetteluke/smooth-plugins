@@ -39,6 +39,15 @@ public:
 
     static constexpr int drawerHeight = 170;
 
+    // What the window shows, for the tests. None of these change anything.
+    juce::String getAgeText() const;
+    void typeAge (const juce::String&);
+    juce::String getSummary() const;
+    juce::String getHissText() const       { return hissText; }
+    juce::String getTopEndText() const     { return topEndText; }
+    juce::String getPresetName() const     { return presetNameNow(); }
+    juce::Rectangle<int> getHintArea() const noexcept { return hintArea; }
+
 private:
     class AgeValue;
     class AdvancedHeader;
@@ -48,6 +57,7 @@ private:
     void updateSummary();
     void updateRestingTiles();
     void readAudio (double seconds);
+    void showDrawer (bool open);
     void showHintFor (juce::Component*);
     void setHint (const juce::String&);
     juce::String presetNameNow() const;
@@ -86,6 +96,12 @@ private:
     std::vector<float> lastValues;
     std::vector<std::atomic<float>*> values;
     tapecolor::display::Settings settings;
+    double lastRate = 0.0;
+    bool lastOld = false, lastBypassed = false, drawnOnce = false;
+
+    // What the window shows of Advanced, which follows the processor's flag: a state loaded with the window open can change that.
+    bool drawerShown = false;
+    int drawerAdded = drawerHeight;   // what opening it added, so shutting it gives the height back
     float usedBoost = 0.0f;
     double sinceBoostUpdate = 0.0;
 
@@ -98,7 +114,8 @@ private:
     std::array<float, ui::ResponseView::columns> binBlend {}, tilt {};
     ui::ResponseView::Column inDb, outDb;
     double columnsRate = 0.0;
-    std::uint32_t lastWritten = 0;
+    std::uint32_t lastWritten = 0, openedAt = 0;
+    bool tapFilled = false;   // a whole transform's worth has come in since the window opened
     double sinceAudio = 10.0, lastTime = 0.0, sinceMoved = 10.0, textAge = 0.0;
     float heldPeak = 0.0f, shownBoost = -100.0f;
     bool signalPresent = false;

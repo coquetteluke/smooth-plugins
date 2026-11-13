@@ -2,8 +2,11 @@
 // default, every preset and random automation, at several rates, block sizes and channel counts, and writes the raw float output.
 // Run it on one build, install the next, run it again, and compare the folders.
 // Build: clang++ -std=c++17 -O2 tests/NullRender.cpp -framework AudioToolbox -framework CoreFoundation -o build/NullRender
-// Usage: NullRender render <tests/baseline/voice.f32> <folder>
+// Usage: NullRender render <tests/baseline/voice.f32> <folder> [transport]
 //        NullRender compare <folder a> <folder b>
+// With "transport" (added in 1.2.8) the host plays from bar 1 at 120 BPM in 4/4, the way a DAW reports it through the AU host
+// callbacks, so the synced sweep locks to the song position. Without it there is no host, as before. "transport+latency" reports a
+// song position one reported latency later; it shows that 1.2.8 against 1.2.7 is that shift of the sweep and nothing else.
 #include <AudioToolbox/AudioToolbox.h>
 #include <algorithm>
 #include <cmath>
@@ -18,6 +21,38 @@
 
 static std::vector<float> gIn;
 static size_t gAt = 0;
+static bool gTransport = false, gAddLatency = false;
+static double gRate = 48000.0, gSampleTime = 0.0, gOffset = 0.0;
+static constexpr double kBpm = 120.0;
+
+static OSStatus beatAndTempoCb (void*, Float64* beat, Float64* tempo)
+{
+    if (beat != nullptr) *beat = (gSampleTime + gOffset) / gRate * kBpm / 60.0;
+    if (tempo != nullptr) *tempo = kBpm;
+    return noErr;
+}
+
+static OSStatus musicalTimeCb (void*, UInt32* deltaToNextBeat, Float32* numerator, UInt32* denominator, Float64* downBeat)
+{
+    const double beat = (gSampleTime + gOffset) / gRate * kBpm / 60.0;
+    if (deltaToNextBeat != nullptr) *deltaToNextBeat = (UInt32) std::lround ((std::ceil (beat) - beat) * 60.0 / kBpm * gRate);
+    if (numerator != nullptr) *numerator = 4.0f;
+    if (denominator != nullptr) *denominator = 4;
+    if (downBeat != nullptr) *downBeat = std::floor (beat / 4.0) * 4.0;
+    return noErr;
+}
+
+static OSStatus transportStateCb (void*, Boolean* playing, Boolean* changed, Float64* sampleInTimeLine, Boolean* cycling, Float64* cycleStart,
+                                  Float64* cycleEnd)
+{
+    if (playing != nullptr) *playing = true;
+    if (changed != nullptr) *changed = false;
+    if (sampleInTimeLine != nullptr) *sampleInTimeLine = gSampleTime + gOffset;
+    if (cycling != nullptr) *cycling = false;
+    if (cycleStart != nullptr) *cycleStart = 0.0;
+    if (cycleEnd != nullptr) *cycleEnd = 0.0;
+    return noErr;
+}
 
 static std::vector<float> readFloats (const std::string& path)
 {
@@ -62,7 +97,25 @@ static bool render (const Config& cfg, const std::string& path, int preset, int 
     AudioUnitSetProperty (u, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &f, sizeof f);
     AURenderCallbackStruct cb { inputCb, nullptr };
     AudioUnitSetProperty (u, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &cb, sizeof cb);
+    gRate = cfg.rate;
+    gSampleTime = 0.0;
+    if (gTransport)
+    {
+        HostCallbackInfo host {};
+        host.beatAndTempoProc = beatAndTempoCb;
+        host.musicalTimeLocationProc = musicalTimeCb;
+        host.transportStateProc = transportStateCb;
+        AudioUnitSetProperty (u, kAudioUnitProperty_HostCallbacks, kAudioUnitScope_Global, 0, &host, sizeof host);
+    }
     if (AudioUnitInitialize (u) != noErr) { puts ("init failed"); return false; }
+    gOffset = 0.0;
+    if (gAddLatency)
+    {
+        Float64 latency = 0.0;
+        UInt32 sz = sizeof latency;
+        AudioUnitGetProperty (u, kAudioUnitProperty_Latency, kAudioUnitScope_Global, 0, &latency, &sz);
+        gOffset = std::round (latency * cfg.rate);
+    }
 
     if (presetCount != nullptr)
     {
@@ -129,6 +182,7 @@ static bool render (const Config& cfg, const std::string& path, int preset, int 
         if (cfg.channels > 1)
             buffers.second = { 1, cfg.block * 4, channels[1].data() };
         AudioUnitRenderActionFlags flags = 0;
+        gSampleTime = ts.mSampleTime;
         if (AudioUnitRender (u, &flags, &ts, 0, cfg.block, &buffers.list) != noErr) { puts ("render failed"); return false; }
         for (auto& x : channels)
             out.write ((const char*) x.data(), cfg.block * 4);
@@ -207,11 +261,14 @@ int main (int argc, char** argv)
     if (argc == 4 && std::string (argv[1]) == "compare")
         return compare (argv[2], argv[3]);
 
-    if (argc != 4 || std::string (argv[1]) != "render")
+    if ((argc != 4 && ! (argc == 5 && (std::string (argv[4]) == "transport" || std::string (argv[4]) == "transport+latency")))
+        || std::string (argv[1]) != "render")
     {
-        puts ("usage: NullRender render voice.f32 folder | NullRender compare a b");
+        puts ("usage: NullRender render voice.f32 folder [transport | transport+latency] | NullRender compare a b");
         return 2;
     }
+    gTransport = argc == 5;
+    gAddLatency = gTransport && std::string (argv[4]) == "transport+latency";
 
     gIn = readFloats (argv[2]);
     if (gIn.empty())

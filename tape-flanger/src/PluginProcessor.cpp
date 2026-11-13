@@ -435,7 +435,10 @@ void PluginProcessor::followHostTransport()
     {
         // Lock to the bar. A transport jump is slewed so the delay never jumps. In bars, the position counts from the host's last bar
         // line, so the sweep keeps to the bar lines after a change of time signature too.
-        const double position = inBars && haveBarStart ? std::round (barStart / barBeats) * barBeats + (ppq - barStart) : ppq;
+        // The playhead gives the position of the input block, and the host plays the output one reported latency later to line it up,
+        // so the sweep follows the position less the latency and is heard on the beat. Up to 1.2.7 it was heard 6.75 ms early.
+        const double heard = ppq - (double) getLatencySamples() / hostRate * bpm / 60.0;
+        const double position = inBars && haveBarStart ? std::round (barStart / barBeats) * barBeats + (heard - barStart) : heard;
         const double target = wrapTurns (0.5 * position / beats);
         if (firstBlock)
         {

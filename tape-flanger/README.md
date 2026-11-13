@@ -29,7 +29,7 @@ Pictures are in `docs/window/`. `RenderWindow` makes them from real speech throu
 | Control | Range | What it does |
 |---|---|---|
 | Rate | 0.01 to 10 Hz | Sweep speed when Tempo Sync is off. |
-| Tempo Sync | off, on | Takes the sweep speed from the host tempo. With no tempo from the host it uses 120 BPM. While the host plays, the sweep locks to the bar. A cycle region that jumps back by a whole number of sweeps leaves it where it is (with Swing 0). |
+| Tempo Sync | off, on | Takes the sweep speed from the host tempo. With no tempo from the host it uses 120 BPM. While the host plays, the sweep locks to the bar, on the beat as you hear it after latency compensation. A cycle region that jumps back by a whole number of sweeps leaves it where it is (with Swing 0). |
 | Sync Division | 8 bars to 1/16, with dotted and triplet values | Length of one sweep when Tempo Sync is on. The bar values follow the host's time signature (a bar of 3/4 is 3 quarter notes), 4/4 if it reports none. The others are note values. |
 | Depth | 0 to 5 ms | How far the wet path moves to each side of the dry path. 2.5 ms means from 2.5 ms early to 2.5 ms late. |
 | Feedback | -95 to +95 % | Lifts the comb peaks. Negative values also flip the wet polarity, so the comb stays deep on that side and the sound hollows out at the crossing. Moving past 0 is therefore a change of character, and it fades over about 15 ms rather than clicking. |
@@ -121,9 +121,15 @@ Every number is from `tests/PluginTest.cpp` and saved in `tests/results.txt`. De
 - Spread: 45, 90, 135 and 180 degrees measure within 0.01 degree.
 - Mix: matches a straight blend of dry and wet to -145 dB. Mix 0 is within 0.002 dB of the input and nulls 73 dB or more against it.
 - Same output with a playhead at 120 BPM or with none, at block size 64 or 1024, and after a second prepare.
-- Known, not fixed: the sweep follows the playhead of the audio coming in, so after the host's latency compensation a synced sweep is heard one reported latency early (6.75 ms at 48 kHz: 1 degree of a 1 bar sweep at 120 BPM, 19 degrees of a 1/16). Moving it would break the line above. LFO Phase can trim it by ear.
+- Synced, the sweep is heard on the beat: it follows the song position less the reported latency, so after the host's latency compensation it lines up with the timeline (since 1.2.8; before, it was 6.75 ms early at 48 kHz). With no host playing it runs from the start of its cycle as before, which is where a playhead one latency on puts it.
 - Phase Flip Thin near the crossing: the inverted wet has cancelled almost all of the voice there, so the take's own sharp sounds (consonant edges, mouth ticks) stand out. On Luke's 11 working takes the 176 such spots the click rule flags (177 with the newer rule) are each the comb at that exact delay, sample for sample, not a click from crossing: residual -38 dB or lower against the comb stopped at that delay.
 - A control moved while playing lands exactly where it is set: a second later the output is what it is with the control there from the start, -207 dB or identical samples. Invert Phase switched on while playing at Depth 0, Mix 50 cancels by 167.6 dB. A preset picked while playing matches the same preset set before the plug-in started at -157 dB or better.
+
+Added in 1.2.8. Each check failed on 1.2.7 first:
+
+- Synced sweep against the timeline after latency compensation, read off the output: 1/16 at 48 and 96 kHz, 1/8 at 44.1 kHz and 1 bar of 3/4 at 48 kHz are 0.25 to 0.5 ms from it (limit 1 ms; 1.2.7: 5.75 to 6.35 ms early). The 1 bar lock reads 0.006 ms rms, the 3/4 one 0.007 ms.
+- No playhead against a playhead one latency on, synced: null -155.8 dB (limit -80 dB; 1.2.7: -1.3 dB).
+- Through the real AU, 1.2.8 against 1.2.7: with no host every file is bit identical; with a host playing the default and every preset without Tempo Sync are bit identical, and the synced ones match 1.2.7 given a song position one latency on to -150 dBFS (`tests/null_results.txt`).
 
 Added in 1.2.7, Phase 2. Each check failed on 1.2.6 first:
 
@@ -192,6 +198,6 @@ The null test, one build against the next:
 
 ```
 clang++ -std=c++17 -O2 tests/NullRender.cpp -framework AudioToolbox -framework CoreFoundation -o build/NullRender
-build/NullRender render tests/baseline/voice.f32 <folder>
+build/NullRender render tests/baseline/voice.f32 <folder> [transport | transport+latency]
 build/NullRender compare <folder a> <folder b>
 ```

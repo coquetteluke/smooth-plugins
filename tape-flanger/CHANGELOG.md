@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.8, 2026-11-13
+
+A synced sweep is heard on the beat. Luke said yes to this on 2026-11-13: "u can do all of these".
+
+- With Tempo Sync on and the host playing, the sweep follows the song position less the reported latency. The host's playhead gives the position of the audio coming in, and the host plays the output one latency later to line it up, so up to 1.2.7 the sweep was heard 324 samples (6.75 ms at 48 kHz) early. Read off the output against the timeline it was 6.25 ms early at 1/16, 1/8 and 1 bar of 3/4, at 44.1, 48 and 96 kHz; now 0.25 to 0.5 ms, inside the reading's own step. The 1 bar lock check went from 0.028 to 0.006 ms rms, the 3/4 one from 0.037 to 0.007.
+- What changes: only the synced presets, and only with a host playing. One Bar Swirl, Quarter Note Wobble and Square Flip sit 6.75 ms later against the beat at 48 kHz (1.2, 4.9 and 2.4 degrees of their sweep at 120 BPM). Through the real AU with a host playing, the default and the 10 other presets are bit identical to 1.2.7, and the three synced ones match 1.2.7 given a song position one latency on to -150 dBFS. With no host (no transport, as the real vocal checks run) every file is bit identical. `tests/null_results.txt`.
+- Test changed with Luke's yes: "same output with a playhead at 120 BPM or none, synced" compared a playhead at ppq 0 with no playhead, which is the 6.75 ms error the fix takes out. It now reads "..., synced, the playhead one latency on": the output with no playhead must still match a playhead one latency on to -80 dB, the same limit. The old text and numbers are in a comment above it. The free line is unchanged.
+- The 1.2.7 INFO line (0.919 ms rms at 1/16) is now 4 checks: the sweep heard within 1 ms of the timeline. All four failed on 1.2.7 (5.75 to 6.35 ms early). Most of the old 0.919 ms was the reading's scatter with 2 ms frames, so the checks read the timing itself.
+- Six other lines moved a little and still pass: the two lock checks above, and four synced rate readings (3.113 to 3.111 Hz, 2.998 to 2.999, 1.999 to 2.000), which read a sweep that now starts 6.75 ms further on.
+- NullRender can play a host transport (`transport`, and `transport+latency` for the proof above). Latency, controls, IDs and AU codes are unchanged, and sessions load as before.
+
 ## 1.2.7, 2026-11-13
 
 Phase 2 bug fixes. The default and every preset play the same samples as 1.2.6, and sessions load as before. No control, preset, ID or AU code changed, and latency is the same. No sound call was needed.

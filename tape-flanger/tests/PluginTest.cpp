@@ -510,6 +510,16 @@ static void testRate()
     }
 
     // Offline bounce: same output with a playhead or without one
+    // Changed with Luke's yes on 2026-11-13 ("u can do all of these"): r3-1. The synced sweep now follows the song position less the
+    // reported latency, so after the host's latency compensation it is heard on the beat. A playhead at ppq 0 now starts the cycle one
+    // latency (324 samples at 48 kHz) later than the free start with no playhead, so the old synced line compared two different phases.
+    // The old test, kept as it was (limit -80 dB; 1.2.7 read -240.000 dB free, -155.753 dB synced):
+    //     auto outB = renderWithHead (*b, head, in, 512, sr, 0.0);
+    //     check (db <= -80.0, std::string ("same output with a playhead at 120 BPM or none, ") + (synced ? "synced" : "free"), db, "dB");
+    // Now free is unchanged. Synced, the playhead starts one latency on (ppq 0.0135 at 120 BPM), where the start of the cycle is heard
+    // on the timeline, and the output with no playhead must still match it to 80 dB: the free running sweep with no playhead starts
+    // where it always did, and the lock puts it exactly one latency behind the song position. The same limit as before. The sweep
+    // landing on the beat at 1/16 is checked in testSyncLatency.
     for (bool synced : { false, true })
     {
         const double sr = 48000.0;
@@ -519,10 +529,11 @@ static void testRate()
         auto outA = render (*a, in, 512);
         auto b = makeProc (s, sr);
         TestHead head;
-        auto outB = renderWithHead (*b, head, in, 512, sr, 0.0);
+        const double startPpq = synced ? b->getLatencySamples() / sr * head.bpm / 60.0 : 0.0;
+        auto outB = renderWithHead (*b, head, in, 512, sr, startPpq);
         const double db = nullDb (outA.getReadPointer (1), outB.getReadPointer (1), outA.getNumSamples(), rms (outA.getReadPointer (1), outA.getNumSamples()));
         // Limit: the difference is 80 dB under the signal
-        check (db <= -80.0, std::string ("same output with a playhead at 120 BPM or none, ") + (synced ? "synced" : "free"), db, "dB");
+        check (db <= -80.0, std::string ("same output with a playhead at 120 BPM or none, ") + (synced ? "synced, the playhead one latency on" : "free"), db, "dB");
     }
 }
 
@@ -1965,26 +1976,38 @@ static void testTimeSignature()
     }
 }
 
-// tape-flanger-r3-1, not fixed (see CHANGELOG 1.2.7): the lock follows the playhead of the input, so after the host's latency
-// compensation a synced sweep is heard one reported latency early. Shown here at 1/16, where it is largest, as the 1 bar lock check
-// reads it. Fixing it would break "same output with a playhead at 120 BPM or none, synced".
-static void testSyncLatencyInfo()
+// tape-flanger-r3-1. The host's playhead gives the position of the input block, and the host plays the output one reported latency
+// later to line it up with the timeline. Up to 1.2.7 the lock followed the input's position, so a synced sweep was heard one latency
+// (324 samples, 6.75 ms at 48 kHz) early. 1.2.7 showed it as an INFO line, 0.919 ms rms at 1/16 with 2 ms frames; most of that rms is
+// the reading's own scatter, so this check reads the timing itself: the sweep read off the output, placed on the timeline (the reading
+// is lined up by the reported latency, as the host does), against the sweep the song position asks for, shifted in 0.05 ms steps to
+// the best fit. Limit: within 1 ms of the timeline (3 degrees of a 1/16 cycle). 1.2.7 reads about 6.25 ms early at every case.
+static void testSyncLatency()
 {
-    const double sr = 48000.0;
-    Settings s; s.sync = true; s.division = 13; s.depth = 2.0f;
-    auto p = makeProc (s, sr);
-    const int n = (int) (sr * 4.0);
-    auto in = softNoiseSignal (n, sr);
-    TestHead head;
-    auto out = renderWithHead (*p, head, in, 512, sr, 2.0);
-    const auto series = relSeries (in, out.getReadPointer (0), n, p->getLatencySamples(), sr, 2.0, 96, 48);
-    double sum = 0;
-    for (size_t i = 0; i < series.t.size(); ++i)
+    struct Case { double sr; int division; int numerator; double cycleBeats; int frame; const char* name; };
+    for (const auto& c : { Case { 48000.0, 13, 0, 0.25, 240, "1/16 at 48 kHz" }, Case { 96000.0, 13, 0, 0.25, 480, "1/16 at 96 kHz" },
+                           Case { 44100.0, 11, 0, 0.5, 220, "1/8 at 44.1 kHz" }, Case { 48000.0, 3, 3, 3.0, 960, "1 bar of 3/4 at 48 kHz" } })
     {
-        const double expected = 2.0 * std::sin (juce::MathConstants<double>::twoPi * (2.0 + series.t[i] * 2.0) / 0.25);
-        sum += (series.rel[i] - expected) * (series.rel[i] - expected);
+        Settings s; s.sync = true; s.division = c.division; s.depth = 2.0f;
+        auto p = makeProc (s, c.sr);
+        const int n = (int) (c.sr * 4.0);
+        auto in = softNoiseSignal (n, c.sr);
+        TestHead head; head.numerator = c.numerator; head.denominator = 4;
+        auto out = renderWithHead (*p, head, in, 512, c.sr, 2.0);
+        const auto series = relSeries (in, out.getReadPointer (0), n, p->getLatencySamples(), c.sr, 2.0, c.frame, c.frame / 5);
+        double best = 1.0e9, offset = 0.0;
+        for (double shift = -12.0; shift <= 12.0 + 1.0e-9; shift += 0.05)
+        {
+            double sum = 0.0;
+            for (size_t i = 0; i < series.t.size(); ++i)
+            {
+                const double expected = 2.0 * std::sin (juce::MathConstants<double>::twoPi * (2.0 + (series.t[i] + shift * 0.001) * 2.0) / c.cycleBeats);
+                sum += (series.rel[i] - expected) * (series.rel[i] - expected);
+            }
+            if (sum < best) { best = sum; offset = shift; }
+        }
+        check (std::abs (offset) <= 1.0, std::string ("synced ") + c.name + " at 120 BPM is heard on the timeline after latency compensation, early by", offset, "ms");
     }
-    info ("synced 1/16 at 120 BPM against the timeline after latency compensation, rms error (not fixed, r3-1)", std::sqrt (sum / (double) series.t.size()), "ms");
 }
 
 // tape-flanger-r1-1. LFO Phase is a circle: from 359 to 1 degree the sweep moves 2 degrees. 1.2.6 glided back through the whole cycle.
@@ -2289,7 +2312,7 @@ int main()
     // Added in 1.2.7
     RUN (testSyncLoopJump);
     RUN (testTimeSignature);
-    RUN (testSyncLatencyInfo);
+    RUN (testSyncLatency);
     RUN (testLfoPhaseWrap);
     RUN (testHostReset);
     RUN (testOldStateOntoRunning);

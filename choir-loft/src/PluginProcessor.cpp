@@ -402,6 +402,7 @@ void PluginProcessor::clearState() noexcept
     maxLateTicks = juce::roundToInt (0.05 / tickSeconds);
     leadRunTicks = 0;
     lateTicks = 0;
+    tickCount = stretchFrom = 0;
     levelRing.fill (0.0);
     levelAt = 0;
     tickPower = 0.0;
@@ -520,6 +521,7 @@ void PluginProcessor::applyInputType (int type) noexcept
     voicedRing.fill (false);
     leadRunTicks = 0;
     lateTicks = 0;
+    tickCount = stretchFrom = 0;
 }
 
 void PluginProcessor::readSettings() noexcept
@@ -601,6 +603,7 @@ void PluginProcessor::tick() noexcept
     currentPeriod = period;
     leadVoiced = voiced;
 
+    ++tickCount;
     pitchRingAt = (pitchRingAt + 1) & (pitchRingSize - 1);
     pitchRing[(size_t) pitchRingAt] = semitones;
     periodRing[(size_t) pitchRingAt] = period;
@@ -624,6 +627,7 @@ void PluginProcessor::tick() noexcept
         }
         lateTicks = written;
         leadRunTicks = lateTicks;
+        stretchFrom = tickCount - lateTicks;
     }
     else if (! voiced)
         lateTicks = 0;
@@ -655,13 +659,28 @@ void PluginProcessor::tick() noexcept
 
     // Each voice stands behind the lead by its own lag, so it hears the lead that much later. Its note changes come late by themselves.
     std::array<double, maxVoices> voiceLead {};
+    // And (1.6.1, choir-dsp-r3-5) whether the audio it reads is still the last stretch of pitch, sung, or already the one going on now,
+    // looked up the way the voice's own voicing is below: a voice standing further behind than the breath before a phrase is still singing
+    // the last phrase when the new one is called. See HarmonyBrain::update.
+    HarmonyBrain::Heard heard {};
+    const auto& range = inputRanges[(size_t) typeNow];
+    // When voicing changes, the tracker knows at once, but the audio a voice is reading is still from before that (see below).
+    const double seesEndMs = 14.0, seesStartMs = 1000.0 / range.lowHz + 3.0;
     const double back0 = voiced ? ((double) latencyNow - 2.48 * period) / tickSamples : 0.0;
     for (int v = 0; v < maxVoices; ++v)
     {
         const int lagTicks = juce::roundToInt (brain.lagMilliseconds (v) * 0.001 / tickSeconds);
         const int back = juce::jlimit (0, pitchRingSize - 1, juce::jmax (0, juce::roundToInt (back0)) + lagTicks);
-        const double heard = pitchRing[(size_t) ((pitchRingAt - back) & (pitchRingSize - 1))];
-        voiceLead[(size_t) v] = heard > 0.0 ? heard : semitones;
+        const double there = pitchRing[(size_t) ((pitchRingAt - back) & (pitchRingSize - 1))];
+        voiceLead[(size_t) v] = there > 0.0 ? there : semitones;
+
+        const double readsMs = 1000.0 * (double) latencyNow / sr + brain.lagMilliseconds (v);
+        const int endBack = juce::jlimit (0, pitchRingSize - 1, juce::roundToInt ((readsMs - seesEndMs) * 0.001 / tickSeconds));
+        const int startBack = juce::jlimit (0, pitchRingSize - 1, juce::roundToInt ((readsMs - seesStartMs) * 0.001 / tickSeconds));
+        // Sung, and from before the newest stretch was written back to (a start written back over a gap is the new stretch's)
+        const auto lastStretchSung = [&] (int b) { return b > 0 && tickCount - b < stretchFrom && voicedRing[(size_t) ((pitchRingAt - b) & (pitchRingSize - 1))]; };
+        heard.lastStretch[(size_t) v] = lastStretchSung (endBack) || lastStretchSung (startBack);
+        heard.inNew[(size_t) v] = voiced && tickCount - startBack >= stretchFrom;
     }
 
     // A reattack: the lead 9 dB or more louder than 20 to 30 ms ago. A new word over the room's tail of the last one keeps the pitch going
@@ -683,16 +702,15 @@ void PluginProcessor::tick() noexcept
         reattack = true;
     lastTickPeriod = period;
 
-    brain.update (aligned, voiceLead, voiced, settings, reattack);
+    brain.update (aligned, voiceLead, voiced, settings, reattack, &heard);
 
     voicedRing[(size_t) pitchRingAt] = voiced;
 
     // When voicing changes, the tracker knows at once, but the audio this voice is reading is still from before that. Ending the grains then would
     // cut a vowel's last moments short and leave them at the lead's pitch. So voicing is looked up for the moment the voice is reading: the tracker
     // calls a vowel over a few ms after it ends, and calls a new one about a window after it starts.
-    const auto& range = inputRanges[(size_t) typeNow];
-    // The end is called a little early on purpose: the fade and the switch to this voice's own consonant finish before the lead's reaches the read point.
-    const double seesEndMs = 14.0, seesStartMs = 1000.0 / range.lowHz + 3.0;
+    // The end is called a little early on purpose: the fade and the switch to this voice's own consonant finish before the lead's reaches the
+    // read point. (seesEndMs and seesStartMs are set above, 1.6.1.)
 
     for (int v = 0; v < maxVoices; ++v)
     {

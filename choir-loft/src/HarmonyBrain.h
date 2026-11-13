@@ -363,6 +363,7 @@ public:
             noteHeld[(size_t) v] = 0.0;
             lastDiscrete[(size_t) v] = 1000000;
             sounding[(size_t) v] = false;
+            phraseWaiting[(size_t) v] = false;
             voiceScaleNote[(size_t) v] = -1;
             voiceChromaticNote[(size_t) v] = -1;
             midiHeld[(size_t) v] = -1;
@@ -372,10 +373,19 @@ public:
 
     MidiChord& midi() noexcept { return chord; }
 
+    // What each voice reads of the lead right now, from the processor (1.6.1): whether it is still singing an earlier stretch of pitch than
+    // the one going on now, and whether it has come to the one going on now.
+    struct Heard
+    {
+        std::array<bool, maxVoices> lastStretch {}, inNew {};
+    };
+
     // lead: semitones lined up with the output, 0 when there is none. voiced: the tracker has a pitch right now.
     // voiceLead: the same for each voice, later by how far that voice stands behind the lead. A voice hears the lead late, so it moves late.
     // reattack: the lead has just come in again much louder, as a new word does over the room's tail of the last one.
-    void update (double lead, const std::array<double, maxVoices>& voiceLead, bool voiced, const Settings& s, bool reattack = false) noexcept
+    // heardBy: see Heard. Without it every voice takes a new phrase's note choices the moment the phrase is called, as before 1.6.1.
+    void update (double lead, const std::array<double, maxVoices>& voiceLead, bool voiced, const Settings& s, bool reattack = false,
+                 const Heard* heardBy = nullptr) noexcept
     {
         chord.setHold (s.chordHold);
         if (s.mode == modeMidi) chord.assignChord (s.voices);
@@ -540,13 +550,43 @@ public:
             auto& person = humans[(size_t) v];
             const bool humanOn = s.human > 0.0;
             const bool wasSounding = sounding[(size_t) v];
+
+            // choir-dsp-r3-5 (1.6.1): a voice standing further behind the lead than the breath before a phrase still hears, and sings, the
+            // last phrase's last note when the tracker calls the new phrase. The new phrase's scoop, detune, settle and place behind the lead
+            // were drawn then and bent that old note's tail, and by the time the voice reached its new note the scoop had died away for tens
+            // of ms. Such a voice now takes them when what it hears is of the new phrase. A voice that is past the old phrase when the new
+            // one is called (every voice at the default settings: none stands further behind than the 40 ms a phrase needs before it) takes
+            // them at once, as before.
+            bool phraseStartHere = phraseStart;
+            if (heardBy != nullptr)
+            {
+                auto& waiting = phraseWaiting[(size_t) v];
+                if (phraseStart)
+                {
+                    waiting = heardBy->lastStretch[(size_t) v] && ! heardBy->inNew[(size_t) v];
+                    phraseStartHere = ! waiting;
+                }
+                else if (waiting && heardBy->inNew[(size_t) v])
+                {
+                    waiting = false;
+                    phraseStartHere = true;
+                }
+                else if (waiting && ! hasLead)
+                {
+                    waiting = false;   // the new phrase is over before this voice reached it
+                }
+            }
+
             if (wantsPitch)
             {
                 const double aim = wanted + fine;
-                if (humanOn && (! wasSounding || phraseStart || discrete != lastDiscrete[(size_t) v] || s.mode != lastMode
-                                || (s.mode == modeFixed && chromaticNote != oldChromatic)))
+                // (A voice waiting for the new phrase changes note while it hears the breath; its note's choices come when it reaches the phrase.)
+                const bool waitsForPhrase = phraseWaiting[(size_t) v];
+                if (humanOn && (phraseStartHere
+                                || (! waitsForPhrase && (! wasSounding || discrete != lastDiscrete[(size_t) v] || s.mode != lastMode
+                                                         || (s.mode == modeFixed && chromaticNote != oldChromatic)))))
                     person.noteEvent();
-                if (! wasSounding || phraseStart)
+                if (phraseStartHere || (! wasSounding && ! waitsForPhrase))
                 {
                     remains[(size_t) v] = 0.0;
                     singer.noteEvent (s.humanize, 0);
@@ -656,7 +696,7 @@ private:
     std::array<Voice, maxVoices> voices {};
     std::array<double, maxVoices> remains {}, lastPitch {}, noteHeld {};
     std::array<int, maxVoices> lastDiscrete {}, voiceScaleNote {}, voiceChromaticNote {}, midiHeld {}, midiAge {};
-    std::array<bool, maxVoices> sounding {};
+    std::array<bool, maxVoices> sounding {}, phraseWaiting {};
     // A voice looks back by its lag, and the processor rewrites a start's first 30 ms of pitch, so settling lasts 50 ms plus the voice's lag.
     static constexpr double startSettleSeconds = 0.05, freshGapSeconds = 0.01;
     // A note held for less than this was an ornament or a misreading: the next note starts clean instead of gliding over from it.

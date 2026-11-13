@@ -264,6 +264,7 @@ private:
     int pitchRingAt = 0;
     int leadRunTicks = 0, rewriteTicks = 30;   // ticks the lead has had pitch for, and how many of a stretch's first ticks get rewritten
     int lateTicks = 0, maxLateTicks = 50;      // how far back the newest start was written, and the most it may be
+    long long tickCount = 0, stretchFrom = 0;  // ticks so far, and the tick the newest stretch of pitch was written back to (1.6.1)
     static constexpr int levelRingSize = 128;  // input power per tick, for telling a reattack, and with Human for knowing what came after a note
     std::array<double, levelRingSize> levelRing {};
     int levelAt = 0;

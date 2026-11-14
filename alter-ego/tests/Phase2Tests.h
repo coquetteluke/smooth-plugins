@@ -79,8 +79,8 @@ inline std::vector<float> noteIntoBreath (double hz, double sr = SR)
 // decay: take 01 at 161.24 s, Deep, the output -26 dBFS against a -54 dBFS dry.
 inline void testNoteEnds()
 {
-    double worst = 0.0;
-    std::string where;
+    double worst = 0.0, worstLouder = 0.0;
+    std::string where, whereLouder;
     for (double hz : { 98.0, 110.0, 131.0, 165.0, 196.0, 247.0 })
         for (int setting = 0; setting < 4; ++setting)
         {
@@ -96,11 +96,24 @@ inline void testNoteEnds()
                 worst = past;
                 where = std::to_string ((int) hz) + " Hz, setting " + std::to_string (setting);
             }
+            const double louder = p->getEngine().grainsPastNewestLouderPulse();
+            if (louder > worstLouder)
+            {
+                worstLouder = louder;
+                whereLouder = std::to_string ((int) hz) + " Hz, setting " + std::to_string (setting);
+            }
         }
-    // Real, not fixed in 1.2.6 (see the report): each fix tried either broke a passing line of the suite (say speech hiss 1.690 > 3.852 dB,
-    // limit 3) or one of round 1's real vocal check (Deep Double peak, Robot phrase starts). Kept as a reading against its limit.
+    // Fixed in 1.2.7 where the fault is heard: a grain past the newest pulse whose pulse was more than 3 dB louder than the voice is now
+    // reads the input as it is, except with Robot in the mix (its pulse train is its own; taking the grains under it out of step moved
+    // Robot's phrase starts on round 1's real vocal check). The first reading counts every grain past the newest pulse still reading
+    // one, as written for 1.2.6 (1.840 there), so it stays a reading against its limit; the second counts the repeats into a decay.
     info ("Phase 2: notes fading into breath (Deep, Giant, Monster, Female To Male, 98 to 247 Hz): furthest a grain sat past the newest pulse while reading one ("
               + where + "), limit " + std::to_string (phase2limits::grainPastNewestPulsePeriods) + ", not met: known, periods", worst);
+    check (worstLouder <= phase2limits::grainPastNewestPulsePeriods,
+           "Phase 2: notes fading into breath, the same counting only a pulse more than 3 dB louder than the voice now, worst ("
+               + (whereLouder.empty() ? std::string ("none") : whereLouder) + "), limit "
+               + std::to_string (phase2limits::grainPastNewestPulsePeriods) + ", periods",
+           worstLouder);
 }
 
 // (b) A consonant straight after a vowel: the output kept calling the sound voiced until the tracker's votes were in, 5.7 ms into the S,
@@ -130,7 +143,8 @@ inline void testConsonantAfterVowel()
     }
     // Real, not fixed in 1.2.6 (see the report): taking the tracker's votes back when it hears a fricative brought this to 2.4 ms, but
     // it moves where the grains fall for the rest of the phrase, and on the real vocal check that broke Deep Double's peak on take 05
-    // (2.78 > 3.60 dB over the dry, limit 3). The burst round 1 heard at that spot (take 01, 152.02 s) was the stale pulse, fixed above.
+    // (2.78 > 3.60 dB over the dry, limit 3). The burst round 1 heard at that spot (take 01, 152.02 s) is still there in 1.2.7: the fix for
+    // (a) does not reach it (Deep, 10 ms frames, 1.2.6 and 1.2.7 alike: -31.4 dBFS out against a -40.4 dBFS dry).
     info ("Phase 2: a vowel straight into an S (5 ms crossfade), Deep, 110 to 330 Hz: the output still called voiced after the S starts, at most (limit "
               + std::to_string (phase2limits::voicedIntoConsonantMs) + " ms, not met: known)", worst, "ms");
 }

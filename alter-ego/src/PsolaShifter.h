@@ -49,6 +49,7 @@ public:
         size = 1;
         while (size < (int) (sr * 0.25)) size *= 2;
         for (auto& b : delay) b.assign ((size_t) size * 2, 0.0f);
+        raw.assign ((size_t) size, 0.0f);
         fallback = std::max (16, (int) std::lround (sr * 0.005));
         buildTables();
         reset();
@@ -59,13 +60,23 @@ public:
     // For the tests only, never read by audio: how far past the newest pulse the tracker has marked a grain has sat while it read a
     // pulse, in periods, since reset (1.2.6).
     double furthestPastNewestPulse() const noexcept { return pastNewest; }
+
+    // For the tests only, never read by audio: the same, counting only grains that read a pulse more than 3 dB louder than the voice
+    // is now (a note dying away), in periods, since reset (1.2.7).
+    double furthestPastNewestLouderPulse() const noexcept { return pastNewestLouder; }
+
+    // How much of the sample just stepped came from grains past the newest pulse, which read the input as it is (1.2.7).
+    double plainNow() const noexcept { return plainShare; }
     int getLatency() const noexcept { return latency; }
 
     void reset() noexcept
     {
         for (auto& b : delay) std::fill (b.begin(), b.end(), 0.0f);
+        std::fill (raw.begin(), raw.end(), 0.0f);
         written = 0;
         pastNewest = 0.0;
+        pastNewestLouder = 0.0;
+        plainShare = 0.0;
         restart();
     }
 
@@ -90,6 +101,9 @@ public:
         delay[(size_t) channel][(size_t) (at + size)] = x;
     }
     void advance() noexcept { ++written; }
+
+    // The voice itself (before whitening, both channels together) at the sample just written, for telling how loud it was (1.2.7).
+    void writeVoice (float x) noexcept { raw[(size_t) (written & (long long) (size - 1))] = x; }
 
     // The input sample that lines up with the current output sample, for the bypass path.
     float dry (int channel) const noexcept
@@ -126,7 +140,7 @@ public:
         }
 
         double sum[2] = { 0.0, 0.0 };
-        double weight = 0.0;
+        double weight = 0.0, plainWeight = 0.0;
         int keep = 0;
         for (int k = 0; k < numActive; ++k)
         {
@@ -151,12 +165,26 @@ public:
             if (w <= 0.0)
                 continue;
             weight += w;
+            if (h.plain)
+                plainWeight += w;
             const double scaled = w * h.gain;
             for (int ch = 0; ch < channels; ++ch)
                 sum[ch] += scaled * read (ch, h, n);
         }
         numActive = keep;
 
+        // Past the newest pulse (see decide) the input goes out as it is. A grain there keeps its window a period long, as before, so
+        // where its window and its neighbour's do not meet the input as it is fills the gap: left empty, as the pulses' gaps are, it
+        // took up to 3.9 dB off the hiss at the end of a word (the suite's say speech at Pitch -7).
+        if (weight < 1.0 && ((havePending && pending.plain) || (numActive > 0 && active[(size_t) (numActive - 1)].plain)))
+        {
+            const double fill = 1.0 - weight;
+            for (int ch = 0; ch < channels; ++ch)
+                sum[ch] += fill * (n < 0 ? 0.0 : (double) delay[(size_t) ch][(size_t) (n & (long long) (size - 1))]);
+            plainWeight += fill;
+            weight = 1.0;
+        }
+        plainShare = plainWeight > 0.0 ? plainWeight / weight : 0.0;
         const double divide = weight > 1.0 ? 1.0 / weight : 1.0;
         out[0] = (float) (sum[0] * divide);
         if (channels > 1)
@@ -172,6 +200,7 @@ private:
         bool fallIsFinal = false;   // false until the next grain has been decided, so the fall length is known
         double offset = 0.0;        // read position minus output position, fixed for the grain
         double gain = 1.0;
+        bool plain = false;         // past the newest pulse: read the input as it is (1.2.7)
         long long whole = 0;        // offset split up for the fixed rate case
         double fraction = 0.0;
         std::array<float, 12> coefficients {};
@@ -300,6 +329,29 @@ private:
             pulseShift += 0.003 * ((double) from + moment / sum - markPosition - pulseShift);
     }
 
+    // Whether the voice was more than 3 dB louder over the period around a pulse than over the last period up to a place: a note that
+    // has died away since that pulse (1.2.7). Read from the voice itself: whitened, a voice and the breath after it come out alike.
+    bool louderThanNow (double pulse, double place, double period) const noexcept
+    {
+        const auto power = [this] (long long from, long long to)
+        {
+            from = std::max (from, std::max (0LL, written - size + 1));
+            to = std::min (to, written - 1);
+            double e = 0.0;
+            long long count = 0;
+            for (long long i = from; i <= to; ++i, ++count)
+            {
+                const double v = raw[(size_t) (i & (long long) (size - 1))];
+                e += v * v;
+            }
+            return count > 0 ? e / (double) count : 0.0;
+        };
+        const long long half = (long long) (0.5 * period);
+        const long long at = (long long) std::min (place, (double) (written - 1));
+        const double then = power ((long long) pulse - half, (long long) pulse + half), now = power (at - 2 * half, at);
+        return then > 2.0 * now;
+    }
+
     void addGrain (const Grain& g) noexcept
     {
         if (numActive < maxGrains)
@@ -369,9 +421,20 @@ private:
                 }
             }
 
+            // The newest pulse is behind where this grain will sit by more than the 0.6 periods a grain may read away from its pulse: the
+            // voice has stopped at the input, so the tracker marks nothing after it, while the output is still voiced for the delay. Up to
+            // 1.2.6 such a grain read on from that mark, up to two periods back, and where that pulse was more than 3 dB louder than the
+            // voice is now (a note dying away) it repeated it into the decay (take 01 at 161.24 s, Deep: -26 dBFS out against a -54 dBFS dry). It reads the input as it is instead (and step()
+            // fills its window's gaps with it). Its place, and everything the grains after it go by, stay as they were (1.2.7).
+            next.plain = planned == Plan::mapped && tracker.hasMarks() && c.robot <= 0.0
+                         && s + spacing - (tracker.mark (tracker.lastMark()).position + pulseShift) > 0.6 * period
+                         && louderThanNow (tracker.mark (tracker.lastMark()).position + pulseShift, s + spacing, period);
+
             // Windows are one input period each side at most, so one glottal pulse per grain. When grains are packed closer than
             // that they shrink to the spacing, so the falling and rising halves still sum to 1.
-            const double half = planned == Plan::mapped ? std::min (spacing, period) : spacing;
+            // Into a grain past the newest pulse the crossfade is a quarter of a period: what is left of the gap goes out as the input is
+            // (see step()). A period long, the two reads mixed over the end of a word lost up to 3.2 dB of its hiss (the suite's say speech).
+            const double half = planned == Plan::mapped ? std::min (spacing, period) * (next.plain ? 0.25 : 1.0) : spacing;
             if (current != nullptr) { current->fall = half; current->fallIsFinal = true; }
             next.rise = half;
             next.mark = s + spacing;
@@ -437,7 +500,25 @@ private:
             {
                 g.offset = offset;
                 lastMarkUsed = q;
-                pastNewest = std::max (pastNewest, (g.mark - (tracker.mark (tracker.lastMark()).position + shift)) / period);
+                // Past the newest pulse, and the pulse more than 3 dB louder than the voice is now: decided here as well, as a mark that
+                // came in after decide() can move the read to an older pulse. Not with Robot in the mix: its voiced sound is its own pulse
+                // train, and taking the grains under it out of step moved Robot's phrase starts (wrong frames 4.935 > 5.022%, limit 5).
+                const bool past = g.mark - (tracker.mark (tracker.lastMark()).position + shift) > 0.6 * period;
+                if (! g.plain && past && c.robot <= 0.0 && louderThanNow (g.mark + offset, g.mark, period))
+                    g.plain = true;
+                if (g.plain)
+                {
+                    // Past the newest pulse (see decide): the input as it is. The pulse's place and the mark used go on as before.
+                    g.offset = 0.0;
+                    g.gain = 1.0;
+                }
+                else
+                {
+                    const double behind = (g.mark - (tracker.mark (tracker.lastMark()).position + shift)) / period;
+                    pastNewest = std::max (pastNewest, behind);
+                    if (past && louderThanNow (g.mark + offset, g.mark, period))
+                        pastNewestLouder = std::max (pastNewestLouder, behind);
+                }
             }
         }
         splitOffset (g);
@@ -450,6 +531,7 @@ private:
     int channels = 2, size = 16384, latency = 0, fallback = 240;
     long long written = 0;
     std::array<std::vector<float>, 2> delay;
+    std::vector<float> raw;
     std::vector<float> interp;
     std::vector<double> win;
 
@@ -458,7 +540,7 @@ private:
     Grain pending;
     bool havePending = false, needDecision = true, firstGrain = true;
     Plan planned = Plan::pass;
-    double peakOfNewest = 0.0, pulseShift = 0.0, pastNewest = 0.0;
+    double peakOfNewest = 0.0, pulseShift = 0.0, pastNewest = 0.0, pastNewestLouder = 0.0, plainShare = 0.0;
     long long lastMarkUsed = -1;
     bool flip = false, pulseKnown = false;
 };

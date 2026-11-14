@@ -143,8 +143,8 @@ PASS  found speech_daniel.wav
     hiss frames 16, median change 0.00 dB, 90th 0.96, worst 1.69
     as first written: unvoiced frames 42, median change 0.00 dB, 95th 1.52, worst 1.94; with the frames next to a vowel left out, 95th 1.69
   speech_daniel.wav Pitch +7: formant shape 0.1%, pitch median 11.2 cents
-    hiss frames 16, median change 0.00 dB, 90th 0.22, worst 0.35
-    as first written: unvoiced frames 42, median change 0.00 dB, 95th 0.93, worst 1.93; with the frames next to a vowel left out, 95th 0.35
+    hiss frames 16, median change 0.00 dB, 90th 0.22, worst 0.25
+    as first written: unvoiced frames 42, median change 0.00 dB, 95th 0.93, worst 1.93; with the frames next to a vowel left out, 95th 0.25
 PASS  found speech_kathy.wav
   speech_kathy.wav Pitch -7: formant shape 0.3%, pitch median 5.9 cents
     hiss frames 15, median change 0.00 dB, 90th 0.33, worst 0.35
@@ -341,6 +341,7 @@ PASS  audio with the window open and painting nulls to exact zero against closed
 PASS  audio with the window open and painting nulls to exact zero against closed, Child with Whisper = 0.000 
 PASS  audio with the window open and painting nulls to exact zero against closed, Monster with Vibrato = 0.000 
 INFO  Phase 2: notes fading into breath (Deep, Giant, Monster, Female To Male, 98 to 247 Hz): furthest a grain sat past the newest pulse while reading one (196 Hz, setting 2), limit 0.600000, not met: known, periods = 1.840 
+PASS  Phase 2: notes fading into breath, the same counting only a pulse more than 3 dB louder than the voice now, worst (none), limit 0.600000, periods = 0.000 
 INFO  Phase 2: a vowel straight into an S (5 ms crossfade), Deep, 110 to 330 Hz: the output still called voiced after the S starts, at most (limit 5.000000 ms, not met: known) = 6.396 ms
 PASS  Phase 2: Giant, a vowel, a host Reset, then 50 ms of silence: peak of the old vowel left in the output = -240.000 dB
 PASS  Phase 2:   and the Reset allocates nothing = 0.000 
@@ -413,6 +414,6 @@ PASS  Phase 2: Natural with Range Match moving the voice is not 'untouched': No 
 PASS  Phase 2: a window opened later with nothing playing shows nothing of the old voice: loudest point of the mirror = 0.000 
 PASS  Phase 2: a window opened later with nothing playing, after a change to 96 kHz, shows nothing of the old voice: loudest point of the mirror = 0.000 
 PASS  Phase 2: a soft voice (-42 dBFS) with Output -20 dB: the window still names its pitch: You 196 Hz  |  Alter Ego 262 Hz
-PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 8.414 %
-PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 8.981 %
+PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 8.905 %
+PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 9.777 %
 RESULT PASS  0 failures

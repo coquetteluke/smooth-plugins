@@ -175,6 +175,7 @@ public:
     const EnvelopeEngine& envelopeReadout() const noexcept { return envelope; }
     // For the tests only (1.2.6): see PsolaShifter::furthestPastNewestPulse.
     double grainsPastNewestPulse() const noexcept { return shifter.furthestPastNewestPulse(); }
+    double grainsPastNewestLouderPulse() const noexcept { return shifter.furthestPastNewestLouderPulse(); }
 
     // Runs in place. Input is cleaned here: not finite goes to 0, the rest is clamped to +/-16.
     void process (float* const* audio, int numSamples) noexcept
@@ -222,6 +223,7 @@ public:
                     tiltIn[1] = raw1;
                     shifter.write (0, (float) e0);
                     shifter.write (1, (float) e1);
+                    shifter.writeVoice ((float) (0.5 * (raw0 + raw1)));
                 }
                 else
                     for (int ch = 0; ch < channels; ++ch)
@@ -231,6 +233,8 @@ public:
                         tiltIn[(size_t) ch] = raw;
                         shifter.write (ch, (float) e);
                     }
+                if (channels == 1)
+                    shifter.writeVoice (dryLine[0][(size_t) readAt]);
                 shifter.advance();
             }
 
@@ -653,9 +657,13 @@ private:
         control.robotPeriod = sr / std::pow (2.0, fromRobot);
         control.vibratoScale = std::pow (2.0, -vibrato / 1200.0);
         control.vibratoReach = std::pow (2.0, std::abs (current.vibrato) / 1200.0);
-        // The pitch that comes out, held inside the shifter's own limits as the grains are, so Output Pitch, the Robot buzz and the window
-        // name what is heard (1.2.6). Inside them this is the sum it always was.
+        // The pitch that comes out, held inside the shifter's own limits as the grains are, so Output Pitch and the window name what is
+        // heard (1.2.6). Inside them this is the sum it always was.
         double moved = fromInput + current.robot * (fromRobot - fromInput);
+        // Robot's buzz keeps the note asked for, as up to 1.2.5: it is a pulse train of its own, not grains. Held with the readout in
+        // 1.2.6, it went up with the input's reading where the tracker heard a high pitch at a phrase start or in a consonant, and on
+        // round 1's real vocal check that broke Robot's and Robot Announcer's phrase starts (wrong frames 4.935 > 5.004%, limit 5) (1.2.7).
+        const double buzz = moved;
         if (smoothedPeriod > 0.0)
         {
             const double inputOctaves = std::log2 (sr / smoothedPeriod), reach = std::log2 (control.vibratoReach);
@@ -664,7 +672,7 @@ private:
             if (moved < lowest) moved = lowest;
         }
         readingOutHz = std::pow (2.0, moved + vibrato / 1200.0);
-        wantedOutputPeriod = sr / readingOutHz;
+        wantedOutputPeriod = sr / std::pow (2.0, buzz + vibrato / 1200.0);
         pulseGate += fadeSmooth * ((control.voiced ? 1.0 : 0.0) - pulseGate);
         // How much of the sound is noise, gliding over 15 ms. In the first 30 ms after a voiced start it falls in 3 ms instead: the voice is
         // periodic at once, and while the share glided down from the silence before it the level match was held back for the first 30 ms

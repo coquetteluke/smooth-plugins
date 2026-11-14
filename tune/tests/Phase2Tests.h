@@ -377,41 +377,73 @@ inline void testWindowTextFits()
 }
 
 // tune-r3-2: the end of a corrected vowel going straight into an S is corrected to its end, not played as sung.
-inline double uncorrectedTailMs (int type, double hz)
+struct VowelTail
 {
-    auto p = tuner (type, 0.0f);
-    const auto v = voice::synth (voice::steady (hz * std::pow (2.0, 40.0 / 1200.0), 0.6, SR), voice::vowelA, SR);
+    double asSungMs = 0.0;       // the vowel's last stretch that comes out exactly as sung
+    double nearerCorrectedDb = 0.0;   // over the stretch 1.2.2 played as sung: how much nearer the corrected vowel going on the output is than the vowel as sung
+    double intoTheSMs = 0.0;     // how far past the vowel's end the output is not yet the S as sung
+};
+
+inline VowelTail vowelTail (int type, double hz)
+{
+    // One vowel, 40 cents sharp, synthesised 0.8 s long. Cut at 0.6 s straight into an S, and the same vowel going on: up to the cut both
+    // have the same input, so the second says what the first's vowel should come out as.
+    const auto whole = voice::synth (voice::steady (hz * std::pow (2.0, 40.0 / 1200.0), 0.8, SR), voice::vowelA, SR);
+    const size_t cut = (size_t) (0.6 * SR);
+    const std::vector<float> v (whole.begin(), whole.begin() + (long) cut);
     const auto s = coloured ((int) (0.2 * SR), 0.08, 4000, 10000, 5);
     std::vector<float> x = v;
     x.insert (x.end(), s.begin(), s.end());
     x.insert (x.end(), v.begin(), v.end());
+    auto p = tuner (type, 0.0f);
     const auto out = mono (render (*p, x, 256));
-    const int delay = p->getLatencySamples();
-    // Walk back from where the vowel's last sample comes out while the output is the input at the reported delay, exactly.
-    long at = (long) v.size() - 1 + delay;
+    auto q = tuner (type, 0.0f);
+    const auto on = mono (render (*q, whole, 256));
+    const long delay = p->getLatencySamples();
+    const long end = (long) cut - 1 + delay;   // where the vowel's last sample comes out
+
+    VowelTail r;
+    // Walk back from there while the output is the input at the reported delay, exactly.
     long same = 0;
-    while (at - same - delay > 0 && std::abs (out[(size_t) (at - same)] - x[(size_t) (at - same - delay)]) <= 1.0e-6f)
+    while (end - same - delay > 0 && std::abs (out[(size_t) (end - same)] - x[(size_t) (end - same - delay)]) <= 1.0e-6f)
         ++same;
-    return 1000.0 * (double) same / SR;
+    r.asSungMs = 1000.0 * (double) same / SR;
+
+    // The stretch 1.2.2 left as sung in Low Male, 7.1 ms: the output against the corrected vowel going on, and against the vowel as sung.
+    const long from = end + 1 - (long) std::lround (0.0071 * SR);
+    double toCorrected = 0.0, toSung = 0.0;
+    for (long i = from; i <= end; ++i)
+    {
+        toCorrected += std::pow ((double) out[(size_t) i] - on[(size_t) i], 2.0);
+        toSung += std::pow ((double) out[(size_t) i] - x[(size_t) (i - delay)], 2.0);
+    }
+    r.nearerCorrectedDb = 10.0 * std::log10 ((toSung + 1.0e-30) / (toCorrected + 1.0e-30));
+
+    // The S: the last sample before the next vowel where the output is not the input at the delay, after the vowel's end.
+    long last = end;
+    for (long i = end + 1; i < end + (long) s.size(); ++i)
+        if (std::abs (out[(size_t) i] - x[(size_t) (i - delay)]) > 1.0e-6f)
+            last = i;
+    r.intoTheSMs = 1000.0 * (double) (last - end) / SR;
+    return r;
 }
 
 inline void testVowelTail()
 {
-    double worst = 0.0;
-    std::string where;
     const struct { int type; double hz; const char* name; } cases[] = { { lowMale, 110.0, "Low Male, 110 Hz" }, { wideRange, 110.0, "Wide Range, 110 Hz" }, { altoTenor, 220.0, "Alto/Tenor, 220 Hz" } };
     for (const auto& c : cases)
     {
-        const double ms = uncorrectedTailMs (c.type, c.hz);
-        info (std::string ("Phase 2:   ") + c.name + ", 40 cents sharp into an S, the vowel's end played as sung", ms, "ms");
-        if (ms >= worst) { worst = ms; where = c.name; }
+        const auto t = vowelTail (c.type, c.hz);
+        // Up to 1.2.2 an INFO line (NOT FIXED, Luke's call): 7.1 ms in Low Male and Wide Range, 0.5 ms in Alto/Tenor, against the limit written
+        // for it before it was first run. Fixed in 1.2.3 with Luke's yes on 2026-11-13 ("u can do all of these"): the grains read the vowel's
+        // marks to the last one with the correction it had (PsolaShifter::carried).
+        check (t.asSungMs <= phase2limits::tailUncorrectedMs, std::string ("Phase 2: ") + c.name + ", 40 cents sharp straight into an S, the vowel's end played as sung", t.asSungMs, "ms");
+        // Not by passing the input on some other way: over the stretch 1.2.2 played as sung, the output is nearer the same vowel going on,
+        // corrected, than the vowel as sung (1.2.2: -309 dB in Low Male, it was the vowel as sung).
+        check (t.nearerCorrectedDb > phase2limits::tailNearerCorrectedDb, std::string ("Phase 2: ") + c.name + ", the vowel's last 7.1 ms nearer the corrected vowel going on than the vowel as sung by", t.nearerCorrectedDb, "dB");
+        // And the vowel is not carried on over the S: the S comes out as sung from one pass crossfade (5 ms) after the vowel's end at most.
+        check (t.intoTheSMs <= phase2limits::tailIntoTheSMs, std::string ("Phase 2: ") + c.name + ", the S after it comes out as sung from this far past the vowel's end", t.intoTheSMs, "ms");
     }
-    // Real, not fixed in 1.2.2 (tune-r3-2): the tracker has no reading for a vowel's last two periods or so when a consonant cuts it off,
-    // and deciding voiced in line with the audio, as the pitch is, left Low Male at 7.1 ms. Correcting to the end means carrying the last
-    // pitch on into the consonant's first grains, which changes the default at every word end and risks a buzz at the start of the S. Luke's
-    // call: until then it is measured here against the limit written for it (phase2limits::tailUncorrectedMs), not judged.
-    info ("Phase 2: NOT FIXED, Luke's call: a corrected vowel going straight into an S, played as sung at the end, worst (" + where + "), limit "
-          + std::to_string ((int) phase2limits::tailUncorrectedMs) + " ms", worst, "ms");
 }
 
 // tune-r3-4: under Bypass, Correction Applied says nothing is applied.

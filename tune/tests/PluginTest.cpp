@@ -2248,5 +2248,6 @@ int main (int argc, char** argv)
     if (want ("entry") || only == "rode") testEntries();
     if (want ("robot") || only == "rode") testRobotFlat();
     if (want ("phase2")) phase2::run();
+    if (only == "tail") phase2::testVowelTail();
     return finish();
 }

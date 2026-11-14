@@ -94,5 +94,8 @@ namespace phase2limits
     constexpr double outputSitsCents = 5.0;           // where the readings say the output sits, against where it does, a voice tuned onto its note
     constexpr double bypassedNoteVibratoKept = 0.95;  // a Custom note on Bypass keeps its vibrato whatever Natural Vibrato is
     constexpr double tailUncorrectedMs = 2.0;         // the end of a corrected vowel going straight into an S, played as sung (two ticks)
+    // Added 2026-11-13 with the tune-r3-2 fix, round 3: guards that the tail is corrected, not passed on some other way, and that the S stays.
+    constexpr double tailNearerCorrectedDb = 0.0;     // the tail nearer the corrected vowel going on than the vowel as sung
+    constexpr double tailIntoTheSMs = 5.0;            // the S as sung from at most one pass crossfade (the shifter's 5 ms) after the vowel's end
     constexpr double bounceKeySeconds = 0.5;          // an offline bounce takes up a Follow Key change within this much song time
 }

@@ -615,6 +615,15 @@ private:
         fitLast = fitGate = fitA = fitB = fitOmega = 0.0;
         fitAge = trackerAge = fitOriginAge = 0.025;
         fitJumpAge = -1.0;
+        fitModels.fill ({});
+        fitModelPos = fitHeld = 0;
+        fitFrame = 0;
+        fitEndRun = fitEndSign = fitFollow = 0;
+        fitEndRunAge = 0.0;
+        fitEnded = false;
+        fitOffNow = 0.0;
+        fitOffSq.fill (0.0);
+        fitOffPos = 0;
         delayNowMs.fill (0.0);
     }
 
@@ -717,12 +726,14 @@ private:
         if (precise)
         {
             fitOriginAge += trackerSeconds; // the sinusoid in use runs on, so while no new fit is taken it keeps moving as it fades
-            if (vibrato != 0.0) solveFit(); else fitGood = false;
+            if (vibrato != 0.0) solveFit();
+            else { fitGood = false; fitHeld = 0; }
             fitGate += juce::jlimit (-fitGateStep, fitGateStep, (fitGood ? 1.0 : 0.0) - fitGate);
         }
         else
         {
             fitGate = 0.0; // switched back on, it fades in from nothing instead of where it was left
+            fitHeld = 0;
         }
         for (size_t v = 0; v < maxDoubles; ++v)
         {
@@ -742,11 +753,21 @@ private:
     static constexpr double fitMaxTrend = 3.0;    // the line may move this many times the sinusoid's size across the window; more is a slide
     static constexpr double fitGateStep = 0.1;    // opens and shuts in 10 frames, about 50 ms
     static constexpr double bendLandsSeconds = 0.008; // the two smoothers after the bend put it this much later
+    static constexpr int fitEndAhead = 4;         // the end of a vibrato: a reading this many frames (or up to 4 more) past a passing fit...
+    static constexpr double fitEndShare = 0.3;    // ...lands off it towards its line by this share of its size (plus its own miss)...
+    static constexpr double fitEndMinCents = 6.0; // ...and at least this far...
+    static constexpr double fitEndNoise = 6.0;    // ...and this many times as far as such readings usually land off...
+    static constexpr int fitEndFrames = 2;        // ...this many frames in a row...
+    static constexpr int fitEndHeld = 20;         // ...once fits have passed this many frames running (100 ms)
+    static constexpr int fitEndFollow = 6;        // after an end, readings this many frames in a row on a fit again: a vibrato again
+    static constexpr double fitEndNoiseRate = 0.1; // how fast "usually" follows, per frame
     static double fitRateHz (int j) { return 3.5 + 0.5 * j; } // 3.5 to 9 Hz; the two ends are only there to be refused
 
     void pushFit (bool voiced) noexcept
     {
         if (fitJumpAge >= 0.0) fitJumpAge += trackerSeconds;
+        if (fitEndRun > 0) fitEndRunAge += trackerSeconds;
+        ++fitFrame;
         double c = fitLast;
         if (voiced)
         {
@@ -760,6 +781,8 @@ private:
             // The sinusoid in use belongs to the old note. Remember how long ago the new one came in (the first frame that shows it
             // only), so no double is bent by the old vibrato once it plays the new note.
             if (jump && fitJumpAge < 0.0) fitJumpAge = trackerAge;
+            if (jump) { fitEndRun = 0; fitEnded = false; }
+            else if (fitHave) checkVibratoEnd (c);
             fitHave = true;
             fitLast = c;
             fitAge = trackerAge;
@@ -767,7 +790,54 @@ private:
         fitHead = (fitHead + 1) % fitFrames;
         fitCents[(size_t) fitHead] = c;
         fitOk[(size_t) fitHead] = voiced ? 1 : 0;
+        if (! voiced) fitEndRun = 0;
         if (fitSince < fitFrames) ++fitSince;
+    }
+
+    // The end of a vibrato on a held note. The window is a cycle and a half long, so a fit goes on passing for a while after the
+    // vibrato stops, and 0.4.3 bent the double by a vibrato the lead no longer sang. A passing fit from a few frames back (after
+    // 100 ms of passing fits, and one that was on its own newest reading) says where each new reading should land. A vibrato that
+    // keeps going stays on it, about as closely as it has been. When two readings in a row land well off it towards its line,
+    // where the swing has gone, and much further off than readings have been landing (a real voice wanders, and must not read as
+    // an end), the vibrato has ended. From the reading before the first of them no double is bent (as after a new note), and no
+    // fit is used until the readings follow one again for 30 ms.
+    void checkVibratoEnd (double c) noexcept
+    {
+        const FitModel* m = nullptr;
+        for (int i = 0; i < (int) fitModels.size() && m == nullptr; ++i)
+        {
+            const auto& f = fitModels[(size_t) ((fitModelPos - 1 - i + (int) fitModels.size()) % (int) fitModels.size())];
+            const long ahead = fitFrame - f.frame;
+            if (f.frame > 0 && ahead >= fitEndAhead && ahead <= fitEndAhead + 4) m = &f;
+        }
+        if (m == nullptr) { fitEndRun = fitFollow = 0; return; }
+        const double t = trackerSeconds * (double) (fitFrame - m->frame);
+        const double swing = m->a * std::cos (m->omega * t) + m->b * std::sin (m->omega * t);
+        const double off = c - (m->level + m->slope * t + swing);
+        const double base = juce::jmax (fitEndMinCents, fitEndShare * std::hypot (m->a, m->b)) + std::abs (m->off);
+        // How far readings have been landing off, as it was a few checks ago, so an end that grows does not raise its own limit.
+        const double limit = juce::jmax (base, fitEndNoise * std::sqrt (fitOffSq[(size_t) fitOffPos]));
+        // A fit taken on a short window at the wrong speed (as a vibrato or a note starts) can pass and still be off at its own
+        // newest reading; it cannot say where the next ones land.
+        const bool usable = m->held >= fitEndHeld && std::abs (m->off) <= 0.5 * base;
+        const int side = ! usable || off * swing >= 0.0 ? 0 : off > limit ? 1 : off < -limit ? -1 : 0;
+        if (side == 0 && ! fitEnded) fitOffNow += fitEndNoiseRate * (juce::jmin (off * off, 4.0 * base * base) - fitOffNow);
+        fitOffSq[(size_t) fitOffPos] = fitOffNow;
+        fitOffPos = (fitOffPos + 1) % (int) fitOffSq.size();
+        if (! usable) { fitEndRun = fitFollow = 0; return; }
+        if (fitEnded)
+        {
+            fitFollow = std::abs (off) <= limit ? fitFollow + 1 : 0;
+            if (fitFollow >= fitEndFollow) { fitEnded = false; fitFollow = 0; }
+            return;
+        }
+        if (side == 0 || (fitEndRun > 0 && side != fitEndSign)) fitEndRun = 0;
+        if (side == 0) return;
+        if (fitEndRun == 0) { fitEndSign = side; fitEndRunAge = trackerAge + trackerSeconds; }
+        if (++fitEndRun < fitEndFrames) return;
+        if (fitJumpAge < 0.0) fitJumpAge = fitEndRunAge;
+        fitEnded = true;
+        fitFollow = fitEndRun = 0;
     }
 
     // Weighted least squares of 1, t, cos wt, sin wt on the pitch of the last cycle and a half, for each speed. The best speed is
@@ -777,7 +847,7 @@ private:
     void solveFit() noexcept
     {
         fitGood = false;
-        double best = -1.0, bestAmp = 0.0, bestTrend = 0.0, bestA = 0.0, bestB = 0.0;
+        double best = -1.0, bestAmp = 0.0, bestTrend = 0.0, bestA = 0.0, bestB = 0.0, bestLevel = 0.0, bestSlope = 0.0;
         int bestJ = -1;
         for (int j = 0; j < fitRates; ++j)
         {
@@ -838,13 +908,22 @@ private:
             {
                 best = share; bestJ = j;
                 bestA = p[2]; bestB = p[3];
+                bestLevel = p[0]; bestSlope = p[1];
                 bestAmp = std::sqrt (p[2] * p[2] + p[3] * p[3]);
                 bestTrend = std::abs (p[1]) * trackerSeconds * n;
             }
         }
-        fitGood = best >= fitMinShare && bestAmp >= fitMinCents && bestAmp <= 150.0 && bestJ >= 1 && bestJ <= fitRates - 2 && bestTrend <= fitMaxTrend * bestAmp;
-        // Only a fit that passes is used. A refused one (a slide, a new note) never bends a double: the last good one runs on
-        // while the gate shuts.
+        const bool passes = best >= fitMinShare && bestAmp >= fitMinCents && bestAmp <= 150.0 && bestJ >= 1 && bestJ <= fitRates - 2 && bestTrend <= fitMaxTrend * bestAmp;
+        fitHeld = passes ? fitHeld + 1 : 0;
+        if (passes)
+        {
+            // Kept for the end check: the whole fit, line and all, from its newest reading (where y is 0, so off is its miss there).
+            fitModels[(size_t) fitModelPos] = { fitLast + bestLevel, bestSlope, bestA, bestB, juce::MathConstants<double>::twoPi * fitRateHz (bestJ), bestLevel + bestA, fitFrame, fitHeld };
+            fitModelPos = (fitModelPos + 1) % (int) fitModels.size();
+        }
+        // Only a fit that passes is used, and none while the vibrato has ended. A refused one (a slide, a new note) never bends a
+        // double: the last good one runs on while the gate shuts.
+        fitGood = passes && ! fitEnded;
         if (fitGood)
         {
             fitA = bestA; fitB = bestB;
@@ -994,7 +1073,18 @@ private:
     bool fitHave = false, fitGood = false, vibratoPreciseTarget = true;
     double fitLast = 0.0, fitGate = 0.0, fitA = 0.0, fitB = 0.0, fitOmega = 0.0, fitAge = 0.025, trackerAge = 0.025;
     double fitOriginAge = 0.025;  // how old the newest frame of the sinusoid in use is
-    double fitJumpAge = -1.0;     // how long ago a new note came in after the sinusoid in use was fitted, -1 for none
+    double fitJumpAge = -1.0;     // how long ago a new note came in or the vibrato ended after the sinusoid in use was fitted, -1 for none
+    struct FitModel { double level = 0.0, slope = 0.0, a = 0.0, b = 0.0, omega = 0.0, off = 0.0; long frame = 0; int held = 0; };
+    std::array<FitModel, 12> fitModels {}; // the last passing fits, newest at fitModelPos - 1
+    int fitModelPos = 0, fitHeld = 0;
+    long fitFrame = 0;            // pitch frames since the start
+    int fitEndRun = 0, fitEndSign = 0; // readings in a row off the fit, and on which side
+    bool fitEnded = false;        // the vibrato has ended: no fit is used until the readings follow one again
+    int fitFollow = 0;            // readings in a row on the fit while it has ended
+    double fitOffNow = 0.0;       // the mean square of how far readings land off the fit, while they follow it
+    std::array<double, 6> fitOffSq {}; // that, for the last few checks
+    int fitOffPos = 0;
+    double fitEndRunAge = 0.0;    // how long ago the reading before the first of them was sung
     std::array<double, maxDoubles> delayNowMs {};
 
     // Readings for a later window

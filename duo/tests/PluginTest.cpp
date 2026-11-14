@@ -1993,6 +1993,103 @@ static void testSavedPreset()
     }
 }
 
+// ---------------------------------------------------------------- 0.4.4: a vibrato that stops
+
+// A held note on 220 Hz: 0.5 s straight, then a 50 cent 5.5 Hz vibrato (coming in over 0.15 s) for 11 to 14 half cycles, so it
+// stops on the note's own pitch, going up on some notes and going down on others, then straight until the next one 2 s later.
+static std::vector<float> vibratoThatStops (int n, double sr, std::vector<double>& stops)
+{
+    const double cycle = 2.0, startAt = 0.5;
+    for (int c = 0; c * cycle < n / sr; ++c) stops.push_back (c * cycle + startAt + (11 + c % 4) / 11.0);
+    return sungLine (n, sr, [&] (double t)
+    {
+        const int c = (int) (t / cycle);
+        const double u = t - c * cycle - startAt, length = (11 + c % 4) / 11.0;
+        if (u < 0.0 || u >= length) return 0.0;
+        return 50.0 * juce::jmin (1.0, u / 0.15) * std::sin (twoPi * 5.5 * u);
+    });
+}
+
+// What Precise Vibrato plays on vibratos that keep going, for the check that the end detection leaves them alone: the presets
+// that use it (and the default with Vibrato Variation 100), a steady vibrato and one whose speed and depth wander, one output
+// hash each (FNV-1a over the float bits, both channels).
+static std::vector<std::pair<std::string, unsigned long long>> vibratoKeepsGoingHashes()
+{
+    const double sr = 48000.0;
+    const int n = 48000 * 6;
+    std::vector<std::pair<std::string, std::vector<float>>> inputs;
+    inputs.push_back ({ "steady 5.5 Hz 50 cents", vibratoNote (n, sr, 220.0, 5.5, 50.0) });
+    {
+        std::vector<float> x ((size_t) n);
+        double phase = 0, vphase = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = i / sr;
+            vphase += (5.5 + 0.6 * std::sin (twoPi * 0.23 * t)) / sr;
+            const double cents = (45.0 + 15.0 * std::sin (twoPi * 0.31 * t)) * std::sin (twoPi * vphase);
+            phase += 196.0 * std::pow (2.0, cents / 1200.0) / sr; phase -= std::floor (phase);
+            double v = 0; for (int h = 1; h <= 5; ++h) v += std::sin (twoPi * h * phase) / h;
+            x[(size_t) i] = (float) (0.3 * v);
+        }
+        inputs.push_back ({ "wandering 4.9 to 6.1 Hz, 30 to 60 cents", x });
+    }
+    std::vector<std::pair<std::string, unsigned long long>> out;
+    for (const auto& [what, x] : inputs)
+        for (int preset : { 0, 3, 4, 6 })
+        {
+            PluginProcessor p; p.setCurrentProgram (preset);
+            if (preset == 0) setParam (p, "vibrato", 100.0f);
+            prepare (p, 2, sr, 512);
+            const auto y = render (p, x, 512);
+            unsigned long long h = 1469598103934665603ULL;
+            for (int ch = 0; ch < y.getNumChannels(); ++ch)
+                for (int i = 0; i < y.getNumSamples(); ++i)
+                {
+                    const float f = y.getSample (ch, i);
+                    std::uint32_t bits; std::memcpy (&bits, &f, 4);
+                    for (int b = 0; b < 4; ++b) { h ^= (bits >> (8 * b)) & 0xffu; h *= 1099511628211ULL; }
+                }
+            out.push_back ({ p.getProgramName (preset).toStdString() + (preset == 0 ? " with Vibrato Variation 100" : "") + ", " + what, h });
+        }
+    return out;
+}
+
+// Printed by "PluginTest capture043" from the 0.4.3 source (commit 5c385f4, before the end detection), 2026-11-13.
+static const std::vector<unsigned long long> vibratoKeepsGoing043 {
+    10295906936432306570ULL, // Natural Pair with Vibrato Variation 100, steady 5.5 Hz 50 cents
+    5450399555060282522ULL, // Wide Stack, steady 5.5 Hz 50 cents
+    11879424939074985233ULL, // Loose Gang, steady 5.5 Hz 50 cents
+    15467143996770683446ULL, // Two Singers, steady 5.5 Hz 50 cents
+    4625644131910350435ULL, // Natural Pair with Vibrato Variation 100, wandering 4.9 to 6.1 Hz, 30 to 60 cents
+    1952615143203945123ULL, // Wide Stack, wandering 4.9 to 6.1 Hz, 30 to 60 cents
+    13056926286586896305ULL, // Loose Gang, wandering 4.9 to 6.1 Hz, 30 to 60 cents
+    5103625773018715077ULL, // Two Singers, wandering 4.9 to 6.1 Hz, 30 to 60 cents
+};
+
+// Found in Phase 2 (duo-REPORT.md): when a vibrato stops on a held note, the fit window (1.5 cycles) went on accepting the vibrato
+// until enough straight pitch had filled it, so double 1 was bent by a vibrato the lead no longer sang: 33 cents on 0.4.2 and 0.4.3.
+// Limit from the straight-part test above: 5 cents, from 60 ms after the stop (as for a note change) to 0.6 s after.
+static void testVibratoStops()
+{
+    const double sr = 48000.0;
+    const int n = 48000 * 12;
+    std::vector<double> stops;
+    const auto x = vibratoThatStops (n, sr, stops);
+    for (float loose : { 30.0f, 85.0f })
+    {
+        const auto tr = bendTrace (x, sr, loose);
+        double worst = 0;
+        for (double at : stops)
+            if (at > 2.0 && at + 0.6 < n / sr) worst = std::max (worst, worstBend (tr, at + 0.06, at + 0.6));
+        const auto tag = "Precise Vibrato, Tightness " + std::to_string ((int) loose) + ", a 50 cent 5.5 Hz vibrato that stops on a held note: ";
+        check (worst <= 5.0, tag + "on the straight part after it double 1 gets no bend (60 ms to 0.6 s after), worst", worst, "cents");
+    }
+    const auto now = vibratoKeepsGoingHashes();
+    for (size_t i = 0; i < now.size(); ++i)
+        check (i < vibratoKeepsGoing043.size() && now[i].second == vibratoKeepsGoing043[i],
+               "a vibrato that keeps going plays bit for bit as on 0.4.3: " + now[i].first);
+}
+
 static void testPhase2()
 {
     testPreciseVibratoNoteChanges();
@@ -2016,6 +2113,16 @@ int main (int argc, char** argv)
         testPhase2();
         testWindowPhase2();
         return finish();
+    }
+    if (argc > 1 && juce::String (argv[1]) == "round3")   // only the 0.4.4 check
+    {
+        testVibratoStops();
+        return finish();
+    }
+    if (argc > 1 && juce::String (argv[1]) == "capture043")   // prints the hashes vibratoKeepsGoing043 holds; run once on 0.4.3
+    {
+        for (const auto& [what, h] : vibratoKeepsGoingHashes()) std::printf ("    %lluULL, // %s\n", h, what.c_str());
+        return 0;
     }
     GenericOptions opt;
     opt.minPresets = 4;
@@ -2045,6 +2152,7 @@ int main (int argc, char** argv)
     testRepeatable();
     testCpu();
     testPhase2();
+    testVibratoStops();
     testWindow();
     testWindowPhase2();
     return finish();

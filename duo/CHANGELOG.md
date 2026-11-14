@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.4, 2026-11-13
+
+One fix from Phase 2 round 3. No control, preset or default value changed.
+
+- **A vibrato that stops on a held note.** Precise Vibrato fits its sinusoid to the last cycle and a half of pitch readings, so the fit went on passing for a while after a vibrato stopped, and double 1 was bent by a vibrato the lead no longer sang: up to 31 cents at Tightness 30 and 35 at Tightness 85 on a 50 cent 5.5 Hz vibrato (33 cents in the Phase 2 report, on 0.4.2 and 0.4.3 alike). Now each new reading is checked against a passing fit from 20 to 40 ms before it. Once fits have passed for 100 ms, two readings in a row that land off it towards its line by 0.3 of its swing (at least 6 cents, plus what it missed its own newest reading by), and by 6 times as far as readings have lately been landing off, mean the vibrato has ended. From there a double gets no bend, as after a note change, and no fit is used until the readings follow one again for 30 ms. The "lately" part is there because a first version without it read a real voice's wander as ends: with a 40 cent vibrato put onto Luke's held notes, double 1 kept 0.48 to 0.52 of it instead of 0.18 to 0.25 in the real vocal check (3 lines failed), so it was not shipped. On the straight part from 60 ms after the stop the bend is now 3.2 cents at Tightness 30 and 2.7 at Tightness 85 (limit 5). A vibrato that keeps going, steady or wandering in speed and depth, plays bit for bit as on 0.4.3 on Natural Pair (Vibrato 100), Wide Stack, Loose Gang and Two Singers. This changes what Wide Stack, Loose Gang, Two Singers and any session with Precise Vibrato on and Vibrato Variation above 0 play where a sung vibrato leaves its sinusoid. Sessions with Precise Vibrato off play exactly as before.
+- Real vocal checks rerun on the working set for the default, Wide Stack, Loose Gang and Two Singers against 0.4.3 (runs `0.4.3-p2` and `0.4.4-p3` in `_vox/rode/work/duo`): no pass flag that was true is false now (default 594 true stay true, Wide Stack 239, Loose Gang 240, Two Singers 217; nothing changed the other way). On the default only four numbers moved: with the 40 cent vibrato put on at 4.5 Hz, double 1 keeps 0.258 instead of 0.253 at Tightness 30 and 0.256 instead of 0.252 at Tightness 85, double 2 1.421 and 1.423 instead of 1.423 and 1.424 (limits 0.5 or under, 1.25 to 1.75).
+- Tests: `PluginTest round3` runs only these checks. The bit for bit check holds output hashes printed by `PluginTest capture043` from the 0.4.3 source before the change.
+
 ## 0.4.3, 2026-11-13
 
 Bug fixes from the Phase 2 bug check. No control, preset or default changed.

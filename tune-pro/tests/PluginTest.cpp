@@ -5158,6 +5158,39 @@ struct NoteWrites final : juce::AudioProcessorListener
     void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override { if (i == index) ++ended; }
 };
 
+// Round 4 (2026-11-14): with a Retune Speed above 0, Natural Vibrato below 0 pulled each note off the note and back by up to 8 cents,
+// 0.15 to 0.3 s in (since 1.8.2, Flat Then Sung Vibrato and anyone setting the two by hand). Its average of the corrected pitch was
+// started on the note's first tick, where the correction had only begun to move. Notes sung 25 cents flat after a 20 cent scoop, with
+// Flat Then Sung Vibrato's Retune Speed (5 ms) and no added vibrato: the furthest the output is from the note 0.1 to 0.45 s into each
+// note with Natural Vibrato -100, beyond the same voice with Natural Vibrato 0 (a steady voice: there is no vibrato for it to take out).
+void testRound4Glide()
+{
+    std::vector<double> sung;
+    for (int n : { 55, 57, 59, 60, 62, 64 }) sung.push_back (noteHz (n) * std::pow (2.0, -25.0 / 1200.0));
+    const double noteSec = 0.6;
+    const auto x = voice::synth (voice::phrase (sung, noteSec, SR, -20.0, 0.06), voice::vowelA, SR);
+    const auto furthest = [&] (float naturalVibrato)
+    {
+        auto p = tuner (altoTenor, 5.0f);
+        setParam (*p, "naturalVibrato", naturalVibrato);
+        const auto out = mono (render (*p, x, 256));
+        const double delay = p->getLatencySamples() / SR;
+        double worst = 0.0;
+        for (size_t k = 0; k < sung.size(); ++k)
+        {
+            const double target = sung[k] * std::pow (2.0, 25.0 / 1200.0);
+            const double from = (double) k * noteSec + 0.1 + delay, to = (double) k * noteSec + 0.45 + delay;
+            for (double f : pitchTrace (out.data(), (long) out.size(), SR, target, from, to, 0.005, 0.2))
+                if (f > 0.0) worst = std::max (worst, std::abs (cents (f, target)));
+        }
+        return worst;
+    };
+    const double plain = furthest (0.0f), flattened = furthest (-100.0f);
+    note ("Round 4: notes sung 25 cents flat after a scoop, Retune Speed 5 ms, Natural Vibrato 0: furthest from the note 0.1 to 0.45 s in", plain, "cents");
+    note ("Round 4: the same with Natural Vibrato -100", flattened, "cents");
+    chk (flattened - plain <= 2.0, "Round 4: Natural Vibrato -100 at Retune Speed 5 ms does not pull the note off as it fades in, furthest from the note beyond Natural Vibrato 0", flattened - plain, "cents");
+}
+
 void testRound3Window()
 {
     gEngine = 0;
@@ -5456,6 +5489,7 @@ int main (int argc, char** argv)
         if (want ("timing")) testTiming();
         if (want ("hold")) testTargetHold();
         if (want ("phase2")) { testPhase2Vibrato(); testPhase2Midi(); }
+        if (want ("round4")) testRound4Glide();
     }
     gEngine = 0;
     if (want ("engines")) testEngines();

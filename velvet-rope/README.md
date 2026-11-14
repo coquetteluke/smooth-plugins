@@ -4,7 +4,7 @@ Finds the narrow peaks that stick out of a voice and turns them down only while 
 
 ## How to load it
 
-Audio Units > Luke Garito > Velvet Rope. AU code `aufx SmRs Luke`. The window's title reads Velvet Rope, the final name. The build and AU keep the old name until the rename.
+Audio Units > Luke Garito > Velvet Rope. AU code `aufx SmRs Luke`. The plug-in, its window and the installed AU are all named Velvet Rope. Only the repo folder, the CMake target (SmoothResonance) and the bundle ID keep the old name, so saved sessions keep loading.
 
 Mono, stereo and surround in matching layouts, with an optional mono or stereo side chain input. Latency depends on Quality, is reported to the host, and is the same when bypassed:
 

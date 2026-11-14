@@ -2264,8 +2264,11 @@ void testSavedBy161()
     // Presets pinned for 1.8.2 (tests/state-1.8.2.txt): 1.8.1's pins with Robot Flat and Flat Then Sung Vibrato written again, both
     // engines, the four lines that differ. Those two use Natural Vibrato -100, which 1.8.2 makes work on the vibrato left after
     // correction, as the README always said (Phase 2 high, tunepro-dsp-r2-1). 1.8.1's pins are kept beside them and still read below.
-    const auto blobFile = folder.getChildFile ("state-1.6.1.bin"), hashFile161 = folder.getChildFile ("state-1.6.1.txt"), hashFile = folder.getChildFile ("state-1.8.2.txt");
-    const auto hashFile181 = folder.getChildFile ("state-1.8.1.txt");
+    // Pinned again for 1.8.4 (tests/state-1.8.4.txt): 1.8.2's pins with Flat Then Sung Vibrato written again, both engines, the two lines
+    // that differ. Its Natural Vibrato -100 with Retune Speed 5 ms pulled each note off the note as it faded in (round 4, testRound4Glide).
+    // 1.8.2's pins are kept beside them and still read below.
+    const auto blobFile = folder.getChildFile ("state-1.6.1.bin"), hashFile161 = folder.getChildFile ("state-1.6.1.txt"), hashFile = folder.getChildFile ("state-1.8.4.txt");
+    const auto hashFile181 = folder.getChildFile ("state-1.8.1.txt"), hashFile182 = folder.getChildFile ("state-1.8.2.txt");
     const bool writing = std::getenv ("TUNE_PIN_WRITE") != nullptr;
     const auto hashed = [] (const juce::AudioBuffer<float>& b)
     {
@@ -2286,7 +2289,7 @@ void testSavedBy161()
     const auto second = voice::steady (220.0 * std::pow (2.0, -28.0 / 1200.0), 1.0, SR);
     f0.insert (f0.end(), second.begin(), second.end());
     const auto x = voice::synth (f0, voice::vowelA, SR, -40.0);
-    std::map<std::string, std::string> stored, stored161, stored181, found;
+    std::map<std::string, std::string> stored, stored161, stored181, stored182, found;
     const auto readHashes = [] (const juce::File& file, std::map<std::string, std::string>& into)
     {
         std::ifstream in (file.getFullPathName().toStdString());
@@ -2296,6 +2299,7 @@ void testSavedBy161()
     readHashes (hashFile, stored);
     readHashes (hashFile161, stored161);
     readHashes (hashFile181, stored181);
+    readHashes (hashFile182, stored182);
     const std::string tag = gEngine == 1 ? "hq_" : "ll_";
     {
         juce::MemoryBlock block;
@@ -2386,15 +2390,18 @@ void testSavedBy161()
         for (const auto& kv : stored) out << kv.first << " " << kv.second << "\n";
         return;
     }
-    int same = 0, same161 = 0, same181 = 0;
+    int same = 0, same161 = 0, same181 = 0, same182 = 0;
     for (const auto& kv : found)
     {
         if (stored.count (kv.first) && stored[kv.first] == kv.second) ++same;
-        else chk (false, "case " + kv.first + ": output differs from the 1.8.2 pin");
+        else chk (false, "case " + kv.first + ": output differs from the 1.8.4 pin");
+        if (stored182.count (kv.first) && stored182[kv.first] == kv.second) ++same182;
         if (stored161.count (kv.first) && stored161[kv.first] == kv.second) ++same161;
         if (stored181.count (kv.first) && stored181[kv.first] == kv.second) ++same181;
     }
-    chk (same == (int) found.size() && ! found.empty(), "every factory preset comes out bit for bit as pinned for 1.8.2, cases", (double) same);
+    // Was "as pinned for 1.8.2" (state-1.8.2.txt) up to 1.8.3; the same limit, bit for bit, against the 1.8.4 pins.
+    chk (same == (int) found.size() && ! found.empty(), "every factory preset comes out bit for bit as pinned for 1.8.4, cases", (double) same);
+    note ("  of those, bit for bit as 1.8.2 and 1.8.3 gave them (all but Flat Then Sung Vibrato)", (double) same182, "");
     note ("  of those, bit for bit as 1.8.1 gave them (all but Robot Flat and Flat Then Sung Vibrato)", (double) same181, "");
     note ("  of those, bit for bit as 1.6.1 to 1.7.2 gave them", (double) same161, "");
 }

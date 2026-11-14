@@ -147,9 +147,13 @@ public:
         else if (naturalVibratoOn)
         {
             const double corrected = p + correction;
-            if (freshSlow) { slowPitch = corrected; freshSlow = false; }
+            // The average starts once the correction has arrived: while Natural Vibrato is still faded out (its first 80 ms) it follows the
+            // corrected pitch exactly. Seeded on the first tick, where a Retune Speed above 0 has moved only part of the way, it pulled each
+            // note back towards the pitch as sung as Natural Vibrato faded in, up to 8 cents 0.15 to 0.3 s in (round 4). With an instant
+            // correction nothing changes.
+            if (freshSlow || (tau >= 0.0005 && age < naturalVibratoFrom)) { slowPitch = corrected; freshSlow = false; }
             slowPitch += (1.0 - std::exp (-tickSeconds / 0.1)) * (corrected - slowPitch);
-            vibrato = s.naturalVibrato * (corrected - slowPitch) * smoothstep (0.08, 0.25, age);
+            vibrato = s.naturalVibrato * (corrected - slowPitch) * smoothstep (naturalVibratoFrom, 0.25, age);
         }
         else
         {
@@ -229,6 +233,7 @@ public:
 
     static constexpr double humanizeMaxMs = 400.0;
     static constexpr double vibratoFadeSeconds = 0.15;
+    static constexpr double naturalVibratoFrom = 0.08;   // Natural Vibrato fades in from here to 0.25 s into a note
 
 private:
     static bool isAllowed (int note, std::uint16_t mask) noexcept { return (mask >> (((note % 12) + 12) % 12)) & 1; }

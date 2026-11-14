@@ -8,7 +8,7 @@ set(SP_NAME    "Tune Pro")
 set(SP_CODE    STpr)
 set(SP_BUNDLE  "com.lukegarito.smoothtunepro")
 set(SP_DESC    "Advanced automatic vocal tuning with two engines, MIDI targets and a pitch window")
-set(SP_VERSION 1.8.3)
+set(SP_VERSION 1.8.4)
 set(SP_AU_TYPE kAudioUnitType_MusicEffect)
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN TRUE)

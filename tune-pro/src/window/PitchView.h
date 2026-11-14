@@ -68,7 +68,6 @@ private:
     float yOf (float note) const noexcept                { return (float) ringHeight * (1.0f - (note - viewLow + 0.5f) / (float) span); }
 
     PluginProcessor& processor;
-    std::array<std::atomic<float>*, 12> noteParams {};
     std::atomic<float>* followKeyParam = nullptr, *bypassParam = nullptr;
     float typeScale = 1.0f;
 

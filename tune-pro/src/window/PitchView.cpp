@@ -27,8 +27,6 @@ PitchView::PitchView (PluginProcessor& p) : processor (p)
     hint = "White is your voice. Coral is what comes out. The filled gap is the correction.";
     setOpaque (true);
     setTitle ("Pitch");
-    for (int i = 0; i < 12; ++i)
-        noteParams[(size_t) i] = processor.apvts.getRawParameterValue ("note" + juce::String (i));
     followKeyParam = processor.apvts.getRawParameterValue ("followKey");
     bypassParam = processor.apvts.getRawParameterValue ("bypass");
     addAndMakeVisible (legend);
@@ -105,7 +103,7 @@ bool PitchView::laneStateChanged()
     std::uint16_t removed = 0, bypassed = 0;
     for (int i = 0; i < 12; ++i)
     {
-        const int mode = juce::roundToInt (noteParams[(size_t) i]->load (std::memory_order_relaxed));
+        const int mode = processor.noteModeNow (i);   // a click still within the double-click time shows as it plays
         if (mode == noteRemove) removed = (std::uint16_t) (removed | (1u << i));
         if (mode == noteBypass) bypassed = (std::uint16_t) (bypassed | (1u << i));
     }

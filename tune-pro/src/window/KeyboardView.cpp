@@ -24,7 +24,20 @@ KeyboardView::KeyboardView (PluginProcessor& p) : processor (p)
     bypassParam = processor.apvts.getRawParameterValue ("bypass");
 }
 
+KeyboardView::~KeyboardView()
+{
+    onHint = nullptr;
+    settleClick();
+}
+
+// What the note plays with, a held click included.
 int KeyboardView::modeOf (int pitchClass) const noexcept
+{
+    return processor.noteModeNow (pitchClass);
+}
+
+// What the host has.
+int KeyboardView::hostModeOf (int pitchClass) const noexcept
 {
     return juce::roundToInt (noteParams[(size_t) pitchClass]->load (std::memory_order_relaxed));
 }
@@ -59,8 +72,20 @@ void KeyboardView::setNote (int pc, int mode)
     parameter->beginChangeGesture();
     parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) mode));
     parameter->endChangeGesture();
+    dropHold (pc);
+}
+
+// The parameter speaks for the note again. Redraws, and the line under the mouse says what the key does now (up to 1.8.1 it kept
+// describing the mode before the click).
+void KeyboardView::dropHold (int pc)
+{
+    if (pc == heldKey)
+    {
+        stopTimer();
+        heldKey = -1;
+    }
+    processor.holdNote (pc, -1);
     advance();
-    // The line under the mouse says what the key does now (up to 1.8.1 it kept describing the mode before the click).
     if (pc == hovered)
         sayHint();
 }
@@ -69,6 +94,45 @@ void KeyboardView::cycleNote (int pc)
 {
     if (juce::isPositiveAndBelow (pc, 12))
         setNote (pc, (modeOf (pc) + 1) % 3);
+}
+
+// A single click steps the note at once in what plays and what is drawn. The host is told once no second click can come, so the first
+// click of a double-click never reaches it (up to 1.8.2 it was heard and written as automation, then the second click wrote Tune).
+void KeyboardView::firstClick (int pc)
+{
+    settleClick();
+    heldKey = pc;
+    heldFrom = hostModeOf (pc);
+    heldTo = (modeOf (pc) + 1) % 3;
+    heldAtMs = juce::Time::getMillisecondCounterHiRes();
+    processor.holdNote (pc, heldTo);
+    startTimer (holdMs());
+    advance();
+    if (pc == hovered)
+        sayHint();
+}
+
+void KeyboardView::settleClick()
+{
+    const int pc = heldKey;
+    if (pc < 0)
+        return;
+    // Written only if nothing else moved the note meanwhile: a loaded session clears the hold, automation moves the parameter.
+    if (processor.heldNote (pc) == heldTo && hostModeOf (pc) == heldFrom)
+        setNote (pc, heldTo);
+    else
+        dropHold (pc);
+}
+
+// A double-click goes back to Tune, one change from what the host had before its first click, or none if that was Tune.
+void KeyboardView::resetNote (int pc)
+{
+    if (pc != heldKey)
+        settleClick();
+    if (hostModeOf (pc) != noteTune)
+        setNote (pc, noteTune);
+    else
+        dropHold (pc);
 }
 
 void KeyboardView::openMenu (int pc)
@@ -94,11 +158,14 @@ void KeyboardView::mouseDown (const juce::MouseEvent& e)
         return;
 
     if (e.mods.isPopupMenu())
+    {
+        settleClick();
         openMenu (pc);
+    }
     else if (e.getNumberOfClicks() >= 2)
-        setNote (pc, noteTune);     // double-click goes back to the default
+        resetNote (pc);     // double-click goes back to the default
     else
-        cycleNote (pc);
+        firstClick (pc);
 }
 
 void KeyboardView::setHovered (int pc)
@@ -134,6 +201,9 @@ void KeyboardView::mouseExit (const juce::MouseEvent&)   { setHovered (-1); }
 
 void KeyboardView::advance()
 {
+    if (heldKey >= 0 && juce::Time::getMillisecondCounterHiRes() - heldAtMs >= holdMs())
+        settleClick();
+
     const auto r = processor.getReadings();
     const bool bypassed = bypassParam->load (std::memory_order_relaxed) > 0.5f;
     const int lit = r.voiced && ! stale && ! bypassed && r.targetNote >= 0 ? r.targetNote % 12 : -1;

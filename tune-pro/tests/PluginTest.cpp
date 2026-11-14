@@ -4381,7 +4381,12 @@ void testWindow()
         const auto modeOfD = [&] { return juce::roundToInt (p->apvts.getRawParameterValue ("note2")->load()); };
         const auto dKey = keys.keyBounds (2).getBottomLeft().translated (6.0f, -6.0f);
         keys.mouseDown (mouse (keys, dKey, dKey, 1, false));
-        check (modeOfD() == smoothtune::noteRemove, "one click on a key removes the note");
+        // Changed with Luke's yes on 2026-11-13 ("u can do all of these"): a click now plays and shows at once, but reaches the parameter
+        // the host sees only once the double-click time has passed, so the first click of a double-click is never written (round 3,
+        // window-r1-1). So this line reads what the note plays with right after the click, which is what the keyboard and lanes draw;
+        // the host's one change is checked in testRound3Window. Was, reading the parameter (modeOfD):
+        //     check (modeOfD() == smoothtune::noteRemove, "one click on a key removes the note");
+        check (p->noteModeNow (2) == smoothtune::noteRemove, "one click on a key removes the note at once, as it plays");
         keys.mouseDown (mouse (keys, dKey, dKey, 2, false));
         check (modeOfD() == smoothtune::noteTune, "the second click of a double-click puts it back to Tune");
 

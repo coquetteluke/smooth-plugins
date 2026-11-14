@@ -376,6 +376,7 @@ TuneEditor::TuneEditor (PluginProcessor& p)
 
 TuneEditor::~TuneEditor()
 {
+    keyboard.settleClick();   // a click still within the double-click time reaches the host before the window goes
     stopTimer();
     vblank.reset();
     removeMouseListener (this);

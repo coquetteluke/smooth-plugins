@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.3, 2026-11-13
+
+Window only (round 3, window-r1-1): a double-click on a key put it back to Tune only after its first click had stepped the note (Tune to Remove, Remove to Bypass), heard for the double-click time and written to the host as automation; the second click then wrote Tune, two changes and two gestures. A click now plays and is drawn at once and reaches the host once the double-click time has passed (JUCE's 0.4 s and 0.1 s more, from the window's own timer, its next look, or its closing). A double-click writes only its Tune: one change in one gesture from the mode the host had before the first click, none if that was Tune. A single click still writes one change in one gesture, half a second after it was heard; a session loaded or automation moving the note meanwhile wins over the click. The processor's only part is a per-note hold the window sets, which is never set otherwise, so the default and every preset play bit for bit as 1.8.2 (`saved` and all 24 Low Latency null cases pass unchanged).
+
+New test `PluginTest round3` (also in the full run), written first: on 1.8.2, 5 of its lines failed (a double-click from Tune wrote Remove then Tune, 2 changes and 2 gestures; from Remove, Bypass then Tune; from Bypass, Tune twice); on 1.8.3 they write 0, 1 and 1 change, all Tune, in at most one gesture.
+
+Changed test, with Luke's yes on 2026-11-13 ("u can do all of these"): in the window test, "one click on a key removes the note" read the note's parameter straight after the click, which now changes only after the double-click time. It is now "one click on a key removes the note at once, as it plays" and reads what the note plays with (the same limit: Remove, straight after the click); the old line is kept in a comment above it, and the host's one change is checked in `round3`.
+
 ## 1.8.2, 2026-11-13
 
 Real vocal check, round 1's working set (11 takes, song key, the same check file and variants as 1.8.1's final run `1.8.1-v181`, run `1.8.2-v182`, `_vox/rode/work/tune-pro/p6/`): every pooled line is 1.8.1's to the digit, and of 1210 pass flags none that passed fails (`p6/passdiff.py`); only CPU moved (mean 3.41 -> 3.05%, worst block 12 -> 10%). Robot Flat on the same takes (`p6/robot-compare.txt`): held notes 90th percentile 15.6 -> 4.1 cents, slides turned round 10.52 -> 3.14% (rap 7.49 -> 4.64%, limit 5), wrong-semitone frames 246 -> 6, notes right 574 -> 659; it now reads as Hard Tune does (4.1 c, worst take 14 25.9 against 24.6). Near clicks, which have no limit, 1 -> 4; far clicks 1 -> 0. The working set ran on the 1.8.2 build before the window's 0.25 s (it had 0.1 s); the audio is the same.

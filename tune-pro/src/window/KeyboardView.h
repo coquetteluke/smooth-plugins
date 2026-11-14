@@ -2,11 +2,14 @@
 #include "Theme.h"
 #include "../PluginProcessor.h"
 
-/** One octave of notes, each a real parameter. Click goes Tune, Remove, Bypass. The note being hit lights coral. */
-class KeyboardView final : public juce::Component
+/** One octave of notes, each a real parameter. Click goes Tune, Remove, Bypass; double-click goes back to Tune. The note being hit lights
+    coral. A click plays at once and reaches the host once the double-click time has passed, so a double-click writes only its Tune. */
+class KeyboardView final : public juce::Component,
+                           private juce::Timer
 {
 public:
     explicit KeyboardView (PluginProcessor&);
+    ~KeyboardView() override;
 
     /** One display frame, from the editor. Repaints only keys that changed. */
     void advance();
@@ -22,6 +25,8 @@ public:
     /** Tune to Remove to Bypass to Tune, through the real parameter. */
     void cycleNote (int pitchClass);
     void setNote (int pitchClass, int mode);
+    /** Gives the host a click still held for the double-click time (the timer, the window's next look after that time, or closing). */
+    void settleClick();
     int noteAt (juce::Point<float>) const noexcept;
     juce::Rectangle<float> keyBounds (int pitchClass) const noexcept;
 
@@ -36,6 +41,12 @@ public:
 
 private:
     int modeOf (int pitchClass) const noexcept;
+    int hostModeOf (int pitchClass) const noexcept;
+    void firstClick (int pitchClass);
+    void resetNote (int pitchClass);
+    void dropHold (int pitchClass);
+    void timerCallback() override  { settleClick(); }
+    static int holdMs() noexcept  { return juce::MouseEvent::getDoubleClickTimeout() + 100; }
     void openMenu (int pitchClass);
     void setHovered (int);
     void sayHint();
@@ -49,6 +60,9 @@ private:
     bool stale = false;
     int modesShown[12] {};
     std::uint16_t scaleShown = 0x0FFF;
+    // The click held for the double-click time: its note, the mode the host has and the mode it plays, and when.
+    int heldKey = -1, heldFrom = 0, heldTo = 0;
+    double heldAtMs = 0.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (KeyboardView)
 };

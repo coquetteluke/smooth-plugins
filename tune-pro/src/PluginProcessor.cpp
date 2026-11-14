@@ -203,7 +203,10 @@ PluginProcessor::PluginProcessor (const Options& options)
     vibratoRate = apvts.getRawParameterValue ("vibratoRate");
     vibratoDelay = apvts.getRawParameterValue ("vibratoDelay");
     for (int i = 0; i < 12; ++i)
+    {
         noteParam[(size_t) i] = apvts.getRawParameterValue ("note" + juce::String (i));
+        noteHeld[(size_t) i].store (-1, std::memory_order_relaxed);
+    }
     bypass = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter ("bypass"));
 
     addParameter (offReading = new ReadingParameter ("pitchOffTarget", "Pitch Off Target", "cents", -100.0f, 100.0f, 0.0f, offText));
@@ -334,7 +337,8 @@ void PluginProcessor::readSettings() noexcept
     std::uint16_t allowed = inScale, passed = 0;
     for (int i = 0; i < 12; ++i)
     {
-        const int mode = (int) noteParam[(size_t) i]->load (std::memory_order_relaxed);
+        const int held = noteHeld[(size_t) i].load (std::memory_order_relaxed);
+        const int mode = held >= 0 ? held : (int) noteParam[(size_t) i]->load (std::memory_order_relaxed);
         const auto bit = (std::uint16_t) (1u << i);
         if (mode == noteRemove)
             allowed = (std::uint16_t) (allowed & ~bit);
@@ -667,6 +671,8 @@ void PluginProcessor::setStateInformation (const void* data, int size)
             xml->removeAttribute ("advancedOpen");
             xml->removeAttribute ("program");
             applySafeState (apvts, *xml);
+            for (auto& held : noteHeld)
+                held.store (-1, std::memory_order_relaxed);   // the session's notes play, not a click made just before it loaded
         }
 }
 

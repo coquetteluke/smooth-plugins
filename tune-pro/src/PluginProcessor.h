@@ -109,6 +109,18 @@ public:
     // file while it is followed, when asked, so it is right with no audio running too (up to 1.8.1 it changed only while the host played).
     std::uint16_t getInScaleMask() const noexcept;
 
+    // A click on a key that may yet be the first of a double-click (KeyboardView): played at once, and given to the host only once the
+    // double-click time has passed, so a double-click writes no stop at another mode (round 3, 2026-11-13). -1 lets the parameter speak
+    // again. A loaded session clears every hold.
+    void holdNote (int pitchClass, int mode) noexcept  { noteHeld[(size_t) pitchClass].store (mode, std::memory_order_relaxed); }
+    int heldNote (int pitchClass) const noexcept       { return noteHeld[(size_t) pitchClass].load (std::memory_order_relaxed); }
+    // The mode a note plays with now: a held click, or else its parameter.
+    int noteModeNow (int pitchClass) const noexcept
+    {
+        const int held = heldNote (pitchClass);
+        return held >= 0 ? held : juce::roundToInt (noteParam[(size_t) pitchClass]->load (std::memory_order_relaxed));
+    }
+
     // The window. Its size and whether Advanced is open are the only things it adds to a session.
     static constexpr int minWindowWidth = 840, defaultWindowWidth = 1120, maxWindowWidth = 1680;
     std::atomic<int> windowWidth { defaultWindowWidth };
@@ -138,6 +150,7 @@ private:
                        *engineParam = nullptr, *classic = nullptr, *midiTargets = nullptr, *midiOctave = nullptr, *mix = nullptr,
                        *vibratoAmount = nullptr, *vibratoRate = nullptr, *vibratoDelay = nullptr;
     std::array<std::atomic<float>*, 12> noteParam {};
+    std::array<std::atomic<int>, 12> noteHeld;
     juce::AudioParameterBool* bypass = nullptr;
     ReadingParameter* offReading = nullptr, *hzReading = nullptr, *correctionReading = nullptr, *noteReading = nullptr, *keyReading = nullptr,
                      *outputReading = nullptr, *latencyReading = nullptr;

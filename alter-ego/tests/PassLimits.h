@@ -93,4 +93,6 @@ namespace phase2limits
     constexpr double grainPastNewestPulsePeriods = 0.6;  // the shifter's own rule: a grain reads the pulse nearest it, never over 0.6 periods away
     constexpr double voicedIntoConsonantMs = 5.0;        // a vowel crossfading into an S over 5 ms: by the end of it there is no vowel left to shift
     constexpr double highRateFormantGapFraction = 0.01;  // Formant Shift at 96 kHz against 48 kHz on the same speech: within 1 point of the 5% limit
+    // Round 5 (2026-11-14), written before the test was first run: the real vocal check's own level limit
+    constexpr double consonantOverDryDb = 3.0;           // a low consonant straight after a vowel, Deep: loudest 5 ms of it over the dry's same 5 ms
 }

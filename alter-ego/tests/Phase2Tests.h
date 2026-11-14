@@ -149,6 +149,79 @@ inline void testConsonantAfterVowel()
               + std::to_string (phase2limits::voicedIntoConsonantMs) + " ms, not met: known)", worst, "ms");
 }
 
+// A vowel whose last 20 ms fall 14 dB and then cut off, and 22 or 26 ms after the fall starts a low consonant (noise under 100 Hz, 15 ms,
+// 8 dB under the vowel): take 01 at 152.02 s, where the vowel dies away and a low thump of breath on the mic comes in 24 ms later.
+inline std::vector<float> vowelIntoLowConsonant (double hz, double thumpAtMs, long& thumpFrom, double sr = SR)
+{
+    auto v = voice::synth (voice::steady (hz, 1.3, sr), voice::vowelA, sr, -60.0, -18.0);
+    const long end = (long) sr, fall = (long) (0.020 * sr), cut = (long) (0.005 * sr);
+    for (long i = end; i < (long) v.size(); ++i)
+    {
+        const double db = i < end + fall ? -14.0 * (double) (i - end) / (double) fall : -14.0 - 40.0 * std::min (1.0, (double) (i - end - fall) / (double) cut);
+        v[(size_t) i] *= (float) std::pow (10.0, db / 20.0);
+    }
+    std::mt19937 g (7);
+    std::normal_distribution<double> n01;
+    const double w = 2.0 * M_PI * 100.0 / sr, cw = std::cos (w), al = std::sin (w) / (2.0 * 0.7071);
+    const double b0 = (1.0 - cw) / 2.0 / (1.0 + al), b1 = (1.0 - cw) / (1.0 + al), a1 = -2.0 * cw / (1.0 + al), a2 = (1.0 - al) / (1.0 + al);
+    const long length = (long) (0.015 * sr), pre = (long) (0.05 * sr);
+    thumpFrom = end + (long) (thumpAtMs * 0.001 * sr);
+    std::vector<double> t ((size_t) (length + pre));
+    double x1 = 0.0, x2 = 0.0, y1 = 0.0, y2 = 0.0, e = 0.0;
+    for (auto& y : t)
+    {
+        const double x = n01 (g);
+        y = b0 * x + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2;
+        x2 = x1; x1 = x; y2 = y1; y1 = y;
+    }
+    for (long i = pre; i < pre + length; ++i) e += t[(size_t) i] * t[(size_t) i];
+    const double gain = std::pow (10.0, -26.0 / 20.0) / std::sqrt (e / (double) length);
+    for (long i = 0; i < length; ++i)
+    {
+        const double env = std::min ({ 1.0, (double) i / (0.002 * sr), (double) (length - i) / (0.005 * sr) });
+        v[(size_t) (thumpFrom + i)] += (float) (gain * env * t[(size_t) (pre + i)]);
+    }
+    return v;
+}
+
+// (b), heard: the newest pulse the tracker marks sits where the vowel dies away, and the grain after it, more than 0.6 periods past it,
+// read back across the vowel's last pulses into the consonant. The 1.2.7 rule for dying notes passed it by: the consonant is as loud as
+// the pulse it read. Take 01 at 152.02 s, Deep, 10 ms frames: -31.4 dBFS out against a -40.4 dBFS dry.
+inline void testLowConsonantAfterVowel()
+{
+    double worst = -400.0;
+    std::string where;
+    for (double hz : { 98.0, 104.0, 110.0, 117.0, 123.0, 131.0 })
+        for (double at : { 22.0, 26.0 })
+        {
+            long from = 0;
+            const auto x = vowelIntoLowConsonant (hz, at, from);
+            auto p = make();
+            setParam (*p, "character", 1.0f);
+            const auto out = run (*p, x);
+            const long L = p->getLatencySamples(), frame = (long) (0.005 * SR);
+            for (long a = from; a <= from + (long) (0.010 * SR); a += (long) (0.001 * SR))
+            {
+                double ed = 0.0, eo = 0.0;
+                for (long i = a; i < a + frame; ++i)
+                {
+                    ed += (double) x[(size_t) i] * x[(size_t) i];
+                    eo += (double) out[(size_t) (i + L)] * out[(size_t) (i + L)];
+                }
+                const double over = 10.0 * std::log10 ((eo + 1.0e-30) / (ed + 1.0e-30));
+                if (over > worst)
+                {
+                    worst = over;
+                    where = std::to_string ((int) hz) + " Hz, consonant at " + std::to_string ((int) at) + " ms";
+                }
+            }
+        }
+    check (worst <= phase2limits::consonantOverDryDb,
+           "Phase 2: a vowel dying away into a low consonant, Deep, 98 to 131 Hz: loudest 5 ms of the consonant over the dry's (" + where + "), limit "
+               + std::to_string (phase2limits::consonantOverDryDb),
+           worst, "dB");
+}
+
 // ---- host Reset ----------------------------------------------------------------------------------------------------
 
 // alterego-dsp-r1-1: a host Reset clears what prepareToPlay clears (Peak Guard's ceiling too), allocates nothing, and the one Reset JUCE's
@@ -767,6 +840,7 @@ inline void run()
 {
     testNoteEnds();
     testConsonantAfterVowel();
+    testLowConsonantAfterVowel();
     testHostReset();
     testPresetSaved();
     testOldSessions();

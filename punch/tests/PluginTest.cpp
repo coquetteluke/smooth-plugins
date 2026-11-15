@@ -2786,9 +2786,10 @@ static void testBypassFadeUnderCeiling()
 // punch-r1-3. Steady Notes on and no pitch anywhere: a loud noise hit (-6 dBFS) and a soft one 12 dB down 80 ms later, every 600 ms.
 // Limits written before the first run: over the soft hit's first 100 ms the change with Steady Notes on is within 1.0 dB of the change
 // with it off, at Sustain +9 and -9; with it off the soft hits move at least 3 dB (so the comparison means something).
-// Not fixed in 0.6.2, so the difference is information only: the fix (Steady Notes off's reading where there is no voice) passed this
-// check but made round 1's real vocal check fail on rap take 16 (phrase starts, Sustain +9 and -9: 9 dB at the 90th percentile, limit 3,
-// 0.6.1 0.000). A sharp start counting as a new sound is what keeps those phrase starts still.
+// In 0.6.2 the difference was information only: the fix then (Steady Notes off's reading where there is no voice) passed this check but
+// made round 1's real vocal check fail on rap take 16 (phrase starts, Sustain +9 and -9: 9 dB at the 90th percentile, limit 3, 0.6.1
+// 0.000). A sharp start counting as a new sound is what keeps those phrase starts still. 0.6.3 makes it a check again (Luke, 2026-11-14,
+// "do those 4 then"): see testNoVoicePhraseStart for the phrase start it must leave alone.
 // The first version of this test gave both hits a 60 ms decay. The loud one had then fallen to the soft one's level by the time it came,
 // so the soft hit was no sharp start and the restart rule never acted: 0.000 dB on 0.6.1, which measured nothing. The hunt's case is a
 // snare that dies fast: now the loud hit decays in 20 ms and the soft one in 40 ms. No limit changed.
@@ -2827,7 +2828,51 @@ static void testNoVoiceGhostHits()
         }
         const std::string tag = "Steady Notes on, Sustain " + std::to_string ((int) sustain) + ", a soft noise hit 80 ms after a loud one, no pitch: ";
         check (smallestOff >= 3.0, tag + "with Steady Notes off the soft hits move at least", smallestOff, "dB");
-        info (tag + "largest difference from Steady Notes off (not fixed, see above)", worst, "dB");
+        check (worst <= 1.0, tag + "largest difference from Steady Notes off", worst, "dB");
+    }
+}
+
+// punch-r1-3, the other side (0.6.3). What the first fix broke on rap take 16 at 1.28 s, made up: a loud syllable, the level down to the
+// room by 120 ms, and 200 ms after the syllable began a soft breathy start (-48 dBFS), the voice rising 8 dB out of it 25 ms later. No
+// pitch anywhere. With Steady Notes on the soft start is a new sound, and Sustain leaves the first 15 ms from the rise alone, as round 1's
+// real vocal check asks of a phrase start (it reads from the fastest rise; median 1.0 dB, 90th percentile 3.0 dB; the stricter 1.0 here).
+// With Steady Notes off it is read as the syllable's tail (so the case means something). 0.6.2's first try at punch-r1-3: 9.000 dB.
+static void testNoVoicePhraseStart()
+{
+    const double sr = 48000.0;
+    const int n = (int) (sr * 5.0);
+    std::vector<float> x ((size_t) n, 0.0f);
+    std::mt19937 g (29); std::uniform_real_distribution<float> d (-1.0f, 1.0f);
+    for (int i = 0; i < n; ++i) x[(size_t) i] = 0.0013f * d (g);   // the room, about -62 dBFS
+    std::vector<int> starts;
+    for (int k = 0; k < 8; ++k)
+    {
+        const int at = (int) ((0.2 + 0.6 * k) * sr), soft = at + (int) (0.2 * sr), rise = soft + (int) (0.025 * sr);
+        starts.push_back (rise);
+        for (int i = at; i < soft; ++i)
+        {
+            const double t = (i - at) / sr;
+            x[(size_t) i] += (float) (0.06 * std::min (1.0, t / 0.001) * (t < 0.02 ? 1.0 : std::exp (-(t - 0.02) / 0.012)) * d (g));
+        }
+        for (int i = soft; i < rise + (int) (0.1 * sr); ++i)
+            x[(size_t) i] += (float) ((i < rise ? 0.004 : 0.01) * std::min (1.0, (i - soft) / (0.001 * sr)) * d (g));
+    }
+    for (float sustain : { 9.0f, -9.0f })
+    {
+        Settings on; on.sustain = sustain; on.steadyNotes = 1.0f;
+        Settings off = on; off.steadyNotes = 0.0f;
+        int lat = 0;
+        const auto yOn = process (x, on, sr, 512, &lat), yOff = process (x, off, sr, 512, &lat);
+        double worst = 0.0, smallestOff = 100.0;
+        for (const int at : starts)
+        {
+            const int len = (int) (0.015 * sr);
+            worst = std::max (worst, std::abs (windowRmsDb (yOn, at + lat, len) - windowRmsDb (x, at, len)));
+            smallestOff = std::min (smallestOff, std::abs (windowRmsDb (yOff, at + lat, len) - windowRmsDb (x, at, len)));
+        }
+        const std::string tag = "Steady Notes on, Sustain " + std::to_string ((int) sustain) + ", no pitch, a soft start 200 ms after a loud one, the level down to the room: ";
+        check (smallestOff >= 3.0, tag + "with Steady Notes off the first 15 ms from the rise move at least", smallestOff, "dB");
+        check (worst <= 1.0, tag + "with Steady Notes on, largest change over the first 15 ms from the rise", worst, "dB");
     }
 }
 
@@ -3081,6 +3126,7 @@ static void runPhase2()
     testSustainAfterPause();
     testBypassFadeUnderCeiling();
     testNoVoiceGhostHits();
+    testNoVoicePhraseStart();
     testPresetSaved();
     testOldSessions();
     testAdvancedAfterLoad();

@@ -21,8 +21,22 @@ struct BlipRun
 
 inline BlipRun blipRun (double lowSeconds, double highSeconds, double gapSeconds, double backHz, double drift)
 {
-    const auto x = join ({ zeros (0.3), vowelAt (100.0, lowSeconds, -18.0), vowelAt (200.0, highSeconds, -18.0), zeros (gapSeconds),
-                           vowelAt (backHz, 0.5, -18.0), zeros (0.2) });
+    // One low vowel throughout. For a moment every other period of it is made the same: the vowel plus itself half a period later repeats
+    // every half period, an octave up with no break in the sound (on a rough start the odd harmonics drop away). Then it comes back down
+    // over gapSeconds while the vowel moves to backHz, and the tracker loses it for a few ms.
+    const double tail = 0.5;
+    auto f0 = voice::steady (100.0, lowSeconds + highSeconds, SR);
+    for (int i = 0; i < (int) ((gapSeconds + tail) * SR); ++i)
+        f0.push_back (100.0 + (backHz - 100.0) * std::min (1.0, i / (gapSeconds * SR + 1.0)));
+    const auto base = voice::synth (f0, voice::vowelA, SR, -60.0, -18.0);
+    const int half = (int) std::lround (SR / 200.0), lowEnd = (int) (lowSeconds * SR), end = (int) ((lowSeconds + highSeconds) * SR);
+    std::vector<float> sung (base.size() - (size_t) half);
+    for (int i = 0; i < (int) sung.size(); ++i)
+    {
+        const double a = i < end ? juce::jlimit (0.0, 1.0, (i - lowEnd) / (0.002 * SR)) : juce::jlimit (0.0, 1.0, 1.0 - (i - end) / (gapSeconds * SR + 1.0));
+        sung[(size_t) i] = (float) ((base[(size_t) i + (size_t) half] + a * base[(size_t) i]) / (1.0 + a));
+    }
+    const auto x = join ({ zeros (0.3), sung, zeros (0.2) });
     auto p = clean (modeScale, 4);
     for (int v = 0; v < 4; ++v) setParam (*p, vid (v, "Drift"), (float) drift);
     setParam (*p, "consonants", 0.0f);
@@ -44,13 +58,16 @@ inline BlipRun blipRun (double lowSeconds, double highSeconds, double gapSeconds
 
 // The ms the tracker reads the lead at 150 Hz or more, and per voice the longest run of ms on a note 10 or more semitones above the note it
 // sings for the low vowel (its note 100 ms into the last low vowel)
-struct BlipCount { int trackerHigh = 0; std::array<int, 4> voiceHigh {}; std::array<float, 4> lag {}; };
+struct BlipCount { int trackerHigh = 0, trackerGap = 0; std::array<int, 4> voiceHigh {}; std::array<float, 4> lag {}; };
 
 inline BlipCount countBlip (const BlipRun& r, double lowSeconds, double highSeconds, double gapSeconds)
 {
     BlipCount c;
     const int from = 300, to = (int) r.hz.size();
-    for (int t = from; t < to; ++t) c.trackerHigh += r.hz[(size_t) t] >= 150.0f ? 1 : 0;
+    int lastHigh = -1;
+    for (int t = from; t < to; ++t)
+        if (r.hz[(size_t) t] >= 150.0f) { ++c.trackerHigh; lastHigh = t; }
+    for (int t = lastHigh + 1; lastHigh >= 0 && t < to && r.hz[(size_t) t] <= 0.0f; ++t) ++c.trackerGap;
     const int lowNoteAt = juce::jmin (to - 1, (int) (1000.0 * (0.3 + lowSeconds + highSeconds + gapSeconds + 0.1)));
     for (int v = 0; v < 4; ++v)
     {
@@ -69,13 +86,15 @@ inline BlipCount countBlip (const BlipRun& r, double lowSeconds, double highSeco
 
 inline void probeBlip()
 {
-    for (const double low : { 0.015, 0.02, 0.025, 0.03, 0.035, 0.04 })
-        for (const double high : { 0.012, 0.016, 0.02 })
+    for (const double low : { 0.015, 0.02, 0.025, 0.03 })
+        for (const double high : { 0.012, 0.016 })
+          for (const double gap : { 0.001, 0.003, 0.008 })
         {
-            const auto r = blipRun (low, high, 0.006, 104.0, 60.0);
-            const auto c = countBlip (r, low, high, 0.006);
-            std::printf ("low %2.0f ms high %2.0f ms: tracker high %3d ms, voices high %3d %3d %3d %3d ms (lags %4.1f %4.1f %4.1f %4.1f)\n", low * 1000.0, high * 1000.0,
-                         c.trackerHigh, c.voiceHigh[0], c.voiceHigh[1], c.voiceHigh[2], c.voiceHigh[3], c.lag[0], c.lag[1], c.lag[2], c.lag[3]);
+            if (const char* only = std::getenv ("R5ONLY")) if (std::abs (std::atof (only) - (low * 1.0e6 + high * 1.0e3 + gap)) > 1.0e-6) continue;
+            const auto r = blipRun (low, high, gap, 104.0, 100.0);
+            const auto c = countBlip (r, low, high, gap);
+            std::printf ("low %2.0f ms high %2.0f ms gap %1.0f ms: tracker high %3d ms then none %2d ms, voices high %3d %3d %3d %3d ms (lags %4.1f %4.1f %4.1f %4.1f)\n", low * 1000.0, high * 1000.0, gap * 1000.0,
+                         c.trackerHigh, c.trackerGap, c.voiceHigh[0], c.voiceHigh[1], c.voiceHigh[2], c.voiceHigh[3], c.lag[0], c.lag[1], c.lag[2], c.lag[3]);
             if (std::getenv ("R5TRACE") != nullptr)
                 for (int t = 300; t < juce::jmin ((int) r.hz.size(), 420); ++t)
                     std::printf ("  %4d ms lead %6.1f notes %3d %3d %3d %3d\n", t - 300, r.hz[(size_t) t], r.note[0][(size_t) t], r.note[1][(size_t) t], r.note[2][(size_t) t], r.note[3][(size_t) t]);
@@ -84,29 +103,32 @@ inline void probeBlip()
 
 inline void testOctaveBlip()
 {
-    // The fault's shape. A voice standing behind the lead sings the octave no longer than the tracker read it. On 1.6.1 a voice standing
-    // behind sang it for the whole stretch, the start read right included.
-    const double low = 0.025, high = 0.016, gap = 0.006;
-    const auto c = countBlip (blipRun (low, high, gap, 104.0, 60.0), low, high, gap);
+    // The fault's shape: the tracker reads 100 Hz, then 200 Hz for under 20 ms inside the start's first 30 ms, then nothing for under 10 ms,
+    // then 104 Hz. Four voices at Drift 100 stand 21 to 25 ms behind. Until the pitch comes back it cannot be known that the octave was the
+    // tracker's, so a voice behind sings it from the jump to the return at most. On 1.6.1 it sang it for the whole stretch, the 20 ms read
+    // right before the jump as well, and its own lag after the jump.
+    const double low = 0.02, high = 0.016, gap = 0.008;
+    const auto c = countBlip (blipRun (low, high, gap, 104.0, 100.0), low, high, gap);
     int worst = 0;
     for (int v = 0; v < 4; ++v) worst = std::max (worst, c.voiceHigh[(size_t) v]);
-    check (c.trackerHigh > 0 && c.trackerHigh <= 20, "round 5 (guard): the tracker reads the moment an octave up for 20 ms or less (ms)", c.trackerHigh);
-    check (worst <= c.trackerHigh, "round 5: the longest a voice sings an octave above the low note (ms, no more than the tracker read the octave, "
-           + std::to_string (c.trackerHigh) + ")", worst);
+    check (c.trackerHigh > 0 && c.trackerHigh < 20 && c.trackerGap > 0 && c.trackerGap <= 10,
+           "round 5 (guard): the tracker reads the octave under 20 ms (" + std::to_string (c.trackerHigh) + ") and then nothing for 10 ms or less (ms)", c.trackerGap);
+    check (worst <= c.trackerHigh + c.trackerGap, "round 5: the longest a voice standing behind sings an octave above the low note (ms, no more than from the jump to the return, "
+           + std::to_string (c.trackerHigh + c.trackerGap) + ")", worst);
 
-    // A real leap: the same start, and the octave held. Every voice goes up with it and stays (the rule never takes a held octave).
-    const auto leap = countBlip (blipRun (low, 0.3, 0.006, 104.0, 60.0), low, 0.3, 0.006);
+    // A real leap: the same start, and the octave held. Every voice goes up with it and stays.
+    const auto leap = countBlip (blipRun (low, 0.3, gap, 104.0, 100.0), low, 0.3, gap);
     int shortest = 1 << 20;
     for (int v = 0; v < 4; ++v) shortest = std::min (shortest, leap.voiceHigh[(size_t) v]);
     check (shortest >= 250, "round 5 (guard): an octave leap held 300 ms, the shortest any voice sings it (ms, 250 or more)", shortest);
 
-    // The octave comes back somewhere else: down a fifth from where it began, not where it was. Not the tracker's octave, so voices standing
-    // behind still sing what was read, as before.
-    const auto other = countBlip (blipRun (low, high, gap, 66.7, 60.0), low, high, gap);
+    // The pitch comes back somewhere else, a fifth under where it began: not the tracker's octave, so a voice behind still sings the
+    // stretch as read, as on 1.6.1.
+    const auto other = countBlip (blipRun (low, high, gap, 66.7, 100.0), low, high, gap);
     int longest = 0;
     for (int v = 0; v < 4; ++v) longest = std::max (longest, other.voiceHigh[(size_t) v]);
-    check (longest > c.trackerHigh, "round 5 (guard): back somewhere else after the gap, a voice behind still sings the stretch as read (ms, more than the tracker's octave)",
-           longest);
+    check (longest > other.trackerHigh + other.trackerGap, "round 5 (guard): back somewhere else after the gap, the longest a voice behind sings the octave (ms, more than from the jump to the return, "
+           + std::to_string (other.trackerHigh + other.trackerGap) + ")", longest);
 }
 } // namespace round5
 

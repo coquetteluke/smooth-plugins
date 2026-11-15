@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.3, 2026-11-14
+
+Luke asked for this on 2026-11-14: "do those 4 then".
+
+- **In Low Male and Wide Range, a vowel cut off by an S is corrected to its end.** The tracker calls the sound unvoiced as soon as the S reaches the newest input, while the grains are still 20.6 ms behind with marks in the vowel they have not read, so the vowel's last 7.1 ms (343 samples) came out as sung. Now the grains read those marks with the correction the vowel had, then go back to the input. Test `PluginTest tail` (in `phase2`), written and run on 1.2.2 first: played as sung 7.146 ms (FAIL) to 0.000 ms (limit 2), the last 7.1 ms nearer the corrected vowel going on by -308.9 dB (FAIL) to +19.1 dB (limit above 0), the S as sung from 2.8 ms after the vowel's end (limit 5). Alto/Tenor (0.5 ms) is left as it was.
+- **Only where a vowel at its own level is cut off by a loud, bright consonant.** Round 3 carried the correction on at every loss of voicing; each of its three versions made 8 to 18 real vocal check lines fail that pass on 1.2.1 (fades, dips inside a word, a note's end the tracker lost for a moment). Now the carry needs a vowel of 100 ms or more, the newest 4 ms crossing zero 14000 times a second or more (every spot round 3 broke read 240 to 10000; an S 15000 to 24000) and no more than 12 dB under the note, and the 10 ms before it no more than 6 dB under the note. On Luke's 11 working takes in Low Male that is 5 vowel ends in 32 minutes.
+
+The default, every preset, Alto/Tenor and Soprano play bit for bit as 1.2.2: every other suite line reads the same number, the installed 1.2.1's sessions for the default and all 8 presets still play bit for bit (`tests/baseline`, no pin written again), and the default render of takes 14 and 09 has the same sha256 as the installed 1.2.2's. Real vocal rerun, working set, default with every extra render and the 8 presets: 0 lines passed then failed against 1.2.1 and 0 against 1.2.2; no sound measurement in the default run moved (only the CPU timing ratio of the denormals check). Parameters, IDs, ranges, defaults, presets, latency and AU codes are unchanged.
+
 ## 1.2.2, 2026-11-13
 
 The Phase 2 bug hunt's faults, each with a test in `tests/Phase2Tests.h` (`PluginTest phase2`) written and run on 1.2.1 first (31 lines failed there). The default and every preset play exactly as in 1.2.1: every old suite line reads the same number, and the installed 1.2.1's own sessions for the default and all 8 presets play bit for bit (`tests/baseline`). Parameters, IDs, ranges, defaults, presets, latency and AU codes are unchanged. No sound call was made.

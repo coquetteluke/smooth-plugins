@@ -595,9 +595,13 @@ PASS  Steady Notes, Sustain -9, the first note after 1.5 s of silence: gain at 6
 PASS  Gain +12 into Ceiling -1, Bypass switched on during a tone: output peak over the ceiling and the input = 0.000 dB
 PASS  Gain +12 into Ceiling -1, Bypass switched off during a tone: output peak over the ceiling and the input = 0.000 dB
 PASS  Steady Notes on, Sustain 9, a soft noise hit 80 ms after a loud one, no pitch: with Steady Notes off the soft hits move at least = 9.000 dB
-INFO  Steady Notes on, Sustain 9, a soft noise hit 80 ms after a loud one, no pitch: largest difference from Steady Notes off (not fixed, see above) = 3.472 dB
+PASS  Steady Notes on, Sustain 9, a soft noise hit 80 ms after a loud one, no pitch: largest difference from Steady Notes off = 0.000 dB
 PASS  Steady Notes on, Sustain -9, a soft noise hit 80 ms after a loud one, no pitch: with Steady Notes off the soft hits move at least = 9.000 dB
-INFO  Steady Notes on, Sustain -9, a soft noise hit 80 ms after a loud one, no pitch: largest difference from Steady Notes off (not fixed, see above) = 5.678 dB
+PASS  Steady Notes on, Sustain -9, a soft noise hit 80 ms after a loud one, no pitch: largest difference from Steady Notes off = 0.000 dB
+PASS  Steady Notes on, Sustain 9, no pitch, a soft start 200 ms after a loud one, the level down to the room: with Steady Notes off the first 15 ms from the rise move at least = 9.000 dB
+PASS  Steady Notes on, Sustain 9, no pitch, a soft start 200 ms after a loud one, the level down to the room: with Steady Notes on, largest change over the first 15 ms from the rise = 0.001 dB
+PASS  Steady Notes on, Sustain -9, no pitch, a soft start 200 ms after a loud one, the level down to the room: with Steady Notes off the first 15 ms from the rise move at least = 9.000 dB
+PASS  Steady Notes on, Sustain -9, no pitch, a soft start 200 ms after a loud one, the level down to the room: with Steady Notes on, largest change over the first 15 ms from the rise = 0.001 dB
 PASS  a new instance names Neutral = 0.000 
 PASS  a session saved after choosing Lead Gentle reloads naming it, not edited = 14.000 
 PASS  the preset is not applied again on reload: Lead Upfront with Attack moved keeps Attack and reads edited
@@ -621,19 +625,19 @@ PASS  a session saved by 0.6.1, lead-upfront: plays what choosing that preset he
 PASS  a session saved by 0.6.1, lead-upfront: plays what 0.6.1 played to float rounding; largest difference = -198.680 dBFS
 PASS  a session saved by 0.6.1, lead-rap: names no preset = -1.000 
 PASS  a session saved by 0.6.1, lead-rap: plays what choosing that preset here plays; samples that differ = 0.000 
-INFO  a session saved by 0.6.1, lead-rap: samples that differ from what 0.6.1 played = 4172.000 
+INFO  a session saved by 0.6.1, lead-rap: samples that differ from what 0.6.1 played = 4390.000 
 INFO  a session saved by 0.6.1, lead-rap: largest difference from what 0.6.1 played = -69.578 dBFS
 PASS  a session saved by 0.6.1, lead-soft-consonants: names no preset = -1.000 
 PASS  a session saved by 0.6.1, lead-soft-consonants: plays what choosing that preset here plays; samples that differ = 0.000 
-INFO  a session saved by 0.6.1, lead-soft-consonants: samples that differ from what 0.6.1 played = 4204.000 
+INFO  a session saved by 0.6.1, lead-soft-consonants: samples that differ from what 0.6.1 played = 4478.000 
 INFO  a session saved by 0.6.1, lead-soft-consonants: largest difference from what 0.6.1 played = -75.421 dBFS
 PASS  a session saved by 0.6.1, lead-long-tails: names no preset = -1.000 
 PASS  a session saved by 0.6.1, lead-long-tails: plays what choosing that preset here plays; samples that differ = 0.000 
-INFO  a session saved by 0.6.1, lead-long-tails: samples that differ from what 0.6.1 played = 4236.000 
+INFO  a session saved by 0.6.1, lead-long-tails: samples that differ from what 0.6.1 played = 4505.000 
 INFO  a session saved by 0.6.1, lead-long-tails: largest difference from what 0.6.1 played = -60.969 dBFS
 PASS  a session saved by 0.6.1, lead-dry-and-close: names no preset = -1.000 
 PASS  a session saved by 0.6.1, lead-dry-and-close: plays what choosing that preset here plays; samples that differ = 0.000 
-INFO  a session saved by 0.6.1, lead-dry-and-close: samples that differ from what 0.6.1 played = 4235.000 
+INFO  a session saved by 0.6.1, lead-dry-and-close: samples that differ from what 0.6.1 played = 4490.000 
 INFO  a session saved by 0.6.1, lead-dry-and-close: largest difference from what 0.6.1 played = -66.969 dBFS
 PASS  a state saved with Advanced open loaded while the window is open: the drawer and the window follow it at the next frame
 PASS  a state saved with Advanced closed loaded while the window is open: the drawer and the window follow it at the next frame

@@ -265,6 +265,9 @@ private:
     int leadRunTicks = 0, rewriteTicks = 30;   // ticks the lead has had pitch for, and how many of a stretch's first ticks get rewritten
     int lateTicks = 0, maxLateTicks = 50;      // how far back the newest start was written, and the most it may be
     long long tickCount = 0, stretchFrom = 0;  // ticks so far, and the tick the newest stretch of pitch was written back to (1.6.1)
+    long long lastVoicedTick = 0, jumpTick = 0;   // the newest tick with pitch, and where the newest stretch's first ms jumped an octave up (1.6.2)
+    double jumpFrom = 0.0, jumpFromPeriod = 0.0;  // the pitch and period just before that jump
+    int octaveGapTicks = 10, octaveBlipTicks = 20;
     static constexpr int levelRingSize = 128;  // input power per tick, for telling a reattack, and with Human for knowing what came after a note
     std::array<double, levelRingSize> levelRing {};
     int levelAt = 0;

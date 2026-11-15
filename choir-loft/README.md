@@ -4,7 +4,7 @@ Up to eight harmony voices from one lead vocal. Formants stay where they are, so
 
 **Load it:** Audio Units > Luke Garito > Choir Loft. AU code `aumf SHrm Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. With mono in, the voices still spread across the stereo field.
 
-Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2 and 1.5.0 to 1.6.1 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
+Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2 and 1.5.0 to 1.6.2 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
 
 ## First settings to try
 
@@ -425,6 +425,10 @@ What the readings and the window say:
 
 - **A voice standing far behind the lead at a phrase start** (the hunt's choir-dsp-r3-5). With Drift and Humanize high a voice can stand 55 to 90 ms behind the lead, longer than a quick breath between phrases. When the tracker called the new phrase such a voice was still singing the last phrase's last note, and the new phrase's scoop, detune, settle and place behind the lead were drawn at that moment: they bent the old note's tail, and the new note came in with its scoop mostly gone. Now that voice takes them when the audio it reads is of the new phrase. A voice already past the old phrase takes them at once, as before, and at the default settings every voice is, so the default plays bit for bit what 1.6.0 played (Luke's working set, take by take), and so do the factory presets on takes 02, 10 and 12. Check: `PluginTest round3`.
 - **Round 1's low-note fault is not fixed, and two of its three spots are not a fault in the voices.** At take 02 29.722 s and take 04 12.432 s the voice's strongest period stays on its note through the frames the measuring tool calls sharp and then an octave off; the tool takes the first autocorrelation peak that reaches 0.9 of the best, and on these bright, slightly rough low notes a ripple just short of the period reaches 0.90 to 0.92 of it. Take 10 at 41.242 s is a real tracker misreading (an octave high for 18 ms on a rough start, then lost for 6 ms); the one rule tried for it fixed that spot but would move real octave leaps elsewhere on the working set, so it is not in. The CHANGELOG has the numbers.
+
+## Round 5 (1.6.2)
+
+- **The tracker's octave written back over a start** (round 1's last low-note fault, take 10 at 41.242 s). A start's first 30 ms are written back with the newest reading. On a rough low start the tracker can read twice the frequency for a few ms at the end of those 30 ms, and the octave then covered the whole start: a voice standing behind sang it all an octave up. When the pitch comes back under 10 ms later where it was before the jump, and the octave lasted under 20 ms, the start is now written back as it was read before the jump. A voice standing behind still sings the octave from the jump until the pitch returns (22 ms instead of 46 on take 10). At the default this acts once on Luke's working set; 10 of the 11 takes render bit for bit as 1.6.1, take 10 is not bit for bit after 41.286 s (the voices' grains differ from there, their notes do not). Check: `PluginTest round5`. The CHANGELOG has the numbers.
 
 ## Latency
 

@@ -403,6 +403,9 @@ void PluginProcessor::clearState() noexcept
     leadRunTicks = 0;
     lateTicks = 0;
     tickCount = stretchFrom = 0;
+    lastVoicedTick = jumpTick = 0;
+    octaveGapTicks = juce::roundToInt (0.01 / tickSeconds);
+    octaveBlipTicks = juce::roundToInt (0.02 / tickSeconds);
     levelRing.fill (0.0);
     levelAt = 0;
     tickPower = 0.0;
@@ -522,6 +525,7 @@ void PluginProcessor::applyInputType (int type) noexcept
     leadRunTicks = 0;
     lateTicks = 0;
     tickCount = stretchFrom = 0;
+    lastVoicedTick = jumpTick = 0;
 }
 
 void PluginProcessor::readSettings() noexcept
@@ -627,6 +631,32 @@ void PluginProcessor::tick() noexcept
         }
         lateTicks = written;
         leadRunTicks = lateTicks;
+
+        // 1.6.2. The last stretch's first ms took the newest reading back over the stretch (below), and the newest was an octave above the
+        // reading before it, so what the tracker had read for the stretch so far was overwritten an octave high. If that octave held only
+        // to the stretch's end, under 20 ms, and the pitch is back under 10 ms later where it was before the jump, the octave was the
+        // tracker's: on a rough low start it can read twice the frequency for a few ms. A voice standing behind the lead reads the stretch
+        // later, and sang all of it an octave up (take 10 at 41.242 s: 16 ms read at 200 Hz where the take is at 100 Hz, written back over
+        // 46 ms; voice 2, 22 ms behind). So the stretch is written back as it was read before the jump, and the octave with the pitch now.
+        // A voice behind still sings the octave from the jump until now, since only now is it known; it no longer sings the rest.
+        // A real leap up holds its pitch longer than that, or the pitch does not come back to where it was: on Luke's working set at the
+        // default this was take 10 at 41.242 s and nowhere else.
+        const long long gapTicks = tickCount - lastVoicedTick - 1;
+        if (jumpTick > stretchFrom && gapTicks >= 1 && gapTicks <= octaveGapTicks && lastVoicedTick - jumpTick < octaveBlipTicks
+            && tickCount - stretchFrom < pitchRingSize - 2 && std::abs (semitones - jumpFrom) <= 1.0)
+        {
+            const auto atTick = [this] (long long t) { return (size_t) ((pitchRingAt - (int) (tickCount - t)) & (pitchRingSize - 1)); };
+            bool octave = true;
+            for (long long t = jumpTick; t <= lastVoicedTick; ++t)
+                octave = octave && std::abs (pitchRing[atTick (t)] - semitones - 12.0) <= 1.0;
+            if (octave)
+                for (long long t = stretchFrom; t <= lastVoicedTick; ++t)
+                {
+                    pitchRing[atTick (t)] = t < jumpTick ? jumpFrom : semitones;
+                    periodRing[atTick (t)] = t < jumpTick ? jumpFromPeriod : period;
+                }
+        }
+        jumpTick = 0;
         stretchFrom = tickCount - lateTicks;
     }
     else if (! voiced)
@@ -637,11 +667,22 @@ void PluginProcessor::tick() noexcept
     // pitch kept for looking back is rewritten with the newest.
     leadRunTicks = voiced ? juce::jmin (leadRunTicks + 1, 1 << 20) : 0;
     if (voiced && leadRunTicks <= rewriteTicks + lateTicks)
+    {
+        // (1.6.2) The newest an octave above the tick before: where, in case the stretch turns out to be the tracker's octave (see above)
+        const size_t before = (size_t) ((pitchRingAt - 1) & (pitchRingSize - 1));
+        if (leadRunTicks > 1 && pitchRing[before] > 0.0 && std::abs (semitones - pitchRing[before] - 12.0) <= 1.0)
+        {
+            jumpTick = tickCount;
+            jumpFrom = pitchRing[before];
+            jumpFromPeriod = periodRing[before];
+        }
         for (int k = 1; k < leadRunTicks; ++k)
         {
             pitchRing[(size_t) ((pitchRingAt - k) & (pitchRingSize - 1))] = semitones;
             periodRing[(size_t) ((pitchRingAt - k) & (pitchRingSize - 1))] = period;   // and the period a voice reads there (1.6.0), the same way
         }
+    }
+    if (voiced) lastVoicedTick = tickCount;
 
     // The tracker's period is old by the time it arrives: two stretches a period apart are compared, the newest mark is known 0.33 periods
     // after it happens, and the value then holds for a period. What is coming out is the input from the latency ago. Look back the difference,

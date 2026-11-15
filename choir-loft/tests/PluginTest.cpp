@@ -2424,6 +2424,7 @@ using ui::StageView;
 #include "OnsetTests.h"
 #include "Phase2Tests.h"
 #include "Round3Tests.h"
+#include "Round5Tests.h"
 
 // Before and after files for ears. The before files come from the 1.0.0 source, see README.
 void demo()
@@ -2608,6 +2609,7 @@ int main (int argc, char** argv)
     if (only == "r31probe") { phase2::probePhraseAfterPause(); return 0; }
     if (only == "lagtrace") { phase2::traceLaggedGrains(); return 0; }
     if (only == "r35probe") { round3::probeLongLag(); return 0; }
+    if (only == "r5probe") { round5::probeBlip(); return 0; }
     if (only == "fingerprints")
     {
         for (const int preset : { 0, 3, 4, 7, 10 })
@@ -2652,5 +2654,6 @@ int main (int argc, char** argv)
     if (want ("ceiling")) testCeiling();
     if (want ("phase2")) testPhase2();
     if (want ("round3")) testRound3();
+    if (want ("round5")) testRound5();
     return finish();
 }

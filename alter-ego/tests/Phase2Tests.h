@@ -107,6 +107,9 @@ inline void testNoteEnds()
     // reads the input as it is, except with Robot in the mix (its pulse train is its own; taking the grains under it out of step moved
     // Robot's phrase starts on round 1's real vocal check). The first reading counts every grain past the newest pulse still reading
     // one, as written for 1.2.6 (1.840 there), so it stays a reading against its limit; the second counts the repeats into a decay.
+    // Since 1.2.8 a grain past the newest pulse also reads the input as it is where that pulse ends a held note (200 ms of even pulses), the
+    // voice has stopped at the input and what comes in is low, louder or not (testLowConsonantAfterVowel); these notes fade into breath,
+    // not a low sound, and the first still reads 1.840.
     info ("Phase 2: notes fading into breath (Deep, Giant, Monster, Female To Male, 98 to 247 Hz): furthest a grain sat past the newest pulse while reading one ("
               + where + "), limit " + std::to_string (phase2limits::grainPastNewestPulsePeriods) + ", not met: known, periods", worst);
     check (worstLouder <= phase2limits::grainPastNewestPulsePeriods,
@@ -143,8 +146,10 @@ inline void testConsonantAfterVowel()
     }
     // Real, not fixed in 1.2.6 (see the report): taking the tracker's votes back when it hears a fricative brought this to 2.4 ms, but
     // it moves where the grains fall for the rest of the phrase, and on the real vocal check that broke Deep Double's peak on take 05
-    // (2.78 > 3.60 dB over the dry, limit 3). The burst round 1 heard at that spot (take 01, 152.02 s) is still there in 1.2.7: the fix for
-    // (a) does not reach it (Deep, 10 ms frames, 1.2.6 and 1.2.7 alike: -31.4 dBFS out against a -40.4 dBFS dry).
+    // (2.78 > 3.60 dB over the dry, limit 3). The burst round 1 heard at that spot (take 01, 152.02 s) was still there in 1.2.7: the fix for
+    // (a) did not reach it (Deep, 10 ms frames, 1.2.6 and 1.2.7 alike: -31.4 dBFS out against a -40.4 dBFS dry). It was not the voicing but
+    // the grain after the newest pulse reading back across the vowel: fixed in 1.2.8 (testLowConsonantAfterVowel; -40.8 dBFS there). The
+    // output is still called voiced for these milliseconds, so this stays a reading against its limit.
     info ("Phase 2: a vowel straight into an S (5 ms crossfade), Deep, 110 to 330 Hz: the output still called voiced after the S starts, at most (limit "
               + std::to_string (phase2limits::voicedIntoConsonantMs) + " ms, not met: known)", worst, "ms");
 }

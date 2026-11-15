@@ -352,6 +352,39 @@ private:
         return then > 2.0 * now;
     }
 
+    // Whether the newest pulse ends a held note: the pulses before it come evenly, each spacing within 15% of the one after it, for at
+    // least 200 ms (1.2.8). A phrase start is shorter than that (the real vocal check reads one over its first 150 ms), and so is fry,
+    // whose pulses come far apart and unevenly. Take 01 at 152.02 s: 1816 ms; Old Singer's fry starts that 1.2.8 must leave alone (take
+    // 05 at 190.79 s, take 06 at 160.61 s): 31 and 21 ms. Reads at most the 256 marks kept, which cover 200 ms up to 1280 Hz.
+    bool endsHeldNote (const PitchTracker& tracker) const noexcept
+    {
+        const long long newest = tracker.lastMark();
+        const double from = tracker.mark (newest).position, need = 0.2 * sr;
+        double after = 0.0;
+        for (long long q = newest; q - 1 >= tracker.firstMark(); --q)
+        {
+            const double spacing = tracker.mark (q).position - tracker.mark (q - 1).position;
+            if (! (spacing > 0.0) || (after > 0.0 && std::abs (spacing / after - 1.0) > 0.15))
+                return false;
+            if (from - tracker.mark (q - 1).position >= need)
+                return true;
+            after = spacing;
+        }
+        return false;
+    }
+
+    // Whether the voice over the last period up to a place is a low sound: its zero crossings come at under 1 kHz (1.2.8). The low thump
+    // at take 01's 152.02 s crosses at about 80 Hz; an S at several kHz.
+    bool lowNow (double place, double period) const noexcept
+    {
+        const long long to = (long long) std::min (place, (double) (written - 1)), from = std::max ({ to - (long long) period, written - size + 1, 1LL });
+        int crossings = 0;
+        for (long long i = from; i <= to; ++i)
+            if ((raw[(size_t) (i & (long long) (size - 1))] >= 0.0f) != (raw[(size_t) ((i - 1) & (long long) (size - 1))] >= 0.0f))
+                ++crossings;
+        return to > from && 0.5 * crossings * sr / (double) (to - from) < 1000.0;
+    }
+
     void addGrain (const Grain& g) noexcept
     {
         if (numActive < maxGrains)
@@ -426,9 +459,18 @@ private:
             // 1.2.6 such a grain read on from that mark, up to two periods back, and where that pulse was more than 3 dB louder than the
             // voice is now (a note dying away) it repeated it into the decay (take 01 at 161.24 s, Deep: -26 dBFS out against a -54 dBFS dry). It reads the input as it is instead (and step()
             // fills its window's gaps with it). Its place, and everything the grains after it go by, stay as they were (1.2.7).
+            // Also where that pulse ends a held note, the tracker hears no voice at the input any more and what comes in is low,
+            // louder or not (1.2.8). Inside a note that goes on the newest mark can fall behind a grain too (98 Hz, an /i/, Pitch -7), and
+            // reading the input there left the suite's notes unshifted. Into an S, read as the input it came out 3.1 dB short of the S's hiss
+            // (the suite's say speech at Pitch -7, limit 3), and the vowel's pulses through an S's filter do not come out loud anyway: so only
+            // into a low sound. Where a vowel dies away and a low consonant comes in, the newest
+            // pulse sits in the dying end, as loud as the consonant, and the grain after it read back across the vowel's last pulses into the
+            // consonant (take 01 at 152.02 s, Deep: -31.4 dBFS out against a -40.4 dBFS dry). Not past pulses that do not end a held note:
+            // in fry at a phrase start they come far apart and unevenly, and reading the input there moved Old Singer's phrase starts on
+            // round 1's real vocal check (fry wrong frames 4.96 > 5.057%, limit 5).
             next.plain = planned == Plan::mapped && tracker.hasMarks() && c.robot <= 0.0
                          && s + spacing - (tracker.mark (tracker.lastMark()).position + pulseShift) > 0.6 * period
-                         && louderThanNow (tracker.mark (tracker.lastMark()).position + pulseShift, s + spacing, period);
+                         && (louderThanNow (tracker.mark (tracker.lastMark()).position + pulseShift, s + spacing, period) || (! tracker.isVoiced() && endsHeldNote (tracker) && lowNow (s + spacing, period)));
 
             // Windows are one input period each side at most, so one glottal pulse per grain. When grains are packed closer than
             // that they shrink to the spacing, so the falling and rising halves still sum to 1.
@@ -503,6 +545,8 @@ private:
                 // Past the newest pulse, and the pulse more than 3 dB louder than the voice is now: decided here as well, as a mark that
                 // came in after decide() can move the read to an older pulse. Not with Robot in the mix: its voiced sound is its own pulse
                 // train, and taking the grains under it out of step moved Robot's phrase starts (wrong frames 4.935 > 5.022%, limit 5).
+                // The end of a held note (1.2.8) is decided in decide() only, where the crossfade into the grain can still be made a quarter
+                // of a period.
                 const bool past = g.mark - (tracker.mark (tracker.lastMark()).position + shift) > 0.6 * period;
                 if (! g.plain && past && c.robot <= 0.0 && louderThanNow (g.mark + offset, g.mark, period))
                     g.plain = true;

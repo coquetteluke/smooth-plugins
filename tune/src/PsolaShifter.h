@@ -45,6 +45,8 @@ public:
     }
 
     void setLatency (int samples) noexcept { latency = samples; }
+    // Carry the correction to the last mark of a vowel cut off by a consonant (see carried). Off unless asked for.
+    void setCarryTails (bool on) noexcept { carryTails = on; }
     int getLatency() const noexcept { return latency; }
 
     void reset() noexcept
@@ -63,6 +65,8 @@ public:
         lastOffset = 0.0;
         plannedOffset = 0.0;
         enteredAt = -1.0e12;
+        haveLastVoiced = carryingNow = carryActive = false;
+        voicedUpTo = voicedFrom = -1.0e12;
         needDecision = true;
         firstGrain = true;
     }
@@ -88,6 +92,12 @@ public:
     {
         const long long newest = written - 1;
         const long long n = newest - latency;
+        if (control.voiced)
+        {
+            if (voicedUpTo < (double) newest - 1.0)
+                voicedFrom = (double) newest;
+            voicedUpTo = (double) newest;
+        }
 
         if (firstGrain)
         {
@@ -102,12 +112,12 @@ public:
 
         if (needDecision || (double) n >= peakOfNewest)
         {
-            decide (tracker, control);
+            decide (tracker, carried (tracker, control));
             needDecision = false;
         }
         if (havePending && (double) n >= pending.mark - pending.rise)
         {
-            activate (tracker, control);
+            activate (tracker, carried (tracker, control));
             havePending = false;
         }
 
@@ -255,6 +265,89 @@ private:
         return total;
     }
 
+    // A vowel cut off by a consonant: the tracker calls the sound unvoiced as soon as the consonant reaches the newest input, while the
+    // grains are still a whole delay behind, with marks found in the vowel not yet read. Up to 1.2.2 the grains then went straight back
+    // to the input as sung, so the vowel's last stretch, from the last grain read to where it ends, came out at the pitch it was sung
+    // (7.1 ms in Low Male and Wide Range, tune-r3-2). Now, where the input says a vowel really was cut off (cutOffHere), the last voiced
+    // control is carried on for as long as there is a mark the grains have not read yet from where the sound was still called voiced, so
+    // they read the vowel to its last mark with the correction it had, and only then go back to the input. No mark is made up and none
+    // is read twice. Only where the owner asks for it (setCarryTails: Low Male and Wide Range, whose delay is 20.6 ms; Alto/Tenor left
+    // 0.5 ms and stays as it was).
+    const Control& carried (const PitchTracker& tracker, const Control& c) noexcept
+    {
+        carryingNow = false;
+        if (c.voiced && c.inputPeriod > 0.0)
+        {
+            lastVoiced = c;
+            haveLastVoiced = true;
+            cutChecked = false;
+            return c;
+        }
+        if (haveLastVoiced && carryTails && lastMarkUsed >= 0 && tracker.hasMarks() && tracker.lastMark() > lastMarkUsed
+            && voicedUpTo - voicedFrom >= carryAfterSeconds * sr
+            && lastMarkUsed + 1 >= tracker.firstMark() && tracker.mark (lastMarkUsed + 1).position <= voicedUpTo)
+        {
+            if (! cutChecked)
+            {
+                cutOff = cutOffHere();
+                cutChecked = true;
+            }
+            if (cutOff)
+            {
+                carryingNow = true;
+                return lastVoiced;
+            }
+        }
+        haveLastVoiced = false;
+        return c;
+    }
+
+    // Read once, where voicing drops: is this a vowel still at its own level, cut off by a loud, bright consonant (an S)? Round 3
+    // carried on every loss of voicing, and its three versions each failed real vocal checks that pass on 1.2.1 (8, 12 and 18 lines).
+    // Every one of those spots was a voice fading out (take 14 at 57.36 s: -45 dBFS with only breath after it) or the tracker losing
+    // a voiced sound for a moment (a dip inside a word, a note's end going on voiced): the input in the newest 4 ms crossed zero 240
+    // to 10000 times a second, where an S crossed 15000 to 18500 on his takes and 24000 on the test's. So the vowel must have lasted
+    // 100 ms or more (carryAfterSeconds), the newest 4 ms must cross zero 14000 times a second or more and be no more than 12 dB
+    // under the 40 ms of note before, and the 10 ms just before the consonant no more than 6 dB under it (the vowel has not faded).
+    // Measured on Luke's 11 working takes in Low Male: 5 vowel ends in 32 minutes of singing, none of them a spot round 3 broke.
+    bool cutOffHere() const noexcept
+    {
+        const long long newest = written - 1;
+        const long long consonantFrom = newest + 1 - (long long) std::lround (0.004 * sr);
+        const long long tailFrom = consonantFrom - (long long) std::lround (0.010 * sr);
+        const long long noteFrom = tailFrom - (long long) std::lround (0.040 * sr);
+        const double consonant = levelOf (consonantFrom, newest + 1), tail = levelOf (tailFrom, consonantFrom);
+        const double note = levelOf (noteFrom, tailFrom);
+        return crossingsOf (consonantFrom, newest + 1) * sr >= cutCrossingsPerSecond && consonant >= note * cutConsonantShare
+               && tail >= note * cutTailShare;
+    }
+
+    double levelOf (long long from, long long to) const noexcept
+    {
+        double sum = 0.0;
+        for (long long i = from; i < to; ++i)
+            for (int ch = 0; ch < channels; ++ch)
+            {
+                const double x = delay[(size_t) ch][(size_t) (i & (long long) (size - 1))];
+                sum += x * x;
+            }
+        return std::sqrt (sum / (double) std::max (1LL, (to - from) * channels));
+    }
+
+    // Zero crossings per sample on the first channel.
+    double crossingsOf (long long from, long long to) const noexcept
+    {
+        int count = 0;
+        float before = delay[0][(size_t) (from & (long long) (size - 1))];
+        for (long long i = from + 1; i < to; ++i)
+        {
+            const float x = delay[0][(size_t) (i & (long long) (size - 1))];
+            if ((x >= 0.0f) != (before >= 0.0f)) ++count;
+            before = x;
+        }
+        return (double) count / (double) std::max (1LL, to - from - 1);
+    }
+
     void addGrain (const Grain& g) noexcept
     {
         if (numActive < maxGrains)
@@ -274,10 +367,40 @@ private:
         double spacing;
         planned = Plan::pass;
 
+        if (carryingNow)
+        {
+            if (! carryActive)
+                carryOrigin = s;   // where the pass would have started without the carry
+            carryActive = true;
+        }
+        else if (c.voiced)
+        {
+            if (carryActive)
+            {
+                // The sound is voiced again before the carry ran out (a quiet stretch the tracker called unvoiced for a moment). Without
+                // the carry the grains would have gone to the pass and come in again from it, so they come in again here the same way:
+                // on a mark at the reported delay, not on from marks found before the gap.
+                lastMarkUsed = -1;
+                lastOffset = 0.0;
+                plannedOffset = 0.0;
+            }
+            carryActive = false;
+        }
+
         if (! c.voiced || c.inputPeriod <= 0.0)
         {
             // Pass: integer spacing and a read point at the reported delay.
             spacing = fallback;
+            if (carryActive)
+            {
+                // After a carry, the pass grains go back onto the spacing they would have had without it, so whatever comes after the
+                // consonant is grained exactly as up to 1.2.2: only the vowel's end changes.
+                const double grid = carryOrigin + fallback * (std::floor ((s - carryOrigin) / fallback) + 1.0);
+                spacing = grid - s;
+                if (spacing < 0.5 * fallback)
+                    spacing += fallback;
+                carryActive = false;
+            }
             next.rise = spacing;
             if (current != nullptr) { current->fall = spacing; current->fallIsFinal = true; }
             next.mark = s + spacing;
@@ -480,5 +603,12 @@ private:
     static constexpr double lockedWalkShare = 0.001;
     static constexpr double widestRatio = 5.656854249492381;   // 2 to the power 30/12: 30 semitones
     long long lastMarkUsed = -1;
+    Control lastVoiced;
+    bool haveLastVoiced = false, carryingNow = false, carryActive = false, carryTails = false, cutChecked = false, cutOff = false;
+    double carryOrigin = 0.0, voicedUpTo = -1.0e12, voicedFrom = -1.0e12;
+    static constexpr double carryAfterSeconds = 0.100;
+    static constexpr double cutCrossingsPerSecond = 14000.0;
+    static constexpr double cutConsonantShare = 0.251188643150958;   // -12 dB
+    static constexpr double cutTailShare = 0.501187233627272;        // -6 dB
 };
 } // namespace smoothtune

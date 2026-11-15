@@ -435,8 +435,9 @@ inline void testVowelTail()
     {
         const auto t = vowelTail (c.type, c.hz);
         // Up to 1.2.2 an INFO line (NOT FIXED, Luke's call): 7.1 ms in Low Male and Wide Range, 0.5 ms in Alto/Tenor, against the limit written
-        // for it before it was first run. Fixed in 1.2.3 with Luke's yes on 2026-11-13 ("u can do all of these"): the grains read the vowel's
-        // marks to the last one with the correction it had (PsolaShifter::carried).
+        // for it before it was first run. Made a check on 2026-11-14 (round 5; Luke: "do those 4 then"), before the fix. Fixed in 1.2.3: in
+        // Low Male and Wide Range, where a vowel at its own level is cut off by a loud, bright consonant, the grains read its marks to the
+        // last one with the correction it had (PsolaShifter::carried, cutOffHere). Alto/Tenor is left as it was.
         check (t.asSungMs <= phase2limits::tailUncorrectedMs, std::string ("Phase 2: ") + c.name + ", 40 cents sharp straight into an S, the vowel's end played as sung", t.asSungMs, "ms");
         // Not by passing the input on some other way: over the stretch 1.2.2 played as sung, the output is nearer the same vowel going on,
         // corrected, than the vowel as sung (1.2.2: -309 dB in Low Male, it was the vowel as sung).

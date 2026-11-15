@@ -285,6 +285,7 @@ void PluginProcessor::applyInputType (int type) noexcept
     ring.fill (0.0);
     ringAt = 0;
     shifter.setLatency (latencyFor (typeNow, sr));
+    shifter.setCarryTails (typeNow == 2 || typeNow == 3);
     shifter.restart();
     corrector.reset();
     control = {};

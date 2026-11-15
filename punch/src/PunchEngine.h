@@ -289,6 +289,7 @@ public:
     static constexpr double sagWindow = 0.100;     // A held note's sag is measured from the highest it stood in this long (0.5.1).
     static constexpr double gateRamp = 0.005;      // How fast Sustain comes in when a note begins, so the gain never steps.
     static constexpr double restartTime = 0.002;   // How fast a sharp start pulls the tail's reference down to the new sound.
+    static constexpr double ghostTime = 0.110;     // Where there is no voice, a sharp start this soon after a louder sound is still part of it (0.6.3).
     static constexpr double brightRise = 0.001;
     static constexpr double brightFall = 0.010;
     static constexpr double brightLowHz = 4650.0;  // A sound whose sample to sample step is as large as a tone's at this pitch starts to be spared,
@@ -336,6 +337,7 @@ public:
         voiceGoneSamples = std::max (1, (int) std::lround (voiceGone * sampleRate));
         voiceGoneRampSamples = std::max (1, (int) std::lround (voiceGoneRamp * sampleRate));
         cRestart = coef (restartTime);
+        ghostSamples = std::max (1, (int) std::lround (ghostTime * sampleRate));
         cBrightRise = coef (brightRise);
         cBrightFall = coef (brightFall);
         const auto stepOf = [sampleRate] (double hz) { return (float) (2.0 * std::sin (3.14159265358979323846 * std::min (0.5, hz / sampleRate))); };
@@ -361,7 +363,8 @@ public:
     {
         shaperHold.reset();
         compHold.reset();
-        attackFast = attackSlow = sustainFast = sustainSlow = sustainSlowPlain = 0.0f;
+        attackFast = attackSlow = sustainFast = sustainSlow = sustainSlowPlain = sustainSlowNoVoice = 0.0f;
+        sinceLouder = 0;
         compEnv = peakRef = 0.0f;
         inPower = outPower = steadyIn = steadyOut = 0.0f;
         gainDb = 0.0f;
@@ -415,7 +418,10 @@ public:
         // reads with Steady Notes off (0.6.2), so switching Steady Notes off lands on that reading at once. With Steady Notes off from the
         // start the two are the same.
         if (steadyNotes && ! steadyWasOn)
-            sustainSlow = sustainSlowPlain;
+        {
+            sustainSlow = sustainSlowNoVoice = sustainSlowPlain;
+            sinceLouder = ghostSamples;
+        }
 
         // Start of a sound: the fast envelope is ahead of the slow one. Tail: the slow one is above the fast one.
         const float startDb = toDb (attackFast) - toDb (attackSlow);
@@ -424,11 +430,15 @@ public:
         float tailAmount = clamp01 ((tailDb - deadZoneDb) / tailRangeDb);
         if (steadyNotes)
         {
-            // Where there is no voice Sustain reads the level plainly (tailAmount), but from Steady Notes' own slow envelope, which a sharp
-            // start pulls down (rule 4 below): a phrase start after a pause, a breath or a mouth sound is a new sound, not the tail of what
-            // came before. (0.6.2 tried the reading with Steady Notes off here, for drums, where a soft hit right after a loud one gets no
-            // tail with Steady Notes on; on Luke's rap take 16 that gave phrase starts Sustain's full 9 dB, so it was not kept.)
-            tailAmount = steadyTailAmount (startDb, sample, sustainDb, tailAmount);
+            // Where there is no voice Sustain reads the level plainly, but from a slow envelope of its own (sustainSlowNoVoice), which a
+            // sharp start pulls down (rule 4 below): a phrase start after a pause, a breath or a mouth sound is a new sound, not the tail of
+            // what came before. 0.6.3: not a sharp start within ghostTime of the end of a louder sound's peak. That is a soft hit right
+            // after a loud one on a drum track, and it gets the loud one's tail as with Steady Notes off (0.6.2 gave it none). A phrase
+            // start comes later: on Luke's rap take 16 the one that 0.6.2's first try broke came 174 ms after the syllable before it.
+            follow (sustainSlowNoVoice, hold, cFastRise, cSustainSlowFall);
+            sinceLouder = hold >= sustainSlowNoVoice ? 0 : std::min (sinceLouder + 1, ghostSamples);
+            const float noVoiceAmount = clamp01 ((toDb (sustainSlowNoVoice) - toDb (sustainFast) - deadZoneDb) / tailRangeDb);
+            tailAmount = steadyTailAmount (startDb, sample, sustainDb, noVoiceAmount);
             startAmount = steadyStartAmount (startDb);
         }
 
@@ -519,7 +529,7 @@ public:
         if (! (r > 0.0f && r < 1.0e6f))
             return;
         const float r2 = r * r;
-        for (float* e : { &attackFast, &attackSlow, &sustainFast, &sustainSlow, &sustainSlowPlain, &compEnv, &peakRef, &noteLevel })
+        for (float* e : { &attackFast, &attackSlow, &sustainFast, &sustainSlow, &sustainSlowPlain, &sustainSlowNoVoice, &compEnv, &peakRef, &noteLevel })
             *e *= r;
         for (float* e : { &inPower, &outPower, &steadyIn, &steadyOut, &levelPower })
             *e *= r2;
@@ -698,6 +708,8 @@ private:
 
         if (startDb > sharpStartDb && ! inTail && sustainSlow > sustainFast)
             sustainSlow += cRestart * (sustainFast - sustainSlow);
+        if (startDb > sharpStartDb && ! inTail && sustainSlowNoVoice > sustainFast && sinceLouder >= ghostSamples)
+            sustainSlowNoVoice += cRestart * (sustainFast - sustainSlowNoVoice);
 
         // What the tail is measured against. While the note has its pitch: where its level just was, as ever. After the pitch has stopped:
         // the level the note had, held still, so what follows is judged against the note and not against its own dying away.
@@ -935,7 +947,8 @@ private:
     float cCompRise = 1, cCompFall = 1, cPeakRefFall = 1, cPower = 1, cMakeup = 1, cGain = 1;
     float cImpactAttack = 1, cImpactFastRelease = 1, cImpactSlowRise = 1, cImpactSlowRelease = 1, cGuardRise = 1, cGuardFall = 1;
 
-    float attackFast = 0, attackSlow = 0, sustainFast = 0, sustainSlow = 0, sustainSlowPlain = 0, compEnv = 0, peakRef = 0;
+    float attackFast = 0, attackSlow = 0, sustainFast = 0, sustainSlow = 0, sustainSlowPlain = 0, sustainSlowNoVoice = 0, compEnv = 0, peakRef = 0;
+    int sinceLouder = 0, ghostSamples = 1;
     float inPower = 0, outPower = 0, makeupDb = 0, gainDb = 0;
     float steadyIn = 0, steadyOut = 0, steadyMakeup = 0, handoverDb = 0, steadyLevelDb = 0, lastPunch = 0, rebasedPunch = 0, lastImpact = 0;
     float plainWeight = 1, plainStep = 1, impactLevelDb = -120.0f;

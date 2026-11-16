@@ -56,6 +56,7 @@
 
 #include "PluginProcessor.h"
 #include "../tests/Analysis.h"
+#include "PitchRule.h"
 
 #include <cstdio>
 #include <cstring>
@@ -195,35 +196,8 @@ double rmsAround (const std::vector<float>& s, long centre, int half) { return r
 double toDb (double v) { return 20.0 * std::log10 (std::max (v, 1.0e-12)); }
 
 // Pitch within 8 semitones of an expected one, shortest strong period first. 0 if nothing periodic. Same rule as the onset test's freePitch.
-double pitchAround (const std::vector<float>& y, long centre, double aroundHz)
-{
-    const double lo = aroundHz * std::pow (2.0, -8.0 / 12.0), hi = aroundHz * std::pow (2.0, 8.0 / 12.0);
-    const int tMin = std::max (4, (int) std::floor (SR / hi)), tMax = (int) std::ceil (SR / lo);
-    const int W = 2 * tMax, stride = std::max (1, tMax / 150);
-    const long start = centre - (W + tMax) / 2;
-    if (start < 0 || start + W + tMax + 2 >= (long) y.size()) return 0.0;
-    const float* a = y.data() + start;
-    double ea = 0.0;
-    for (int i = 0; i < W; i += stride) ea += (double) a[i] * a[i];
-    std::vector<double> r ((size_t) tMax + 3, -2.0);
-    double best = -2.0;
-    for (int lag = tMin - 1; lag <= tMax + 1; ++lag)
-    {
-        double c = 0.0, eb = 0.0;
-        for (int i = 0; i < W; i += stride) { c += (double) a[i] * a[i + lag]; eb += (double) a[i + lag] * a[i + lag]; }
-        const double den = std::sqrt (ea * eb);
-        r[(size_t) lag] = den > 1.0e-12 ? c / den : 0.0;
-        if (lag >= tMin && lag <= tMax) best = std::max (best, r[(size_t) lag]);
-    }
-    if (best < 0.5) return 0.0;
-    for (int lag = tMin; lag <= tMax; ++lag)
-        if (r[(size_t) lag] >= 0.9 * best && r[(size_t) lag] >= r[(size_t) lag - 1] && r[(size_t) lag] >= r[(size_t) lag + 1])
-        {
-            const double p0 = r[(size_t) lag - 1], p1 = r[(size_t) lag], p2 = r[(size_t) lag + 1], den = p0 - 2.0 * p1 + p2;
-            return SR / (lag + (std::abs (den) > 1.0e-12 ? 0.5 * (p0 - p2) / den : 0.0));
-        }
-    return 0.0;
-}
+// The rule is in PitchRule.h, so the plug-in's tests can check it.
+double pitchAround (const std::vector<float>& y, long centre, double aroundHz) { return realvox::pitchAround (y, centre, aroundHz, SR); }
 
 struct Stretch { int a = 0, b = 0; long onset = 0, end = 0; };
 

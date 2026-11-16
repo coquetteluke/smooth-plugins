@@ -2425,6 +2425,7 @@ using ui::StageView;
 #include "Phase2Tests.h"
 #include "Round3Tests.h"
 #include "Round5Tests.h"
+#include "CheckerTests.h"
 
 // Before and after files for ears. The before files come from the 1.0.0 source, see README.
 void demo()
@@ -2655,5 +2656,6 @@ int main (int argc, char** argv)
     if (want ("phase2")) testPhase2();
     if (want ("round3")) testRound3();
     if (want ("round5")) testRound5();
+    if (want ("checker")) testChecker();
     return finish();
 }

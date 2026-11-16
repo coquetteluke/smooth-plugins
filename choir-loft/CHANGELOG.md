@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.3, not released yet
+
+The real vocal checker, not the plug-in: RealVox reads a voice's pitch with a corrected rule (round 6c). Luke, 2026-11-16, asked "Correct the checker so it stops counting your low notes as wrong?": "Yes, fix checker". The plug-in does not change with this, so there is no version bump for it.
+- What was wrong. RealVox's `pitchAround` took the first local peak of the autocorrelation that reaches 0.9 of the best. On low notes that are mostly fundamental the peak at the period is broad, and a ripple from the high harmonics sits on its shoulder about 10 samples short, at 0.90 to 0.95 of the best, so the note was read 40 to 60 cents sharp and often called an octave off. Luke's dry take 02 reads that way at 61.935 to 62.030 s with no plug-in at all.
+- The rule now (`realvox/PitchRule.h`): the curve is cut into lobes where it stays above half the best, and the first lobe whose top reaches 0.9 of the best is read at its top. The shortest strong period still wins, so a clean voice is never read an octave down, and a voice that really is off its note still reads off. `REALVOX_OLD_PITCH_RULE=1` reads with the old rule; with it the 1.6.2 and 1.5.4 records come out byte for byte as before. The onset tests' `freePitch` keeps the old rule.
+- Checked in `tests/CheckerTests.h` (`PluginTest checker`), synthetic signals only: a ripple on the shoulder read 46.3 cents sharp with the old rule, 0.002 now (5 allowed); clean voices 70 to 400 Hz, no octave down, a real octave up and a voice 10 samples sharp read right with both rules.
+- On Luke's takes (evidence in round6/checker): the dry working set, frames of held notes more than 50 cents off the reference, 612 with the old rule and 237 now, lower on every take; 1.6.1's real octave at take 10, 41.242 s, is still caught on the same 3 runs of 32; the 32-run screen of 1.6.2 (takes 02, 04, 10) reads 16 instead of 60, and what is left is the late landing on a rising note change; round 1's real vocal checks of 1.6.2 against 1.5.4, both read with the new rule, have 0 lines from pass to fail and 2 from fail to pass (behind Duo 98 to 130 Hz, U9 run 1).
+
 ## 1.6.2, 2026-11-14
 
 Round 5: round 1's last low-note fault, take 10 at 41.242 s. Luke asked for this on 2026-11-14: "do those 4 then". Latency unchanged (659 samples, 13.7 ms at Alto/Tenor). No parameter, AU code, Input Type value or preset setting changed; saved sessions open as before.

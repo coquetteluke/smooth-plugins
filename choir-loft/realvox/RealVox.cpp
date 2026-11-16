@@ -195,9 +195,14 @@ double rmsOf (const std::vector<float>& s, long from, long len)
 double rmsAround (const std::vector<float>& s, long centre, int half) { return rmsOf (s, centre - half, 2L * half); }
 double toDb (double v) { return 20.0 * std::log10 (std::max (v, 1.0e-12)); }
 
-// Pitch within 8 semitones of an expected one, shortest strong period first. 0 if nothing periodic. Same rule as the onset test's freePitch.
-// The rule is in PitchRule.h, so the plug-in's tests can check it.
-double pitchAround (const std::vector<float>& y, long centre, double aroundHz) { return realvox::pitchAround (y, centre, aroundHz, SR); }
+// Pitch within 8 semitones of an expected one, shortest strong period first. 0 if nothing periodic. The rule is in PitchRule.h (round 6c):
+// a period is the top of a whole peak of the autocorrelation, not a ripple on its shoulder. REALVOX_OLD_PITCH_RULE=1 reads with the rule
+// before round 6c, the first local peak that reaches 0.9 of the best, which is still the onset test's freePitch, so old records can be made again.
+double pitchAround (const std::vector<float>& y, long centre, double aroundHz)
+{
+    static const bool oldRule = std::getenv ("REALVOX_OLD_PITCH_RULE") != nullptr;
+    return oldRule ? realvox::pitchAroundFirstPeak (y, centre, aroundHz, SR) : realvox::pitchAround (y, centre, aroundHz, SR);
+}
 
 struct Stretch { int a = 0, b = 0; long onset = 0, end = 0; };
 

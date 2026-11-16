@@ -336,7 +336,7 @@ PASS  real speech and say singing: fixed fifth, median distance from lead plus t
 PASS  real material: biggest sample step in the voice against the input, worst file = 0.886 times
 PASS  real material, Tight preset: lead with two voices against the lead alone, 99th percentile of 20 ms frames = 4.320 dB
 INFO  real material, defaults: the same, voices running on behind a lead that has stopped = 7.701 dB
-PASS  CPU on one core, 48 kHz stereo, 4 voices, Wide Range, voice at 180 Hz with vibrato (machine busy with other builds) = 1.689 %
+PASS  CPU on one core, 48 kHz stereo, 4 voices, Wide Range, voice at 180 Hz with vibrato (machine busy with other builds) = 1.660 %
 METRIC  note change, how late voices arrive after the lead, average = 39.114 ms
 METRIC  note change, spread between earliest and latest voice, median = 19.000 ms
 METRIC  body of a note, distance from target, median = 3.633 cents
@@ -603,7 +603,7 @@ PASS  and its card shows that note, A3
 PASS  voice 1 reads the note it sings, C4
 PASS  voice 2 reads the note it sings, E4
 PASS  the window opens and shuts 60 times with no audio
-PASS  the window opens, draws and shuts 60 times with audio running = 19805.000 blocks
+PASS  the window opens, draws and shuts 60 times with audio running = 19899.000 blocks
 PASS  every preset, key extreme and scale draws = 90.000 pictures
 PASS  window size and Advanced come back with the session
 PASS  and the window opens that way = 1500.000 wide
@@ -700,7 +700,7 @@ PASS  8 notes on 8 voices: lowest note on voice 1, in order
 PASS  8 voices, 2000 random chord changes: no voice crossings = 0.000 
 PASS  8 voices: every note gets a voice = 0.000 
 PASS  8 voices: moving one note moves only that voice = 0.000 
-PASS  8 voices: working out a chord takes well under one block = 2.309 us
+PASS  8 voices: working out a chord takes well under one block = 2.192 us
 PASS  MIDI Channel: voice 5 takes channel 5, voice 8 takes channel 8
 PASS  voices together at 5 voices turn down by = -0.969 dB
 PASS  voices together at 6 voices turn down by = -1.761 dB
@@ -750,9 +750,9 @@ PASS  singers off against the same singers at Level Off: what is left = -240.000
 PASS  and the rest are still singing = -21.183 dB
 PASS  voice 1 coming back: pitch 50 ms later against its note = 0.003 cents
 PASS  voice 7 coming back: pitch 50 ms later against its note = 0.004 cents
-INFO  CPU, one core, eight singers on = 2.761 %
-INFO  CPU, one core, two of eight on = 0.939 %
-PASS  off singers' cost, as a share of what they cost on = 0.120 
+INFO  CPU, one core, eight singers on = 2.691 %
+INFO  CPU, one core, two of eight on = 0.923 %
+PASS  off singers' cost, as a share of what they cost on = 0.124 
 PASS  singer selection and voice count come back with the session
 PASS  a session from before opens with everyone on and its own voice count = 2.000 
 PASS  Voices Sounding counts singers you hear = 6.000 
@@ -955,4 +955,11 @@ PASS  round 5 (guard): the tracker reads the octave under 20 ms (13) and then no
 PASS  round 5: the longest a voice standing behind sings an octave above the low note (ms, no more than from the jump to the return, 21) = 21.000 
 PASS  round 5 (guard): an octave leap held 300 ms, the shortest any voice sings it (ms, 250 or more) = 318.000 
 PASS  round 5 (guard): back somewhere else after the gap, the longest a voice behind sings the octave (ms, more than from the jump to the return, 35) = 37.000 
+PASS  checker (guard): the shape, a ripple 8 to 12 samples short of the period at 0.90 to 0.95 of the best (share) = 0.945 
+PASS  checker 1: a broad peak with a ripple on its shoulder reads the period (cents off, 5 or less) = 0.002 
+PASS  checker 2: clean voices 70 to 400 Hz, search centre within 7 semitones, worst (cents off, 5 or less; 400 Hz u searched 7 st) = 0.060 
+PASS  checker (guard): the peak at twice the period is as strong or a little stronger (difference), and both are searched = 0.001 
+PASS  checker 3: the period wins over twice the period (cents off, 5 or less) = 0.023 
+PASS  checker 4: a voice an octave up reads an octave up (cents off 220 Hz, worst of two searches, 5 or less) = 0.016 
+PASS  checker 5: a voice 10 samples short of the expected period reads 10 samples short (cents off its own pitch, 5 or less) = 0.001 
 RESULT PASS  0 failures

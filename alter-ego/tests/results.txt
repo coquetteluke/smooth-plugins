@@ -415,6 +415,9 @@ PASS  Phase 2: Natural with Range Match moving the voice is not 'untouched': No 
 PASS  Phase 2: a window opened later with nothing playing shows nothing of the old voice: loudest point of the mirror = 0.000 
 PASS  Phase 2: a window opened later with nothing playing, after a change to 96 kHz, shows nothing of the old voice: loudest point of the mirror = 0.000 
 PASS  Phase 2: a soft voice (-42 dBFS) with Output -20 dB: the window still names its pitch: You 196 Hz  |  Alter Ego 262 Hz
-PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 8.372 %
-PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 9.036 %
+PASS  link: the card in a scratch folder lists every parameter by its ID, in order, with the 6 main controls marked = 17.000 
+PASS  link: a text command "5 st" on Pitch through the inbox moves it and is confirmed in done = 5.000 st
+PASS  link: closing the plug-in removes its card and inbox
+PASS  CPU on one core, stereo, everything working, 48000 Hz, machine busy with other builds = 8.594 %
+PASS  CPU on one core, stereo, everything working, 96000 Hz, machine busy with other builds = 9.212 %
 RESULT PASS  0 failures

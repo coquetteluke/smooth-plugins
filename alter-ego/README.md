@@ -25,6 +25,8 @@ Pictures are in `docs/window/`. Make them with `build/RenderWindow_artefacts/Rel
 
 Every control is a real AU parameter that a host can find by name.
 
+Since 1.3.0 it has the link: Switchboard can see and set every control from one place, by the track it is on.
+
 | Control | Range | What it does |
 |---|---|---|
 | Pitch | -24 to +24 st | Moves pitch. Formants stay. Measured over +/-12. |

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+`src/SmoothLink.h` is a byte copy of Switchboard's: the plug-in keeps a card of every control in the shared link folder and moves its own parameter, with a gesture as a mouse drag does, when Switchboard sends a set; the card carries the track name Logic gives it. Main controls: Pitch, Formant Shift (the pad), Character, Character Amount, Vibrato Depth, Vibrato Rate. New test `PluginTest link`: the card lists all 17 parameters by ID, "5 st" on Pitch lands and is confirmed, closing removes the card. No DSP, parameter, ID, range, default, preset, latency or AU code changed; the render sums of the default and all 14 presets equal 1.2.8's.
+
 ## 1.2.8, 2026-11-14
 
 Round 1's consonant click, the last of its two click faults. Luke asked for this on 2026-11-14, "do those 4 then". Real vocal check, full working set and hunt, on this build with round 1's tool and check file, against round 1's final run of 1.2.5 and against the last full check of 1.2.7: working set 187 > 187 failing readings of 648 and hunt 29 > 29 failing of 247 against both, nothing that passed failing, no reading changing its verdict.

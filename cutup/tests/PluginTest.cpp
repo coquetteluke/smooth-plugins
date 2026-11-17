@@ -4,6 +4,7 @@
 #define SMOOTH_COUNT_ALLOCS
 #include "TestKit.h"
 #include "PluginProcessor.h"
+#include "SmoothLink.h"
 #include "SliceEditor.h"
 #include <chrono>
 #include <set>
@@ -2073,6 +2074,74 @@ static void testCpu()
     juce::ignoreUnused (out);
 }
 
+// ---- the link ----
+
+// The link (1.3.0, Switchboard): with SMOOTH_LINK_DIR on a fresh scratch folder in the build, never the real one,
+// the card lists every parameter by its ID, and a text command through the inbox moves Sensitivity and is confirmed in done.
+void testLink()
+{
+    const char* had = std::getenv ("SMOOTH_LINK_DIR");
+    const std::string saved = had != nullptr ? had : "";
+    const auto dir = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory().getChildFile ("link-test");
+    dir.deleteRecursively();
+    setenv ("SMOOTH_LINK_DIR", dir.getFullPathName().toRawUTF8(), 1);
+    {
+        auto p = std::make_unique<PluginProcessor>();
+        const auto readCard = [&p]
+        {
+            std::string bytes;
+            juce::var v;
+            if (smooth::linkdetail::readFile (p->link.card().getFullPathName().toStdString(), bytes))
+                juce::JSON::parse (juce::String::fromUTF8 (bytes.data(), (int) bytes.size()), v);
+            return v;
+        };
+        // The three readings are added in the constructor's body, after the link is built: its polls list them on the next write, at
+        // most a quarter second on in a host. The test moves the link's clock on by that instead of waiting.
+        const double start = p->link.clock();
+        p->link.clock = [start] { return start + 0.3; };
+        p->link.pollNow();
+        auto card = readCard();
+        const auto& params = p->getParameters();
+        auto* listed = card["params"].getArray();
+        bool ok = p->link.enabled() && p->link.card().getParentDirectory() == dir && listed != nullptr && listed->size() == params.size();
+        juce::StringArray mains;
+        for (int i = 0; ok && i < params.size(); ++i)
+        {
+            auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*> (params[i]);
+            ok = hosted != nullptr && listed->getReference (i)["id"].toString() == hosted->getParameterID();
+            if ((bool) listed->getReference (i)["main"])
+                mains.add (listed->getReference (i)["id"].toString());
+        }
+        const juce::StringArray wanted { "slice_mode", "sensitivity", "slice_start", "selected", "play_mode", "output" };
+        ok = ok && mains.size() == wanted.size();
+        for (const auto& id : wanted)
+            ok = ok && mains.contains (id);
+        check (ok, "link: the card in a scratch folder lists every parameter by its ID, in order, with the 6 main controls marked", (double) params.size());
+
+        const juce::String name = "1794430230000-test-a1b2c3";
+        const auto tmp = p->link.inbox().getChildFile ("." + name + ".tmp");
+        tmp.replaceWithText (R"({ "param": "sensitivity", "text": "75 %" })");
+        tmp.moveFileTo (p->link.inbox().getChildFile (name + ".json"));
+        const float before = p->apvts.getRawParameterValue ("sensitivity")->load();
+        p->link.pollNow();
+        card = readCard();
+        juce::var done;
+        if (auto* d = card["done"].getArray())
+            for (auto& e : *d)
+                if (e["cmd"].toString() == name)
+                    done = e;
+        const float after = p->apvts.getRawParameterValue ("sensitivity")->load();
+        check (std::abs (before - 75.0f) > 1.0f && std::abs (after - 75.0f) < 0.05f && done.isObject() && (bool) done["ok"] && done["param"].toString() == "sensitivity",
+               "link: a text command \"75 %\" on Sensitivity through the inbox moves it and is confirmed in done", after, "%");
+    }
+    check (dir.isDirectory() && dir.getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0, "link: closing the plug-in removes its card and inbox");
+    if (had != nullptr)
+        setenv ("SMOOTH_LINK_DIR", saved.c_str(), 1);
+    else
+        unsetenv ("SMOOTH_LINK_DIR");
+    dir.deleteRecursively();
+}
+
 #include "Phase2Tests.h"
 
 int main (int argc, char** argv)
@@ -2084,6 +2153,14 @@ int main (int argc, char** argv)
     if (argc > 1 && juce::String (argv[1]) == "vocalcuts")
     {
         testVocalCutsInARoom();
+        return finish();
+    }
+
+    // Only the link test.
+    if (argc > 1 && juce::String (argv[1]) == "link")
+    {
+        testLink();
+        tempDir().deleteRecursively();
         return finish();
     }
 
@@ -2165,6 +2242,7 @@ int main (int argc, char** argv)
     testControlClicksWithSound();
     testCpu();
     phase2::run();
+    testLink();
 
     // A saved state for tests/AUStateCheck.cpp, which plays it through the real installed component.
     const auto statePath = juce::SystemStats::getEnvironmentVariable ("SMOOTH_SLICE_WRITE_STATE", {});

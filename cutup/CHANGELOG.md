@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0, 2026-11-17
+
+- Switchboard can now see and set every control through the link. Sound unchanged. `src/SmoothLink.h` is a byte copy of Switchboard's: the plug-in keeps a card of every control in the shared link folder and moves its own parameter, with a gesture as a mouse drag does, when Switchboard sends a set; the card carries the track name Logic gives it. Main controls: Slice Mode, Sensitivity, Slice Start, Selected Slice, Play Mode, Output. New test `PluginTest link` (also in the full run): the card lists all 218 parameters by ID, "75 %" on Sensitivity lands and is confirmed, closing removes the card. No DSP, parameter, ID, range, default, preset or AU code changed; the render sums of the default and all 14 presets, from the same saved sample, equal 1.2.2's.
+
 ## 1.2.2, 2026-11-13
 
 - Slice Mode set to Manual by a host or automation now gets the slices the processor holds (the default transient slices until a marker is moved), the same with the window open as closed. 1.2.1 gave the slices on show when the window was open, so an open window changed what a host set. Clicking Manual in the window still keeps the markers on show. New test in `tests/Phase2Tests.h`: Manual set through the parameter with the window open and closed must give the same slices and save the same bytes; on 1.2.1 8 slice starts differed.

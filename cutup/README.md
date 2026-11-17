@@ -37,6 +37,8 @@ The window is titled Cutup. The build keeps its current name for now.
 
 Every control is a real AU parameter with a value string. The sample and hand-moved markers are data, not controls, so a host can set everything below but cannot load a file or drag a marker.
 
+Since 1.3.0 it has the link: Switchboard can see and set every control from one place, by the track it is on.
+
 ### Slicing
 
 | Control | What it does |

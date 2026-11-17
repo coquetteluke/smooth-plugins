@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+The link is `src/SmoothLink.h`, a byte copy of Switchboard's. It puts a card of every parameter and its value in the shared link folder (the five readings too, read only), and applies set commands by moving the real parameter with a begin and end gesture, as a drag in the window does, so automation records it. The card names Source, Mode, Tempo Scale, Listening and Lock as the main controls. No control, parameter ID, AU code, detection reading or key.json field changed. Tests: 372 pass, 0 fail (1.7.3 had 370). New: the card lists all 16 parameters by their IDs, and a text command picks Single Voice and lands in the card's done list.
+
 ## 1.7.3, 2026-11-13
 
 The top of the note range is read, not made up (key-dsp-r2-1). Music tuned more than about 24 cents sharp put the top note's band past the last FFT bin Key reads, and the log spectrum drew a line on past it instead of reading a bin: up to 30 times the bins it is drawn from (30.6 for F# major 45 cents sharp with noise above 5 kHz, 1.000 now). It stops at the last bin now. The check that failed on 1.7.2 is in tests/Phase2Tests.h (`PluginTest --phase2 analyser`). Key's audio passes untouched as before; latency 0.

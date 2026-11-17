@@ -983,6 +983,57 @@ static void testEditor()
     check (true, "window closed before the plug-in");
 }
 
+// The link (1.8.0), for Switchboard. With SMOOTH_LINK_DIR on a fresh scratch folder, the card lists every parameter
+// by its ID, and a text command on a main control moves it and lands in done. The folder is removed afterwards and SMOOTH_LINK_DIR
+// goes back to what it was, so the real link folder is never used.
+static void testLink()
+{
+    const char* had = std::getenv ("SMOOTH_LINK_DIR");
+    const std::string saved = had != nullptr ? had : "";
+    const char* tmp = std::getenv ("TMPDIR");
+    std::string folder = (tmp != nullptr && tmp[0] == '/') ? tmp : "/tmp";
+    if (folder.back() != '/') folder += '/';
+    folder += "key-link.XXXXXX";
+    const bool made = mkdtemp (folder.data()) != nullptr;
+    setenv ("SMOOTH_LINK_DIR", folder.c_str(), 1);
+    {
+        PluginProcessor p (tempJson ("link.json"));   // key.json goes to the test folder
+        const auto& params = p.getParameters();
+        const juce::String name = "1794430230000-test-a1b2c3";
+        p.link.inbox().getChildFile (name + ".json").replaceWithText (R"({ "param": "source", "text": "single voice" })");
+        p.link.pollNow();
+        std::string bytes;
+        juce::var card;
+        const bool read = smooth::linkdetail::readFile (p.link.card().getFullPathName().toStdString(), bytes)
+                          && juce::JSON::parse (juce::String::fromUTF8 (bytes.data(), (int) bytes.size()), card).wasOk();
+        auto* listed = card["params"].getArray();
+        bool ids = made && p.link.enabled() && read && listed != nullptr && listed->size() == params.size();
+        juce::StringArray mains;
+        for (int i = 0; ids && i < params.size(); ++i)
+        {
+            auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*> (params[i]);
+            ids = hosted != nullptr && hosted->getParameterID().isNotEmpty() && (*listed)[i]["id"].toString() == hosted->getParameterID();
+            if ((bool) (*listed)[i]["main"])
+                mains.add ((*listed)[i]["id"].toString());
+        }
+        mains.sort (false);
+        check (ids && mains == juce::StringArray { "listening", "lock", "mode", "source", "tempoScale" },
+               "link: the card lists all " + std::to_string (params.size()) + " parameters by their IDs, in order, with Source, Mode, Tempo Scale, Listening and Lock as the main controls");
+        juce::var done;
+        if (auto* list = card["done"].getArray())
+            for (auto& d : *list)
+                if (d["cmd"].toString() == name)
+                    done = d;
+        const float now = p.apvts.getRawParameterValue ("source")->load();
+        check (std::abs (now - 1.0f) < 1.0e-3f && (bool) done["ok"] && p.link.inbox().getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0,
+               "link: the text command \"single voice\" on Source picks Single Voice and lands in done; Source now", now);
+    }
+    if (had != nullptr) setenv ("SMOOTH_LINK_DIR", saved.c_str(), 1);
+    else unsetenv ("SMOOTH_LINK_DIR");
+    if (made) juce::File (folder).deleteRecursively();
+}
+
+
 #include "WindowTests.h"
 #include "LockTests.h"
 #include "Phase2Tests.h"
@@ -1028,6 +1079,7 @@ int main (int argc, char** argv)
     }
 
     runPhase2Tests (1, argv);   // since 1.7.2, after every older test so their lines keep their places
+    testLink();                 // since 1.8.0, last for the same reason
 
     testFolder().deleteRecursively();
     return finish();

@@ -6,6 +6,7 @@
 #include "KeyFile.h"
 #include "KeyPublish.h"
 #include "SampleQueue.h"
+#include "SmoothLink.h"
 
 // A reading shown to the host, by name and value string.
 // It is not automatable, ignores writes, and is never pushed to the host, so it cannot write automation.
@@ -140,6 +141,8 @@ public:
     void offerLockKey (int key, bool minor) noexcept;
 
     juce::AudioProcessorValueTreeState apvts;
+    smooth::Link link { *this, smooth::Link::Info::fromBuild ({ "source", "mode", "tempoScale", "listening", "lock" }) };
+    void updateTrackProperties (const TrackProperties& p) override { link.setTrackName (p.name.value_or (juce::String())); }
 
     // The window's size and open section. Saved with the session, and not sound settings. The height follows from the width.
     static constexpr int defaultWindowWidth = 1000, minWindowWidth = 760, maxWindowWidth = 1800;

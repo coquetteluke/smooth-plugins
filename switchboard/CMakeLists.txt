@@ -100,3 +100,39 @@ target_compile_definitions(HubTest PRIVATE ${SP_DEFS} SWITCHBOARD_VERSION="${SP_
 target_link_libraries(HubTest PRIVATE juce::juce_audio_utils PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME hub COMMAND HubTest)
 set_tests_properties(hub PROPERTIES ENVIRONMENT "SMOOTH_LINK_DIR=${SCRATCH}/hubtest;SMOOTH_KEY_JSON=${SCRATCH}/key.json")
+
+# ---- Task 3: LinkCheck, the black-box check of an installed plug-in (no JUCE) ----
+add_executable(LinkCheck tools/LinkCheck.cpp)
+target_compile_options(LinkCheck PRIVATE -O2 -Wall -Wextra)
+target_link_libraries(LinkCheck PRIVATE "-framework AudioToolbox" "-framework CoreFoundation")
+set(SHARED_BIN "$ENV{HOME}/smooth-plugins/_shared/bin")
+add_custom_target(InstallLinkCheck
+    COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:LinkCheck>" "${SHARED_BIN}/LinkCheck"
+    COMMENT "Copying LinkCheck to ${SHARED_BIN}"
+    VERBATIM)
+add_dependencies(InstallLinkCheck LinkCheck)
+
+# Link Probe: the test processor with a link as a real Audio Unit, never installed. LinkCheck loads it from the build folder
+# (--load), its positive control.
+juce_add_plugin(LinkProbe
+    COMPANY_NAME "Luke Garito"
+    BUNDLE_ID "com.lukegarito.linkprobe"
+    PLUGIN_MANUFACTURER_CODE Luke
+    PLUGIN_CODE SLpr
+    FORMATS AU
+    PRODUCT_NAME "Link Probe"
+    PLUGIN_NAME "Link Probe"
+    DESCRIPTION "Test plug-in for LinkCheck, never installed"
+    AU_MAIN_TYPE kAudioUnitType_Effect
+    IS_SYNTH FALSE
+    NEEDS_MIDI_INPUT FALSE
+    NEEDS_MIDI_OUTPUT FALSE
+    IS_MIDI_EFFECT FALSE
+    COPY_PLUGIN_AFTER_BUILD FALSE)
+target_sources(LinkProbe PRIVATE tools/LinkProbe.cpp)
+target_include_directories(LinkProbe PRIVATE link tests)
+target_compile_definitions(LinkProbe PUBLIC ${SP_DEFS})
+target_link_libraries(LinkProbe PRIVATE juce::juce_audio_processors PUBLIC juce::juce_recommended_config_flags)
+
+add_test(NAME linkcheck COMMAND LinkCheck aufx SLpr Luke --load "$<TARGET_BUNDLE_DIR:LinkProbe_AU>" --scratch "${SCRATCH}")
+set_tests_properties(linkcheck PROPERTIES ENVIRONMENT "SMOOTH_LINK_DIR=${SCRATCH}/linkcheck-unused;SMOOTH_KEY_JSON=${SCRATCH}/key.json")

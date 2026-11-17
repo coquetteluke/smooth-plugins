@@ -2426,6 +2426,7 @@ using ui::StageView;
 #include "Round3Tests.h"
 #include "Round5Tests.h"
 #include "CheckerTests.h"
+#include "Round6Tests.h"
 
 // Before and after files for ears. The before files come from the 1.0.0 source, see README.
 void demo()
@@ -2611,6 +2612,7 @@ int main (int argc, char** argv)
     if (only == "lagtrace") { phase2::traceLaggedGrains(); return 0; }
     if (only == "r35probe") { round3::probeLongLag(); return 0; }
     if (only == "r5probe") { round5::probeBlip(); return 0; }
+    if (only == "r6probe") { round6::probeMoves(); return 0; }
     if (only == "fingerprints")
     {
         for (const int preset : { 0, 3, 4, 7, 10 })
@@ -2657,5 +2659,6 @@ int main (int argc, char** argv)
     if (want ("round3")) testRound3();
     if (want ("round5")) testRound5();
     if (want ("checker")) testChecker();
+    if (want ("round6")) testRound6();
     return finish();
 }

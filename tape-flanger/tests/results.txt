@@ -462,4 +462,6 @@ PASS  a session saved by 1.2.6 (one-bar-swirl) plays the same samples as 1.2.6 p
 PASS  a session saved by 1.2.6 (phase-flip-thin) plays the same samples as 1.2.6 played it, samples that differ = 0.000 
 PASS  Sync Division reads '1 Bar', '1/4 Dotted' and ' 4 bars ', index of 1 Bar = 3.000 
 PASS  and its own names, index of 1/16 = 13.000 
+PASS  link: the card lists all 31 parameters by their IDs, in order, with Rate, Depth, Feedback, Mix, Saturation and Tone as the main controls
+PASS  link: the text command "-40 %" on Feedback sets it and lands in done; Feedback now = -40.000 %
 RESULT PASS  0 failures

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+- The link is `src/SmoothLink.h`, a byte copy of Switchboard's. It puts a card of every parameter and its value in the shared link folder, and applies set commands by moving the real parameter with a begin and end gesture, as a drag in the window does, so automation records it. The card names Rate, Depth, Feedback, Mix, Saturation and Tone as the main controls.
+- Tests: 454 pass, 0 fail (1.2.8 had 452). New: the card lists all 31 parameters by their IDs, and a text command sets Feedback and lands in the card's done list.
+- Latency, controls, IDs and AU codes are unchanged, and sessions load as before.
+
 ## 1.2.8, 2026-11-13
 
 A synced sweep is heard on the beat. Luke said yes to this on 2026-11-13: "u can do all of these".

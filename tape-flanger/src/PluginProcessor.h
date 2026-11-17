@@ -3,6 +3,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "FlangerDsp.h"
 #include "FastOversampler.h"
+#include "SmoothLink.h"
 #include <array>
 #include <vector>
 
@@ -69,6 +70,8 @@ public:
     std::atomic<bool> advancedOpen { false };
 
     juce::AudioProcessorValueTreeState apvts;
+    smooth::Link link { *this, smooth::Link::Info::fromBuild ({ "rate", "depth", "feedback", "mix", "saturation", "tone" }) };
+    void updateTrackProperties (const TrackProperties& p) override { link.setTrackName (p.name.value_or (juce::String())); }
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();

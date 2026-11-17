@@ -6,6 +6,8 @@ A through-zero flanger. The dry path sits on a fixed delay and a swept copy move
 
 Audio Units > Luke Garito > Tape Flanger. AU: `aufx STfl Luke`. Mono and stereo.
 
+Switchboard sees and sets every control through the link (`src/SmoothLink.h`, since 1.3.0): a card of every parameter in `~/Library/Application Support/SmoothPlugins/link/`, and set commands that move the real parameter the way the window does.
+
 ## The window
 
 Text in the window calls it Tape Flanger. Everything in it is a real parameter that automation can move.

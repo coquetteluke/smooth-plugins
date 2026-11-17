@@ -2,9 +2,11 @@
 // variables set: SMOOTH_LINK_DIR=$PWD/work/scratch/hubtest SMOOTH_KEY_JSON=$PWD/work/scratch/key.json build/HubTest_artefacts/Release/HubTest
 //
 // Two more modes, never run by ctest:
-//   SWITCHBOARD_WINDOW_PNG=<absolute path> HubTest   saves the painted window of window_render (2x) next to its 1x copy.
+//   SWITCHBOARD_RENDER_DIR=<absolute folder> HubTest  saves the painted screens of window_render (2x) there:
+//                                                    switchboard-1.1-tracks.png, -track.png, -controls.png, the smallest size, empty.
 //   HubTest --window-cpu <seconds> <LinkStub path>    opens the window on screen with 6 LinkStub plug-ins in the scratch folder and
-//                                                    prints the CPU this process used with the window open (one core = 100%).
+//                                                    prints the CPU this process used with the window closed, open on Tracks, open
+//                                                    on a track, and with a control moving (one core = 100%).
 #define SMOOTH_COUNT_ALLOCS
 #include "TestKit.h"
 #include "TestProcessor.h"
@@ -12,6 +14,7 @@
 #include "Editor.h"
 #include "Registry.h"
 #include "Commands.h"
+#include "Screen.h"
 #include <cstring>
 #include <pwd.h>
 #include <random>
@@ -125,6 +128,98 @@ void testPassthrough()
     setenv ("SMOOTH_LINK_DIR", base.getFullPathName().toRawUTF8(), 1);
 }
 
+// The layouts a Logic channel strip or master can have, up to Dolby Atmos 7.1.4 and the largest JUCE knows (9.1.6, 16 channels).
+std::vector<std::pair<const char*, juce::AudioChannelSet>> everyLayout()
+{
+    using S = juce::AudioChannelSet;
+    return { { "mono", S::mono() }, { "stereo", S::stereo() }, { "LCR", S::createLCR() }, { "quad", S::quadraphonic() },
+             { "5.0", S::create5point0() }, { "5.1", S::create5point1() }, { "6.1", S::create6point1() }, { "7.1", S::create7point1() },
+             { "7.1.2", S::create7point1point2() }, { "7.1.4", S::create7point1point4() }, { "9.1.6", S::create9point1point6() },
+             { "ambisonic 1st order", S::ambisonic (1) } };
+}
+
+// Like testPassthrough, with the hub file off and before any timer thread exists.
+void testPassthroughAnyLayout()
+{
+    unsetenv ("SMOOTH_LINK_DIR");
+    Checks c;
+    long allocations = 0;
+    for (const auto& [label, set] : everyLayout())
+    {
+        SwitchboardProcessor p;
+        auto layout = p.getBusesLayout();
+        layout.inputBuses.getReference (0) = set;
+        layout.outputBuses.getReference (0) = set;
+        c.need (p.checkBusesLayoutSupported (layout), juce::String (label) + ": offered");
+        if (! p.setBusesLayout (layout))
+        {
+            c.need (false, juce::String (label) + ": the layout can be set");
+            continue;
+        }
+        const int channels = set.size();
+        c.need (p.getTotalNumInputChannels() == channels && p.getTotalNumOutputChannels() == channels, juce::String (label) + ": "
+                + juce::String (channels) + " channels in and out");
+        for (int block : { 1, 13, 511, 1013 })
+            for (bool bypassed : { false, true })
+            {
+                p.setRateAndBufferSizeDetails (48000.0, block);
+                p.prepareToPlay (48000.0, block);
+                c.need (p.getLatencySamples() == 0, juce::String (label) + ": no latency");
+                juce::AudioBuffer<float> buf (channels, block), copy (channels, block);
+                juce::MidiBuffer midi;
+                bool same = true;
+                for (int b = 0; b < 40; ++b)
+                {
+                    fillBits (buf, (unsigned) (b * 17 + block * 3 + channels));
+                    for (int ch = 0; ch < channels; ++ch)
+                        copy.copyFrom (ch, 0, buf, ch, 0, block);
+                    const auto before = allocs.load();
+                    if (bypassed)
+                        p.processBlockBypassed (buf, midi);
+                    else
+                        p.processBlock (buf, midi);
+                    allocations += allocs.load() - before;
+                    for (int ch = 0; ch < channels; ++ch)
+                        same = same && std::memcmp (buf.getReadPointer (ch), copy.getReadPointer (ch), sizeof (float) * (size_t) block) == 0;
+                }
+                c.need (same, juce::String (label) + ", block " + juce::String (block) + (bypassed ? ", bypassed" : "") + ": output bits equal input bits");
+            }
+    }
+    c.need (allocations == 0, "no allocation in processBlock (counted " + juce::String (allocations) + ")");
+    check (c.ok, "passthrough_bit_exact_any_layout: mono, stereo, LCR, quad, 5.0, 5.1, 6.1, 7.1, 7.1.2, 7.1.4, 9.1.6 and ambisonic, "
+                 "blocks 1, 13, 511 and 1013, bypassed or not, zero latency");
+    setenv ("SMOOTH_LINK_DIR", base.getFullPathName().toRawUTF8(), 1);
+}
+
+void testMismatchedLayoutRefused()
+{
+    unsetenv ("SMOOTH_LINK_DIR");
+    using S = juce::AudioChannelSet;
+    const std::vector<std::tuple<const char*, S, S>> bad {
+        { "disabled in and out", S::disabled(), S::disabled() }, { "stereo in, disabled out", S::stereo(), S::disabled() },
+        { "disabled in, stereo out", S::disabled(), S::stereo() }, { "mono in, stereo out", S::mono(), S::stereo() },
+        { "stereo in, mono out", S::stereo(), S::mono() }, { "5.1 in, stereo out", S::create5point1(), S::stereo() },
+        { "5.1 in, 6.0 out (same count, other layout)", S::create5point1(), S::create6point0() },
+        { "7.1.4 in, 7.1.2 out", S::create7point1point4(), S::create7point1point2() },
+        { "stereo in, 7.1.4 out", S::stereo(), S::create7point1point4() },
+        // No speaker names: never a Logic channel strip, and accepting it would make JUCE's AU wrapper drop the layout tags it reports.
+        { "3 discrete channels in and out", S::discreteChannels (3), S::discreteChannels (3) },
+        { "2 discrete channels in and out", S::discreteChannels (2), S::discreteChannels (2) } };
+    Checks c;
+    for (const auto& [label, in, out] : bad)
+    {
+        SwitchboardProcessor p;
+        const auto before = p.getBusesLayout();
+        auto layout = before;
+        layout.inputBuses.getReference (0) = in;
+        layout.outputBuses.getReference (0) = out;
+        c.need (! p.checkBusesLayoutSupported (layout), juce::String (label) + ": refused");
+        c.need (! p.setBusesLayout (layout) && p.getBusesLayout() == before, juce::String (label) + ": cannot be set, the layout stays");
+    }
+    check (c.ok, "mismatched_layout_refused: disabled, mismatched, same-count other layouts and plain discrete channels are refused");
+    setenv ("SMOOTH_LINK_DIR", base.getFullPathName().toRawUTF8(), 1);
+}
+
 void testLatencyZero()
 {
     Checks c;
@@ -200,11 +295,12 @@ void testHubFileTrack()
 
         int others = 0;
         for (const auto& f : dir.findChildFiles (juce::File::findFilesAndDirectories, false, "*"))
-            if (f != file)
+            if (f != file && f != p.hub.inbox())
                 ++others;
+        c.need (p.hub.inbox().isDirectory() && p.hub.inbox().getFileName() == "hub-" + p.hub.id() + ".in", "its inbox hub-<id>.in is made with it (1.1.0)");
         c.need (others == 0, "nothing else in the folder: Switchboard writes no member card");
     }
-    c.need (! file.exists() && dir.isDirectory() && dir.getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0, "removed on destruction, the folder stays");
+    c.need (! file.exists() && dir.isDirectory() && dir.getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0, "removed on destruction with its inbox, the folder stays");
 
     // Off without SMOOTH_LINK_DIR outside an AU, so this test can never write the real folder.
     unsetenv ("SMOOTH_LINK_DIR");
@@ -815,6 +911,22 @@ struct Window
     }
     ~Window() { p.editorBeingDeleted (ed.get()); }
 
+    // Switchboard opens on Tracks (1.1.0). The 1.0.0 window tests look at one track's plug-ins: a tap on that track first.
+    void openTrack (const juce::String& track)
+    {
+        if (w != nullptr)
+            w->show (hub::Screen::onTrack (track));
+    }
+
+    // Closes the window as a host does, the plug-in stays, and opens it again.
+    void reopen()
+    {
+        p.editorBeingDeleted (ed.get());
+        ed.reset();
+        ed.reset (p.createEditorIfNeeded());
+        w = dynamic_cast<SwitchboardEditor*> (ed.get());
+    }
+
     SwitchboardProcessor p;
     std::unique_ptr<juce::AudioProcessorEditor> ed;
     SwitchboardEditor* w = nullptr;
@@ -836,7 +948,7 @@ void testWindowShowsTrack()
             props.name = juce::String ("Bass");
             win.p.updateTrackProperties (props);
             w->tickNow (unixNow());
-            c.need (w->shownTrack() == "Bass" && w->viewLabel().contains ("Bass"), "shows the track name: " + w->viewLabel());
+            c.need (w->shownTrack() == "Bass" && w->subtitleText().contains ("Bass"), "shows the track name: " + w->subtitleText());
             juce::Image img (juce::Image::ARGB, w->getWidth(), w->getHeight(), true);
             juce::Graphics g (img);
             w->paintEntireComponent (g, false);
@@ -844,93 +956,6 @@ void testWindowShowsTrack()
         }
     }
     check (c.ok, "window_shows_track: the window shows its own track name");
-}
-
-void testWindowViews()
-{
-    const auto dir = useFolder ("window_views");
-    const double now = unixNow();
-    putCard (dir, hexId (1), cardText (hexId (1), "Tune Pro", "Lead Vox", 200.0, 1, tuneParams()), now);
-    putCard (dir, hexId (2), cardText (hexId (2), "Velvet Rope", "Lead Vox", 100.0, 1, ropeParams()), now);
-    putCard (dir, hexId (3), cardText (hexId (3), "Punch", "Bass", 300.0, 1, punchParams()), now);
-    Checks c;
-    {
-        Window win ("Lead Vox");
-        auto* w = win.w;
-        c.need (w != nullptr, "the window is Switchboard's");
-        if (w != nullptr)
-        {
-            w->tickNow (now);
-            c.need (w->shownNames() == juce::StringArray ({ "Velvet Rope", "Tune Pro" }), "This track by default, oldest first: " + joined (w->shownNames()));
-            c.need (w->viewLabel().contains ("Lead Vox"), "the view button names the track: " + w->viewLabel());
-            const auto items = w->viewMenuItems();
-            c.need (items.contains ("This track") && items.contains ("All tracks") && items.contains ("Bass") && items.contains ("Lead Vox"),
-                    "view menu: This track, All tracks, each track seen: " + joined (items));
-            w->chooseView ({ SwitchboardEditor::ViewKind::allTracks, {} });
-            c.need (w->shownNames() == juce::StringArray ({ "Punch", "Velvet Rope", "Tune Pro" }), "All tracks, track by track: " + joined (w->shownNames()));
-            w->chooseView ({ SwitchboardEditor::ViewKind::oneTrack, "Bass" });
-            c.need (w->shownNames() == juce::StringArray ({ "Punch" }) && w->viewLabel().contains ("Bass"), "a chosen track: " + joined (w->shownNames()));
-            w->chooseView ({ SwitchboardEditor::ViewKind::thisTrack, {} });
-
-            SwitchboardProcessor::TrackProperties props;
-            props.name = juce::String ("Lead Vox 2");
-            win.p.updateTrackProperties (props);
-            w->tickNow (now + 0.2);
-            c.need (w->shownNames().isEmpty() && w->emptyText().contains ("Put one of your plug-ins on this track") && w->offersAllTracks(),
-                    "a track with none of your plug-ins says what to do and offers All tracks: " + w->emptyText());
-            win.p.hub.setTrackName ({});
-            w->tickNow (now + 0.4);
-            c.need (w->shownNames().size() == 3 && ! w->offersAllTracks(), "until Logic names the track, every track shows: " + joined (w->shownNames()));
-        }
-    }
-    {
-        useFolder ("window_views_empty");
-        Window win ("Vox");
-        if (win.w != nullptr)
-        {
-            win.w->tickNow (unixNow());
-            c.need (win.w->shownNames().isEmpty() && win.w->emptyText().contains ("Put one of your plug-ins on this track") && ! win.w->offersAllTracks(),
-                    "an empty folder says what to do and offers nothing else");
-        }
-    }
-    check (c.ok, "window_views: This track by default, All tracks, each track seen, an empty state that says what to do");
-}
-
-void testWindowViewKept()
-{
-    const auto dir = useFolder ("window_view_kept");
-    putCard (dir, hexId (1), cardText (hexId (1), "Tune Pro", "Lead Vox", 1.0, 1, tuneParams()), unixNow());
-    putCard (dir, hexId (2), cardText (hexId (2), "Punch", "Bass", 2.0, 1, punchParams()), unixNow());
-    Checks c;
-    juce::MemoryBlock state;
-    {
-        Window win ("Lead Vox");
-        if (win.w != nullptr)
-            win.w->chooseView ({ SwitchboardEditor::ViewKind::oneTrack, "Bass" });
-        win.p.editorBeingDeleted (win.ed.get());   // the window closes, as a host closes it; the plug-in stays
-        win.ed.reset();
-        win.ed.reset (win.p.createEditorIfNeeded());
-        win.w = dynamic_cast<SwitchboardEditor*> (win.ed.get());
-        if (win.w != nullptr)
-        {
-            win.w->tickNow (unixNow());
-            c.need (win.w->view().kind == SwitchboardEditor::ViewKind::oneTrack && win.w->view().track == "Bass" && win.w->shownNames() == juce::StringArray ({ "Punch" }),
-                    "a window opened again shows the view chosen before");
-        }
-        win.p.getStateInformation (state);
-    }
-    {
-        SwitchboardProcessor restored;
-        restored.setStateInformation (state.getData(), (int) state.getSize());
-        c.need (restored.getView() == "track:Bass", "the view is saved with the session: " + restored.getView());
-        juce::XmlElement bad ("SWITCHBOARD");
-        bad.setAttribute ("view", "garbage");
-        juce::MemoryBlock badState;
-        juce::AudioProcessor::copyXmlToBinary (bad, badState);
-        restored.setStateInformation (badState.getData(), (int) badState.getSize());
-        c.need (restored.getView() == "track:Bass", "a view it does not know is ignored");
-    }
-    check (c.ok, "window_view_kept: the chosen view stays while the plug-in is open and is saved with the session");
 }
 
 void testWindowControlKinds()
@@ -947,6 +972,7 @@ void testWindowControlKinds()
     Checks c;
     {
         Window win ("Vox");
+        win.openTrack ("Vox");
         if (auto* w = win.w)
         {
             w->tickNow (now);
@@ -977,6 +1003,7 @@ void testWindowDoubleClickDefault()
     Checks c;
     {
         Window win ("Vox");
+        win.openTrack ("Vox");
         if (auto* w = win.w)
         {
             w->tickNow (now);
@@ -1023,6 +1050,7 @@ void testWindowDragFollows()
     Checks c;
     {
         Window win ("Vox");
+        win.openTrack ("Vox");
         if (auto* w = win.w)
         {
             double t = start;
@@ -1099,6 +1127,7 @@ void testWindowNotResponding()
     Checks c;
     {
         Window win ("Vox");
+        win.openTrack ("Vox");
         if (auto* w = win.w)
         {
             w->tickNow (now);
@@ -1143,6 +1172,7 @@ void testWindowAllControls()
     Checks c;
     {
         Window win ("Vox");
+        win.openTrack ("Vox");
         if (auto* w = win.w)
         {
             w->tickNow (now);
@@ -1153,14 +1183,8 @@ void testWindowAllControls()
             c.need (w->allControlsRows() == 1, "search by control name");
             w->searchAllControls ("");
             c.need (w->allControlsRows() == 5, "an empty search shows all again");
-            w->openAllControls ({});
-            c.need (w->allControlsRows() == 9, "the list for the whole view holds every control of every plug-in: " + juce::String (w->allControlsRows()));
-            w->searchAllControls ("velvet");
-            c.need (w->allControlsRows() == 4, "search by plug-in name");
             w->searchAllControls ("retune speed");
             c.need (w->allControlsRows() == 1, "every word must match");
-            w->searchAllControls ("high");
-            c.need (w->allControlsRows() == 1, "search by a choice name finds the control that has it");
             w->searchAllControls ("mix");
             if (auto* mix = w->findAllControlsControl (tune, "mix"))
             {
@@ -1174,9 +1198,16 @@ void testWindowAllControls()
                 c.need (false, "the list has a control for mix");
             w->closeAllControls();
             c.need (w->allControlsRows() < 0, "closes");
+            w->openAllControls (rope);
+            c.need (w->allControlsRows() == 4, "another plug-in's list holds its own controls: " + juce::String (w->allControlsRows()));
+            w->searchAllControls ("high");
+            c.need (w->allControlsRows() == 1, "search by a choice name finds the control that has it");
+            w->searchAllControls ("retune");
+            c.need (w->allControlsRows() == 0, "a list holds one plug-in only");
+            w->closeAllControls();
         }
     }
-    check (c.ok, "window_all_controls: a searchable list of every control, one plug-in or the whole view");
+    check (c.ok, "window_all_controls: a searchable list of every control of one plug-in");
 }
 
 void saveImage (const juce::Image& img, const juce::File& out)
@@ -1205,54 +1236,846 @@ void testWindowRender()
     putCard (dir, hexId (2), cardText (hexId (2), "Tune Pro", "Lead Vox", 200.0, 1, tuneParams()), now);
     putCard (dir, hexId (3), cardText (hexId (3), "Punch", "Lead Vox", 300.0, 1, punchParams()), now);
     putCard (dir, hexId (4), cardText (hexId (4), "Tape Color", "Lead Vox", 400.0, 1, tape), now - 3.0);
-    putCard (dir, hexId (5), cardText (hexId (5), "Key", "Bass", 500.0, 1, {}), now);
+    putCard (dir, hexId (5), cardText (hexId (5), "Key", "Bass", 150.0, 1, {}), now);
+    putCard (dir, hexId (6), cardText (hexId (6), "Tape Chorus", "Backing Vox", 250.0, 1, ropeParams()), now);
+    putCard (dir, hexId (7), cardText (hexId (7), "Duo", "Backing Vox", 260.0, 1, punchParams()), now);
+    putCard (dir, hexId (8), cardText (hexId (8), "Throat", "", 500.0, 1, punchParams()), now);
     Checks c;
     {
-        Window win ("Lead Vox");
+        Window win ("Stereo Out");
         if (auto* w = win.w)
         {
             w->tickNow (now);
+            const auto tracksImg = paintAt (*w, 1.0f);
+            c.need (w->trackRows().size() == 4, "four rows on Tracks: " + juce::String ((int) w->trackRows().size()));
+            win.openTrack ("Lead Vox");
+            w->tickNow (now);
             c.need (w->shownNames().size() == 4, "four plug-ins on Lead Vox");
             const auto img = paintAt (*w, 1.0f);
-            std::set<juce::uint32> colours;
-            for (int y = 0; y < img.getHeight(); y += 3)
-                for (int x = 0; x < img.getWidth(); x += 3)
-                    colours.insert (img.getPixelAt (x, y).getARGB());
-            c.need (img.getPixelAt (2, 2).getAlpha() == 255 && img.getPixelAt (img.getWidth() - 3, img.getHeight() - 3).getAlpha() == 255, "opaque edge to edge");
-            c.need (colours.size() > 40, "the cards and controls paint: " + juce::String ((int) colours.size()) + " colours");
+            for (const auto* shot : { &tracksImg, &img })
+            {
+                std::set<juce::uint32> colours;
+                for (int y = 0; y < shot->getHeight(); y += 3)
+                    for (int x = 0; x < shot->getWidth(); x += 3)
+                        colours.insert (shot->getPixelAt (x, y).getARGB());
+                c.need (shot->getPixelAt (2, 2).getAlpha() == 255 && shot->getPixelAt (shot->getWidth() - 3, shot->getHeight() - 3).getAlpha() == 255, "opaque edge to edge");
+                c.need (colours.size() > 40, "the rows, cards and controls paint: " + juce::String ((int) colours.size()) + " colours");
+            }
             c.need (w->getWidth() >= 760 && w->getHeight() >= 480, "opens at a size where the text reads");
             if (auto* cons = w->getConstrainer())
                 c.need (cons->getMinimumWidth() >= 480 && cons->getMinimumHeight() >= 340 && w->isResizable(), "resizable with a sensible minimum");
             else
                 c.need (false, "resizable");
-            // SWITCHBOARD_WINDOW_PNG=<absolute path>: the window at 2x there, and 1x, all controls and empty state next to it.
-            if (const char* png = std::getenv ("SWITCHBOARD_WINDOW_PNG"); png != nullptr && png[0] == '/')
+            // SWITCHBOARD_RENDER_DIR=<absolute folder>: switchboard-1.1-tracks.png, -track.png and -controls.png there (2x), and the
+            // smallest size and the empty Tracks screen next to them.
+            if (const char* folder = std::getenv ("SWITCHBOARD_RENDER_DIR"); folder != nullptr && folder[0] == '/')
             {
-                const juce::File out (png);
-                const auto sibling = [&] (const char* tag) { return out.getSiblingFile (out.getFileNameWithoutExtension() + tag + ".png"); };
-                saveImage (paintAt (*w, 2.0f), out);
-                saveImage (img, sibling ("@1x"));
-                w->chooseView ({ SwitchboardEditor::ViewKind::allTracks, {} });
-                saveImage (paintAt (*w, 2.0f), sibling ("-all-tracks"));
-                w->chooseView ({ SwitchboardEditor::ViewKind::thisTrack, {} });
-                w->openAllControls (hexId (2));
-                saveImage (paintAt (*w, 2.0f), sibling ("-all-controls"));
-                w->closeAllControls();
+                const juce::File out (folder);
+                const auto shot = [&] (const char* tag) { saveImage (paintAt (*w, 2.0f), out.getChildFile (juce::String ("switchboard-1.1-") + tag + ".png")); };
+                w->show (hub::Screen::tracks());
+                shot ("tracks");
+                w->show (hub::Screen::onTrack ("Lead Vox"));
+                shot ("track");
+                w->show (hub::Screen::controlsOf ("Lead Vox", "Tune Pro"));
+                shot ("controls");
                 w->setSize (w->getConstrainer()->getMinimumWidth(), w->getConstrainer()->getMinimumHeight());
-                saveImage (paintAt (*w, 2.0f), sibling ("-smallest"));
-                SwitchboardProcessor::TrackProperties props;
-                props.name = juce::String ("Drums");
-                win.p.updateTrackProperties (props);
-                w->setSize (880, 560);
-                w->tickNow (unixNow());
-                saveImage (paintAt (*w, 2.0f), sibling ("-empty"));
+                w->show (hub::Screen::onTrack ("Lead Vox"));
+                shot ("track-smallest");
+                w->show (hub::Screen::tracks());
+                shot ("tracks-smallest");
+                w->setSize (880, 580);
             }
         }
     }
-    check (c.ok, "window_render: the window paints its cards edge to edge, resizable with a minimum size");
+    if (const char* folder = std::getenv ("SWITCHBOARD_RENDER_DIR"); folder != nullptr && folder[0] == '/')
+    {
+        useFolder ("window_render_empty");
+        Window empty ("Stereo Out");
+        if (empty.w != nullptr)
+        {
+            empty.w->tickNow (unixNow());
+            saveImage (paintAt (*empty.w, 2.0f), juce::File (folder).getChildFile ("switchboard-1.1-empty.png"));
+        }
+    }
+    check (c.ok, "window_render: Tracks and a track's plug-ins paint edge to edge, resizable with a minimum size");
 }
 
-// HubTest --window-cpu <seconds> <LinkStub>: the window open on screen with six plug-ins, CPU of this process with it open.
+// ---- 1.1.0: the screens (Tracks, a track, its controls), kept by the processor, and the hub inbox ----
+
+void click (juce::Component* comp)
+{
+    if (comp == nullptr)
+        return;
+    const auto centre = comp->getLocalBounds().getCentre().toFloat();
+    comp->mouseDown (mouseAt (*comp, centre, 1, false, centre));
+    comp->mouseUp (mouseAt (*comp, centre, 1, false, centre));
+}
+
+bool shownOnScreen (juce::Component* comp) { return comp != nullptr && comp->isVisible() && comp->getParentComponent() != nullptr; }
+
+// What the hub file's "showing" (or a done entry's) says, in hub::Screen::describe's words.
+juce::String showingText (const juce::var& s)
+{
+    if (! s.isObject())
+        return "(missing)";
+    const auto screen = s["screen"].toString();
+    const auto t = s["track"].isVoid() ? juce::String ("(no name)") : s["track"].toString();
+    if (screen == "track")
+        return "track:" + t;
+    if (screen == "controls")
+        return "controls:" + t + "/" + s["plugin"].toString();
+    return screen;
+}
+
+juce::String hubShowing (SwitchboardProcessor& p) { return showingText (readJson (p.hub.file())["showing"]); }
+
+juce::var hubDone (SwitchboardProcessor& p, const juce::String& cmd)
+{
+    const auto file = readJson (p.hub.file());   // held here: the done list lives inside it
+    if (const auto* done = file["done"].getArray())
+        for (const auto& d : *done)
+            if (d["cmd"].toString() == cmd)
+                return d;
+    return {};
+}
+
+juce::StringArray hubDoneNames (SwitchboardProcessor& p)
+{
+    juce::StringArray out;
+    const auto file = readJson (p.hub.file());
+    if (const auto* done = file["done"].getArray())
+        for (const auto& d : *done)
+            out.add (d["cmd"].toString());
+    return out;
+}
+
+// A command in the hub inbox as a writer puts it there: .<name>.tmp, then renamed to <name>.json.
+juce::String hubCommand (SwitchboardProcessor& p, const juce::String& body, juce::int64 ms = 0)
+{
+    if (ms == 0)
+        ms = (juce::int64) std::floor (unixNow() * 1000.0);
+    const auto name = juce::String (ms) + "-test-" + smooth::linkdetail::randomHex (3);
+    const auto inbox = p.hub.inbox();
+    const auto temp = inbox.getChildFile ("." + name + ".tmp");
+    temp.replaceWithText (body);
+    std::rename (temp.getFullPathName().toRawUTF8(), inbox.getChildFile (name + ".json").getFullPathName().toRawUTF8());
+    return name;
+}
+
+int filesIn (const juce::File& folder, const juce::String& pattern = "*")
+{
+    return folder.getNumberOfChildFiles (juce::File::findFiles, pattern);
+}
+
+juce::String rowTitles (const std::vector<SwitchboardEditor::TrackRow>& rows)
+{
+    juce::StringArray s;
+    for (auto& r : rows)
+        s.add (r.title);
+    return joined (s);
+}
+
+void testTracksScreenLoadOrder()
+{
+    const auto dir = useFolder ("tracks_screen_lists_tracks_in_load_order");
+    const double now = unixNow();
+    auto tape = punchParams();
+    tape[0] = { "drive", "Drive", "4.5 dB", "dB", 0.45, 0.3, 0, {}, true };
+    // Load order: Lead Vox (its first plug-in started at 100), Bass (200), Drums (300). By name it would be Bass, Drums, Lead Vox.
+    putCard (dir, hexId (1), cardText (hexId (1), "Tune Pro", "Lead Vox", 400.0, 1, tuneParams()), now);
+    putCard (dir, hexId (2), cardText (hexId (2), "Velvet Rope", "Lead Vox", 100.0, 1, ropeParams()), now);
+    putCard (dir, hexId (3), cardText (hexId (3), "Key", "Bass", 200.0, 1, punchParams()), now);
+    putCard (dir, hexId (4), cardText (hexId (4), "Tape Color", "Bass", 250.0, 1, tape), now - 3.0);
+    putCard (dir, hexId (5), cardText (hexId (5), "Punch", "Drums", 300.0, 1, punchParams()), now);
+    Checks c;
+    {
+        Window win ("Lead Vox");   // on a normal track it still opens on Tracks
+        if (auto* w = win.w)
+        {
+            w->tickNow (now);
+            c.need (win.p.getScreen() == hub::Screen::tracks() && w->screen() == hub::Screen::tracks(), "a new Switchboard opens on Tracks, even on a normal track: "
+                    + w->screen().describe());
+            const auto rows = w->trackRows();
+            c.need (rowTitles (rows) == "[Lead Vox, Bass, Drums]", "tracks in load order: " + rowTitles (rows));
+            if (rows.size() == 3)
+            {
+                c.need (rows[0].plugins == juce::StringArray ({ "Velvet Rope", "Tune Pro" }) && rows[0].note.isEmpty(), "a row lists its plug-ins in load order: "
+                        + joined (rows[0].plugins));
+                c.need (rows[1].plugins == juce::StringArray ({ "Key", "Tape Color" }) && rows[1].note.contains ("Tape Color") && rows[1].note.contains ("not responding"),
+                        "a quiet plug-in gets a note on its row: " + rows[1].note);
+                c.need (rows[2].plugins == juce::StringArray ({ "Punch" }) && rows[2].track == "Drums", "Drums: Punch");
+            }
+            c.need (w->titleText() == "Switchboard" && ! shownOnScreen (w->backButton()), "Tracks is home: the name on top, no back button");
+            c.need (shownOnScreen (w->trackRow ("Bass")) && w->trackRow ("Nope") == nullptr, "each row is on screen");
+            win.p.pollNow (now);
+            c.need (hubShowing (win.p) == "tracks", "the hub file says tracks: " + hubShowing (win.p));
+
+            putCard (dir, hexId (6), cardText (hexId (6), "Duo", "Choir", 50.0, 1, punchParams()), now + 0.2);
+            w->tickNow (now + 0.2);
+            c.need (rowTitles (w->trackRows()) == "[Choir, Lead Vox, Bass, Drums]", "a track whose plug-in started first goes first: " + rowTitles (w->trackRows()));
+            dir.getChildFile (hexId (5) + ".json").deleteFile();
+            w->tickNow (now + 0.3);
+            c.need (rowTitles (w->trackRows()) == "[Choir, Lead Vox, Bass]", "a track with nothing open goes: " + rowTitles (w->trackRows()));
+        }
+    }
+    {
+        useFolder ("tracks_screen_empty");
+        Window win ("Stereo Out");
+        if (win.w != nullptr)
+        {
+            win.w->tickNow (unixNow());
+            c.need (win.w->trackRows().empty() && win.w->emptyText().contains ("None of your plug-ins are open in this project yet"),
+                    "nothing open says so in plain words: " + win.w->emptyText());
+        }
+    }
+    check (c.ok, "tracks_screen_lists_tracks_in_load_order: one row per track with its plug-ins, earliest started first, quiet ones noted");
+}
+
+void testUnnamedTrackRow()
+{
+    const auto dir = useFolder ("unnamed_track_row");
+    const double now = unixNow();
+    putCard (dir, hexId (1), cardText (hexId (1), "Tune Pro", "Lead Vox", 100.0, 1, tuneParams()), now);
+    putCard (dir, hexId (2), cardText (hexId (2), "Key", "", 50.0, 1, punchParams()), now);
+    putCard (dir, hexId (3), cardText (hexId (3), "Punch", "", 300.0, 1, punchParams()), now);
+    Checks c;
+    {
+        Window win ("Stereo Out");
+        if (auto* w = win.w)
+        {
+            w->tickNow (now);
+            const auto rows = w->trackRows();
+            c.need (rowTitles (rows) == "[Lead Vox, No track name yet]", "one row for the plug-ins with no track name, last: " + rowTitles (rows));
+            if (rows.size() == 2)
+                c.need (rows[1].track.isEmpty() && rows[1].plugins == juce::StringArray ({ "Key", "Punch" }), "it holds both, in load order: " + joined (rows[1].plugins));
+            click (w->trackRow (""));
+            c.need (w->screen() == hub::Screen::onTrack ("") && w->titleText() == "No track name yet", "a tap opens it: " + w->screen().describe() + ", " + w->titleText());
+            c.need (w->shownNames() == juce::StringArray ({ "Key", "Punch" }), "with its plug-ins: " + joined (w->shownNames()));
+            c.need (hubShowing (win.p) == "track:(no name)" && readJson (win.p.hub.file())["showing"]["track"].isVoid(), "the hub file says track null: " + hubShowing (win.p));
+        }
+    }
+    check (c.ok, "unnamed_track_row: plug-ins Logic has not named a track for share one row, \"No track name yet\"");
+}
+
+void testTrackScreenBackToTracks()
+{
+    const auto dir = useFolder ("track_screen_back_to_tracks");
+    const double now = unixNow();
+    putCard (dir, hexId (1), cardText (hexId (1), "Tune Pro", "Lead Vox", 200.0, 1, tuneParams()), now);
+    putCard (dir, hexId (2), cardText (hexId (2), "Velvet Rope", "Lead Vox", 100.0, 1, ropeParams()), now);
+    putCard (dir, hexId (3), cardText (hexId (3), "Punch", "Bass", 300.0, 1, punchParams()), now);
+    Checks c;
+    {
+        Window win ("Stereo Out");
+        if (auto* w = win.w)
+        {
+            w->tickNow (now);
+            click (w->trackRow ("Lead Vox"));
+            c.need (w->screen() == hub::Screen::onTrack ("Lead Vox") && win.p.getScreen() == hub::Screen::onTrack ("Lead Vox"), "a tap on a row opens its track: " + w->screen().describe());
+            c.need (w->titleText() == "Lead Vox", "the track name is the title: " + w->titleText());
+            auto* back = w->backButton();
+            c.need (shownOnScreen (back) && w->backText() == juce::String (juce::CharPointer_UTF8 ("\xe2\x80\xb9 Tracks")), "a back button \"< Tracks\": " + w->backText());
+            c.need (back != nullptr && back->getX() < 40 && back->getY() < 30 && back->getWidth() >= 80 && back->getHeight() >= 30, "at top left, big enough to hit");
+            c.need (w->shownNames() == juce::StringArray ({ "Velvet Rope", "Tune Pro" }) && w->findControl (hexId (1), "retune") != nullptr,
+                    "the track's plug-ins with their main controls: " + joined (w->shownNames()));
+            c.need (hubShowing (win.p) == "track:Lead Vox", "the hub file says so at once: " + hubShowing (win.p));
+            click (back);
+            c.need (w->screen() == hub::Screen::tracks() && rowTitles (w->trackRows()) == "[Lead Vox, Bass]" && ! shownOnScreen (w->backButton()),
+                    "back shows Tracks again: " + w->screen().describe());
+            c.need (w->shownNames().isEmpty() && hubShowing (win.p) == "tracks", "the plug-in lines are gone, the hub file says tracks");
+            click (w->trackRow ("Bass"));
+            c.need (w->screen() == hub::Screen::onTrack ("Bass") && w->shownNames() == juce::StringArray ({ "Punch" }), "another row, another track");
+        }
+    }
+    check (c.ok, "track_screen_back_to_tracks: a row opens its track, titled by name, and \"< Tracks\" at top left goes back");
+}
+
+void testControlsScreenBackToTrack()
+{
+    const auto dir = useFolder ("controls_screen_back_to_track");
+    const double now = unixNow();
+    const auto tune = hexId (1), rope = hexId (2);
+    putCard (dir, tune, cardText (tune, "Tune Pro", "Lead Vox", 200.0, 1, tuneParams()), now);
+    putCard (dir, rope, cardText (rope, "Velvet Rope", "Lead Vox", 100.0, 1, ropeParams()), now);
+    Checks c;
+    {
+        Window win ("Stereo Out");
+        if (auto* w = win.w)
+        {
+            w->tickNow (now);
+            win.openTrack ("Lead Vox");
+            click (w->controlsLink (tune));
+            c.need (w->screen() == hub::Screen::controlsOf ("Lead Vox", "Tune Pro"), "\"All 5 controls\" opens the controls screen: " + w->screen().describe());
+            c.need (w->titleText() == "Tune Pro" && w->backText() == juce::String (juce::CharPointer_UTF8 ("\xe2\x80\xb9 Lead Vox")) && shownOnScreen (w->backButton()),
+                    "titled by the plug-in, back button \"< Lead Vox\": " + w->titleText() + ", " + w->backText());
+            c.need (w->allControlsRows() == 5 && w->shownNames().isEmpty(), "every control of that plug-in, nothing else: " + juce::String (w->allControlsRows()));
+            c.need (hubShowing (win.p) == "controls:Lead Vox/Tune Pro", "the hub file says so: " + hubShowing (win.p));
+            w->searchAllControls ("mix");
+            c.need (w->allControlsRows() == 1, "the search still works");
+            click (w->backButton());
+            c.need (w->screen() == hub::Screen::onTrack ("Lead Vox") && w->allControlsRows() < 0 && w->shownNames() == juce::StringArray ({ "Velvet Rope", "Tune Pro" }),
+                    "back shows the track again: " + w->screen().describe());
+            click (w->controlsLink (rope));
+            c.need (w->screen() == hub::Screen::controlsOf ("Lead Vox", "Velvet Rope") && w->allControlsRows() == 4, "another plug-in's controls, the search empty again");
+            if (auto* search = w->searchBox())
+                search->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey));
+            c.need (w->searchBox() != nullptr && w->screen() == hub::Screen::onTrack ("Lead Vox"), "Escape in the empty search goes back too");
+            click (w->backButton());
+            c.need (w->screen() == hub::Screen::tracks(), "and back again is Tracks");
+        }
+    }
+    check (c.ok, "controls_screen_back_to_track: \"All N controls\" opens one plug-in's controls and \"< track\" goes back");
+}
+
+void testScreenSurvivesReopen()
+{
+    const auto dir = useFolder ("screen_survives_editor_close_and_reopen");
+    const double now = unixNow();
+    putCard (dir, hexId (1), cardText (hexId (1), "Tune Pro", "Lead Vox", 100.0, 1, tuneParams()), now);
+    putCard (dir, hexId (2), cardText (hexId (2), "Punch", "Bass", 200.0, 1, punchParams()), now);
+    Checks c;
+    {
+        Window win ("Stereo Out");
+        if (win.w != nullptr)
+        {
+            win.w->tickNow (now);
+            win.w->show (hub::Screen::controlsOf ("Lead Vox", "Tune Pro"));
+        }
+        win.p.editorBeingDeleted (win.ed.get());
+        win.ed.reset();
+        c.need (win.p.getScreen() == hub::Screen::controlsOf ("Lead Vox", "Tune Pro"), "with the window closed the plug-in keeps the screen: " + win.p.getScreen().describe());
+        win.ed.reset (win.p.createEditorIfNeeded());
+        win.w = dynamic_cast<SwitchboardEditor*> (win.ed.get());
+        if (win.w != nullptr)
+        {
+            win.w->tickNow (unixNow());
+            c.need (win.w->screen() == hub::Screen::controlsOf ("Lead Vox", "Tune Pro") && win.w->allControlsRows() == 5 && win.w->titleText() == "Tune Pro",
+                    "opened again it shows the same controls: " + win.w->screen().describe());
+            win.w->show (hub::Screen::onTrack ("Bass"));
+        }
+        win.reopen();
+        if (win.w != nullptr)
+        {
+            win.w->tickNow (unixNow());
+            c.need (win.w->screen() == hub::Screen::onTrack ("Bass") && win.w->shownNames() == juce::StringArray ({ "Punch" }), "the same track: " + win.w->screen().describe());
+            win.w->show (hub::Screen::tracks());
+        }
+        win.reopen();
+        if (win.w != nullptr)
+        {
+            win.w->tickNow (unixNow());
+            c.need (win.w->screen() == hub::Screen::tracks() && win.w->trackRows().size() == 2, "and Tracks");
+        }
+    }
+    check (c.ok, "screen_survives_editor_close_and_reopen: the plug-in keeps the screen, the window comes back to it");
+}
+
+void testScreenSavedWithSession()
+{
+    const auto dir = useFolder ("screen_saved_with_session_and_restored");
+    const double now = unixNow();
+    putCard (dir, hexId (1), cardText (hexId (1), "Tune Pro", "Lead Vox", 100.0, 1, tuneParams()), now);
+    putCard (dir, hexId (2), cardText (hexId (2), "Tune Pro", "Lead Vox", 200.0, 1, [] { auto ps = tuneParams(); ps.pop_back(); return ps; }()), now);
+    putCard (dir, hexId (3), cardText (hexId (3), "Punch", "Bass", 300.0, 1, punchParams()), now);
+    Checks c;
+    const auto saveWith = [&] (const hub::Screen& s)
+    {
+        juce::MemoryBlock state;
+        Window win ("Stereo Out");
+        if (win.w != nullptr)
+        {
+            win.w->tickNow (unixNow());
+            win.w->show (s);
+        }
+        win.p.getStateInformation (state);
+        return state;
+    };
+    for (const auto& s : { hub::Screen::controlsOf ("Lead Vox", "Tune Pro 2"), hub::Screen::onTrack ("Bass"), hub::Screen::tracks() })
+    {
+        const auto state = saveWith (s);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+        c.need (xml != nullptr && xml->getStringAttribute ("screen") == s.name() && ! xml->hasAttribute ("view")
+                    && xml->getStringAttribute ("version") == SWITCHBOARD_VERSION, s.describe() + ": saved as screen=\"" + s.name() + "\", no view");
+        SwitchboardProcessor restored;
+        restored.setStateInformation (state.getData(), (int) state.getSize());
+        c.need (restored.getScreen() == s, s.describe() + ": restored as " + restored.getScreen().describe());
+        restored.pollNow (unixNow());
+        c.need (hubShowing (restored) == s.describe(), s.describe() + ": its hub file says so: " + hubShowing (restored));
+        std::unique_ptr<juce::AudioProcessorEditor> ed (restored.createEditorIfNeeded());
+        if (auto* w = dynamic_cast<SwitchboardEditor*> (ed.get()))
+        {
+            w->tickNow (unixNow());
+            c.need (w->screen() == s, s.describe() + ": its window opens on it: " + w->screen().describe());
+            if (s.kind == hub::Screen::Kind::controls)
+                c.need (w->allControlsRows() == 4 && w->titleText() == "Tune Pro 2", "the second Tune Pro's 4 controls, not the first one's 5: " + juce::String (w->allControlsRows()));
+            if (s.kind == hub::Screen::Kind::track)
+                c.need (w->shownNames() == juce::StringArray ({ "Punch" }), "Bass with Punch");
+        }
+        restored.editorBeingDeleted (ed.get());
+    }
+    {
+        SwitchboardProcessor p;
+        const auto state = saveWith (hub::Screen::onTrack ("Bass"));
+        p.setStateInformation (state.getData(), (int) state.getSize());
+        for (const char* bad : { "mixer", "" })
+        {
+            juce::XmlElement x ("SWITCHBOARD");
+            x.setAttribute ("version", SWITCHBOARD_VERSION);
+            x.setAttribute ("screen", bad);
+            x.setAttribute ("track", "Lead Vox");
+            juce::MemoryBlock b;
+            juce::AudioProcessor::copyXmlToBinary (x, b);
+            p.setStateInformation (b.getData(), (int) b.getSize());
+        }
+        juce::XmlElement noPlugin ("SWITCHBOARD");
+        noPlugin.setAttribute ("screen", "controls");
+        noPlugin.setAttribute ("track", "Lead Vox");
+        juce::MemoryBlock b;
+        juce::AudioProcessor::copyXmlToBinary (noPlugin, b);
+        p.setStateInformation (b.getData(), (int) b.getSize());
+        p.setStateInformation ("garbage", 7);
+        c.need (p.getScreen() == hub::Screen::onTrack ("Bass"), "a screen it does not know, or a broken state, is ignored: " + p.getScreen().describe());
+    }
+    check (c.ok, "screen_saved_with_session_and_restored: Tracks, a track or a plug-in's controls come back with the project");
+}
+
+void testOldSessionViewLoads()
+{
+    const auto dir = useFolder ("old_1_0_session_view_loads");
+    const double now = unixNow();
+    putCard (dir, hexId (1), cardText (hexId (1), "Tune Pro", "Lead Vox", 100.0, 1, tuneParams()), now);
+    putCard (dir, hexId (2), cardText (hexId (2), "Punch", "Bass", 200.0, 1, punchParams()), now);
+    putCard (dir, hexId (3), cardText (hexId (3), "Key", "", 300.0, 1, punchParams()), now);
+    Checks c;
+    const auto oldState = [] (const juce::String& view)
+    {
+        juce::XmlElement x ("SWITCHBOARD");   // exactly what 1.0.0 saved
+        x.setAttribute ("version", "1.0.0");
+        x.setAttribute ("view", view);
+        juce::MemoryBlock b;
+        juce::AudioProcessor::copyXmlToBinary (x, b);
+        return b;
+    };
+    const std::vector<std::pair<const char*, hub::Screen>> cases { { "this", hub::Screen::tracks() }, { "all", hub::Screen::tracks() },
+                                                                   { "track:Bass", hub::Screen::onTrack ("Bass") }, { "track:", hub::Screen::onTrack ("") } };
+    for (const auto& [view, expected] : cases)
+    {
+        SwitchboardProcessor p;
+        p.setScreen (hub::Screen::onTrack ("Lead Vox"));
+        const auto b = oldState (view);
+        p.setStateInformation (b.getData(), (int) b.getSize());
+        c.need (p.getScreen() == expected, juce::String ("1.0.0 view \"") + view + "\" opens " + expected.describe() + ", got " + p.getScreen().describe());
+        if (juce::String (view) == "track:Bass")
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditorIfNeeded());
+            if (auto* w = dynamic_cast<SwitchboardEditor*> (ed.get()))
+            {
+                w->tickNow (unixNow());
+                c.need (w->screen() == hub::Screen::onTrack ("Bass") && w->shownNames() == juce::StringArray ({ "Punch" }), "and its window shows Bass with Punch");
+            }
+            p.editorBeingDeleted (ed.get());
+        }
+    }
+    {
+        SwitchboardProcessor p;
+        p.setScreen (hub::Screen::onTrack ("Lead Vox"));
+        const auto b = oldState ("nonsense");
+        p.setStateInformation (b.getData(), (int) b.getSize());
+        c.need (p.getScreen() == hub::Screen::onTrack ("Lead Vox"), "a 1.0.0 view it does not know is ignored");
+    }
+    check (c.ok, "old_1_0_session_view_loads: 1.0.0's This track and All tracks open on Tracks, a chosen track opens that track");
+}
+
+void testRememberedTrackGone()
+{
+    const auto dir = useFolder ("remembered_track_gone_falls_back_to_tracks");
+    const double t0 = unixNow();
+    const auto tune = hexId (1), punch = hexId (2), rope = hexId (3);
+    putCard (dir, tune, cardText (tune, "Tune Pro", "Lead Vox", 100.0, 1, tuneParams()), t0);
+    putCard (dir, punch, cardText (punch, "Punch", "Bass", 200.0, 1, punchParams()), t0);
+    Checks c;
+    SwitchboardProcessor p;
+    const auto at = [&] (double t)
+    {
+        for (const auto& f : dir.findChildFiles (juce::File::findFiles, false, "????????????????.json"))
+            setMtime (f, t);
+        p.pollNow (t);
+    };
+    {
+        juce::XmlElement x ("SWITCHBOARD");
+        x.setAttribute ("screen", "track");
+        x.setAttribute ("track", "Drums");
+        juce::MemoryBlock b;
+        juce::AudioProcessor::copyXmlToBinary (x, b);
+        p.setStateInformation (b.getData(), (int) b.getSize());
+    }
+    at (t0);
+    at (t0 + 2.0);
+    c.need (p.getScreen() == hub::Screen::onTrack ("Drums"), "just after a project loads, a track not seen yet is kept (its plug-ins may still be opening): " + p.getScreen().describe());
+    double t = t0 + 2.0;
+    while (t < t0 + 16.0 && p.getScreen() != hub::Screen::tracks())
+        at (t += 0.5);
+    c.need (p.getScreen() == hub::Screen::tracks() && t >= t0 + 10.0, "once it has looked long enough, a track that is not there falls back to Tracks, after "
+            + juce::String (t - t0, 1) + " s");
+    c.need (hubShowing (p) == "tracks", "the hub file says tracks: " + hubShowing (p));
+
+    // A track renamed while it is shown: its plug-ins move to the new name and the screen goes with them.
+    p.setScreen (hub::Screen::onTrack ("Lead Vox"));
+    at (t += 0.5);
+    putCard (dir, tune, cardText (tune, "Tune Pro", "Lead Vox Double", 100.0, 2, tuneParams()), t);
+    at (t += 0.5);
+    c.need (p.getScreen() == hub::Screen::onTrack ("Lead Vox Double"), "a renamed track is followed, not dropped: " + p.getScreen().describe());
+
+    // A blip: Logic held its main thread, every card looked old for one look. Nothing changes.
+    for (const auto& f : dir.findChildFiles (juce::File::findFiles, false, "????????????????.json"))
+        setMtime (f, t - 8.0);
+    p.pollNow (t += 0.5);
+    at (t += 0.5);
+    at (t += 0.5);
+    c.need (p.getScreen() == hub::Screen::onTrack ("Lead Vox Double"), "one look with every card old does not drop the screen: " + p.getScreen().describe());
+
+    // The plug-in on a controls screen closes: back to its track while the track has others, then to Tracks.
+    putCard (dir, rope, cardText (rope, "Velvet Rope", "Lead Vox Double", 300.0, 1, ropeParams()), t);
+    at (t += 0.5);
+    p.setScreen (hub::Screen::controlsOf ("Lead Vox Double", "Tune Pro"));
+    dir.getChildFile (tune + ".json").deleteFile();
+    at (t += 0.5);
+    at (t += 1.0);
+    c.need (p.getScreen() == hub::Screen::controlsOf ("Lead Vox Double", "Tune Pro"), "a plug-in gone for a moment is waited for: " + p.getScreen().describe());
+    for (int k = 0; k < 8 && p.getScreen().kind == hub::Screen::Kind::controls; ++k)
+        at (t += 0.5);
+    c.need (p.getScreen() == hub::Screen::onTrack ("Lead Vox Double"), "a plug-in that stays gone falls back to its track: " + p.getScreen().describe());
+    dir.getChildFile (rope + ".json").deleteFile();
+    for (int k = 0; k < 10 && p.getScreen().kind != hub::Screen::Kind::tracks; ++k)
+        at (t += 0.5);
+    c.need (p.getScreen() == hub::Screen::tracks() && hubShowing (p) == "tracks", "and a track that stays empty to Tracks: " + p.getScreen().describe());
+
+    // The window follows the fallback.
+    putCard (dir, rope, cardText (rope, "Velvet Rope", "Vox", 300.0, 2, ropeParams()), t);
+    at (t += 0.5);
+    p.setScreen (hub::Screen::onTrack ("Vox"));
+    std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditorIfNeeded());
+    if (auto* w = dynamic_cast<SwitchboardEditor*> (ed.get()))
+    {
+        w->clock = [&t] { return t; };
+        w->tickNow (t);
+        c.need (w->screen() == hub::Screen::onTrack ("Vox"), "the window shows Vox");
+        dir.getChildFile (rope + ".json").deleteFile();
+        for (int k = 0; k < 10 && w->screen().kind != hub::Screen::Kind::tracks; ++k)
+        {
+            t += 0.5;
+            for (const auto& f : dir.findChildFiles (juce::File::findFiles, false, "????????????????.json"))
+                setMtime (f, t);
+            w->tickNow (t);
+        }
+        c.need (w->screen() == hub::Screen::tracks() && p.getScreen() == hub::Screen::tracks(), "an open window falls back with it: " + w->screen().describe());
+    }
+    p.editorBeingDeleted (ed.get());
+    check (c.ok, "remembered_track_gone_falls_back_to_tracks: a gone track falls back to Tracks (a gone plug-in to its track), a renamed one is followed");
+}
+
+// A window on Tracks, cards on Lead Vox (Velvet Rope, Tune Pro, Tune Pro 2) and Bass (Punch), for the hub command tests.
+juce::File commandFolder (const char* name, double now)
+{
+    const auto dir = useFolder (name);
+    putCard (dir, hexId (1), cardText (hexId (1), "Velvet Rope", "Lead Vox", 100.0, 1, ropeParams()), now);
+    putCard (dir, hexId (2), cardText (hexId (2), "Tune Pro", "Lead Vox", 200.0, 1, tuneParams()), now);
+    putCard (dir, hexId (3), cardText (hexId (3), "Tune Pro", "Lead Vox", 300.0, 1, [] { auto ps = tuneParams(); ps.pop_back(); return ps; }()), now);
+    putCard (dir, hexId (4), cardText (hexId (4), "Punch", "Bass", 400.0, 1, punchParams()), now);
+    return dir;
+}
+
+void testHubCmdShowTrack()
+{
+    const double now = unixNow();
+    commandFolder ("hub_cmd_show_track", now);
+    Checks c;
+    {
+        Window win ("Stereo Out");
+        if (auto* w = win.w)
+        {
+            w->tickNow (now);
+            c.need (win.p.hub.inbox().isDirectory() && win.p.hub.inbox().getFileName() == "hub-" + win.p.hub.id() + ".in", "the hub inbox is hub-<id>.in");
+            const auto name = hubCommand (win.p, "{\"show\":\"track\",\"track\":\"Lead Vox\",\"from\":\"test\"}");
+            win.p.pollNow (now);
+            c.need (win.p.getScreen() == hub::Screen::onTrack ("Lead Vox"), "the command changes the screen: " + win.p.getScreen().describe());
+            c.need (filesIn (win.p.hub.inbox()) == 0, "the command file is deleted");
+            const auto d = hubDone (win.p, name);
+            c.need (d.isObject() && d["ok"].isBool() && (bool) d["ok"] && d["error"].toString().isEmpty() && showingText (d["showing"]) == "track:Lead Vox",
+                    "done: ok, no error, showing the track: " + juce::JSON::toString (d, true));
+            c.need (hubShowing (win.p) == "track:Lead Vox", "the hub file says so: " + hubShowing (win.p));
+            w->tickNow (now + 0.1);
+            c.need (w->screen() == hub::Screen::onTrack ("Lead Vox") && w->titleText() == "Lead Vox" && w->shownNames() == juce::StringArray ({ "Velvet Rope", "Tune Pro", "Tune Pro 2" }),
+                    "the window follows: " + w->screen().describe() + " " + joined (w->shownNames()));
+            hubCommand (win.p, "{\"show\":\"track\",\"track\":\"Bass\"}");
+            win.p.pollNow (now + 0.2);
+            w->tickNow (now + 0.2);
+            c.need (w->screen() == hub::Screen::onTrack ("Bass") && w->shownNames() == juce::StringArray ({ "Punch" }), "\"from\" is optional; another track");
+        }
+    }
+    check (c.ok, "hub_cmd_show_track: { \"show\": \"track\" } opens a track, done says ok and showing, the window follows");
+}
+
+void testHubCmdShowControls()
+{
+    const double now = unixNow();
+    commandFolder ("hub_cmd_show_controls", now);
+    Checks c;
+    {
+        Window win ("Stereo Out");
+        if (auto* w = win.w)
+        {
+            w->tickNow (now);
+            const auto name = hubCommand (win.p, "{\"show\":\"controls\",\"track\":\"Lead Vox\",\"plugin\":\"Tune Pro 2\",\"from\":\"test\"}");
+            win.p.pollNow (now);
+            c.need (win.p.getScreen() == hub::Screen::controlsOf ("Lead Vox", "Tune Pro 2"), "the controls of Tune Pro 2: " + win.p.getScreen().describe());
+            const auto d = hubDone (win.p, name);
+            c.need ((bool) d["ok"] && showingText (d["showing"]) == "controls:Lead Vox/Tune Pro 2" && hubShowing (win.p) == "controls:Lead Vox/Tune Pro 2",
+                    "done and the hub file say controls, with track and plugin: " + hubShowing (win.p));
+            w->tickNow (now + 0.1);
+            c.need (w->screen() == hub::Screen::controlsOf ("Lead Vox", "Tune Pro 2") && w->allControlsRows() == 4 && w->titleText() == "Tune Pro 2",
+                    "the window shows the second Tune Pro's 4 controls: " + juce::String (w->allControlsRows()));
+            c.need (w->backText() == juce::String (juce::CharPointer_UTF8 ("\xe2\x80\xb9 Lead Vox")), "with its back button");
+            hubCommand (win.p, "{\"show\":\"controls\",\"track\":\"Lead Vox\",\"plugin\":\"Tune Pro\"}");
+            win.p.pollNow (now + 0.2);
+            w->tickNow (now + 0.2);
+            c.need (w->allControlsRows() == 5 && w->titleText() == "Tune Pro", "and the first one's 5");
+        }
+    }
+    check (c.ok, "hub_cmd_show_controls: { \"show\": \"controls\" } opens one plug-in's controls, numbered as Switchboard numbers copies");
+}
+
+void testHubCmdShowTracks()
+{
+    const double now = unixNow();
+    commandFolder ("hub_cmd_show_tracks", now);
+    Checks c;
+    {
+        Window win ("Stereo Out");
+        win.openTrack ("Bass");
+        if (auto* w = win.w)
+        {
+            w->tickNow (now);
+            c.need (w->screen() == hub::Screen::onTrack ("Bass"), "on Bass first");
+            const auto name = hubCommand (win.p, "{\"show\":\"tracks\",\"from\":\"test\"}");
+            win.p.pollNow (now);
+            const auto d = hubDone (win.p, name);
+            c.need (win.p.getScreen() == hub::Screen::tracks() && (bool) d["ok"] && showingText (d["showing"]) == "tracks" && hubShowing (win.p) == "tracks",
+                    "back to Tracks, done ok: " + hubShowing (win.p));
+            w->tickNow (now + 0.1);
+            c.need (w->screen() == hub::Screen::tracks() && rowTitles (w->trackRows()) == "[Lead Vox, Bass]" && ! shownOnScreen (w->backButton()), "the window follows");
+        }
+    }
+    check (c.ok, "hub_cmd_show_tracks: { \"show\": \"tracks\" } goes home");
+}
+
+void testHubCmdUnknownTrack()
+{
+    const double now = unixNow();
+    const auto dir = commandFolder ("hub_cmd_unknown_track_ok_false_screen_kept", now);
+    putCard (dir, hexId (5), cardText (hexId (5), "Duo", "Old Track", 500.0, 1, punchParams()), now - 6.0);   // hidden: no heartbeat for 6 s
+    Checks c;
+    {
+        Window win ("Stereo Out");
+        win.openTrack ("Lead Vox");
+        if (auto* w = win.w)
+        {
+            w->tickNow (now);
+            const std::vector<std::pair<juce::String, juce::String>> bad {
+                { "{\"show\":\"track\",\"track\":\"Nope\"}", "Nope" },
+                { "{\"show\":\"track\",\"track\":\"Old Track\"}", "Old Track" },
+                { "{\"show\":\"controls\",\"track\":\"Lead Vox\",\"plugin\":\"Tune Pro 3\"}", "Tune Pro 3" },
+                { "{\"show\":\"controls\",\"track\":\"Nope\",\"plugin\":\"Tune Pro\"}", "Nope" },
+                { "{\"show\":\"controls\",\"track\":\"Lead Vox\"}", "plugin" },
+                { "{\"show\":\"track\"}", "track" },
+                { "{\"show\":\"mixer\"}", "mixer" },
+                { "{\"track\":\"Lead Vox\"}", "show" },
+                { "{\"show\":3}", "show" } };
+            juce::int64 ms = (juce::int64) std::floor (now * 1000.0);
+            juce::StringArray names;
+            for (auto& b : bad)
+                names.add (hubCommand (win.p, b.first, ++ms));
+            win.p.pollNow (now);
+            for (int i = 0; i < names.size(); ++i)
+            {
+                const auto d = hubDone (win.p, names[i]);
+                c.need (d.isObject() && d["ok"].isBool() && ! (bool) d["ok"] && d["error"].toString().containsIgnoreCase (bad[(size_t) i].second)
+                            && showingText (d["showing"]) == "track:Lead Vox",
+                        bad[(size_t) i].first + ": ok false, a plain error, the screen as it stayed: " + d["error"].toString());
+            }
+            c.need (win.p.getScreen() == hub::Screen::onTrack ("Lead Vox") && hubShowing (win.p) == "track:Lead Vox", "the screen stays: " + win.p.getScreen().describe());
+            c.need (filesIn (win.p.hub.inbox()) == 0, "every command file is deleted");
+            w->tickNow (now + 0.1);
+            c.need (w->screen() == hub::Screen::onTrack ("Lead Vox") && w->shownNames().size() == 3, "the window stays on Lead Vox");
+        }
+    }
+    check (c.ok, "hub_cmd_unknown_track_ok_false_screen_kept: a track or plug-in not seen now, or an unknown show, is ok false with a plain error");
+}
+
+void testHubCmdBadJson()
+{
+    const double now = unixNow();
+    commandFolder ("hub_cmd_bad_json_ok_false", now);
+    Checks c;
+    {
+        SwitchboardProcessor p;
+        p.setScreen (hub::Screen::onTrack ("Bass"));
+        const juce::StringArray bad { "{not json", "[1,2,3]", "", "\"show\"", "{\"show\":\"tracks\"" };
+        juce::int64 ms = (juce::int64) std::floor (now * 1000.0);
+        juce::StringArray names;
+        for (auto& b : bad)
+            names.add (hubCommand (p, b, ++ms));
+        const auto inbox = p.hub.inbox();
+        inbox.getChildFile (".later.tmp").replaceWithText ("{\"show\":\"tracks\"}");
+        inbox.getChildFile (".hidden.json").replaceWithText ("{\"show\":\"tracks\"}");
+        p.pollNow (now);
+        for (int i = 0; i < names.size(); ++i)
+        {
+            const auto d = hubDone (p, names[i]);
+            c.need (d.isObject() && ! (bool) d["ok"] && d["error"].toString().isNotEmpty() && showingText (d["showing"]) == "track:Bass",
+                    "\"" + bad[i] + "\": ok false: " + d["error"].toString());
+        }
+        c.need (hubDone (p, names[0])["error"].toString() == "not valid JSON", "bad JSON says so: " + hubDone (p, names[0])["error"].toString());
+        c.need (p.getScreen() == hub::Screen::onTrack ("Bass") && hubShowing (p) == "track:Bass", "the screen stays");
+        c.need (filesIn (inbox, "*.json") == 1 && inbox.getChildFile (".hidden.json").existsAsFile() && inbox.getChildFile (".later.tmp").existsAsFile(),
+                "the bad files are deleted, files starting with a dot are never read");
+    }
+    check (c.ok, "hub_cmd_bad_json_ok_false: bad JSON, not an object or an empty file is ok false, deleted, the screen kept");
+}
+
+void testHubCmdOrderAndDone16()
+{
+    const double now = unixNow();
+    commandFolder ("hub_cmd_order_and_done_last_16", now);
+    Checks c;
+    {
+        SwitchboardProcessor p;
+        const juce::StringArray bodies { "{\"show\":\"track\",\"track\":\"Lead Vox\"}", "{\"show\":\"tracks\"}",
+                                         "{\"show\":\"controls\",\"track\":\"Lead Vox\",\"plugin\":\"Tune Pro\"}", "{\"show\":\"track\",\"track\":\"Bass\"}" };
+        const juce::int64 ms0 = (juce::int64) std::floor (now * 1000.0);
+        // Written newest first: the order applied is the name order, not the order the files appeared.
+        juce::StringArray names;
+        for (int i = 19; i >= 0; --i)
+            names.insert (0, hubCommand (p, bodies[i % 4], ms0 + i));
+        p.pollNow (now);
+        const auto done = hubDoneNames (p);
+        juce::StringArray last16;
+        for (int i = 4; i < 20; ++i)
+            last16.add (names[i]);
+        c.need (done == last16, "done holds the last 16 in name order, newest last");
+        c.need (p.getScreen() == hub::Screen::onTrack ("Bass") && hubShowing (p) == "track:Bass", "the screen is the last command's: " + p.getScreen().describe());
+        c.need (showingText (hubDone (p, names[18])["showing"]) == "controls:Lead Vox/Tune Pro" && showingText (hubDone (p, names[17])["showing"]) == "tracks",
+                "each done entry shows the screen right after it");
+        c.need (filesIn (p.hub.inbox()) == 0, "all 20 applied in one poll");
+
+        // 70 at once: 64 in one poll, the other 6 in the next, as a member does.
+        names.clear();
+        for (int i = 0; i < 70; ++i)
+            names.add (hubCommand (p, bodies[i % 4], ms0 + 100 + i));
+        p.pollNow (now + 0.05);
+        const int left = filesIn (p.hub.inbox(), "*.json");
+        const auto afterFirst = hubDoneNames (p);
+        p.pollNow (now + 0.1);
+        c.need (left == 6 && afterFirst.size() == 16 && afterFirst[15] == names[63], "64 in the first poll: " + juce::String (left) + " left");
+        c.need (filesIn (p.hub.inbox()) == 0 && hubDoneNames (p).size() == 16 && hubDoneNames (p)[15] == names[69], "the rest in the next");
+        c.need (p.getScreen() == hub::Screen::tracks() && hubShowing (p) == "tracks", "and the screen is the 70th's (tracks, after Bass): " + p.getScreen().describe());
+    }
+    check (c.ok, "hub_cmd_order_and_done_last_16: commands apply in name order, at most 64 a poll, done keeps the last 16");
+}
+
+void testHubInboxPolledWindowClosed()
+{
+    const double now = unixNow();
+    commandFolder ("hub_inbox_polled_with_window_closed", now);
+    Checks c;
+    juce::File hubFile, inbox;
+    double rate = 0.0, answeredIn = -1.0;
+    {
+        SwitchboardProcessor p;   // no window, ever
+        hubFile = p.hub.file();
+        inbox = p.hub.inbox();
+        c.need (inbox.isDirectory() && hubFile.existsAsFile(), "the hub file and its inbox are made at construction");
+        auto* mm = juce::MessageManager::getInstance();
+        const auto runFor = [mm] (double seconds)
+        {
+            const double end = juce::Time::getMillisecondCounterHiRes() + seconds * 1000.0;
+            while (juce::Time::getMillisecondCounterHiRes() < end)
+                mm->runDispatchLoopUntil (juce::jmax (1, juce::jmin (5, (int) (end - juce::Time::getMillisecondCounterHiRes()))));
+        };
+        runFor (0.2);
+        const int polls0 = p.inboxPolls();
+        const double t0 = juce::Time::getMillisecondCounterHiRes();
+        runFor (1.5);
+        rate = (p.inboxPolls() - polls0) / ((juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0);
+
+        const auto name = hubCommand (p, "{\"show\":\"track\",\"track\":\"Lead Vox\",\"from\":\"test\"}");
+        const double sent = juce::Time::getMillisecondCounterHiRes();
+        while (juce::Time::getMillisecondCounterHiRes() - sent < 2000.0 && ! hubDone (p, name).isObject())
+            runFor (0.005);
+        if (hubDone (p, name).isObject())
+            answeredIn = (juce::Time::getMillisecondCounterHiRes() - sent) / 1000.0;
+        c.need (p.getActiveEditor() == nullptr && p.getScreen() == hub::Screen::onTrack ("Lead Vox") && hubShowing (p) == "track:Lead Vox",
+                "with no window the command was applied and the hub file rewritten");
+        c.need (answeredIn >= 0.0 && answeredIn < 0.25, "answered within a quarter second: " + juce::String (answeredIn, 3) + " s");
+    }
+    c.need (! hubFile.exists() && ! inbox.exists(), "closing the plug-in removes the hub file and its inbox");
+    info ("hub inbox command answered in", answeredIn, "s");
+    check (c.ok && rate >= 10.0, "hub_inbox_polled_with_window_closed: hub inbox polls a second with no window", rate, "polls");
+}
+
+void testStaleHubInboxCleaned()
+{
+    const auto dir = useFolder ("stale_hub_inbox_cleaned_only_after_600s");
+    const double now = unixNow();
+    dir.createDirectory();
+    const auto inbox = [&] (const juce::String& id, double mtime, bool withFile)
+    {
+        auto f = dir.getChildFile ("hub-" + id + ".in");
+        f.createDirectory();
+        if (withFile)
+            f.getChildFile ("1-test-abcdef.json").replaceWithText ("{\"show\":\"tracks\"}");
+        setMtime (f, mtime);
+        return f;
+    };
+    const auto hubFile = [&] (const juce::String& id, double mtime)
+    {
+        auto f = dir.getChildFile ("hub-" + id + ".json");
+        f.replaceWithText ("{\"link\":1,\"hub\":true,\"id\":\"" + id + "\",\"track\":null,\"version\":\"1.1.0\"}");
+        setMtime (f, mtime);
+        return f;
+    };
+    const auto orphan599 = inbox (hexId (1), now - 599.0, false);
+    const auto orphan700 = inbox (hexId (2), now - 700.0, true);
+    hubFile (hexId (3), now);
+    const auto quietLive = inbox (hexId (3), now - 700.0, false);   // its Switchboard is open, nothing was sent for a while
+    hubFile (hexId (4), now - 700.0);
+    const auto deadHub = inbox (hexId (4), now - 5.0, true);       // its Switchboard stopped beating 700 s ago
+    const auto oddName = dir.getChildFile ("hub-xyz.in");
+    oddName.createDirectory();
+    setMtime (oddName, now - 700.0);
+    const auto member = hexId (5);
+    putCard (dir, member, cardText (member, "Tune Pro", "Vox", 1.0, 1, tuneParams()), now);
+    setMtime (dir.getChildFile (member + ".in"), now - 700.0);
+
+    Checks c;
+    hub::Registry r (dir);
+    r.scan (now);
+    c.need (orphan599.isDirectory(), "an inbox with no hub file, 599 s old: kept");
+    c.need (! orphan700.exists(), "an inbox with no hub file, 700 s old: removed with what is in it");
+    c.need (quietLive.isDirectory(), "the inbox of a Switchboard that is open: kept, however old");
+    c.need (! deadHub.exists(), "the inbox of a hub file older than 600 s: removed");
+    c.need (oddName.isDirectory() && dir.getChildFile (member + ".in").isDirectory() && dir.getChildFile (member + ".json").existsAsFile(),
+            "other names and members' inboxes are not touched");
+    setMtime (orphan599, now - 601.0);
+    r.scan (now + 1.0);
+    c.need (orphan599.isDirectory(), "the cleanup runs once a minute, not on every scan");
+    r.scan (now + 61.0);
+    c.need (! orphan599.exists(), "a minute later the 600 s rule takes it");
+    check (c.ok, "stale_hub_inbox_cleaned_only_after_600s: hub-*.in goes once its hub file is gone or 600 s old, never younger");
+}
+
+// HubTest --window-cpu <seconds> <LinkStub>: six plug-ins on Lead Vox; CPU of this process with the window closed, then open on
+// screen on Tracks, on Lead Vox, and on Lead Vox with one control moving.
 int windowCpu (double seconds, const juce::String& stubPath)
 {
     const auto dir = useFolder ("window_cpu");
@@ -1262,7 +2085,7 @@ int windowCpu (double seconds, const juce::String& stubPath)
     for (auto& n : names)
     {
         auto* cp = stubs.add (new juce::ChildProcess());
-        if (! cp->start (juce::StringArray { stubPath, "--dir", dir.getFullPathName(), "--track", "Lead Vox", "--plugin", n, "--seconds", juce::String (seconds * 3 + 30) }))
+        if (! cp->start (juce::StringArray { stubPath, "--dir", dir.getFullPathName(), "--track", "Lead Vox", "--plugin", n, "--seconds", juce::String (seconds * 5 + 30) }))
         {
             std::printf ("FAIL  could not start %s\n", stubPath.toRawUTF8());
             return 1;
@@ -1274,14 +2097,8 @@ int windowCpu (double seconds, const juce::String& stubPath)
 
     SwitchboardProcessor p;
     SwitchboardProcessor::TrackProperties props;
-    props.name = juce::String ("Lead Vox");
+    props.name = juce::String ("Stereo Out");
     p.updateTrackProperties (props);
-    std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditorIfNeeded());
-    auto* w = dynamic_cast<SwitchboardEditor*> (ed.get());
-    ed->setTopLeftPosition (120, 120);
-    ed->addToDesktop (juce::ComponentPeer::windowHasTitleBar | juce::ComponentPeer::windowIsResizable);
-    ed->setVisible (true);
-    ed->toFront (true);
 
     const auto cpuSeconds = []
     {
@@ -1296,6 +2113,24 @@ int windowCpu (double seconds, const juce::String& stubPath)
         while (juce::Time::getMillisecondCounterHiRes() < end)
             mm->runDispatchLoopUntil (juce::jmax (1, (int) (end - juce::Time::getMillisecondCounterHiRes())));
     };
+    const auto measure = [&] (double s)
+    {
+        const double c0 = cpuSeconds(), t0 = juce::Time::getMillisecondCounterHiRes();
+        runFor (s);
+        return (cpuSeconds() - c0) / ((juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0) * 100.0;
+    };
+
+    // The plug-in with its window closed: the hub inbox poll and the heartbeat only.
+    runFor (1.0);
+    const double closed = measure (seconds);
+
+    std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditorIfNeeded());
+    auto* w = dynamic_cast<SwitchboardEditor*> (ed.get());
+    ed->setTopLeftPosition (120, 120);
+    ed->addToDesktop (juce::ComponentPeer::windowHasTitleBar | juce::ComponentPeer::windowIsResizable);
+    ed->setVisible (true);
+    ed->toFront (false);   // on screen, without taking the keyboard from whatever Luke is using
+
     // A control that moves 8 times a second, as automation does: commands to one stub, whose card then changes.
     struct Mover : juce::Timer
     {
@@ -1306,33 +2141,40 @@ int windowCpu (double seconds, const juce::String& stubPath)
         void timerCallback() override { cmd.setValue (id, "gain", 0.5 + 0.4 * std::sin (n++ * 0.4), hub::Gesture::tap, smooth::linkdetail::unixNow()); }
     } mover (dir);
 
-    runFor (2.0);   // settle: the window opened, the cards were read
+    runFor (2.0);   // settle: the window opened on Tracks, the cards were read
     info ("window paints while it opened", w != nullptr ? w->paintCount() : 0);
     info ("window on screen", ed->isShowing() ? 1 : 0);
+    const int rows = w != nullptr ? (int) w->trackRows().size() : 0;
+    int paints0 = w != nullptr ? w->paintCount() : 0;
+    const double tracksIdle = measure (seconds);
+    const int tracksPaints = (w != nullptr ? w->paintCount() : 0) - paints0;
+
+    if (w != nullptr)
+        w->show (hub::Screen::onTrack ("Lead Vox"));
+    runFor (1.0);
     const int shown = w != nullptr ? w->shownNames().size() : 0;
-    const int paints0 = w != nullptr ? w->paintCount() : 0;
-    double c0 = cpuSeconds(), t0 = juce::Time::getMillisecondCounterHiRes();
-    runFor (seconds);
-    double idle = (cpuSeconds() - c0) / ((juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0) * 100.0;
+    paints0 = w != nullptr ? w->paintCount() : 0;
+    const double idle = measure (seconds);
     const int idlePaints = (w != nullptr ? w->paintCount() : 0) - paints0;
 
     if (w != nullptr && ! w->registry().instances().empty())
         mover.id = w->registry().instances().front()->id;
     mover.startTimerHz (8);
-    const int paints1 = w != nullptr ? w->paintCount() : 0;
-    c0 = cpuSeconds();
-    t0 = juce::Time::getMillisecondCounterHiRes();
-    runFor (seconds);
-    double moving = (cpuSeconds() - c0) / ((juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0) * 100.0;
-    const int movingPaints = (w != nullptr ? w->paintCount() : 0) - paints1;
+    paints0 = w != nullptr ? w->paintCount() : 0;
+    const double moving = measure (seconds);
+    const int movingPaints = (w != nullptr ? w->paintCount() : 0) - paints0;
     mover.stopTimer();
 
-    info ("plug-ins shown", shown);
-    info ("window paints while idle", idlePaints);
+    info ("track rows on Tracks", rows);
+    info ("plug-ins shown on Lead Vox", shown);
+    info ("window paints on Tracks while idle", tracksPaints);
+    info ("window paints on a track while idle", idlePaints);
     info ("window paints while a control moves 8 times a second", movingPaints);
-    check (shown == names.size(), "the window shows all six plug-ins");
-    check (idle < 5.0, "CPU with the window open, nothing moving", idle, "% of one core");
-    check (moving < 5.0, "CPU with the window open, one control moving 8 times a second", moving, "% of one core");
+    check (rows == 1 && shown == names.size(), "Tracks shows Lead Vox, and Lead Vox shows all six plug-ins");
+    check (closed < 1.0, "CPU with the window closed (hub inbox and heartbeat)", closed, "% of one core");
+    check (tracksIdle < 5.0, "CPU with the window open on Tracks, nothing moving", tracksIdle, "% of one core");
+    check (idle < 5.0, "CPU with the window open on a track, nothing moving", idle, "% of one core");
+    check (moving < 5.0, "CPU with the window open on a track, one control moving 8 times a second", moving, "% of one core");
     p.editorBeingDeleted (ed.get());
     ed.reset();
     for (auto* cp : stubs)
@@ -1365,6 +2207,8 @@ int main (int argc, char** argv)
         return windowCpu (juce::String (argv[2]).getDoubleValue(), juce::String::fromUTF8 (argv[3]));
 
     testPassthrough();
+    testPassthroughAnyLayout();
+    testMismatchedLayoutRefused();
     testLatencyZero();
     testNoParameters();
     testHubFileTrack();
@@ -1379,14 +2223,28 @@ int main (int argc, char** argv)
     testDragThrottle();
     testEndToEndInProcess();
     testWindowShowsTrack();
-    testWindowViews();
-    testWindowViewKept();
     testWindowControlKinds();
     testWindowDoubleClickDefault();
     testWindowDragFollows();
     testWindowNotResponding();
     testWindowAllControls();
     testWindowRender();
+    testTracksScreenLoadOrder();
+    testUnnamedTrackRow();
+    testTrackScreenBackToTracks();
+    testControlsScreenBackToTrack();
+    testScreenSurvivesReopen();
+    testScreenSavedWithSession();
+    testOldSessionViewLoads();
+    testRememberedTrackGone();
+    testHubCmdShowTrack();
+    testHubCmdShowControls();
+    testHubCmdShowTracks();
+    testHubCmdUnknownTrack();
+    testHubCmdBadJson();
+    testHubCmdOrderAndDone16();
+    testHubInboxPolledWindowClosed();
+    testStaleHubInboxCleaned();
 
     // What every plug-in passes (TestKit). One preset only: Switchboard has nothing for a preset to change. With the hub file off,
     // for the reason given at testPassthrough: no timer thread may allocate while the sweeps count allocations.

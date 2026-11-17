@@ -7,7 +7,11 @@
 // cards cost a fraction of a millisecond. Cards are read through one descriptor (linkdetail::readFile), never with
 // juce::File::loadFileAsString, which can cut a card short when it is replaced mid read. A card that fails to parse is skipped
 // until it changes, and never deleted. Once a minute a scan removes what the protocol lets a reader remove: cards with their
-// inboxes, hub and temp files older than 600 s (linkdetail::removeStale, the members' own start-up sweep), nothing younger.
+// inboxes, hub and temp files older than 600 s (linkdetail::removeStale, the members' own start-up sweep), and the inboxes of
+// Switchboards that are gone (removeStaleHubInboxes), nothing younger.
+//
+// Tracks come in load order: the track whose first plug-in started earliest comes first, which is Logic's track order when a project
+// loads. The plug-ins Logic has not named a track for come last.
 #include "SmoothLink.h"
 #include <algorithm>
 #include <fcntl.h>
@@ -214,12 +218,50 @@ public:
         if (now - lastCleanup >= cleanupEvery || now < lastCleanup)
         {
             lastCleanup = now;
+            removeStaleHubInboxes (dir, now);   // first: removeStale takes a stale hub file, and with it the sign its inbox is stale
             smooth::linkdetail::removeStale (dir);
         }
+        if (changed)
+            ++generations;
         return changed;
     }
 
-    // Every instance with a heartbeat in the last 5 s: by track (named tracks in natural order, no name last), then oldest first.
+    // Goes up by one with every scan that changed what a reader sees. The window and the processor share one Registry and each
+    // scans it; this tells either one that something changed in a scan the other made.
+    juce::int64 generation() const { return generations; }
+
+    // hub-<16 hex>.in folders (Switchboard inboxes, PROTOCOL.md 1.1.0) whose hub file is gone and that are themselves older than
+    // 600 s, or whose hub file is older than 600 s. Members never touch hub-* names; Switchboard cleans these up itself. An open
+    // Switchboard's inbox stays however long nothing was sent to it, since its hub file beats.
+    static void removeStaleHubInboxes (const juce::File& folder, double now)
+    {
+        const auto path = folder.getFullPathName().toStdString();
+        std::vector<std::string> inboxes;
+        if (DIR* d = opendir (path.c_str()))
+        {
+            while (auto* e = readdir (d))
+            {
+                const char* n = e->d_name;
+                if (std::strlen (n) == 23 && std::strncmp (n, "hub-", 4) == 0 && smooth::linkdetail::isHex16 (n + 4) && std::strcmp (n + 20, ".in") == 0)
+                    inboxes.emplace_back (n);
+            }
+            closedir (d);
+        }
+        for (const auto& in : inboxes)
+        {
+            const auto inbox = path + "/" + in;
+            struct stat st;
+            if (lstat (inbox.c_str(), &st) != 0 || ! S_ISDIR (st.st_mode))
+                continue;
+            const double hubAge = smooth::linkdetail::ageOf (path + "/" + in.substr (0, 20) + ".json", now);
+            const bool stale = hubAge < 0.0 ? smooth::linkdetail::ageOf (inbox, now) > smooth::linkdetail::staleSeconds
+                                            : hubAge > smooth::linkdetail::staleSeconds;
+            if (stale)
+                smooth::linkdetail::removeTree (inbox);
+        }
+    }
+
+    // Every instance with a heartbeat in the last 5 s: by track (load order, no name last), then oldest first.
     const std::vector<const Instance*>& instances() const { return visible; }
 
     // The tracks of those instances, in the same order. "" stands for the cards with no track name.
@@ -240,6 +282,15 @@ public:
             if (i->track == track)
                 out.push_back (i);
         return out;
+    }
+
+    // A shown instance by its track and the name the window gives it ("Tune Pro 2"), or nullptr.
+    const Instance* find (const juce::String& track, const juce::String& name) const
+    {
+        for (auto* i : visible)
+            if (i->track == track && i->name == name)
+                return i;
+        return nullptr;
     }
 
     // A shown instance by id, or nullptr.
@@ -343,21 +394,31 @@ private:
         return true;
     }
 
-    static bool trackBefore (const Instance& a, const Instance& b)
-    {
-        if (a.hasTrack != b.hasTrack)
-            return a.hasTrack;
-        const int c = a.track.compareNatural (b.track, false);
-        return c != 0 ? c < 0 : a.track < b.track;
-    }
-
     void rebuildVisible()
     {
         visible.clear();
         for (auto& [id, e] : entries)
             if (e.alive)
                 visible.push_back (&e.instance);
-        std::sort (visible.begin(), visible.end(), [] (const Instance* a, const Instance* b)
+        // Load order: each track's earliest start, named tracks first, then by name when two started together.
+        std::map<juce::String, double> first;
+        for (auto* i : visible)
+        {
+            const auto it = first.find (i->track);
+            if (it == first.end() || i->started < it->second)
+                first[i->track] = i->started;
+        }
+        const auto trackBefore = [&first] (const Instance& a, const Instance& b)
+        {
+            if (a.hasTrack != b.hasTrack)
+                return a.hasTrack;
+            const double fa = first[a.track], fb = first[b.track];
+            if (! juce::exactlyEqual (fa, fb))
+                return fa < fb;
+            const int c = a.track.compareNatural (b.track, false);
+            return c != 0 ? c < 0 : a.track < b.track;
+        };
+        std::sort (visible.begin(), visible.end(), [&trackBefore] (const Instance* a, const Instance* b)
         {
             if (a->track != b->track)
                 return trackBefore (*a, *b);
@@ -378,7 +439,7 @@ private:
     const std::string path;
     std::map<std::string, Entry> entries;   // by id
     std::vector<const Instance*> visible;
-    juce::int64 revisions = 0;
+    juce::int64 revisions = 0, generations = 0;
     double lastCleanup = -1.0e18;
     int parsed = 0;
 };

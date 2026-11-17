@@ -5,5 +5,5 @@
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new linktest::TestProcessor (smooth::Link::Info::fromBuild ({ "gain" }));
+    return new linktest::TestProcessor (smooth::Link::Info::fromBuild ({ "gain" }), true);
 }

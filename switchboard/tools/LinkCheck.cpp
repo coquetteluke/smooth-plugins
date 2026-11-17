@@ -848,7 +848,10 @@ int linkCheck (AudioComponent comp, const AudioComponentDescription& desc, const
             AUEventListenerAddEventType (listener, nullptr, &events[k]);
         }
         const double original = cp.value;
-        double target = original < 0.5 ? 0.75 : 0.25;
+        // The far end: a whole-number control the card lists as continuous (JUCE's AudioParameterInt is not isDiscrete())
+        // rounds 0.25 or 0.75 back to where it was when it sits in the middle (Duo's Doubles, 1 to 3 at 2); the far end
+        // is always at least half the range away, so it always lands somewhere else.
+        double target = original < 0.5 ? 1.0 : 0.0;
         if (cp.steps > 1)
         {
             const int step = (int) std::lround (original * (cp.steps - 1));

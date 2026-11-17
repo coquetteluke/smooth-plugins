@@ -9,8 +9,8 @@ PASS  order_and_64_limit: 100 commands, 64 in the first poll and 36 in the next,
 PASS  track_name: set from another thread, renamed, empty is null
 PASS  destruction_cleans: only the instance's own card and inbox go
 PASS  stale_cleanup: on start, files older than 600 s go and younger ones stay
-PASS  heartbeat: the card's mtime moves with nothing changed, after = 0.504 s
-INFO  parses while the writer was writing = 8261.000 
+PASS  heartbeat: the card's mtime moves with nothing changed, after = 0.520 s
+INFO  parses while the writer was writing = 8761.000 
 PASS  atomic_under_load: a reader never sees a missing, partial or older card, failures = 0.000 
 PASS  two_instances: distinct ids, cards and inboxes
 PASS  disabled_without_dir: AudioUnit always, anything else only with SMOOTH_LINK_DIR
@@ -24,8 +24,8 @@ PASS  same_name_numbered: two tracks with one name show every plug-in, Name, Nam
 PASS  stale_hidden_after_5s: late cards show as not responding, hidden after 5 s, deleted only past 600 s
 PASS  malformed_skipped_not_deleted: bad cards are skipped, kept, and read again when they change
 PASS  hub_and_tmp_files_skipped: hub files, temp files, hidden files, odd names, folders and links are not cards
-INFO  scan of 200 unchanged cards, mean = 0.332 ms
-PASS  scan_200_cards_unchanged_under_5ms: worst scan with nothing changed = 0.433 ms
+INFO  scan of 200 unchanged cards, mean = 0.549 ms
+PASS  scan_200_cards_unchanged_under_5ms: worst scan with nothing changed = 4.451 ms
 PASS  command_file_atomic_and_named: .<name>.tmp then <name>.json, named <unix ms>-switchboard-<6 hex>, in sending order
 PASS  unanswered_fails_in_3s: no answer in 3 s is a failure and the command file goes; done confirms
 PASS  drag_throttle_30_per_second: begin, moves, end, most commands in any 1 s = 28.000 commands
@@ -69,13 +69,14 @@ RESULT PASS  0 failures
 PASS  card appears within 3 s (after 0.000 s)
 PASS  one card for one instance
 PASS  card is link 1 and names this AU: Link Probe 1.0.0, aufx SLpr Luke
-PASS  ContextName "LinkCheck Track" reaches the card (after 0.033 s)
-PASS  card lists every AU parameter: card 5, AU 5
+PASS  ContextName "LinkCheck Track" reaches the card (after 0.045 s)
+PASS  card lists every AU parameter: card 6, AU 6
 PASS  every card parameter is the AU parameter of that ID, with the same name
 PASS  card values are the AU's, mapped through its min and max: worst difference 2.2e-16 (Gain)
 PASS  the card names main controls
-PASS  command moves Gain (first continuous, first main): 0.3333 to 0.7500 and back to 0.3333, host saw 'bve' then 'bve'
+PASS  command moves Doubles (first continuous): 0.5000 to 0.0000 and back to 0.5000, host saw 'bve' then 'bve'
 PASS  command moves On (first discrete): 1.0000 to 0.0000 and back to 1.0000, host saw 'bve' then 'bve'
-PASS  command moves Plain (last): 0.2500 to 0.7500 and back to 0.2500, host saw 'bve' then 'bve'
+PASS  command moves Gain (first main): 0.3333 to 1.0000 and back to 0.3333, host saw 'bve' then 'bve'
+PASS  command moves Plain (last): 0.2500 to 1.0000 and back to 0.2500, host saw 'bve' then 'bve'
 PASS  after dispose, card and inbox are gone
 LINKCHECK PASS

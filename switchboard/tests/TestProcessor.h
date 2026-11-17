@@ -27,8 +27,12 @@ private:
 // Made before the Link, so the Link finds every control at once.
 struct Parameters
 {
-    explicit Parameters (juce::AudioProcessor& p)
+    explicit Parameters (juce::AudioProcessor& p, bool withDoubles = false)
     {
+        // LinkProbe only: a whole-number control (1 to 3, at 2) as the first continuous one, like Duo's Doubles. Halfway
+        // between two whole numbers rounds back, so a checker that sends 0.25 or 0.75 sees no move.
+        if (withDoubles)
+            p.addParameter (doubles = new juce::AudioParameterInt (juce::ParameterID { "doubles", 1 }, "Doubles", 1, 3, 2));
         p.addParameter (gain = new juce::AudioParameterFloat (juce::ParameterID { "gain", 1 }, "Gain",
                                                               juce::NormalisableRange<float> (-12.0f, 24.0f, 0.01f), 0.0f,
                                                               juce::AudioParameterFloatAttributes().withLabel ("dB")));
@@ -39,6 +43,7 @@ struct Parameters
         p.addParameter (plain = new PlainParameter());
     }
 
+    juce::AudioParameterInt* doubles = nullptr;
     juce::AudioParameterFloat* gain = nullptr;
     juce::AudioParameterBool* on = nullptr;
     juce::AudioParameterChoice* mode = nullptr;
@@ -60,10 +65,10 @@ public:
         return i;
     }
 
-    explicit TestProcessor (smooth::Link::Info info = testInfo())
+    explicit TestProcessor (smooth::Link::Info info = testInfo(), bool withDoubles = false)
         : AudioProcessor (BusesProperties().withInput ("Input", juce::AudioChannelSet::stereo(), true)
                                            .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-          params (*this),
+          params (*this, withDoubles),
           link (*this, std::move (info))
     {
     }

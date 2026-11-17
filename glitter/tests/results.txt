@@ -501,9 +501,9 @@ PASS  the smallest saved size lays out = 481.000
 PASS  Advanced saved open stays open
 PASS  window open and drawing against no window, must be exact zero, difference = -240.000 dB
 PASS  20 windows opened and closed with no audio
-PASS  40 windows opened, drawn and closed with audio running, blocks processed = 385.000 
-INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 1.867 %
-PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 3.193 %
+PASS  40 windows opened, drawn and closed with audio running, blocks processed = 430.000 
+INFO  CPU, all modules off, one core, 48 kHz stereo (machine busy with other builds) = 1.792 %
+PASS  CPU, all modules on, one core, 48 kHz stereo, voice at 180 Hz (machine busy with other builds) = 3.032 %
 PASS  Alto/Tenor, held notes under its range, 78 to 92 Hz, output pitch error at instant speed, worst 95th percentile = 0.004 cents
 INFO    worst case is at = 92.499 Hz
 PASS  Alto/Tenor, 87 Hz with vibrato +/-30 cents and breath, output pitch error at instant speed, 95th percentile = 1.328 cents
@@ -575,7 +575,7 @@ PASS  Input Type Alto/Tenor to Low Male with the Doubler on: biggest step 10 to 
 PASS  mono in and out: the doubles at Width 100 against Width 0 = 0.000 dB
 PASS  mono in and out: two Harmony voices at Width 80 against Width 0 = 0.000 dB
 PASS  Follow Key: the audio thread reads the followed key in one load, reads in readSettings = 1.000 
-INFO  Follow Key stress: blocks read while the file flips between C major and A minor = 384354.000 
+INFO  Follow Key stress: blocks read while the file flips between C major and A minor = 415423.000 
 INFO  Follow Key stress: blocks that read a key neither file holds (C minor or A major) = 0.000 
 PASS  Harmony Interval +7 to -5 set in a pause: the next phrase's first 10 ms against -5, worst = 0.000 semitones
 PASS  Reset after Delay at Feedback 90 and Reverb: peak of the 2 s after = -240.000 dBFS
@@ -626,4 +626,7 @@ PASS  Follow Key on with no key file: the header says ''
 PASS  Follow Key on with a Custom scale: the header says ''
 PASS  Follow Key on with a good key file: the header says 'Following D Major'
 PASS  Advanced closing: frames where its page covered Output Gain, of 12 = 0.000 
+PASS  link: the card in a scratch folder lists every parameter by its ID, in order, with the 6 main controls marked = 80.000 
+PASS  link: a text command "60 ms" on Retune Speed through the inbox moves it and is confirmed in done = 60.000 ms
+PASS  link: closing the plug-in removes its card and inbox
 RESULT PASS  0 failures

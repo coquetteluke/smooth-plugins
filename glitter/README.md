@@ -24,6 +24,8 @@ An off module is left out of the signal altogether. All the shifters keep runnin
 
 Every control is a real AU parameter that a host can find by name.
 
+Since 1.3.0 it has the link: Switchboard can see and set every control from one place, by the track it is on.
+
 | Tuning | What it does |
 |---|---|
 | Key, Scale | Root and scale: Chromatic, Major, Minor, Harmonic Minor, Melodic Minor, Major Pentatonic, Minor Pentatonic, Blues, Dorian, Mixolydian, Custom. |

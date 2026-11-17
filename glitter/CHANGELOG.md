@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+`src/SmoothLink.h` is a byte copy of Switchboard's: the plug-in keeps a card of every control in the shared link folder and moves its own parameter, with a gesture as a mouse drag does, when Switchboard sends a set; the card carries the track name Logic gives it. Main controls: Retune Speed, Humanize, Output Gain, Scale, Follow Key, Bypass (the biggest controls always in the window). New test `PluginTest link`: the card lists all 80 parameters by ID, "60 ms" on Retune Speed lands and is confirmed, closing removes the card. No DSP, parameter, ID, range, default, preset, latency or AU code changed; the render sums of the default and all 12 presets equal 1.2.5's.
+
 ## 1.2.5, 2026-11-13
 
 The Phase 2 bug check: the 28 faults the hunt kept, HostStress's two paramtext FAILs and the key file items, each with a check written first that fails on 1.2.4 (`PluginTest phase2`: 46 failing on 1.2.4, 0 now). Every parameter, ID and range is as before, so saved sessions load, and sessions saved by 1.2.4 play exactly what the installed 1.2.4 played (default and eight presets, -240 dB). Luke left this call to the lead on 2026-11-11: the sound only changes where it was at fault, listed below.

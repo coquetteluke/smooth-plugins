@@ -10,6 +10,7 @@
 #include "PsolaShifter.h"
 #include "ReverbTank.h"
 #include "Scales.h"
+#include "SmoothLink.h"
 
 // A reading shown to the host, by name and value string.
 // It is not automatable, ignores writes, and is never pushed to the host, so it cannot write automation.
@@ -93,6 +94,7 @@ public:
     void setStateInformation (const void*, int) override;
 
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
+    void updateTrackProperties (const TrackProperties& p) override { link.setTrackName (p.name.value_or (juce::String())); }
 
     // For a later window and for tests. Safe from any thread, never blocks audio.
     struct Readings
@@ -129,6 +131,8 @@ public:
     void pollKeyFileNow();
 
     juce::AudioProcessorValueTreeState apvts;
+    // The link: Switchboard sees and sets every control through it (1.3.0). Built after the parameters exist.
+    smooth::Link link { *this, smooth::Link::Info::fromBuild ({ "retune", "humanize", "outputGain", "scale", "followKey", "bypass" }) };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();

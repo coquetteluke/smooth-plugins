@@ -1,0 +1,17 @@
+PASS  card_at_construction: the card is written at once and lists every control
+PASS  change_from_other_thread_writes_on_poll_only: a change marks the card, the message thread writes it
+PASS  debounce_4hz: 40 changes in 1 s, card writes = 4.000 
+PASS  cmd_value_with_gesture: a value command moves the control with a gesture and is confirmed in done
+PASS  cmd_text: text commands "6 dB", "robot", "OFF" and "default"
+PASS  cmd_bad: bad JSON, unknown param, both, neither and other bad commands are refused and deleted
+PASS  drag_gesture: begin, move, end is one gesture; a begin left alone is ended after 2 s
+PASS  order_and_64_limit: 100 commands, 64 in the first poll and 36 in the next, in name order
+PASS  track_name: set from another thread, renamed, empty is null
+PASS  destruction_cleans: only the instance's own card and inbox go
+PASS  stale_cleanup: on start, files older than 600 s go and younger ones stay
+PASS  heartbeat: the card's mtime moves with nothing changed, after = 0.515 s
+INFO  parses while the writer was writing = 10000.000 
+PASS  atomic_under_load: a reader never sees a missing, partial or older card, failures = 0.000 
+PASS  two_instances: distinct ids, cards and inboxes
+PASS  disabled_without_dir: AudioUnit always, anything else only with SMOOTH_LINK_DIR
+RESULT PASS  0 failures

@@ -2,6 +2,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "DuoEngine.h"
+#include "SmoothLink.h"
 
 class PluginProcessor final : public juce::AudioProcessor,
                               private juce::AudioProcessorValueTreeState::Listener
@@ -53,6 +54,8 @@ public:
     std::atomic<bool> advancedOpen { false };
 
     juce::AudioProcessorValueTreeState apvts;
+    smooth::Link link { *this, smooth::Link::Info::fromBuild ({ "tightness", "width", "lead", "double1", "double2", "double3" }) };
+    void updateTrackProperties (const TrackProperties& p) override { link.setTrackName (p.name.value_or (juce::String())); }
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();

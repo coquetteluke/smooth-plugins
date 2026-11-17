@@ -6,6 +6,8 @@ Automatic vocal doubling. Your vocal plays untouched, and 1 to 3 copies follow i
 
 Audio Units > Luke Garito > Duo. AU code: `aufx SDuo Luke`. Works mono to stereo (the usual choice on a vocal track), mono to mono, and stereo to stereo. No licence system. Zero latency at every sample rate, bypassed or not.
 
+Switchboard sees and sets every control through the link (`src/SmoothLink.h`, since 0.5.0): a card of every parameter in `~/Library/Application Support/SmoothPlugins/link/`, and set commands that move the real parameter the way the window does.
+
 The host's Reset (Logic sends one when playback starts and before a bounce) empties the delay lines and starts each double's wander over from its beginning, so the doubles never sing what came before it and two bounces of the same part come out the same. The Reset JUCE sends right after the host's own bypass switches on is left out, so the doubles still fade to dry in 20 ms.
 
 ## Controls

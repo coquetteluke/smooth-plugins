@@ -797,4 +797,6 @@ PASS  a session saved on Loose Gang reopens with the preset box reading Loose Ga
 PASS  a session saved by 0.4.2 shows a neutral preset label, not a wrong preset name
 PASS  from no preset the right arrow loads the first preset = 0.000 
 PASS  from no preset the left arrow loads the last preset = 7.000 
+PASS  link: the card lists all 19 parameters by their IDs, in order, with Tightness, Width and the four levels as the main controls
+PASS  link: the text command "60" on Tightness sets it and lands in done; Tightness now = 60.000 % loose
 RESULT PASS  0 failures

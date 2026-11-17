@@ -4,6 +4,7 @@
 #include <array>
 #include <vector>
 #include "formant/FormantEngine.h"
+#include "SmoothLink.h"
 
 // A read-only level reading in dB, reachable as a real AU parameter. It lives outside the value tree, so it is never saved or recalled.
 // The audio thread only stores an atomic. Nothing here notifies the host, so it cannot write automation.
@@ -66,6 +67,8 @@ public:
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
 
     juce::AudioProcessorValueTreeState apvts;
+    smooth::Link link { *this, smooth::Link::Info::fromBuild ({ "length", "width", "breath", "mix", "output" }) };
+    void updateTrackProperties (const TrackProperties& p) override { link.setTrackName (p.name.value_or (juce::String())); }
 
     // For a custom window later and for tests: input and output envelopes, tracked formants, pitch and voicing. Never blocks.
     const formant::FormantEngine::Analysis& analysis() const noexcept { return engine.analysis(); }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+- The link is `src/SmoothLink.h`, a byte copy of Switchboard's. It puts a card of every parameter and its value in the shared link folder, and applies set commands by moving the real parameter with a begin and end gesture, as a drag in the window does, so automation records it. The card names Length, Width, Breath, Mix and Output as the main controls.
+- No control, preset, parameter ID, AU code or latency changed.
+- Tests: 271 pass, 0 fail (0.7.2 had 269). New: the card lists all 24 parameters by their IDs, and a text command sets Length and lands in the card's done list. Of the old lines only the two CPU readings moved.
+
 ## 0.7.2, 2026-11-13
 
 Luke left this call to the lead on 2026-11-11. 0.7.1 changed the sound of every setting but Neutral and Full Whisper with two engine fixes, and rerunning round 1's real vocal checks on Luke's takes showed it broke 7 lines that 0.7.0 passed. 0.7.2 takes the first fix back and moves where the second one sits, so every setting but Neutral and Full Whisper sounds different from 0.7.1 again. Against 0.7.0 what is left is the consonant fix: consonants, and the unvoiced frames around them, are shaped a little differently in every setting but Neutral and Full Whisper; voiced sound is as in 0.7.0. Full working set on the installed 0.7.2 against 0.7.0 (same check file): 205 failing lines in both, none newly failing, none newly passing.

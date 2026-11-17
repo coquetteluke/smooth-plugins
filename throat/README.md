@@ -6,6 +6,8 @@ Reshapes the vocal tract of a voice without moving its pitch. It analyses the fo
 
 In your host: Audio Units > Luke Garito > Throat. AU code `aufx SThr Luke`. Mono and stereo. Latency is 1536 samples at 44.1 and 48 kHz (34.8 ms and 32.0 ms) and 3072 samples at 88.2 and 96 kHz (34.8 ms and 32.0 ms), the same when bypassed.
 
+Switchboard sees and sets every control through the link (`src/SmoothLink.h`, since 0.8.0): a card of every parameter in `~/Library/Application Support/SmoothPlugins/link/`, and set commands that move the real parameter the way the window does.
+
 ## The window
 
 The tube is your singer's vocal tract seen from the side: cords at the bottom, lips at the right. **Bone** is the singer's own shape and **red** is the model. Both move with the voice, because the walls are worked out from where the formants sit. **Gray** is the realistic range: between 0.80 and 1.20 in width and length.

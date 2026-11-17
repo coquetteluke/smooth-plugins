@@ -5,6 +5,7 @@
 #include "VoiceLab.h"
 #include "PluginProcessor.h"
 #include <chrono>
+#include <unistd.h>
 
 using namespace testkit;
 using Settings = std::vector<std::pair<const char*, float>>;
@@ -1313,6 +1314,57 @@ static void testPhase2 (const std::vector<float>& speech)
     testReset();
 }
 
+// The link (0.8.0), for Switchboard. With SMOOTH_LINK_DIR on a fresh scratch folder, the card lists every parameter
+// by its ID, and a text command on a main control moves it and lands in done. The folder is removed afterwards and SMOOTH_LINK_DIR
+// goes back to what it was, so the real link folder is never used.
+static void testLink()
+{
+    const char* had = std::getenv ("SMOOTH_LINK_DIR");
+    const std::string saved = had != nullptr ? had : "";
+    const char* tmp = std::getenv ("TMPDIR");
+    std::string folder = (tmp != nullptr && tmp[0] == '/') ? tmp : "/tmp";
+    if (folder.back() != '/') folder += '/';
+    folder += "throat-link.XXXXXX";
+    const bool made = mkdtemp (folder.data()) != nullptr;
+    setenv ("SMOOTH_LINK_DIR", folder.c_str(), 1);
+    {
+        PluginProcessor p;
+        const auto& params = p.getParameters();
+        const juce::String name = "1794430230000-test-a1b2c3";
+        p.link.inbox().getChildFile (name + ".json").replaceWithText (R"({ "param": "length", "text": "1.2" })");
+        p.link.pollNow();
+        std::string bytes;
+        juce::var card;
+        const bool read = smooth::linkdetail::readFile (p.link.card().getFullPathName().toStdString(), bytes)
+                          && juce::JSON::parse (juce::String::fromUTF8 (bytes.data(), (int) bytes.size()), card).wasOk();
+        auto* listed = card["params"].getArray();
+        bool ids = made && p.link.enabled() && read && listed != nullptr && listed->size() == params.size();
+        juce::StringArray mains;
+        for (int i = 0; ids && i < params.size(); ++i)
+        {
+            auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*> (params[i]);
+            ids = hosted != nullptr && hosted->getParameterID().isNotEmpty() && (*listed)[i]["id"].toString() == hosted->getParameterID();
+            if ((bool) (*listed)[i]["main"])
+                mains.add ((*listed)[i]["id"].toString());
+        }
+        mains.sort (false);
+        check (ids && mains == juce::StringArray { "breath", "length", "mix", "output", "width" },
+               "link: the card lists all " + std::to_string (params.size()) + " parameters by their IDs, in order, with Length, Width, Breath, Mix and Output as the main controls");
+        juce::var done;
+        if (auto* list = card["done"].getArray())
+            for (auto& d : *list)
+                if (d["cmd"].toString() == name)
+                    done = d;
+        const float now = p.apvts.getRawParameterValue ("length")->load();
+        check (std::abs (now - 1.2f) < 1.0e-3f && (bool) done["ok"] && p.link.inbox().getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0,
+               "link: the text command \"1.2\" on Length sets it and lands in done; Length now", now);
+    }
+    if (had != nullptr) setenv ("SMOOTH_LINK_DIR", saved.c_str(), 1);
+    else unsetenv ("SMOOTH_LINK_DIR");
+    if (made) juce::File (folder).deleteRecursively();
+}
+
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -1365,5 +1417,6 @@ int main (int argc, char** argv)
     testPresets (speech[0].second);
     testPhase2 (speech[0].second);
     testCpu (speech[0].second);
+    testLink();
     return finish();
 }

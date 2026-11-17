@@ -364,6 +364,8 @@ PASS  Length from 0.990 to 1.010: values that read 1.00 but are not exactly 1 = 
 PASS  Play, reset, play: the second part equals a new instance, largest difference = 0.000 
 PASS  Reset allocates nothing = 0.000 
 PASS  After a reset, silence in gives silence out, peak = 0.000 
-PASS  CPU, neutral, stereo 48 kHz, percent of one core = 1.338 %
-PASS  CPU, everything on, stereo 48 kHz, percent of one core = 1.765 %
+PASS  CPU, neutral, stereo 48 kHz, percent of one core = 1.475 %
+PASS  CPU, everything on, stereo 48 kHz, percent of one core = 1.967 %
+PASS  link: the card lists all 24 parameters by their IDs, in order, with Length, Width, Breath, Mix and Output as the main controls
+PASS  link: the text command "1.2" on Length sets it and lands in done; Length now = 1.200 
 RESULT PASS  0 failures

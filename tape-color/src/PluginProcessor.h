@@ -8,6 +8,7 @@
 #include <vector>
 #include "TapeColorDsp.h"
 #include "FastOversampler.h"
+#include "SmoothLink.h"
 
 // Oversampled tape saturation with Drive, Bias, Tape Speed, Wow, Flutter, Noise, Age, Low Cut, High Cut, Mix and Output.
 // The oversampling and the wow and flutter tape path are reported as latency, and the dry path is matched to them.
@@ -92,6 +93,8 @@ public:
     bool fixesMatter() const noexcept;
 
     juce::AudioProcessorValueTreeState apvts;
+    smooth::Link link { *this, smooth::Link::Info::fromBuild ({ "age", "drive", "bias", "speed", "output" }) };
+    void updateTrackProperties (const TrackProperties& p) override { link.setTrackName (p.name.value_or (juce::String())); }
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();

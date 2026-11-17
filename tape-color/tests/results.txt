@@ -652,7 +652,7 @@ PASS  preset 'Starved Grit' level against dry = -0.164 dB
 PASS  preset 'Worn Cassette' level against dry = -2.052 dB
 PASS  preset 'Old Radio Voice' level against dry = -4.778 dB
 PASS  preset 'Phone Call' level against dry = -3.746 dB
-PASS  CPU of one stereo instance at 48 kHz, percent of one core = 4.214 %
+PASS  CPU of one stereo instance at 48 kHz, percent of one core = 4.470 %
 PASS  window: drawn tone against real tones, default, worst at 10000 Hz = -0.006 dB
 PASS  window: every point of the line could be read over the hiss, default, points that could not = 0.000 
 PASS  window: drawn tone against real tones, 3.75 ips, worst at 10000 Hz = -0.004 dB
@@ -808,4 +808,6 @@ PASS  Airy Encode, the boost moving: the response line follows it = 16.000
 PASS  and the grid and the saturation curve are not drawn again, times = 0.000 
 PASS  Device block: the list waits for a double-click to finish, ms = 430.000 
 PASS  and the second press of a double-click stops the list opening
+PASS  link: the card lists all 26 parameters by their IDs, in order, with Age, Drive, Bias, Tape Speed and Output as the main controls
+PASS  link: the text command "18 dB" on Drive sets it and lands in done; Drive now = 18.000 dB
 RESULT PASS  0 failures

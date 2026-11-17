@@ -4,6 +4,8 @@ Oversampled tape saturation with the things that make tape sound like tape: head
 
 Load it in a host: Audio Units > Luke Garito > Tape Color. Mono and stereo. AU code: `aufx STcl Luke`.
 
+Switchboard sees and sets every control through the link (`src/SmoothLink.h`, since 0.5.0): a card of every parameter in `~/Library/Application Support/SmoothPlugins/link/`, and set commands that move the real parameter the way the window does.
+
 ## The window
 
 Load it and the window says Tape Color. The build keeps the name Tape Color for now.

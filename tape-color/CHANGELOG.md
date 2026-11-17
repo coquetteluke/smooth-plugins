@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+- The link is `src/SmoothLink.h`, a byte copy of Switchboard's. It puts a card of every parameter and its value in the shared link folder, and applies set commands by moving the real parameter with a begin and end gesture, as a drag in the window does, so automation records it. The card names Age, Drive, Bias, Tape Speed and Output as the main controls.
+- No control, preset, parameter ID, AU code or latency changed.
+
+Tests: 666 pass, 0 fail (0.4.4 had 664). New: the card lists all 26 parameters by their IDs, and a text command sets Drive and lands in the card's done list. Of the existing lines only the CPU reading moved.
+
 ## 0.4.4, 2026-11-13
 
 Fixes from the 2026-11-13 bug hunt (21 kept, all real, all fixed). Every fix has a check in `tests/PluginTest.cpp` (run alone with `PluginTest phase2`) that fails on 0.4.3 and passes now.

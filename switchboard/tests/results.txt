@@ -9,8 +9,8 @@ PASS  order_and_64_limit: 100 commands, 64 in the first poll and 36 in the next,
 PASS  track_name: set from another thread, renamed, empty is null
 PASS  destruction_cleans: only the instance's own card and inbox go
 PASS  stale_cleanup: on start, files older than 600 s go and younger ones stay
-PASS  heartbeat: the card's mtime moves with nothing changed, after = 0.506 s
-INFO  parses while the writer was writing = 8931.000 
+PASS  heartbeat: the card's mtime moves with nothing changed, after = 0.504 s
+INFO  parses while the writer was writing = 8261.000 
 PASS  atomic_under_load: a reader never sees a missing, partial or older card, failures = 0.000 
 PASS  two_instances: distinct ids, cards and inboxes
 PASS  disabled_without_dir: AudioUnit always, anything else only with SMOOTH_LINK_DIR
@@ -19,7 +19,26 @@ PASS  passthrough_bit_exact: mono and stereo, blocks 32, 512 and 1013, bypassed 
 PASS  latency_zero: no latency and no tail at 44.1, 48 and 96 kHz
 PASS  no_parameters: Switchboard has no AU parameters
 PASS  hub_file_track: written at construction, track follows the name, removed on destruction
-PASS  window_shows_track: the placeholder window shows its own track name
+PASS  registry_groups_by_track: members grouped by track, oldest first, renames follow, gone cards go
+PASS  same_name_numbered: two tracks with one name show every plug-in, Name, Name 2, Name 3 by started
+PASS  stale_hidden_after_5s: late cards show as not responding, hidden after 5 s, deleted only past 600 s
+PASS  malformed_skipped_not_deleted: bad cards are skipped, kept, and read again when they change
+PASS  hub_and_tmp_files_skipped: hub files, temp files, hidden files, odd names, folders and links are not cards
+INFO  scan of 200 unchanged cards, mean = 0.332 ms
+PASS  scan_200_cards_unchanged_under_5ms: worst scan with nothing changed = 0.433 ms
+PASS  command_file_atomic_and_named: .<name>.tmp then <name>.json, named <unix ms>-switchboard-<6 hex>, in sending order
+PASS  unanswered_fails_in_3s: no answer in 3 s is a failure and the command file goes; done confirms
+PASS  drag_throttle_30_per_second: begin, moves, end, most commands in any 1 s = 28.000 commands
+PASS  end_to_end_in_process: a Link in this process, Registry finds it, a set, a default and a drag land and are confirmed
+PASS  window_shows_track: the window shows its own track name
+PASS  window_views: This track by default, All tracks, each track seen, an empty state that says what to do
+PASS  window_view_kept: the chosen view stays while the plug-in is open and is saved with the session
+PASS  window_control_kinds: knobs, switches, two-way switches and menus from steps and choices; main controls first
+PASS  window_double_click_default: double-click sends text "default"; a switch click sends a tap
+PASS  window_drag_follows: a drag sends begin, moves, end at most 30 a second; the knob follows the drag, then the card
+PASS  window_not_responding: a card that stops answering greys out with "not responding"
+PASS  window_all_controls: a searchable list of every control, one plug-in or the whole view
+PASS  window_render: the window paints its cards edge to edge, resizable with a minimum size
 PASS  parameter names are clear, unique, no em dash
 INFO  parameter count = 0.000 
 PASS  factory presets = 1.000 
@@ -49,7 +68,7 @@ INFO  click test baseline step = 0.004
 RESULT PASS  0 failures
 PASS  card appears within 3 s (after 0.000 s)
 PASS  one card for one instance
-PASS  card is link 1 and names this AU: Link Probe 0.1.0, aufx SLpr Luke
+PASS  card is link 1 and names this AU: Link Probe 1.0.0, aufx SLpr Luke
 PASS  ContextName "LinkCheck Track" reaches the card (after 0.033 s)
 PASS  card lists every AU parameter: card 5, AU 5
 PASS  every card parameter is the AU parameter of that ID, with the same name

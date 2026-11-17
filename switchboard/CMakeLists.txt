@@ -9,7 +9,7 @@ set(SP_NAME    "Switchboard")
 set(SP_CODE    SSwb)
 set(SP_BUNDLE  "com.lukegarito.switchboard")
 set(SP_DESC    "Shows and sets the controls of your plug-ins on this track")
-set(SP_VERSION 0.1.0)
+set(SP_VERSION 1.0.0)
 
 project(${SP_TARGET} VERSION ${SP_VERSION} LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
@@ -58,7 +58,7 @@ target_compile_definitions(LinkStub PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTE
 target_link_libraries(LinkStub PRIVATE juce::juce_audio_processors PUBLIC juce::juce_recommended_config_flags)
 
 # ---- Task 2: the Switchboard AU ----
-set(HUB_SOURCES hub/PluginProcessor.cpp)
+set(HUB_SOURCES hub/PluginProcessor.cpp hub/Editor.cpp hub/Controls.cpp)
 juce_add_plugin(${SP_TARGET}
     VERSION ${SP_VERSION}
     COMPANY_NAME "Luke Garito"
@@ -96,7 +96,8 @@ add_dependencies(InstallAU ${SP_TARGET}_AU)
 juce_add_console_app(HubTest PRODUCT_NAME "HubTest")
 target_sources(HubTest PRIVATE ${HUB_SOURCES} tests/HubTest.cpp)
 target_include_directories(HubTest PRIVATE hub link tests)
-target_compile_definitions(HubTest PRIVATE ${SP_DEFS} SWITCHBOARD_VERSION="${SP_VERSION}" JUCE_MODAL_LOOPS_PERMITTED=0)
+# Modal loops on for HubTest --window-cpu, which runs the open window under runDispatchLoopUntil.
+target_compile_definitions(HubTest PRIVATE ${SP_DEFS} SWITCHBOARD_VERSION="${SP_VERSION}" JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(HubTest PRIVATE juce::juce_audio_utils PUBLIC juce::juce_recommended_config_flags)
 add_test(NAME hub COMMAND HubTest)
 set_tests_properties(hub PROPERTIES ENVIRONMENT "SMOOTH_LINK_DIR=${SCRATCH}/hubtest;SMOOTH_KEY_JSON=${SCRATCH}/key.json")

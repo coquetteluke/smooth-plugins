@@ -1,5 +1,5 @@
 #include "PluginProcessor.h"
-#include "PlaceholderEditor.h"
+#include "Editor.h"
 
 SwitchboardProcessor::SwitchboardProcessor()
     : AudioProcessor (BusesProperties().withInput ("Input", juce::AudioChannelSet::stereo(), true)
@@ -37,19 +37,27 @@ void SwitchboardProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffe
 
 juce::AudioProcessorEditor* SwitchboardProcessor::createEditor()
 {
-    return new PlaceholderEditor (*this);
+    return new SwitchboardEditor (*this);
 }
 
-// Nothing to keep yet but a version, so a later Switchboard can tell what saved the session.
+// A version, so a later Switchboard can tell what saved the session, and the window's view.
 void SwitchboardProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     juce::XmlElement xml ("SWITCHBOARD");
     xml.setAttribute ("version", SWITCHBOARD_VERSION);
+    xml.setAttribute ("view", getView());
     copyXmlToBinary (xml, dest);
 }
 
-void SwitchboardProcessor::setStateInformation (const void*, int)
+void SwitchboardProcessor::setStateInformation (const void* data, int size)
 {
+    if (auto xml = getXmlFromBinary (data, size))
+        if (xml->hasTagName ("SWITCHBOARD") && xml->hasAttribute ("view"))
+        {
+            const auto v = xml->getStringAttribute ("view");
+            if (v == "this" || v == "all" || (v.startsWith ("track:") && v.length() <= 1030))
+                setView (v);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new SwitchboardProcessor(); }

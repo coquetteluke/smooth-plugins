@@ -102,6 +102,31 @@ Each Switchboard instance writes `hub-<id>.json` (same atomic write, same mtime 
 `{ "link": 1, "hub": true, "id": "...", "track": "Lead Vox" | null, "version": "1.0.0" }`.
 Readers of members skip every file whose name starts with `hub-`.
 
+### Switchboard's screen and its inbox (Switchboard 1.1.0 on)
+
+The hub file also carries what the window shows and the last commands it applied:
+
+```json
+{ "link": 1, "hub": true, "id": "...", "track": "Stereo Out", "version": "1.1.0",
+  "showing": { "screen": "track", "track": "Lead Vox" },
+  "done": [ { "cmd": "1794430230456-test-a1b2c3", "ok": true, "error": "",
+              "showing": { "screen": "track", "track": "Lead Vox" } } ] }
+```
+
+- `showing.screen` is `tracks` (the list of tracks), `track` (one track's plug-ins; `track` names it) or
+  `controls` (every control of one plug-in; `track` and `plugin` name it, `plugin` as Switchboard numbers
+  copies: `Tune Pro`, `Tune Pro 2`). The screen is kept by the plug-in, not the window: closing and
+  reopening the window, or reloading the project, comes back to it.
+- Inbox: `hub-<id>.in/`, same atomic write and naming as a member inbox. Switchboard polls it on its
+  window timer even while the window is closed, at least 10 times a second, applies files in name order,
+  deletes each, and records it in `done` (last 16), rewriting the hub file at once.
+- Commands: `{ "show": "tracks" }`, `{ "show": "track", "track": "Lead Vox" }`,
+  `{ "show": "controls", "track": "Lead Vox", "plugin": "Tune Pro" }`, each with an optional `"from"`.
+  A track or plug-in Switchboard does not see right now, bad JSON or an unknown `show` gives
+  `"ok": false` and a plain `error`, and the screen stays as it was.
+- Members never touch `hub-*` names (a member inbox is exactly 16 hex characters plus `.in`). Switchboard
+  deletes `hub-*.in` folders whose hub file is gone or older than 600 s in its own cleanup.
+
 ## Reading rules (Switchboard and other readers)
 
 - Only files matching `^[0-9a-f]{16}\.json$` are member cards. Ignore `.tmp` files and anything

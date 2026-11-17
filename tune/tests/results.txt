@@ -299,7 +299,7 @@ PASS  with the host stopped, the display stops moving
 PASS  60 windows opened, painted and closed, 30 of them with audio running = 60.000 
 PASS  a window opens and paints before the host has prepared the plug-in
 PASS  audio with the window open and painting nulls to exact zero against the window closed = 0.000 
-PASS  CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 0.572 %
+PASS  CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 0.478 %
 PASS  Alto/Tenor, held notes under its range, 78 to 92 Hz, output pitch error at instant speed, worst 95th percentile = 0.004 cents
 INFO    worst case is at = 92.499 Hz
 PASS  Alto/Tenor, 87 Hz with vibrato +/-30 cents and breath, output pitch error at instant speed, 95th percentile = 1.328 cents
@@ -403,4 +403,7 @@ PASS  Phase 2: every reading's text reads back as the value it shows, at 6 value
 PASS  Phase 2: an offline bounce as fast as it goes takes up a Follow Key change from C to D major within, in song time (5 = not in the 5 s rendered) = 0.245 s
 PASS  Phase 2: a Manual key from Key 1.7.2 (listening false, written 200 s ago) is followed
 PASS  Phase 2: a closed Key's last line, 11 minutes old, is not taken up
+PASS  link: the card in a scratch folder lists every parameter by its ID, in order, with the 6 main controls marked = 31.000 
+PASS  link: a text command "60 ms" on Retune Speed through the inbox moves it and is confirmed in done = 60.000 ms
+PASS  link: closing the plug-in removes its card and inbox
 RESULT PASS  0 failures

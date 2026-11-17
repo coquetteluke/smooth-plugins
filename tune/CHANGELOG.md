@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+- **The link** (`src/SmoothLink.h`, a byte copy of Switchboard's): the plug-in keeps a card of every control in the shared link folder and moves its own parameter, with a gesture as a mouse drag does, when Switchboard sends a set. The track name Logic gives it is on the card. Main controls: Retune Speed, Humanize, Flex Amount, Natural Vibrato, Input Type, Scale. Test `PluginTest link`: the card lists all 31 parameters by ID, "60 ms" on Retune Speed lands and is confirmed, closing removes the card.
+- Nothing else changes: no DSP, parameter, ID, range, default, preset, latency or AU code. The render sums of the default and all 8 presets are the same as 1.2.3's.
+
 ## 1.2.3, 2026-11-14
 
 Luke asked for this on 2026-11-14: "do those 4 then".

@@ -10,6 +10,8 @@ Synthetic voices and macOS `say` are what it was first measured on. Since 1.2.0 
 
 Every control is a real AU parameter that a host can find by name.
 
+Since 1.3.0 it has the link: Switchboard can see and set every control from one place, by the track it is on.
+
 | Control | What it does |
 |---|---|
 | Key | Root of the scale. |

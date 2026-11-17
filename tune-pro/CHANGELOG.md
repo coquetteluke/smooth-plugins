@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+`src/SmoothLink.h` is a byte copy of Switchboard's: the plug-in keeps a card of every control in the shared link folder and moves its own parameter, with a gesture as a mouse drag does, when Switchboard sends a set; the card carries the track name Logic gives it. Main controls: Retune Speed, Flex Tune, Humanize, Natural Vibrato, Mix, Engine. New test `PluginTest link`: the card lists all 41 parameters by ID, "60 ms" on Retune Speed lands and is confirmed, closing removes the card. No DSP, parameter, ID, range, default, preset, latency or AU code changed; the render sums of the default and all 12 presets equal 1.8.4's.
+
 ## 1.8.4, 2026-11-14
 
 Natural Vibrato below 0 with a Retune Speed above 0 pulled each note off the note and back, 0.15 to 0.3 s in, by up to 8 cents (round 4, found in the last full check; it came with 1.8.2). Its average of the corrected pitch was started on the note's first tick, where a Retune Speed above 0 has moved only part of the way, so as Natural Vibrato faded in (80 to 250 ms into the note) it read the rest of the correction as vibrato and took it back out. The average now follows the corrected pitch exactly for the note's first 80 ms, while Natural Vibrato is still faded out, and averages from there (`PitchCorrector`). With an instant correction (Retune Speed 0, as Robot Flat has it) nothing changes. Of the presets only Flat Then Sung Vibrato has both (Retune Speed 5 ms, Natural Vibrato -100); the two set by hand get the fix too. This changes how Flat Then Sung Vibrato sounds: its notes hold. Luke's yes on 2026-11-14 ("Yes, ship 1.8.4"), knowing the two lines under the real vocal check below.

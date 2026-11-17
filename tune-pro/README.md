@@ -10,6 +10,8 @@ Measured on synthetic voices and macOS `say`. That does not prove it sounds good
 
 Every control is a real AU parameter that a host can find by name. The window only reads them and writes them.
 
+Since 1.9.0 it has the link: Switchboard can see and set every control from one place, by the track it is on.
+
 | Control | What it does |
 |---|---|
 | Key, Scale | Root and scale: Chromatic, Major, Minor, Harmonic Minor, Melodic Minor, Major Pentatonic, Minor Pentatonic, Blues, Dorian, Phrygian, Lydian, Mixolydian, Locrian. |

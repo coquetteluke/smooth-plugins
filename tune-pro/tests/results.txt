@@ -285,11 +285,11 @@ PASS  [LL] hard and natural presets are both there, presets = 12.000
 PASS  [LL] preset Hard Tune flattens vibrato, kept = 5.783 %
 PASS  [LL] preset Natural Pop keeps more vibrato, kept = 98.569 %
 PASS  [LL] presets leave Key, Scale and Input Type alone
-PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 2.492 %
-INFO  [LL]   the quickest whole render = 2.522 %
-INFO  [LL]   the slowest whole render = 2.569 %
-INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 2.616 %
-INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 5.643 %
+PASS  [LL] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 2.549 %
+INFO  [LL]   the quickest whole render = 2.584 %
+INFO  [LL]   the slowest whole render = 2.705 %
+INFO  [LL]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 2.629 %
+INFO  [LL]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 5.685 %
 PASS  [LL] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.539 cents
 PASS  [LL] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.139 cents
 PASS  [LL] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.204 cents
@@ -568,11 +568,11 @@ PASS  [HQ] hard and natural presets are both there, presets = 12.000
 PASS  [HQ] preset Hard Tune flattens vibrato, kept = 1.143 %
 PASS  [HQ] preset Natural Pop keeps more vibrato, kept = 97.712 %
 PASS  [HQ] presets leave Key, Scale and Input Type alone
-PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 5.306 %
-INFO  [HQ]   the quickest whole render = 5.349 %
-INFO  [HQ]   the slowest whole render = 5.631 %
-INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 2.976 %
-INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 5.686 %
+PASS  [HQ] CPU on one core, 48 kHz stereo, Wide Range, voice at 180 Hz (machine busy with other builds) = 5.412 %
+INFO  [HQ]   the quickest whole render = 5.484 %
+INFO  [HQ]   the slowest whole render = 5.795 %
+INFO  [HQ]   CPU correcting by 3 semitones at 48000 Hz, harmonic model in use = 2.998 %
+INFO  [HQ]   CPU correcting by 3 semitones at 96000 Hz, harmonic model in use = 5.772 %
 PASS  [HQ] MIDI Targets, As Played: output on the held note, six notes, worst 95th percentile = 0.040 cents
 PASS  [HQ] MIDI Targets, All Octaves: C1 held, A3 sung comes out on the nearest C, 95th percentile = 0.010 cents
 PASS  [HQ] MIDI Targets: of two held notes the nearer is the target, 95th percentile = 0.010 cents
@@ -882,7 +882,7 @@ PASS  the keyboard's target reads A3 = 57.000
 PASS  the pitch window's newest point: input A3 +30 cents, corrected A3 = 57.000 
 PASS  the reading strip: Active Key C Chromatic  |  In 223.8 Hz  |  Out 220.0 Hz  |  Target A3  |  Correction -30 cents
 PASS  the window paints
-PASS  audio keeps running while the window repaints, blocks = 79.000 
+PASS  audio keeps running while the window repaints, blocks = 73.000 
 PASS  every control in the window is found by its parameter ID
 PASS  Flex Tune is a slider in the window
 PASS  automation moves the window's slider = 42.000 
@@ -906,9 +906,9 @@ PASS  it paints at the smallest, largest and in between sizes
 PASS  with no audio arriving the display asks for no frames
 PASS  null test, window open against no window, largest sample difference = 0.000 
 PASS  25 opens and closes with no audio
-PASS  25 opens and closes with audio running, blocks = 2030.000 
+PASS  25 opens and closes with audio running, blocks = 1582.000 
 PASS  closing the window leaves audio running
-PASS  [HQ] Phase 2: High Quality with Classic on: CPU on one core, 48 kHz stereo, voice at 180 Hz, least of 5 = 1.154 %
+PASS  [HQ] Phase 2: High Quality with Classic on: CPU on one core, 48 kHz stereo, voice at 180 Hz, least of 5 = 1.160 %
 PASS  [HQ] Phase 2: Classic switched on in High Quality on a held 350 Hz note: the deepest 2 ms dip around the switch, against the 100 ms before = 4.930 dB
 PASS  [HQ] Phase 2: and the largest step between samples around it, against the voice's own before = 1.019 times
 INFO  [LL] Phase 2:   pitch movement against the sound, Low Male at 196 Hz, 48 kHz = -0.049 ms
@@ -958,4 +958,7 @@ PASS  Round 3: one click on D reaches the host as one change to Remove in one ge
 PASS  Round 3: a click, then the window closed at once: the host has the one change to Remove (changes written) = 1.000 
 PASS  Round 3: D then E clicked once each: both on Remove, two changes written (changes) = 2.000 
 PASS  Round 3: a click on D, then a session with D on Tune loaded: D stays on Tune (mode) = 0.000 
+PASS  link: the card in a scratch folder lists every parameter by its ID, in order, with the 6 main controls marked = 41.000 
+PASS  link: a text command "60 ms" on Retune Speed through the inbox moves it and is confirmed in done = 60.000 ms
+PASS  link: closing the plug-in removes its card and inbox
 RESULT PASS  0 failures

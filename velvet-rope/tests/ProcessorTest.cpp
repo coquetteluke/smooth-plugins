@@ -3,6 +3,7 @@
 #define SMOOTH_COUNT_ALLOCS
 #include "TestKit.h"
 #include "PluginProcessor.h"
+#include "SmoothLink.h"
 #include "editor/ResonanceEditor.h"
 
 #include <map>
@@ -1929,9 +1930,82 @@ static void testPhase2Window()
     }
 }
 
+// The link (0.9.0, Switchboard): with SMOOTH_LINK_DIR on a fresh scratch folder in the build, never the real one,
+// the card lists every parameter by its ID, and a text command through the inbox moves Depth and is confirmed in done. The member is
+// called smoothLink here, since the processor already has a member link (Stereo Link's value).
+static void testLink()
+{
+    const char* had = std::getenv ("SMOOTH_LINK_DIR");
+    const std::string saved = had != nullptr ? had : "";
+    const auto dir = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory().getChildFile ("link-test");
+    dir.deleteRecursively();
+    setenv ("SMOOTH_LINK_DIR", dir.getFullPathName().toRawUTF8(), 1);
+    {
+        auto p = std::make_unique<Proc>();
+        const auto readCard = [&p]
+        {
+            std::string bytes;
+            juce::var v;
+            if (smooth::linkdetail::readFile (p->smoothLink.card().getFullPathName().toStdString(), bytes))
+                juce::JSON::parse (juce::String::fromUTF8 (bytes.data(), (int) bytes.size()), v);
+            return v;
+        };
+        // The two readings are added in the constructor's body, after the link is built: its polls list them on the next write, at most
+        // a quarter second on in a host. The test moves the link's clock on by that instead of waiting.
+        const double start = p->smoothLink.clock();
+        p->smoothLink.clock = [start] { return start + 0.3; };
+        p->smoothLink.pollNow();
+        auto card = readCard();
+        const auto& params = p->getParameters();
+        auto* listed = card["params"].getArray();
+        bool ok = p->smoothLink.enabled() && p->smoothLink.card().getParentDirectory() == dir && listed != nullptr && listed->size() == params.size();
+        juce::StringArray mains;
+        for (int i = 0; ok && i < params.size(); ++i)
+        {
+            auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*> (params[i]);
+            ok = hosted != nullptr && listed->getReference (i)["id"].toString() == hosted->getParameterID();
+            if ((bool) listed->getReference (i)["main"])
+                mains.add (listed->getReference (i)["id"].toString());
+        }
+        const juce::StringArray wanted { "depth", "mix", "outputGain", "maxCut", "sharpness", "selectivity" };
+        ok = ok && mains.size() == wanted.size();
+        for (const auto& id : wanted)
+            ok = ok && mains.contains (id);
+        check (ok, "link: the card in a scratch folder lists every parameter by its ID, in order, with the 6 main controls marked", (double) params.size());
+
+        const juce::String name = "1794430230000-test-a1b2c3";
+        const auto tmp = p->smoothLink.inbox().getChildFile ("." + name + ".tmp");
+        tmp.replaceWithText (R"({ "param": "depth", "text": "12 dB" })");
+        tmp.moveFileTo (p->smoothLink.inbox().getChildFile (name + ".json"));
+        const float before = p->parameters.getRawParameterValue ("depth")->load();
+        p->smoothLink.pollNow();
+        card = readCard();
+        juce::var done;
+        if (auto* d = card["done"].getArray())
+            for (auto& e : *d)
+                if (e["cmd"].toString() == name)
+                    done = e;
+        const float after = p->parameters.getRawParameterValue ("depth")->load();
+        check (std::abs (before - 12.0f) > 0.5f && std::abs (after - 12.0f) < 0.01f && done.isObject() && (bool) done["ok"] && done["param"].toString() == "depth",
+               "link: a text command \"12 dB\" on Depth through the inbox moves it and is confirmed in done", after, "dB");
+    }
+    check (dir.isDirectory() && dir.getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0, "link: closing the plug-in removes its card and inbox");
+    if (had != nullptr)
+        setenv ("SMOOTH_LINK_DIR", saved.c_str(), 1);
+    else
+        unsetenv ("SMOOTH_LINK_DIR");
+    dir.deleteRecursively();
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+
+    if (argc > 1 && juce::String (argv[1]) == "link")
+    {
+        testLink();
+        return finish();
+    }
 
     if (argc > 1 && juce::String (argv[1]) == "phase2")
     {
@@ -1966,6 +2040,8 @@ int main (int argc, char** argv)
     testPhase2Dsp();
     testPhase2State();
     testPhase2Window();
+
+    testLink();
 
     return finish();
 }

@@ -35,6 +35,8 @@ A calm, near-flat dark window with the colour kept for the graph. Your voice is 
 
 Every control is a real parameter with its old ID, name and range, shown or not, so automation moves the window and the window moves them, with begin and end of gesture. The window keeps no sound settings of its own. Its graph data comes from the lock free `readGraph`, so it cannot block the audio thread.
 
+Since 0.9.0 it has the link: Switchboard can see and set every control from one place, by the track it is on.
+
 Pictures are in `docs/window-v5/` (0.7.0: `held-notes-ring-off` and `held-notes-ring-on` are the same ringing note, and the rose gold is the part of the reduction Held notes adds), with the earlier designs kept in `docs/window-v4/`, `docs/window-v3/`, `docs/window-v2/` and `docs/window/` for comparison. They are made by `build/RenderWindow_artefacts/Release/RenderWindow`, which runs real speech from macOS `say` with resonant boosts through the real processor and renders the real window to PNG with no host. `RenderWindow --live` opens a real window with all but one column of pixels off the screen, and measures frames a second, CPU and instructions.
 
 Measured on the 16 GB MacBook's 2x screen with other builds running: 30 frames a second, and 3.0% to 5.0% of one core over 8 runs with audio playing. If macOS puts it on the slow cores it reads 7% to 9% for the same work. With nothing moving it hardly redraws. Closed, it costs nothing. Details are in `docs/window-cpu.md`.

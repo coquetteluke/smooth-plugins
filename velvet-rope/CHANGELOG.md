@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+`src/SmoothLink.h` is a byte copy of Switchboard's: the plug-in keeps a card of every control in the shared link folder and moves its own parameter, with a gesture as a mouse drag does, when Switchboard sends a set; the card carries the track name Logic gives it. The processor's member is called `smoothLink`, since `link` was already Stereo Link's value. Main controls: Depth, Mix, Output Gain, Max Cut, Sharpness, Selectivity. New test `ProcessorTest link` (also in the full run): the card lists all 60 parameters by ID, "12 dB" on Depth lands and is confirmed, closing removes the card. No DSP, parameter, ID, range, default, preset, latency or AU code changed; the render sums of the default and all 12 presets equal 0.8.1's.
+
 ## 0.8.1, 2026-11-13
 
 Fixes from the Phase 2 bug hunt (15 bugs kept, each checked by a second reader) and HostStress's one FAIL. No control, preset or parameter ID changed, the AU codes are the same, the latency is the same (2048 samples at 48 kHz in Normal), and a session saved by 0.8.0 plays sample for sample as 0.8.0 played it. Every check below was written first and failed on 0.8.0; the failing number is given.

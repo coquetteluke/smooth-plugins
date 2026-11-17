@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "ResonanceEngine.h"
+#include "SmoothLink.h"
 
 /** A read-only reading. Lives outside the value tree, so it is never saved or recalled. The audio thread only stores an
     atomic and nothing here notifies the host, so it cannot write automation. */
@@ -89,6 +90,7 @@ public:
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorParameter* getBypassParameter() const override;
+    void updateTrackProperties (const TrackProperties& p) override { smoothLink.setTrackName (p.name.value_or (juce::String())); }
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override  { return true; }
@@ -130,6 +132,9 @@ public:
     juce::AudioChannelSet getNamedLayout() const;
 
     juce::AudioProcessorValueTreeState parameters;
+    /** The link: Switchboard sees and sets every control through it (0.9.0). Built after the parameters exist. Called
+        smoothLink, not link, since link is already Stereo Link's value below. */
+    smooth::Link smoothLink { *this, smooth::Link::Info::fromBuild ({ "depth", "mix", "outputGain", "maxCut", "sharpness", "selectivity" }) };
 
     /** Window width in points. The height follows from the fixed shape. Saved with the session. */
     static constexpr int defaultWindowWidth = 1160, minWindowWidth = 870, maxWindowWidth = 1856;

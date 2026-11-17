@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+- The link is `src/SmoothLink.h`, a byte copy of Switchboard's. It puts a card of every parameter and its value in the shared link folder, and applies set commands by moving the real parameter with a begin and end gesture, as a drag in the window does, so automation records it. The card names Attack, Sustain, Punch, Impact and Ceiling as the main controls.
+- No control, preset, parameter ID, AU code or latency changed.
+
+Tests: 583 pass, 0 fail (0.6.3 had 581). New: the card lists all 14 parameters by their IDs, and a text command sets Attack and lands in the card's done list.
+
 ## 0.6.3, 2026-11-14
 
 One fix to Steady Notes where there is no voice (punch-r1-3). Luke asked for this on 2026-11-14: "do those 4 then". With Steady Notes off nothing changes. No control, preset, parameter ID, AU code or latency changed.

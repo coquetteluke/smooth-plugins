@@ -652,4 +652,6 @@ PASS  a reset allocates nothing = 0.000
 PASS  a reset before the first prepare is harmless
 PASS  the Reset that comes with host bypass switching on changes nothing; largest difference = 0.000 
 PASS  a Reset later on while bypassed is not left out
+PASS  link: the card lists all 14 parameters by their IDs, in order, with Attack, Sustain, Punch, Impact and Ceiling as the main controls
+PASS  link: the text command "6 dB" on Attack sets it and lands in done; Attack now = 6.000 dB
 RESULT PASS  0 failures

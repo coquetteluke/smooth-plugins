@@ -7,6 +7,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_dsp/juce_dsp.h>
 #include <thread>
+#include <unistd.h>
 #include "GoldenV010.h"
 #include "PunchEngine040.h"
 
@@ -3135,6 +3136,56 @@ static void runPhase2()
     testHostReset();
 }
 
+// The link (0.7.0), for Switchboard. With SMOOTH_LINK_DIR on a fresh scratch folder, the card lists every parameter
+// by its ID, and a text command on a main control moves it as one gesture and lands in done. The folder is removed afterwards and
+// SMOOTH_LINK_DIR goes back to what it was, so the real link folder is never used.
+static void testLink()
+{
+    const char* had = std::getenv ("SMOOTH_LINK_DIR");
+    const std::string saved = had != nullptr ? had : "";
+    const char* tmp = std::getenv ("TMPDIR");
+    std::string folder = (tmp != nullptr && tmp[0] == '/') ? tmp : "/tmp";
+    if (folder.back() != '/') folder += '/';
+    folder += "punch-link.XXXXXX";
+    const bool made = mkdtemp (folder.data()) != nullptr;
+    setenv ("SMOOTH_LINK_DIR", folder.c_str(), 1);
+    {
+        PluginProcessor p;
+        const auto& params = p.getParameters();
+        const juce::String name = "1794430230000-test-a1b2c3";
+        p.link.inbox().getChildFile (name + ".json").replaceWithText (R"({ "param": "attack", "text": "6 dB" })");
+        p.link.pollNow();
+        std::string bytes;
+        juce::var card;
+        const bool read = smooth::linkdetail::readFile (p.link.card().getFullPathName().toStdString(), bytes)
+                          && juce::JSON::parse (juce::String::fromUTF8 (bytes.data(), (int) bytes.size()), card).wasOk();
+        auto* listed = card["params"].getArray();
+        bool ids = made && p.link.enabled() && read && listed != nullptr && listed->size() == params.size();
+        juce::StringArray mains;
+        for (int i = 0; ids && i < params.size(); ++i)
+        {
+            auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*> (params[i]);
+            ids = hosted != nullptr && hosted->getParameterID().isNotEmpty() && (*listed)[i]["id"].toString() == hosted->getParameterID();
+            if ((bool) (*listed)[i]["main"])
+                mains.add ((*listed)[i]["id"].toString());
+        }
+        mains.sort (false);
+        check (ids && mains == juce::StringArray { "attack", "ceiling", "impact", "punch", "sustain" },
+               "link: the card lists all " + std::to_string (params.size()) + " parameters by their IDs, in order, with Attack, Sustain, Punch, Impact and Ceiling as the main controls");
+        juce::var done;
+        if (auto* list = card["done"].getArray())
+            for (auto& d : *list)
+                if (d["cmd"].toString() == name)
+                    done = d;
+        const float attack = p.apvts.getRawParameterValue ("attack")->load();
+        check (std::abs (attack - 6.0f) < 1.0e-3f && (bool) done["ok"] && p.link.inbox().getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0,
+               "link: the text command \"6 dB\" on Attack sets it and lands in done; Attack now", attack, "dB");
+    }
+    if (had != nullptr) setenv ("SMOOTH_LINK_DIR", saved.c_str(), 1);
+    else unsetenv ("SMOOTH_LINK_DIR");
+    if (made) juce::File (folder).deleteRecursively();
+}
+
 // "PluginTest phase2" runs only the checks added in 0.6.2.
 int main (int argc, char** argv)
 {
@@ -3183,5 +3234,6 @@ int main (int argc, char** argv)
     testHitDisplayNumbers();
     testWindow();
     runPhase2();
+    testLink();
     return finish();
 }

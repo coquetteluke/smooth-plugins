@@ -6,6 +6,8 @@ Makes a vocal hit harder and sit forward. Shapes the start and the tail of a sou
 
 In your host: Audio Units > Luke Garito > Punch. AU code `aufx SPun Luke`. Mono and stereo. Latency is 2 ms: 88 samples at 44.1 kHz, 96 at 48 kHz, 192 at 96 kHz, and the same when bypassed.
 
+Switchboard sees and sets every control through the link (`src/SmoothLink.h`, since 0.7.0): a card of every parameter in `~/Library/Application Support/SmoothPlugins/link/`, and set commands that move the real parameter the way the window does.
+
 ## Controls
 
 - **Punch** (0 to 100 %, default 0): amount of fast compression, level matched. The threshold follows the loudest recent level, so it does the same job on a quiet track as on a loud one. Up to 36 dB below that peak at 10 to 1 at the top of the control.

@@ -6,6 +6,7 @@
 #include "CeilingLimiter.h"
 #include "EnvelopeTap.h"
 #include "PunchEngine.h"
+#include "SmoothLink.h"
 
 // A read-only level reading in dB, reachable as a real AU parameter. It lives outside the value tree, so it is never saved or recalled.
 // The audio thread only stores an atomic. Nothing here notifies the host, so it cannot write automation.
@@ -67,6 +68,8 @@ public:
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
 
     juce::AudioProcessorValueTreeState apvts;
+    smooth::Link link { *this, smooth::Link::Info::fromBuild ({ "attack", "sustain", "punch", "impact", "ceiling" }) };
+    void updateTrackProperties (const TrackProperties& p) override { link.setTrackName (p.name.value_or (juce::String())); }
 
     static constexpr double lookaheadSeconds = 0.002;
 

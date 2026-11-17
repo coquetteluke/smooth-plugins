@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+`src/SmoothLink.h` is a byte copy of Switchboard's: the plug-in keeps a card of every control in the shared link folder and moves its own parameter, with a gesture as a mouse drag does, when Switchboard sends a set; the card carries the track name Logic gives it. Main controls: Mode, Voice 1 Interval, Voice 2 Interval (the two lit voice cards of a new instance), Harmony Level, Mix, Voices. New test `PluginTest link`: the card lists all 96 parameters by ID, "50 %" on Mix lands and is confirmed, closing removes the card. No DSP, parameter, ID, range, default, preset, latency or AU code changed: the bit for bit pins in `tests/WindowTests.h` still hold 1.6.3's numbers, and the render sums of the default and all 15 presets equal 1.6.3's.
+
 ## 1.6.3, 2026-11-16
 
 Round 6: a voice reaching its new note late when it glides up. Luke asked for this on 2026-11-16: "can u fix choir loft". Latency unchanged (659 samples, 13.7 ms at Alto/Tenor). No parameter, AU code, Input Type value, default or preset setting changed; saved sessions open as before.

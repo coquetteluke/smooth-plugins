@@ -7,6 +7,7 @@
 #include "PitchTracker.h"
 #include "Scales.h"
 #include "VoiceShifter.h"
+#include "SmoothLink.h"
 
 // A reading shown to the host, by name and value string.
 // It is not automatable, ignores writes, and is never pushed to the host, so it cannot write automation.
@@ -99,6 +100,7 @@ public:
     void setStateInformation (const void*, int) override;
 
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
+    void updateTrackProperties (const TrackProperties& p) override { link.setTrackName (p.name.value_or (juce::String())); }
 
     // Window width in points. The height follows from the fixed shape. Saved with the session, and not a sound setting.
     static constexpr int defaultWindowWidth = 1200, minWindowWidth = 900, maxWindowWidth = 1900;
@@ -154,6 +156,8 @@ public:
     FollowedKey followedKey() const noexcept;
 
     juce::AudioProcessorValueTreeState apvts;
+    // The link: Switchboard sees and sets every control through it (1.7.0). Built after the parameters exist.
+    smooth::Link link { *this, smooth::Link::Info::fromBuild ({ "mode", "voice1Interval", "voice2Interval", "harmonyLevel", "mix", "voices" }) };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();

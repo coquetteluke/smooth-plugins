@@ -16,6 +16,8 @@ Most of what is here was measured on synthetic voices and macOS `say`. That does
 
 Every control is a real AU parameter that a host can find by name.
 
+Since 1.7.0 it has the link: Switchboard can see and set every control from one place, by the track it is on.
+
 | Control | What it does |
 |---|---|
 | Mode | Where voice pitch comes from. See below. |

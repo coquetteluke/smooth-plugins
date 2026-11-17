@@ -8,7 +8,7 @@ set(SP_NAME    "Choir Loft")
 set(SP_CODE    SHrm)
 set(SP_BUNDLE  "com.lukegarito.smoothharmony")
 set(SP_DESC    "Up to eight formant preserving harmony voices from one lead vocal")
-set(SP_VERSION 1.6.3)
+set(SP_VERSION 1.7.0)
 set(SP_AU_TYPE kAudioUnitType_MusicEffect)   # kAudioUnitType_MusicEffect if it takes MIDI, kAudioUnitType_MusicDevice for an instrument
 set(SP_SYNTH   FALSE)                   # TRUE only for an instrument
 set(SP_MIDI_IN TRUE)                   # TRUE for MusicEffect and MusicDevice

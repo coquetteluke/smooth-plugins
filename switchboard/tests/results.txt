@@ -9,9 +9,41 @@ PASS  order_and_64_limit: 100 commands, 64 in the first poll and 36 in the next,
 PASS  track_name: set from another thread, renamed, empty is null
 PASS  destruction_cleans: only the instance's own card and inbox go
 PASS  stale_cleanup: on start, files older than 600 s go and younger ones stay
-PASS  heartbeat: the card's mtime moves with nothing changed, after = 0.515 s
-INFO  parses while the writer was writing = 10000.000 
+PASS  heartbeat: the card's mtime moves with nothing changed, after = 0.511 s
+INFO  parses while the writer was writing = 9720.000 
 PASS  atomic_under_load: a reader never sees a missing, partial or older card, failures = 0.000 
 PASS  two_instances: distinct ids, cards and inboxes
 PASS  disabled_without_dir: AudioUnit always, anything else only with SMOOTH_LINK_DIR
+RESULT PASS  0 failures
+PASS  passthrough_bit_exact: mono and stereo, blocks 32, 512 and 1013, bypassed or not, every bit pattern
+PASS  latency_zero: no latency and no tail at 44.1, 48 and 96 kHz
+PASS  no_parameters: Switchboard has no AU parameters
+PASS  hub_file_track: written at construction, track follows the name, removed on destruction
+PASS  window_shows_track: the placeholder window shows its own track name
+PASS  parameter names are clear, unique, no em dash
+INFO  parameter count = 0.000 
+PASS  factory presets = 1.000 
+PASS  preset names are not empty, no em dash
+PASS  presets change the state
+PASS  state save and restore
+PASS  damaged state value 'nan' gives finite output
+PASS  damaged state value 'nan' leaves controls in range
+PASS  damaged state value 'inf' gives finite output
+PASS  damaged state value 'inf' leaves controls in range
+PASS  damaged state value '-inf' gives finite output
+PASS  damaged state value '-inf' leaves controls in range
+PASS  damaged state value '-1e30' gives finite output
+PASS  damaged state value '-1e30' leaves controls in range
+PASS  damaged state value '1e30' gives finite output
+PASS  damaged state value '1e30' leaves controls in range
+PASS  damaged state value '-1' gives finite output
+PASS  damaged state value '-1' leaves controls in range
+PASS  damaged state value 'garbage' gives finite output
+PASS  damaged state value 'garbage' leaves controls in range
+PASS  sweeps finished, mono
+PASS  sweeps finished, stereo
+PASS  no NaN after silence
+PASS  no denormals decaying into silence = 0.000 samples
+PASS  recovers after NaN, inf and huge input, peak in the last second = 0.250 
+INFO  click test baseline step = 0.004 
 RESULT PASS  0 failures

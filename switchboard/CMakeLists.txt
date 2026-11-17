@@ -56,3 +56,47 @@ target_sources(LinkStub PRIVATE tools/LinkStub.cpp)
 target_include_directories(LinkStub PRIVATE link tests)
 target_compile_definitions(LinkStub PRIVATE ${SP_DEFS} JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(LinkStub PRIVATE juce::juce_audio_processors PUBLIC juce::juce_recommended_config_flags)
+
+# ---- Task 2: the Switchboard AU ----
+set(HUB_SOURCES hub/PluginProcessor.cpp)
+juce_add_plugin(${SP_TARGET}
+    VERSION ${SP_VERSION}
+    COMPANY_NAME "Luke Garito"
+    BUNDLE_ID ${SP_BUNDLE}
+    PLUGIN_MANUFACTURER_CODE Luke
+    PLUGIN_CODE ${SP_CODE}
+    FORMATS AU
+    PRODUCT_NAME ${SP_NAME}
+    PLUGIN_NAME ${SP_NAME}
+    DESCRIPTION ${SP_DESC}
+    AU_MAIN_TYPE kAudioUnitType_Effect
+    IS_SYNTH FALSE
+    NEEDS_MIDI_INPUT FALSE
+    NEEDS_MIDI_OUTPUT FALSE
+    IS_MIDI_EFFECT FALSE
+    COPY_PLUGIN_AFTER_BUILD FALSE)   # installed only by the InstallAU target below
+
+target_sources(${SP_TARGET} PRIVATE ${HUB_SOURCES})
+target_include_directories(${SP_TARGET} PRIVATE hub link)
+target_compile_definitions(${SP_TARGET} PUBLIC ${SP_DEFS} SWITCHBOARD_VERSION="${SP_VERSION}")
+target_link_libraries(${SP_TARGET}
+    PRIVATE juce::juce_audio_utils
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+
+# ---- install: cmake --build build --target InstallAU ----
+set(AU_INSTALL_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/Components")
+add_custom_target(InstallAU
+    COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:${SP_TARGET}_AU>"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${AU_INSTALL_DIR}/${SP_NAME}.component"
+    COMMAND ditto "$<TARGET_BUNDLE_DIR:${SP_TARGET}_AU>" "${AU_INSTALL_DIR}/${SP_NAME}.component"
+    COMMENT "Ad-hoc signing and installing ${SP_NAME}.component"
+    VERBATIM)
+add_dependencies(InstallAU ${SP_TARGET}_AU)
+
+juce_add_console_app(HubTest PRODUCT_NAME "HubTest")
+target_sources(HubTest PRIVATE ${HUB_SOURCES} tests/HubTest.cpp)
+target_include_directories(HubTest PRIVATE hub link tests)
+target_compile_definitions(HubTest PRIVATE ${SP_DEFS} SWITCHBOARD_VERSION="${SP_VERSION}" JUCE_MODAL_LOOPS_PERMITTED=0)
+target_link_libraries(HubTest PRIVATE juce::juce_audio_utils PUBLIC juce::juce_recommended_config_flags)
+add_test(NAME hub COMMAND HubTest)
+set_tests_properties(hub PROPERTIES ENVIRONMENT "SMOOTH_LINK_DIR=${SCRATCH}/hubtest;SMOOTH_KEY_JSON=${SCRATCH}/key.json")

@@ -118,7 +118,7 @@ namespace linkdetail
     {
         struct timeval tv;
         gettimeofday (&tv, nullptr);
-        return (double) tv.tv_sec + tv.tv_usec / 1.0e6;
+        return (double) tv.tv_sec + (double) tv.tv_usec / 1.0e6;
     }
 
     // Seconds since the path was last modified, or -1 when it cannot be read.
@@ -127,7 +127,7 @@ namespace linkdetail
         struct stat s;
         if (lstat (path.c_str(), &s) != 0)
             return -1.0;
-        return now - ((double) s.st_mtimespec.tv_sec + s.st_mtimespec.tv_nsec / 1.0e9);
+        return now - ((double) s.st_mtimespec.tv_sec + (double) s.st_mtimespec.tv_nsec / 1.0e9);
     }
 
     inline bool exists (const std::string& path)
@@ -507,7 +507,7 @@ private:
         if (written.size() != entries.size())
             return true;
         for (size_t i = 0; i < entries.size(); ++i)
-            if (entries[i].param->getValue() != written[i])
+            if (! juce::exactlyEqual (entries[i].param->getValue(), written[i]))
                 return true;
         return false;
     }

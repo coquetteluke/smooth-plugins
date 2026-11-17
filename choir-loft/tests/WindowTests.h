@@ -20,6 +20,18 @@
 // after 100 ms of quiet (r3-1), and a gap breaks the 1.5.2 rule's run of two longer readings (r3-4). Every preset moved. With those three
 // taken out, the 1.6.0 source still gives every one of 1.5.1's numbers bit for bit (the 1.6.0 Phase 2 report has that run), so nothing else
 // in 1.6.0 touches the sound. Round 1's real vocal checks were run again on 1.6.0 before these were pinned (see the CHANGELOG).
+// They now hold 1.6.3's. 1.6.3 changed on purpose how a voice comes into a note it glides up to (round 6): Humanize's scoop on a rising glided
+// change now comes from above instead of from below, the same size, and a glide takes the Glide setting instead of being stretched by Humanize.
+// So the presets with Humanize above 0, a glide, and voices that change note legato moved: first opened, 0, 1, 2, 3 and 9 (Scale and Chord
+// modes). Gang Unison, Wide Octaves and Power Fifths (Fixed: the interval never changes, so no note change glides), the two MIDI presets (the
+// chord here is held from the start) and Tight (Humanize 0) still give 1.6.0's numbers bit for bit. With Humanize set to 0, every preset and the
+// settings as first opened give 1.6.2's output bit for bit on 1.6.3 (round 6d), so nothing else in 1.6.3 touches the sound. Round 1's real
+// vocal checks were run again on 1.6.3 before these were pinned (see the CHANGELOG).
+// 1.6.0's numbers, kept for the record. Four voices: 0 741919119772536737, 3 16379378907821916384, 4 10151666104783483595,
+// 7 12052729043015165279, 10 1761900140556500585. Each at its own count:
+// -1 9054886328041449612, 0 15096337301492231634, 1 9585432653459971801, 2 11844354386868759616,
+// 3 16379378907821916384, 4 10151666104783483595, 5 12735486346134044509, 6 4030038163470858434,
+// 7 12052729043015165279, 8 9038233002064642412, 9 16956187029470025877, 10 843533034310588235.
 // 1.5.1's numbers, kept for the record. Four voices: 0 4098435958583399820, 3 15994760532772079402, 4 15136841548073866403,
 // 7 11747136029797576096, 10 16349240374929031256. Each at its own count:
 // -1 6964773355638076092, 0 13826634681334812772, 1 16858024752313915086, 2 14455849956877040184,
@@ -29,15 +41,15 @@
 namespace windowtests
 {
 struct Fingerprint { int preset; std::uint64_t sum; };
-// Presets 0, 3, 4, 7 and 10 with four voices, as 1.1.0 measured them (the numbers are 1.6.0's now, see above).
-constexpr Fingerprint before11[] = { { 0, 741919119772536737ull }, { 3, 16379378907821916384ull }, { 4, 10151666104783483595ull },
+// Presets 0, 3, 4, 7 and 10 with four voices, as 1.1.0 measured them (the numbers are 1.6.3's now, see above).
+constexpr Fingerprint before11[] = { { 0, 9276640810238010568ull }, { 3, 8713229200506248023ull }, { 4, 10151666104783483595ull },
                                      { 7, 12052729043015165279ull }, { 10, 1761900140556500585ull } };
 
 // Each preset at its own voice count. -1 is the settings as first opened.
 constexpr Fingerprint before12[] = {
-    { -1, 9054886328041449612ull }, { 0, 15096337301492231634ull }, { 1, 9585432653459971801ull }, { 2, 11844354386868759616ull },
-    { 3, 16379378907821916384ull }, { 4, 10151666104783483595ull }, { 5, 12735486346134044509ull }, { 6, 4030038163470858434ull },
-    { 7, 12052729043015165279ull }, { 8, 9038233002064642412ull }, { 9, 16956187029470025877ull }, { 10, 843533034310588235ull } };
+    { -1, 5481925780398768814ull }, { 0, 14017747815046571489ull }, { 1, 10596771374267194120ull }, { 2, 1950491532889406456ull },
+    { 3, 8713229200506248023ull }, { 4, 10151666104783483595ull }, { 5, 12735486346134044509ull }, { 6, 4030038163470858434ull },
+    { 7, 12052729043015165279ull }, { 8, 9038233002064642412ull }, { 9, 14589544465346772500ull }, { 10, 843533034310588235ull } };
 
 inline void collectIds (juce::Component& c, std::set<juce::String>& ids)
 {
@@ -96,14 +108,14 @@ void testWindow()
     const juce::StringArray readings { "detectedPitch", "leadNote", "voice1Note", "voice2Note", "voice3Note", "voice4Note", "voice5Note", "voice6Note", "voice7Note", "voice8Note",
                                        "voicesSounding", "activeKey" };
 
-    // The sound, bit for bit, against 1.6.0 with Human at 0, and with the window open and drawing all the way through.
+    // The sound, bit for bit, against 1.6.3 with Human at 0, and with the window open and drawing all the way through.
     for (const auto& f : before12)
         check (outputFingerprintOf (f.preset, false, false) == f.sum,
-               "null test: bit for bit the same as 1.6.0 at Human 0, each preset at its voice count, " + (f.preset < 0 ? std::string ("first opened") : "preset " + std::to_string (f.preset)));
+               "null test: bit for bit the same as 1.6.3 at Human 0, each preset at its voice count, " + (f.preset < 0 ? std::string ("first opened") : "preset " + std::to_string (f.preset)));
 
     for (const auto& f : before11)
     {
-        check (outputFingerprint (f.preset) == f.sum, "null test: output identical to 1.6.0 at Human 0, four voices, preset " + std::to_string (f.preset));
+        check (outputFingerprint (f.preset) == f.sum, "null test: output identical to 1.6.3 at Human 0, four voices, preset " + std::to_string (f.preset));
 
         check (outputFingerprintWithWindow (f.preset) == f.sum, "null test: identical with the window open and drawing, preset " + std::to_string (f.preset));
     }

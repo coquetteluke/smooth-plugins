@@ -101,7 +101,13 @@ public:
     double pitchCents() const noexcept { return cents; }
     double lagMilliseconds() const noexcept { return lagMs; }
     double levelWander() const noexcept { return level; }
+    // 1.6.3: no longer used for the glide (see HarmonyBrain::update); still drawn, so every other choice of Humanize stays the same.
     double glideStretch() const noexcept { return glideScale; }
+    // 1.6.3: a rising note change that glides. The voice already comes in from below on the glide; the scoop from below on top of it held
+    // it under its note for longer than a falling change, whose scoop works against its glide (round 6: a rising whole tone landed up to
+    // 104 ms after the lead, a falling one 92). Now the scoop of a rising glide comes from above, the same size: like a falling change, it
+    // works against the glide.
+    void scoopAgainstRisingGlide() noexcept { scoop = -scoop; }
     static double vibratoRateScale (int v) noexcept
     {
         static constexpr double rateScale[8] = { 1.0, 0.96, 1.04, 0.93, 1.02, 0.98, 1.06, 0.95 };
@@ -601,12 +607,16 @@ public:
                     // Keep going from where the voice actually is, then let the difference die away. That is the glide.
                     remains[(size_t) v] = lastPitch[(size_t) v] - aim;
                     singer.noteEvent (s.humanize, remains[(size_t) v] > 0.0 ? -1 : 1);
+                    if (s.glideMs >= 0.5 && remains[(size_t) v] < 0.0)
+                        singer.scoopAgainstRisingGlide();
                 }
                 else if (s.mode == modeFixed && chromaticNote != oldChromatic)
                 {
                     singer.noteEvent (s.humanize, chromaticNote < oldChromatic ? -1 : 1);
                 }
-                remains[(size_t) v] = s.glideMs < 0.5 ? 0.0 : remains[(size_t) v] * std::exp (-tick * 1000.0 / (s.glideMs * singer.glideStretch()));
+                // 1.6.3: the glide takes the Glide setting, no longer stretched by Humanize (up to 45% at its default, 90% at 100). Stretched, a
+                // voice gliding a whole tone took up to 60 ms to come within 50 cents of its note, heard as late on Luke's takes (round 6).
+                remains[(size_t) v] = s.glideMs < 0.5 ? 0.0 : remains[(size_t) v] * std::exp (-tick * 1000.0 / s.glideMs);
                 out.target = aim + remains[(size_t) v];
                 noteHeld[(size_t) v] = discrete != lastDiscrete[(size_t) v] ? 0.0 : noteHeld[(size_t) v] + tick;
                 lastDiscrete[(size_t) v] = discrete;

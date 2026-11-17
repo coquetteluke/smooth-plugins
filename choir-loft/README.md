@@ -4,7 +4,7 @@ Up to eight harmony voices from one lead vocal. Formants stay where they are, so
 
 **Load it:** Audio Units > Luke Garito > Choir Loft. AU code `aumf SHrm Luke`. It takes MIDI and goes in an audio effect slot. Mono, stereo, and mono in with stereo out. With mono in, the voices still spread across the stereo field.
 
-Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2 and 1.5.0 to 1.6.2 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
+Most of what is here was measured on synthetic voices and macOS `say`. That does not prove it sounds good on a real singer. 1.4.2 and 1.5.0 to 1.6.3 were also measured on Luke's own dry takes (`realvox/`, and "Low notes and Human" below). Luke heard 1.0.0 on his voice, liked it, and found it robotic. 1.1.0 goes after that, but nobody has heard 1.1.0 yet, and the numbers below only show the causes moved. `demo/` has before and after files.
 
 ## First settings to try
 
@@ -30,7 +30,7 @@ Every control is a real AU parameter that a host can find by name.
 | Voice N Drift | 0 to 100%. Slow pitch, timing and level wander, plus small grain to grain roughness. 100 is +/-20 cents, up to 40 ms behind the lead and about +/-1.5 dB. Each voice wanders on its own. |
 | Voice N Throat | 70 to 140%. Above 100 lowers that voice's formants, as a longer throat would. Defaults differ per voice, about 20% between the extremes. |
 | Voice N Tone | -100 to +100%. Darker or brighter, for good: a shelf at 1.6 kHz. Defaults differ per voice. |
-| Humanize | How a person differs from a machine, note by note. A scoop from below (up to 70 cents, less when coming down), a slow settle (up to 18 cents), landing a little off the note (up to 8 cents at random plus up to 5 cents of the voice's own habit), standing behind the lead (up to 26 ms by voice plus up to 18 ms per note), a slower glide, a softer start to a phrase, its own vibrato depth and timing. Above 0 it also turns on period blending and high end unevenness. 0 is exact. |
+| Humanize | How a person differs from a machine, note by note. A scoop into each note (up to 70 cents; from below, less when coming down, and since 1.6.3 from above on a note the voice glides up to, where the glide itself already comes from below), a slow settle (up to 18 cents), landing a little off the note (up to 8 cents at random plus up to 5 cents of the voice's own habit), standing behind the lead (up to 26 ms by voice plus up to 18 ms per note), a softer start to a phrase, its own vibrato depth and timing. Above 0 it also turns on period blending and high end unevenness. 0 is exact. |
 | Human | 0 to 100%. 0, the default, is the robot sound: the plug-in as it was before 1.5.0, with nothing of this running. Above 0 each voice moves the way a singer does: a wander and a flutter of its own inside every note (random, not a steady wobble), a small part of your own movement on the note, a vibrato whose speed and depth no longer hold still, a level of its own instead of an exact copy of yours, and its own moment of letting go at the end of each note. It never moves a voice off its note on average, and since 1.5.4 never takes a voice more than 40 cents from its note. Humanize is the note by note character (scoops, landing off the note, standing behind the lead). Human is what happens inside the note. They work together or apart. |
 | Vibrato | 0 to 100%, up to +/-60 cents. Starts 180 ms into a note. Each voice's rate is slightly different. |
 | Vibrato Rate | 3 to 8 Hz. Voice 1 runs at this, the others up to 7% away. |
@@ -38,7 +38,7 @@ Every control is a real AU parameter that a host can find by name.
 | Lead Pan | Same law as voice pan. |
 | Harmony Level | -60 (Off) to +12 dB, all voices together. |
 | Mix | 0 is the delayed dry input, 100 is lead plus voices. |
-| Glide | 0 to 500 ms between notes, as a time constant. |
+| Glide | 0 to 500 ms between notes, as a time constant. Since 1.6.3 every voice takes exactly this; Humanize no longer stretches it. |
 | Follow Lead | 0 to 100%. In modes with a set note, how much of the lead's own pitch wander the voices copy. 0 sits on the note. Fixed Interval always copies all of it. With Humanize, some voices copy less than others. |
 | Consonants | 0 to 100%. How much of the lead's unvoiced sound each voice carries. Those sounds are never pitch shifted. |
 | Consonant Scatter | 0 to 100%. 0 passes a copy of the lead's consonant at the voice's lag. Above 0 each voice makes its own: a scatter of short random delays so it shares no waveform with the others, later (about 50 ms at most on top of the lag, by voice and by consonant), softer, and at a level picked per consonant. A long stretch without pitch is taken as a breath and fades out, since real singers do not all breathe together. |
@@ -429,6 +429,11 @@ What the readings and the window say:
 ## Round 5 (1.6.2)
 
 - **The tracker's octave written back over a start** (round 1's last low-note fault, take 10 at 41.242 s). A start's first 30 ms are written back with the newest reading. On a rough low start the tracker can read twice the frequency for a few ms at the end of those 30 ms, and the octave then covered the whole start: a voice standing behind sang it all an octave up. When the pitch comes back under 10 ms later where it was before the jump, and the octave lasted under 20 ms, the start is now written back as it was read before the jump. A voice standing behind still sings the octave from the jump until the pitch returns (22 ms instead of 46 on take 10). At the default this acts once on Luke's working set; 10 of the 11 takes render bit for bit as 1.6.1, take 10 is not bit for bit after 41.286 s (the voices' grains differ from there, their notes do not). Check: `PluginTest round5`. The CHANGELOG has the numbers.
+
+## Round 6 (1.6.3)
+
+- **A voice gliding up reached its note late** (Luke: "can u fix choir loft"). At the default, Humanize's scoop from below was added on top of a glide that already comes from below, so on a rising note change a voice stayed under its note for longer than on a falling one (a whole tone: up to 104 ms after the lead, against 92 falling). Now a rising change that glides takes its scoop from above, the same size, and every glide takes the Glide setting instead of being stretched by Humanize. A rising whole tone now lands in at most 77 ms on a step. Phrase starts keep their scoop from below. With Humanize at 0 nothing changes. Check: `PluginTest round6`. Two places on Luke's takes are still not reached inside the 30 ms the lead's rule allowed (take 02 at 202.792 s, a phrase start; take 10 at 76.982 s with the grains' random numbers moved); the CHANGELOG has the numbers.
+- **The real vocal checker reads low notes right** (Luke: "Yes, fix checker"). RealVox's pitch rule took a ripple on the shoulder of the true peak and read Luke's low notes 40 to 60 cents sharp, on the dry takes as on the voices. It now reads a period at the top of its whole peak (`realvox/PitchRule.h`, `PluginTest checker`); `REALVOX_OLD_PITCH_RULE=1` gives the old reading.
 
 ## Latency
 

@@ -8,6 +8,8 @@ The control set was checked against the public manual of the chorus in UVI Tape 
 
 Audio Units > Luke Garito > Tape Chorus. AU code: `aufx STch Luke`. Works mono in to mono out, mono in to stereo out, and stereo in to stereo out. No licence system.
 
+Switchboard sees and sets every control through the link (`src/SmoothLink.h`, since 0.7.0): a card of every parameter in `~/Library/Application Support/SmoothPlugins/link/`, and set commands that move the real parameter the way the window does.
+
 ## Controls
 
 | Control | Range | What it does |

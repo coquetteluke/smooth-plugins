@@ -652,4 +652,6 @@ INFO  Mono Safe on against off, Spread 100, wet only, 8 voices: level of the two
 INFO  Mono Safe on, Spread 100, Feedback 55, wet only, speech: mono sum in the worst voiced quarter second = -3.624 dB
 PASS  Mono Safe on, Feedback 55: finite and in range, peak = 0.835 
 PASS  Mono Safe switched on and off twice a second under a 1 kHz tone: loudest moment above 8 kHz, below the tone (never switched: -129.4 dB) = -99.688 dB
+PASS  link: the card lists all 30 parameters by their IDs, in order, with Voices, Rate, Depth, Delay, Spread and Mix as the main controls
+PASS  link: the text command "2 Hz" on Rate sets it and lands in done; Rate now = 2.000 Hz
 RESULT PASS  0 failures

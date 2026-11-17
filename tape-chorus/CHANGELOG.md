@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+- The link is `src/SmoothLink.h`, a byte copy of Switchboard's. It puts a card of every parameter and its value in the shared link folder, and applies set commands by moving the real parameter with a begin and end gesture, as a drag in the window does, so automation records it. The card names Voices, Rate, Depth, Delay, Spread and Mix as the main controls.
+- No control, preset, parameter ID, AU code or latency changed.
+- Tests: 609 pass, 0 fail (0.6.0 had 607). New: the card lists all 30 parameters by their IDs, and a text command sets Rate and lands in the card's done list.
+
 ## 0.6.0, 2026-11-13
 
 Phase 2 bug hunt fixes, and one new switch. Every saved session and every preset sounds as it did, except mono in, mono out, whose first 0.4 s after a prepare no longer bends (a fault).

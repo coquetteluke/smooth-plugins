@@ -3,6 +3,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "TapeChorusEngine.h"
 #include "Reading.h"
+#include "SmoothLink.h"
 
 class PluginProcessor final : public juce::AudioProcessor,
                               private juce::AudioProcessorValueTreeState::Listener
@@ -54,6 +55,8 @@ public:
     const TapeChorusEngine& getEngine() const noexcept { return engine; }
 
     juce::AudioProcessorValueTreeState apvts;
+    smooth::Link link { *this, smooth::Link::Info::fromBuild ({ "voices", "rate", "depth", "delay", "spread", "mix" }) };
+    void updateTrackProperties (const TrackProperties& p) override { link.setTrackName (p.name.value_or (juce::String())); }
 
     // The window's own two saved values. Nothing else is added to a session, and these stay out of the parameter tree.
     static constexpr int defaultWindowWidth = 1080, minWindowWidth = 820, maxWindowWidth = 1760;

@@ -38,5 +38,9 @@ The tests use scratch folders under `work/scratch/` (`SMOOTH_LINK_DIR`, `SMOOTH_
 | `tests/LinkTest.cpp` | The link's tests |
 | `tests/HubTest.cpp` | Switchboard's tests, with the checks every plug-in passes |
 | `tools/LinkStub.cpp` | `LinkStub --dir D [--track T] [--plugin P] [--seconds N]`: a stand-in plug-in with a link, for end-to-end tests of the readers. Prints `READY <id>` |
+| `tools/LinkCheck.cpp` | `LinkCheck <type> <subtype> Luke [--render-sums]`: checks an installed plug-in's link from outside, as a host loads it, or prints render sums of its default state and every preset. Copied to `~/smooth-plugins/_shared/bin/LinkCheck` by the `InstallLinkCheck` target |
+| `tools/LinkProbe.cpp` | Link Probe, the test plug-in as a real Audio Unit. Never installed; LinkCheck loads it from the build folder with `--load` (ctest `linkcheck`) |
+
+LinkCheck sets `SMOOTH_LINK_DIR` and `SMOOTH_KEY_JSON` to a fresh scratch folder itself before it loads anything. Its link check prints one PASS or FAIL line per check and ends with `LINKCHECK PASS` or `LINKCHECK FAIL`. With `--render-sums` it renders 8 s of a fixed input (and a fixed chord sequence for instruments and MIDI effects) twice per preset and prints `SUM <preset> <hash>`, or `NONDET <preset>` when the two runs differ; compare two versions' outputs with `diff`. `--state FILE` restores a saved plug-in state first, for a plug-in that is silent until something is loaded (Cutup with no sample).
 
 Results of the last test run are in `tests/results.txt`, changes in `CHANGELOG.md`.

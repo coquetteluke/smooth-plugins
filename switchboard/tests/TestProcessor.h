@@ -11,6 +11,7 @@ namespace linktest
 class PlainParameter final : public juce::AudioProcessorParameter
 {
 public:
+    PlainParameter() : AudioProcessorParameter (1) {}   // a version hint, as JUCE asks of every AU parameter, but still no ID
     float getValue() const override { return value.load(); }
     void setValue (float v) override { value.store (v); }
     float getDefaultValue() const override { return 0.25f; }

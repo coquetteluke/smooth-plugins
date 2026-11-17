@@ -1,6 +1,6 @@
 // LinkCheck: the black-box check of an installed plug-in, through the system Audio Unit API the way a host loads it. No JUCE.
 //
-// Usage: LinkCheck <aufx|aumf|aumu> <subtype> <manufacturer> [--render-sums] [--scratch DIR] [--load BUNDLE] [--keep]
+// Usage: LinkCheck <aufx|aumf|aumu> <subtype> <manufacturer> [--render-sums [--state FILE]] [--scratch DIR] [--load BUNDLE] [--keep]
 //
 // The link check (default) follows switchboard/PROTOCOL.md from outside: the card appears within 3 s; the ContextName
 // "LinkCheck Track" reaches the card; the card's parameters are the AU's (count, names, and normalized values within 1e-4 of
@@ -14,6 +14,10 @@
 // fresh instances, and prints "SUM <preset> <hash>" (FNV-1a 64 over the output's float bytes) or "NONDET <preset>" when the two
 // runs differ. Only SUM, NONDET and FAIL lines go to stdout, so the outputs of two versions compare with diff. The preset is set
 // before AudioUnitInitialize; the run loop runs 0.1 s before the render, as a host's would.
+//
+// --state FILE (with --render-sums): raw plug-in state bytes (what a JUCE plug-in's getStateInformation writes) restored through
+// kAudioUnitProperty_ClassInfo before the preset, the way a host restores a session. For a plug-in that is silent until it has
+// something loaded, such as Cutup with no sample; "default" is then that state.
 //
 // Both modes set SMOOTH_LINK_DIR and SMOOTH_KEY_JSON to a fresh scratch folder before any AU is loaded, so Luke's real link folder
 // and key.json are never written (Key writes key.json and the tuners read theirs). The folder is made under --scratch DIR, else
@@ -980,8 +984,33 @@ std::vector<Preset> factoryPresets (AudioUnit u)
     return out;
 }
 
+// The whole class info dictionary with the plug-in's own state bytes in it, as a host restoring a session sets it.
+bool applyState (AudioUnit u, const std::vector<char>& bytes, std::string& why)
+{
+    CFPropertyListRef info = nullptr;
+    UInt32 size = sizeof info;
+    if (AudioUnitGetProperty (u, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &info, &size) != noErr || info == nullptr
+        || CFGetTypeID (info) != CFDictionaryGetTypeID())
+    {
+        why = "no class info to restore a state into";
+        return false;
+    }
+    CFMutableDictionaryRef copy = CFDictionaryCreateMutableCopy (nullptr, 0, (CFDictionaryRef) info);
+    CFDataRef data = CFDataCreate (nullptr, (const UInt8*) bytes.data(), (CFIndex) bytes.size());
+    CFDictionarySetValue (copy, CFSTR ("jucePluginState"), data);
+    CFPropertyListRef out = copy;
+    const OSStatus st = AudioUnitSetProperty (u, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &out, sizeof out);
+    CFRelease (data);
+    CFRelease (copy);
+    CFRelease (info);
+    if (st != noErr)
+        why = "the state was refused, error " + std::to_string ((int) st);
+    return st == noErr;
+}
+
 // One fresh instance, one preset, 8 s. False with a reason.
-bool renderOnce (AudioComponent comp, bool midi, int presetNumber, Input& in, const std::vector<MidiEvent>& events, uint64_t& hash, std::string& why)
+bool renderOnce (AudioComponent comp, bool midi, int presetNumber, const std::vector<char>& state, Input& in, const std::vector<MidiEvent>& events,
+                 uint64_t& hash, std::string& why)
 {
     AudioUnit u = nullptr;
     if (const OSStatus st = AudioComponentInstanceNew (comp, &u); st != noErr || u == nullptr)
@@ -991,6 +1020,8 @@ bool renderOnce (AudioComponent comp, bool midi, int presetNumber, Input& in, co
     }
     in.pos = 0;
     bool ok = setUp (u, &in, why);
+    if (ok && ! state.empty())
+        ok = applyState (u, state, why);
     if (ok && presetNumber >= 0)
     {
         CFArrayRef presets = nullptr;
@@ -1056,7 +1087,7 @@ bool renderOnce (AudioComponent comp, bool midi, int presetNumber, Input& in, co
     return ok;
 }
 
-int renderSums (AudioComponent comp, const AudioComponentDescription& desc)
+int renderSums (AudioComponent comp, const AudioComponentDescription& desc, const std::vector<char>& state)
 {
     Input in;
     makeInput (in);
@@ -1087,7 +1118,7 @@ int renderSums (AudioComponent comp, const AudioComponentDescription& desc)
     {
         uint64_t a = 0, b = 0;
         std::string why;
-        if (! renderOnce (comp, midi, p.number, in, events, a, why) || ! renderOnce (comp, midi, p.number, in, events, b, why))
+        if (! renderOnce (comp, midi, p.number, state, in, events, a, why) || ! renderOnce (comp, midi, p.number, state, in, events, b, why))
         {
             std::printf ("FAIL  %s %s\n", p.label.c_str(), why.c_str());
             ++fails;
@@ -1165,7 +1196,7 @@ bool registerBundle (const std::string& path, std::string& why)
 
 int usage()
 {
-    std::fprintf (stderr, "usage: LinkCheck <aufx|aumf|aumu> <subtype> <manufacturer> [--render-sums] [--scratch DIR] [--load BUNDLE] [--keep]\n");
+    std::fprintf (stderr, "usage: LinkCheck <aufx|aumf|aumu> <subtype> <manufacturer> [--render-sums [--state FILE]] [--scratch DIR] [--load BUNDLE] [--keep]\n");
     return 2;
 }
 } // namespace
@@ -1175,7 +1206,7 @@ int main (int argc, char** argv)
     if (argc < 4 || std::strlen (argv[1]) != 4 || std::strlen (argv[2]) != 4 || std::strlen (argv[3]) != 4)
         return usage();
     bool sums = false, keep = false;
-    std::string scratchBase, load;
+    std::string scratchBase, load, statePath;
     for (int i = 4; i < argc; ++i)
     {
         const std::string a = argv[i];
@@ -1183,7 +1214,19 @@ int main (int argc, char** argv)
         else if (a == "--keep") keep = true;
         else if (a == "--scratch" && i + 1 < argc) scratchBase = argv[++i];
         else if (a == "--load" && i + 1 < argc) load = argv[++i];
+        else if (a == "--state" && i + 1 < argc) statePath = argv[++i];
         else return usage();
+    }
+    std::vector<char> state;
+    if (! statePath.empty())
+    {
+        std::string bytes;
+        if (! sums || ! readFile (statePath, bytes) || bytes.empty())
+        {
+            std::fprintf (stderr, "LinkCheck: --state needs --render-sums and a readable, non-empty file\n");
+            return 2;
+        }
+        state.assign (bytes.begin(), bytes.end());
     }
     if (scratchBase.empty())
     {
@@ -1242,7 +1285,7 @@ int main (int argc, char** argv)
     int fails = 0;
     if (sums)
     {
-        fails = renderSums (comp, d);
+        fails = renderSums (comp, d, state);
     }
     else
     {

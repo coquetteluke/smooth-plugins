@@ -9,8 +9,8 @@ PASS  order_and_64_limit: 100 commands, 64 in the first poll and 36 in the next,
 PASS  track_name: set from another thread, renamed, empty is null
 PASS  destruction_cleans: only the instance's own card and inbox go
 PASS  stale_cleanup: on start, files older than 600 s go and younger ones stay
-PASS  heartbeat: the card's mtime moves with nothing changed, after = 0.511 s
-INFO  parses while the writer was writing = 9720.000 
+PASS  heartbeat: the card's mtime moves with nothing changed, after = 0.506 s
+INFO  parses while the writer was writing = 8931.000 
 PASS  atomic_under_load: a reader never sees a missing, partial or older card, failures = 0.000 
 PASS  two_instances: distinct ids, cards and inboxes
 PASS  disabled_without_dir: AudioUnit always, anything else only with SMOOTH_LINK_DIR
@@ -47,3 +47,16 @@ PASS  no denormals decaying into silence = 0.000 samples
 PASS  recovers after NaN, inf and huge input, peak in the last second = 0.250 
 INFO  click test baseline step = 0.004 
 RESULT PASS  0 failures
+PASS  card appears within 3 s (after 0.000 s)
+PASS  one card for one instance
+PASS  card is link 1 and names this AU: Link Probe 0.1.0, aufx SLpr Luke
+PASS  ContextName "LinkCheck Track" reaches the card (after 0.033 s)
+PASS  card lists every AU parameter: card 5, AU 5
+PASS  every card parameter is the AU parameter of that ID, with the same name
+PASS  card values are the AU's, mapped through its min and max: worst difference 2.2e-16 (Gain)
+PASS  the card names main controls
+PASS  command moves Gain (first continuous, first main): 0.3333 to 0.7500 and back to 0.3333, host saw 'bve' then 'bve'
+PASS  command moves On (first discrete): 1.0000 to 0.0000 and back to 1.0000, host saw 'bve' then 'bve'
+PASS  command moves Plain (last): 0.2500 to 0.7500 and back to 0.2500, host saw 'bve' then 'bve'
+PASS  after dispose, card and inbox are gone
+LINKCHECK PASS

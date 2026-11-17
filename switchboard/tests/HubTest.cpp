@@ -240,6 +240,7 @@ void testWindowShowsTrack()
                 juce::PNGImageFormat().writeImageToStream (img, stream);
             }
         }
+        p.editorBeingDeleted (ed.get());   // as a host wrapper does before it deletes the window
     }
     check (c.ok, "window_shows_track: the placeholder window shows its own track name");
 }

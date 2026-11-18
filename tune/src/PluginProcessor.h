@@ -1,0 +1,200 @@
+#pragma once
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <array>
+#include <atomic>
+#include "KeyFollower.h"
+#include "PitchCorrector.h"
+#include "PitchTracker.h"
+#include "PsolaShifter.h"
+#include "Scales.h"
+#include "SmoothLink.h"
+
+// A reading shown to the host, by name and value string.
+// It is not automatable, ignores writes, and is never pushed to the host, so it cannot write automation.
+class ReadingParameter final : public juce::AudioProcessorParameterWithID
+{
+public:
+    using Formatter = juce::String (*) (float);
+    using Parser = float (*) (const juce::String&);   // text back to the value; nullptr reads a plain number
+
+    ReadingParameter (const char* id, const char* name, const char* label, float lowest, float highest, float initial, Formatter f, Parser parse = nullptr)
+        : juce::AudioProcessorParameterWithID (juce::ParameterID { id, 1 }, name,
+                                               juce::AudioProcessorParameterWithIDAttributes().withLabel (label).withAutomatable (false)),
+          low (lowest), high (highest), start (initial), formatter (f), parser (parse)
+    {
+        value.store (initial, std::memory_order_relaxed);
+    }
+
+    void set (float v) noexcept { value.store (v, std::memory_order_relaxed); }
+    float get() const noexcept { return value.load (std::memory_order_relaxed); }
+
+    float getValue() const override { return juce::jlimit (0.0f, 1.0f, (get() - low) / (high - low)); }
+    void setValue (float) override {}
+    float getDefaultValue() const override { return juce::jlimit (0.0f, 1.0f, (start - low) / (high - low)); }
+    juce::String getText (float normalised, int) const override { return formatter (low + normalised * (high - low)); }
+    // Each reading's own text reads back as the value it shows (since 1.2.2: "no note" read back as C-1, and "B Custom" as C Chromatic).
+    float getValueForText (const juce::String& text) const override
+    {
+        const float v = parser != nullptr ? parser (text) : text.getFloatValue();
+        return juce::jlimit (0.0f, 1.0f, (v - low) / (high - low));
+    }
+
+private:
+    float low, high, start;
+    Formatter formatter;
+    Parser parser;
+    std::atomic<float> value { 0.0f };
+};
+
+// Real time vocal pitch correction. Pitch tracker, shifter and corrector live in their own files.
+// This class holds the parameters, runs them sample by sample, and looks after latency, bypass and the key file.
+class PluginProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener
+{
+public:
+    struct Options
+    {
+        juce::String keyFilePath;           // empty means the real shared file
+        bool hostLatencyUpdates = true;     // tests turn this off, since nothing pumps messages there
+    };
+
+    PluginProcessor() : PluginProcessor (Options{}) {}
+    explicit PluginProcessor (const Options&);
+    ~PluginProcessor() override;
+
+    void prepareToPlay (double sampleRate, int samplesPerBlock) override;
+    void releaseResources() override {}
+    // A host Reset (a locate, a stop and start, the start of a bounce) clears what prepareToPlay clears: the delay line, the tracker's
+    // marks, the corrector's target and the fades. Allocates nothing. The one Reset JUCE's AU wrapper sends right after the host turns its
+    // own bypass on is left out, so Bypass still fades to the input instead of cutting it off for a whole delay. Since 1.2.2.
+    void reset() override;
+    bool isBusesLayoutSupported (const BusesLayout&) const override;
+    void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+
+    juce::AudioProcessorEditor* createEditor() override;
+    bool hasEditor() const override { return true; }
+
+    const juce::String getName() const override { return "Tune"; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0.0; }
+
+    int getNumPrograms() override;
+    // The preset last chosen, saved with the session since 1.2.2; -1 for a session saved before, which does not say.
+    int getCurrentProgram() override { return currentProgram; }
+    void setCurrentProgram (int) override;
+    const juce::String getProgramName (int) override;
+    void changeProgramName (int, const juce::String&) override {}
+
+    void getStateInformation (juce::MemoryBlock&) override;
+    void setStateInformation (const void*, int) override;
+
+    juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
+    void updateTrackProperties (const TrackProperties& p) override { link.setTrackName (p.name.value_or (juce::String())); }
+
+    // For a later window and for tests. Safe from any thread, never blocks audio.
+    struct Readings
+    {
+        float centsOffTarget = 0.0f, detectedHz = 0.0f, correctionCents = 0.0f;
+        int targetNote = -1, activeKey = 0, activeScale = 0;
+        bool voiced = false;
+        bool bypassed = false;   // the Bypass control or the host's own bypass: Correction Applied is then 0
+    };
+    Readings getReadings() const noexcept;
+
+    // The last few seconds of pitch, one point every 5 ms, for a graph. Read newest back from getPitchHistoryCount() - 1.
+    struct PitchPoint { std::atomic<float> inputNote { 0.0f }, outputNote { 0.0f }, targetNote { 0.0f }; };
+    static constexpr int pitchHistorySize = 2048;
+    const PitchPoint& getPitchPoint (long long index) const noexcept { return pitchHistory[(size_t) (index & (pitchHistorySize - 1))]; }
+    long long getPitchHistoryCount() const noexcept { return pitchHistoryCount.load (std::memory_order_relaxed); }
+
+    // The highest input and output level since the last call, for the window's two meters. Safe from any thread, never blocks audio.
+    void takeLevels (float& input, float& output) noexcept
+    {
+        input = levelIn.exchange (0.0f, std::memory_order_relaxed);
+        output = levelOut.exchange (0.0f, std::memory_order_relaxed);
+    }
+
+    // True when a setting a preset owns has moved away from the current preset. Asked by the window, not used by audio.
+    bool isCurrentProgramEdited() const;
+
+    // The window's size and whether Advanced is open. Saved with the session, kept in range when loaded, and not parameters.
+    static constexpr int defaultWindowWidth = 900, defaultWindowHeight = 660;
+    static constexpr int minWindowWidth = 840, minWindowHeight = 580, maxWindowWidth = 1600, maxWindowHeight = 1200;
+    std::atomic<int> windowWidth { defaultWindowWidth }, windowHeight { defaultWindowHeight };
+    std::atomic<bool> advancedOpen { false };
+
+    // Latency in samples for an Input Type at a sample rate.
+    static int latencyFor (int inputType, double sampleRate) noexcept;
+
+    // Tests only: what the worker thread and message thread do.
+    void applyPendingLatencyNow() { handleAsyncUpdate(); }
+    void pollKeyFileNow();
+
+    // The key Follow Key has from the key file, if it has one. Safe from any thread, for the window.
+    bool followedKey (int& key, int& scale) const noexcept;
+
+    juce::AudioProcessorValueTreeState apvts;
+    // The link: Switchboard sees and sets every control through it (1.3.0). Built after the parameters exist.
+    smooth::Link link { *this, smooth::Link::Info::fromBuild ({ "retune", "humanize", "flex", "naturalVibrato", "inputType", "scale" }) };
+
+private:
+    static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
+    class Worker;
+
+    void process (juce::AudioBuffer<float>&, bool forceBypass) noexcept;
+    void applyInputType (int type) noexcept;
+    void readSettings() noexcept;
+    void handleAsyncUpdate() override;
+    void parameterChanged (const juce::String&, float) override;
+    double pitchInLine (double period) const noexcept;
+
+    std::atomic<float>* keyParam = nullptr, *scaleParam = nullptr, *retune = nullptr, *humanize = nullptr, *flex = nullptr,
+                       *inputType = nullptr, *followKey = nullptr, *naturalVibrato = nullptr, *transpose = nullptr,
+                       *reference = nullptr, *tracking = nullptr, *formantPreserve = nullptr, *throat = nullptr;
+    std::array<std::atomic<float>*, 12> customNote {};
+    juce::AudioParameterBool* bypass = nullptr;
+    ReadingParameter* offReading = nullptr, *hzReading = nullptr, *correctionReading = nullptr, *noteReading = nullptr, *keyReading = nullptr;
+
+    smoothtune::PitchTracker tracker;
+    smoothtune::PsolaShifter shifter;
+    smoothtune::PitchCorrector corrector;
+    smoothtune::PitchCorrector::Settings settings;
+    smoothtune::PsolaShifter::Control control;
+    smoothtune::KeyFollower follower;
+
+    double sr = 48000.0;
+    int tickSamples = 48, tickPhase = 0, historyPhase = 0;
+    double tickSeconds = 0.001;
+    int typeNow = 1;
+    // The tracker's readings, one a tick, newest at ringAt, so the pitch control can be read in line with the audio (pitchInLine)
+    std::array<double, 128> ring {};
+    int ringAt = 0, baseLatency = 0;
+    bool fading = false;
+    float fadeGain = 1.0f, fadeStep = 1.0f / 64.0f, bypassMix = 1.0f, bypassStep = 0.001f;
+    bool formantOn = true;
+    double throatRate = 1.0;
+    float lastVoicingLimit = -1.0f;
+    int activeKeyNow = 0, activeScaleNow = 0;
+    int offlineKeySamples = 0;   // Follow Key in an offline bounce reads the key file by audio time (1.2.2)
+    // The readings the window uses, not limited to the host readings' ranges (1.2.2): Pitch Off Target stops at +/-100 cents as a meter,
+    // and the window adds the two to place the output.
+    std::atomic<float> offWide { 0.0f }, correctionWide { 0.0f };
+    std::atomic<int> bypassedNow { 0 };
+
+    std::array<PitchPoint, pitchHistorySize> pitchHistory;
+    std::atomic<long long> pitchHistoryCount { 0 };
+
+    std::atomic<int> voicedNow { 0 };
+    std::atomic<float> levelIn { 0.0f }, levelOut { 0.0f };
+    std::atomic<double> preparedRate { 0.0 };
+    bool hostLatencyUpdates = true;
+    int currentProgram = 0;   // a new instance: Natural Pop, as before; -1 for none
+    // JUCE's AU wrapper resets straight after the host turns its own bypass on. That one Reset is left out (see reset()). It is the next
+    // Reset within a quarter second, with no audio block in between.
+    std::atomic<bool> bypassJustSwitchedOn { false }, bypassWasOn { false };
+    std::atomic<juce::uint32> bypassSwitchedAtMs { 0 };
+    std::unique_ptr<Worker> worker;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)
+};

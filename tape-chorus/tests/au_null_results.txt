@@ -1,0 +1,27 @@
+all_m48b256.raw: OK
+all_s44b64.raw: OK
+all_s48b128.raw: OK
+all_s96b512.raw: OK
+bypass.raw: OK
+default_m48b256.raw: OK
+preset0.raw: OK
+preset1.raw: OK
+preset10.raw: OK
+preset11.raw: OK
+preset12.raw: OK
+preset2.raw: OK
+preset3.raw: OK
+preset4.raw: OK
+preset5.raw: OK
+preset6.raw: OK
+preset7.raw: OK
+preset8.raw: OK
+preset9.raw: OK
+
+0.4.0, 2026-11-11, through the real AU (installed 0.4.0 against the 0.3.1 bundle kept aside and loaded in process, which itself matches all 19 checksums of tests/au_baseline.sha256).
+With the settings in place before the plug-in starts (SETTLE=1), Clean off: 19 of 19 identical to 0.3.1, sample for sample. Checksums of 0.3.1 made that way: tests/au_baseline_settled.sha256.
+Made the old way (the plug-in starts at its defaults and every control glides to its setting as the render starts): default_m48b256 and preset0 identical, 17 different.
+That is the fix for moved controls: in 0.3.1 a control that glided stopped short for good, in 0.4.0 it arrives. Difference under the render, whole file:
+all_s48b128 -68.8 dB, all_s44b64 -69.9, all_s96b512 -61.4, all_m48b256 -69.0, preset1 -73.0, preset2 -65.2, preset3 -71.4, preset4 -66.9, preset5 -62.3, preset6 -66.0,
+preset7 -65.3, preset8 -71.2, preset9 -67.7, preset10 -69.3, preset11 -72.0, preset12 -68.3 dB (largest single sample 0.0005 to 0.0033).
+bypass: different only in the first 0.02 s (the fade to dry is now S shaped), identical after.

@@ -1,0 +1,802 @@
+PASS  parameter names are clear, unique, no em dash
+INFO  parameter count = 19.000 
+PASS  factory presets = 8.000 
+PASS  preset names are not empty, no em dash
+PASS  presets change the state
+PASS  state save and restore
+PASS  damaged state value 'nan' gives finite output
+PASS  damaged state value 'nan' leaves controls in range
+PASS  damaged state value 'inf' gives finite output
+PASS  damaged state value 'inf' leaves controls in range
+PASS  damaged state value '-inf' gives finite output
+PASS  damaged state value '-inf' leaves controls in range
+PASS  damaged state value '-1e30' gives finite output
+PASS  damaged state value '-1e30' leaves controls in range
+PASS  damaged state value '1e30' gives finite output
+PASS  damaged state value '1e30' leaves controls in range
+PASS  damaged state value '-1' gives finite output
+PASS  damaged state value '-1' leaves controls in range
+PASS  damaged state value 'garbage' gives finite output
+PASS  damaged state value 'garbage' leaves controls in range
+PASS  sweeps finished, mono
+PASS  sweeps finished, stereo
+PASS  no NaN after silence
+PASS  no denormals decaying into silence = 0.000 samples
+PASS  recovers after NaN, inf and huge input, peak in the last second = 0.348 
+INFO  click test baseline step = 0.004 
+PASS  no click when Doubles jumps, biggest step = 0.004 
+PASS  no click when Tightness jumps, biggest step = 0.005 
+PASS  no click when Width jumps, biggest step = 0.003 
+PASS  no click when Lead Level jumps, biggest step = 0.004 
+PASS  no click when Double 1 Level jumps, biggest step = 0.004 
+PASS  no click when Double 2 Level jumps, biggest step = 0.005 
+PASS  no click when Double 3 Level jumps, biggest step = 0.005 
+PASS  no click when Timing Amount jumps, biggest step = 0.005 
+PASS  no click when Pitch Amount jumps, biggest step = 0.005 
+PASS  no click when Vibrato Variation jumps, biggest step = 0.005 
+PASS  no click when Timbre Variation jumps, biggest step = 0.005 
+PASS  no click when Lead Pan jumps, biggest step = 0.005 
+PASS  no click when Doubles Pan jumps, biggest step = 0.004 
+PASS  no click when Extra Delay jumps, biggest step = 0.005 
+PASS  no click when Vocal Range jumps, biggest step = 0.005 
+PASS  no click when Bypass jumps, biggest step = 0.005 
+PASS  no click when Precise Vibrato jumps, biggest step = 0.004 
+PASS  no click when Mono Safe jumps, biggest step = 0.005 
+PASS  no click when Match Level jumps, biggest step = 0.005 
+PASS  first preset equals the default state
+PASS  preset Natural Pair sounds, balanced, left = -24.829 dB
+PASS  preset Tight Double sounds, balanced, left = -24.131 dB
+PASS  preset Quiet Thickener sounds, balanced, left = -24.290 dB
+PASS  preset Wide Stack sounds, balanced, left = -23.251 dB
+PASS  preset Loose Gang sounds, balanced, left = -22.929 dB
+PASS  preset Doubles Only Wide sounds, balanced, left = -21.906 dB
+PASS  preset Two Singers sounds, balanced, left = -21.794 dB
+PASS  preset Slapback Double sounds, balanced, left = -24.279 dB
+PASS  reported latency at 44100 Hz, block 32 = 0.000 samples
+PASS  measured lead latency at 44100 Hz, block 32 = 0.000 samples
+PASS  first double behind the lead at 44100 Hz = 26.735 ms
+PASS  reported latency at 44100 Hz, block 512 = 0.000 samples
+PASS  measured lead latency at 44100 Hz, block 512 = 0.000 samples
+PASS  first double behind the lead at 44100 Hz = 26.735 ms
+PASS  host bypass gives the exact dry signal, no delay, at 44100 Hz, largest difference = 0.000 
+PASS  latency when bypassed at 44100 Hz = 0.000 samples
+PASS  Bypass control, mono to stereo, exact dry on both sides, at 44100 Hz, largest difference = 0.000 
+PASS  reported latency at 48000 Hz, block 32 = 0.000 samples
+PASS  measured lead latency at 48000 Hz, block 32 = 0.000 samples
+PASS  first double behind the lead at 48000 Hz = 26.729 ms
+PASS  reported latency at 48000 Hz, block 512 = 0.000 samples
+PASS  measured lead latency at 48000 Hz, block 512 = 0.000 samples
+PASS  first double behind the lead at 48000 Hz = 26.729 ms
+PASS  host bypass gives the exact dry signal, no delay, at 48000 Hz, largest difference = 0.000 
+PASS  latency when bypassed at 48000 Hz = 0.000 samples
+PASS  Bypass control, mono to stereo, exact dry on both sides, at 48000 Hz, largest difference = 0.000 
+PASS  reported latency at 88200 Hz, block 32 = 0.000 samples
+PASS  measured lead latency at 88200 Hz, block 32 = 0.000 samples
+PASS  first double behind the lead at 88200 Hz = 26.701 ms
+PASS  reported latency at 88200 Hz, block 512 = 0.000 samples
+PASS  measured lead latency at 88200 Hz, block 512 = 0.000 samples
+PASS  first double behind the lead at 88200 Hz = 26.701 ms
+PASS  host bypass gives the exact dry signal, no delay, at 88200 Hz, largest difference = 0.000 
+PASS  latency when bypassed at 88200 Hz = 0.000 samples
+PASS  Bypass control, mono to stereo, exact dry on both sides, at 88200 Hz, largest difference = 0.000 
+PASS  reported latency at 96000 Hz, block 32 = 0.000 samples
+PASS  measured lead latency at 96000 Hz, block 32 = 0.000 samples
+PASS  first double behind the lead at 96000 Hz = 26.708 ms
+PASS  reported latency at 96000 Hz, block 512 = 0.000 samples
+PASS  measured lead latency at 96000 Hz, block 512 = 0.000 samples
+PASS  first double behind the lead at 96000 Hz = 26.708 ms
+PASS  host bypass gives the exact dry signal, no delay, at 96000 Hz, largest difference = 0.000 
+PASS  latency when bypassed at 96000 Hz = 0.000 samples
+PASS  Bypass control, mono to stereo, exact dry on both sides, at 96000 Hz, largest difference = 0.000 
+PASS  reports a 250 ms tail
+PASS  mono in to stereo out is supported
+PASS  mono in to mono out is supported
+PASS  stereo in to stereo out is supported
+PASS  stereo in to mono out is refused
+PASS  mono to stereo at default settings: both sides sound, left = -16.851 dB
+PASS  mono to stereo at default settings: sides balanced within 0.5 dB, difference = 0.001 dB
+PASS  mono to stereo at default settings: the sides differ
+PASS  mono to stereo, Doubles 1 Width 100: balanced within 1 dB, difference = -0.004 dB
+PASS  mono to stereo, Doubles 2 Width 100: balanced within 1 dB, difference = 0.001 dB
+PASS  mono to stereo, Doubles 3 Width 100: balanced within 1 dB, difference = -0.022 dB
+PASS  mono to stereo at Width 0: left and right identical, largest difference = 0.000 
+PASS  mono to stereo: junk in the unused channel changes nothing, largest difference = 0.000 
+PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 44100 Hz block 32, peak = 13.064 
+PASS  mono to stereo, no allocations in the audio path, 44100 Hz block 32 = 0.000 
+PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 44100 Hz block 4096, peak = 36.309 
+PASS  mono to stereo, no allocations in the audio path, 44100 Hz block 4096 = 0.000 
+PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 48000 Hz block 32, peak = 12.485 
+PASS  mono to stereo, no allocations in the audio path, 48000 Hz block 32 = 0.000 
+PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 48000 Hz block 4096, peak = 37.902 
+PASS  mono to stereo, no allocations in the audio path, 48000 Hz block 4096 = 0.000 
+PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 96000 Hz block 32, peak = 11.835 
+PASS  mono to stereo, no allocations in the audio path, 96000 Hz block 32 = 0.000 
+PASS  mono to stereo, all controls moving, bad input, stays finite and bounded, 96000 Hz block 4096, peak = 4.588 
+PASS  mono to stereo, no allocations in the audio path, 96000 Hz block 4096 = 0.000 
+PASS  mono to mono, Width has no effect on level, double at -6 dB measures = -6.149 dB
+PASS  stereo in: with doubles off the lead is untouched on both sides, largest difference = 0.000 
+PASS  Doubles 1 at Tightness 0: every impulse gives lead plus this many copies, share = 1.000 
+PASS  Doubles 1 at Tightness 0: lead stays at its own time
+PASS  Doubles 2 at Tightness 0: every impulse gives lead plus this many copies, share = 1.000 
+PASS  Doubles 2 at Tightness 0: lead stays at its own time
+PASS  Doubles 3 at Tightness 0: every impulse gives lead plus this many copies, share = 1.000 
+PASS  Doubles 3 at Tightness 0: lead stays at its own time
+PASS  Doubles 1 at Tightness 100: impulses showing lead plus this many copies, share = 1.000 
+PASS  Doubles 1 at Tightness 100: lead stays at its own time
+PASS  Doubles 2 at Tightness 100: impulses showing lead plus this many copies, share = 1.000 
+PASS  Doubles 2 at Tightness 100: lead stays at its own time
+PASS  Doubles 3 at Tightness 100: impulses showing lead plus this many copies, share = 1.000 
+PASS  Doubles 3 at Tightness 100: lead stays at its own time
+PASS  Doubles 1: double 2 and 3 levels make no sound = -240.000 dB
+INFO  Double 1 Tightness 0 timing swing, plus or minus = 1.298 ms
+INFO  Double 1 Tightness 0 pitch peak = 2.650 cents
+INFO  Double 1 Tightness 0 pitch rms = 0.859 cents
+INFO  Double 1 Tightness 0 delay behind the lead, mean = 20.988 ms
+INFO  Double 1 Tightness 0 delay behind the lead, shortest = 19.584 ms
+INFO  Double 1 Tightness 0 delay behind the lead, longest = 22.168 ms
+PASS  Double 1 Tightness 0: impulse and sine agree on the timing swing, impulse = 1.292 ms
+PASS  Double 1 Tightness 0: a double is never closer than 5 ms = 19.584 ms
+PASS  Double 1 Tightness 0: tight timing swing between 0.5 and 2.5 ms = 1.298 ms
+PASS  Double 1 Tightness 0: tight pitch peak between 0.5 and 5 cents = 2.650 cents
+INFO  Double 1 Tightness 25 timing swing, plus or minus = 3.896 ms
+INFO  Double 1 Tightness 25 pitch peak = 7.442 cents
+INFO  Double 1 Tightness 25 pitch rms = 2.390 cents
+INFO  Double 1 Tightness 25 delay behind the lead, mean = 24.715 ms
+INFO  Double 1 Tightness 25 delay behind the lead, shortest = 20.440 ms
+INFO  Double 1 Tightness 25 delay behind the lead, longest = 28.212 ms
+PASS  Double 1 Tightness 25: impulse and sine agree on the timing swing, impulse = 3.886 ms
+PASS  Double 1 Tightness 25: a double is never closer than 5 ms = 20.440 ms
+INFO  Double 1 Tightness 50 timing swing, plus or minus = 6.512 ms
+INFO  Double 1 Tightness 50 pitch peak = 12.223 cents
+INFO  Double 1 Tightness 50 pitch rms = 3.926 cents
+INFO  Double 1 Tightness 50 delay behind the lead, mean = 28.441 ms
+INFO  Double 1 Tightness 50 delay behind the lead, shortest = 21.297 ms
+INFO  Double 1 Tightness 50 delay behind the lead, longest = 34.287 ms
+PASS  Double 1 Tightness 50: impulse and sine agree on the timing swing, impulse = 6.495 ms
+PASS  Double 1 Tightness 50: a double is never closer than 5 ms = 21.297 ms
+INFO  Double 1 Tightness 75 timing swing, plus or minus = 9.128 ms
+INFO  Double 1 Tightness 75 pitch peak = 16.986 cents
+INFO  Double 1 Tightness 75 pitch rms = 5.463 cents
+INFO  Double 1 Tightness 75 delay behind the lead, mean = 32.168 ms
+INFO  Double 1 Tightness 75 delay behind the lead, shortest = 22.157 ms
+INFO  Double 1 Tightness 75 delay behind the lead, longest = 40.359 ms
+PASS  Double 1 Tightness 75: impulse and sine agree on the timing swing, impulse = 9.101 ms
+PASS  Double 1 Tightness 75: a double is never closer than 5 ms = 22.157 ms
+INFO  Double 1 Tightness 100 timing swing, plus or minus = 11.745 ms
+INFO  Double 1 Tightness 100 pitch peak = 21.756 cents
+INFO  Double 1 Tightness 100 pitch rms = 7.000 cents
+INFO  Double 1 Tightness 100 delay behind the lead, mean = 35.894 ms
+INFO  Double 1 Tightness 100 delay behind the lead, shortest = 23.017 ms
+INFO  Double 1 Tightness 100 delay behind the lead, longest = 46.437 ms
+PASS  Double 1 Tightness 100: impulse and sine agree on the timing swing, impulse = 11.710 ms
+PASS  Double 1 Tightness 100: a double is never closer than 5 ms = 23.017 ms
+PASS  Double 1 Tightness 100: loose timing swing between 8 and 17 ms = 11.745 ms
+PASS  Double 1 Tightness 100: loose pitch peak between 10 and 35 cents = 21.756 cents
+PASS  Double 1: timing swing grows at every step of Tightness
+PASS  Double 1: pitch peak grows at every step of Tightness
+INFO  Double 2 Tightness 0 timing swing, plus or minus = 1.344 ms
+INFO  Double 2 Tightness 0 pitch peak = 2.763 cents
+INFO  Double 2 Tightness 0 pitch rms = 0.908 cents
+INFO  Double 2 Tightness 0 delay behind the lead, mean = 26.086 ms
+INFO  Double 2 Tightness 0 delay behind the lead, shortest = 24.582 ms
+INFO  Double 2 Tightness 0 delay behind the lead, longest = 27.268 ms
+PASS  Double 2 Tightness 0: impulse and sine agree on the timing swing, impulse = 1.343 ms
+PASS  Double 2 Tightness 0: a double is never closer than 5 ms = 24.582 ms
+PASS  Double 2 Tightness 0: tight timing swing between 0.5 and 2.5 ms = 1.344 ms
+PASS  Double 2 Tightness 0: tight pitch peak between 0.5 and 5 cents = 2.763 cents
+INFO  Double 2 Tightness 25 timing swing, plus or minus = 4.046 ms
+INFO  Double 2 Tightness 25 pitch peak = 7.865 cents
+INFO  Double 2 Tightness 25 pitch rms = 2.573 cents
+INFO  Double 2 Tightness 25 delay behind the lead, mean = 30.757 ms
+INFO  Double 2 Tightness 25 delay behind the lead, shortest = 26.239 ms
+INFO  Double 2 Tightness 25 delay behind the lead, longest = 34.331 ms
+PASS  Double 2 Tightness 25: impulse and sine agree on the timing swing, impulse = 4.046 ms
+PASS  Double 2 Tightness 25: a double is never closer than 5 ms = 26.239 ms
+INFO  Double 2 Tightness 50 timing swing, plus or minus = 6.749 ms
+INFO  Double 2 Tightness 50 pitch peak = 12.973 cents
+INFO  Double 2 Tightness 50 pitch rms = 4.242 cents
+INFO  Double 2 Tightness 50 delay behind the lead, mean = 35.427 ms
+INFO  Double 2 Tightness 50 delay behind the lead, shortest = 27.897 ms
+INFO  Double 2 Tightness 50 delay behind the lead, longest = 41.394 ms
+PASS  Double 2 Tightness 50: impulse and sine agree on the timing swing, impulse = 6.748 ms
+PASS  Double 2 Tightness 50: a double is never closer than 5 ms = 27.897 ms
+INFO  Double 2 Tightness 75 timing swing, plus or minus = 9.451 ms
+INFO  Double 2 Tightness 75 pitch peak = 18.074 cents
+INFO  Double 2 Tightness 75 pitch rms = 5.912 cents
+INFO  Double 2 Tightness 75 delay behind the lead, mean = 40.098 ms
+INFO  Double 2 Tightness 75 delay behind the lead, shortest = 29.559 ms
+INFO  Double 2 Tightness 75 delay behind the lead, longest = 48.456 ms
+PASS  Double 2 Tightness 75: impulse and sine agree on the timing swing, impulse = 9.449 ms
+PASS  Double 2 Tightness 75: a double is never closer than 5 ms = 29.559 ms
+INFO  Double 2 Tightness 100 timing swing, plus or minus = 12.154 ms
+INFO  Double 2 Tightness 100 pitch peak = 23.162 cents
+INFO  Double 2 Tightness 100 pitch rms = 7.582 cents
+INFO  Double 2 Tightness 100 delay behind the lead, mean = 44.769 ms
+INFO  Double 2 Tightness 100 delay behind the lead, shortest = 31.212 ms
+INFO  Double 2 Tightness 100 delay behind the lead, longest = 55.519 ms
+PASS  Double 2 Tightness 100: impulse and sine agree on the timing swing, impulse = 12.153 ms
+PASS  Double 2 Tightness 100: a double is never closer than 5 ms = 31.212 ms
+PASS  Double 2 Tightness 100: loose timing swing between 8 and 17 ms = 12.154 ms
+PASS  Double 2 Tightness 100: loose pitch peak between 10 and 35 cents = 23.162 cents
+PASS  Double 2: timing swing grows at every step of Tightness
+PASS  Double 2: pitch peak grows at every step of Tightness
+INFO  Double 3 Tightness 0 timing swing, plus or minus = 1.158 ms
+INFO  Double 3 Tightness 0 pitch peak = 3.005 cents
+INFO  Double 3 Tightness 0 pitch rms = 0.867 cents
+INFO  Double 3 Tightness 0 delay behind the lead, mean = 33.093 ms
+INFO  Double 3 Tightness 0 delay behind the lead, shortest = 31.961 ms
+INFO  Double 3 Tightness 0 delay behind the lead, longest = 34.274 ms
+PASS  Double 3 Tightness 0: impulse and sine agree on the timing swing, impulse = 1.156 ms
+PASS  Double 3 Tightness 0: a double is never closer than 5 ms = 31.961 ms
+PASS  Double 3 Tightness 0: tight timing swing between 0.5 and 2.5 ms = 1.158 ms
+PASS  Double 3 Tightness 0: tight pitch peak between 0.5 and 5 cents = 3.005 cents
+INFO  Double 3 Tightness 25 timing swing, plus or minus = 3.547 ms
+INFO  Double 3 Tightness 25 pitch peak = 8.241 cents
+INFO  Double 3 Tightness 25 pitch rms = 2.401 cents
+INFO  Double 3 Tightness 25 delay behind the lead, mean = 39.038 ms
+INFO  Double 3 Tightness 25 delay behind the lead, shortest = 35.584 ms
+INFO  Double 3 Tightness 25 delay behind the lead, longest = 42.674 ms
+PASS  Double 3 Tightness 25: impulse and sine agree on the timing swing, impulse = 3.545 ms
+PASS  Double 3 Tightness 25: a double is never closer than 5 ms = 35.584 ms
+INFO  Double 3 Tightness 50 timing swing, plus or minus = 5.937 ms
+INFO  Double 3 Tightness 50 pitch peak = 13.422 cents
+INFO  Double 3 Tightness 50 pitch rms = 3.940 cents
+INFO  Double 3 Tightness 50 delay behind the lead, mean = 44.983 ms
+INFO  Double 3 Tightness 50 delay behind the lead, shortest = 39.208 ms
+INFO  Double 3 Tightness 50 delay behind the lead, longest = 51.079 ms
+PASS  Double 3 Tightness 50: impulse and sine agree on the timing swing, impulse = 5.936 ms
+PASS  Double 3 Tightness 50: a double is never closer than 5 ms = 39.208 ms
+INFO  Double 3 Tightness 75 timing swing, plus or minus = 8.327 ms
+INFO  Double 3 Tightness 75 pitch peak = 18.725 cents
+INFO  Double 3 Tightness 75 pitch rms = 5.480 cents
+INFO  Double 3 Tightness 75 delay behind the lead, mean = 50.927 ms
+INFO  Double 3 Tightness 75 delay behind the lead, shortest = 42.831 ms
+INFO  Double 3 Tightness 75 delay behind the lead, longest = 59.479 ms
+PASS  Double 3 Tightness 75: impulse and sine agree on the timing swing, impulse = 8.324 ms
+PASS  Double 3 Tightness 75: a double is never closer than 5 ms = 42.831 ms
+INFO  Double 3 Tightness 100 timing swing, plus or minus = 10.716 ms
+INFO  Double 3 Tightness 100 pitch peak = 23.946 cents
+INFO  Double 3 Tightness 100 pitch rms = 7.020 cents
+INFO  Double 3 Tightness 100 delay behind the lead, mean = 56.871 ms
+INFO  Double 3 Tightness 100 delay behind the lead, shortest = 46.454 ms
+INFO  Double 3 Tightness 100 delay behind the lead, longest = 67.879 ms
+PASS  Double 3 Tightness 100: impulse and sine agree on the timing swing, impulse = 10.713 ms
+PASS  Double 3 Tightness 100: a double is never closer than 5 ms = 46.454 ms
+PASS  Double 3 Tightness 100: loose timing swing between 8 and 17 ms = 10.716 ms
+PASS  Double 3 Tightness 100: loose pitch peak between 10 and 35 cents = 23.946 cents
+PASS  Double 3: timing swing grows at every step of Tightness
+PASS  Double 3: pitch peak grows at every step of Tightness
+PASS  lead and every double within 0.2 dB, at 1 kHz and 4.8 kHz, Tightness 30 and 100, Width 0 and 100, worst = 0.000 dB
+PASS  partial Width keeps the level on noise within 0.2 dB, worst = 0.154 dB
+PASS  Tightness jumped from 0 to 100: the bend stays under 120 cents, worst = 87.591 cents
+PASS  Tightness jumped from 0 to 100: no sample step beyond the sine's own slope, largest = 0.066 
+PASS  Double 1 at Tightness 100: Timing Amount 0, timing swing under 40 percent of normal = 2.306 ms
+PASS  Double 1 at Tightness 100: Timing Amount 200, timing swing at least 1.6 times normal = 22.978 ms
+PASS  Double 1 at Tightness 100: Timing Amount 0 keeps pitch drift, rms = 4.682 cents
+PASS  Double 1 at Tightness 100: Pitch Amount 0, pitch rms under 90 percent of normal, some stays because timing drift bends pitch too = 5.292 cents
+PASS  Double 1 at Tightness 100: Pitch Amount 200, pitch rms at least 1.3 times normal = 10.671 cents
+PASS  Double 1 at Tightness 100: Pitch Amount 0 keeps timing drift = 11.668 ms
+PASS  Double 1 at Tightness 100: both at 0: no drift at all, pitch peak = 0.000 cents
+PASS  Double 2 at Tightness 100: Timing Amount 0, timing swing under 40 percent of normal = 2.213 ms
+PASS  Double 2 at Tightness 100: Timing Amount 200, timing swing at least 1.6 times normal = 23.063 ms
+PASS  Double 2 at Tightness 100: Timing Amount 0 keeps pitch drift, rms = 4.524 cents
+PASS  Double 2 at Tightness 100: Pitch Amount 0, pitch rms under 90 percent of normal, some stays because timing drift bends pitch too = 6.119 cents
+PASS  Double 2 at Tightness 100: Pitch Amount 200, pitch rms at least 1.3 times normal = 10.884 cents
+PASS  Double 2 at Tightness 100: Pitch Amount 0 keeps timing drift = 11.138 ms
+PASS  Double 2 at Tightness 100: both at 0: no drift at all, pitch peak = 0.000 cents
+PASS  Double 3 at Tightness 100: Timing Amount 0, timing swing under 40 percent of normal = 2.216 ms
+PASS  Double 3 at Tightness 100: Timing Amount 200, timing swing at least 1.6 times normal = 21.184 ms
+PASS  Double 3 at Tightness 100: Timing Amount 0 keeps pitch drift, rms = 4.825 cents
+PASS  Double 3 at Tightness 100: Pitch Amount 0, pitch rms under 90 percent of normal, some stays because timing drift bends pitch too = 5.185 cents
+PASS  Double 3 at Tightness 100: Pitch Amount 200, pitch rms at least 1.3 times normal = 10.872 cents
+PASS  Double 3 at Tightness 100: Pitch Amount 0 keeps timing drift = 10.526 ms
+PASS  Double 3 at Tightness 100: both at 0: no drift at all, pitch peak = 0.000 cents
+PASS  Timing and Pitch Amount at 200, Tightness 100: nearest double stays 12 ms or more behind = 26.539 ms
+PASS  Extra Delay 25 ms moves the double by = 25.000 ms
+PASS  Extra Delay 50 ms moves the double by = 49.999 ms
+PASS  Extra Delay 100 ms moves the double by = 99.997 ms
+PASS  Extra Delay leaves the lead at its own time
+PASS  longest settings reach past 150 ms, longest = 196.089 ms
+PASS  Lead Pan follows the pan law at -100 to +100, worst error = 0.000 dB
+PASS  Doubles Pan follows the pan law at -100 to +100, worst error = 0.000 dB
+PASS  hard pans leave the far side silent, under -100 dB
+PASS  Doubles Pan +60 with Width 40 leans the pair to the right, right over left = 6.796 dB
+PASS  mono out: Lead Pan has no effect on level
+INFO  Timbre test signal peak = 1998.047 Hz
+PASS  Timbre Variation 50, double 1: formant moves by 1.090 within 0.04, measured = 1.073 
+PASS  Timbre Variation 50, double 2: formant moves by 0.917 within 0.04, measured = 0.933 
+PASS  Timbre Variation 50, double 3: formant moves by 1.044 within 0.04, measured = 1.026 
+PASS  Timbre Variation 100, double 1: formant moves by 1.189 within 0.04, measured = 1.161 
+PASS  Timbre Variation 100, double 2: formant moves by 0.840 within 0.04, measured = 0.850 
+PASS  Timbre Variation 100, double 3: formant moves by 1.090 within 0.04, measured = 1.073 
+PASS  Timbre Variation 100 at 44100 Hz, double 1: formant moves by 1.189 within 0.04, measured = 1.169 
+PASS  Timbre Variation 100 at 44100 Hz, double 2: formant moves by 0.840 within 0.04, measured = 0.839 
+PASS  Timbre Variation 100 at 96000 Hz, double 1: formant moves by 1.189 within 0.04, measured = 1.165 
+PASS  Timbre Variation 100 at 96000 Hz, double 2: formant moves by 0.840 within 0.04, measured = 0.847 
+PASS  Timbre Variation 100, double 1: level change on a voice shape, limit 1 dB = -0.236 dB
+PASS  Timbre Variation 100, double 1: 180 Hz note stays there, measured = 180.000 Hz
+PASS  Timbre Variation 100, double 2: level change on a voice shape, limit 1 dB = -0.165 dB
+PASS  Timbre Variation 100, double 2: 180 Hz note stays there, measured = 180.000 Hz
+PASS  Timbre Variation 100, double 3: level change on a voice shape, limit 1 dB = -0.078 dB
+PASS  Timbre Variation 100, double 3: 180 Hz note stays there, measured = 180.000 Hz
+PASS  Timbre Variation 0: 4800 Hz read noise stays under -70 = -91.571 dB
+PASS  Timbre Variation turned up and back down returns to the untouched path, largest difference = 0.000 
+INFO  Vibrato test note depth = 48.281 cents
+PASS  Vibrato Variation, double 1: at 0 the double has the lead's depth within 5 percent = 48.188 cents
+PASS  Vibrato Variation, double 2: at 0 the double has the lead's depth within 5 percent = 48.102 cents
+PASS  Vibrato Variation, double 3: at 0 the double has the lead's depth within 5 percent = 48.122 cents
+PASS  Vibrato Variation 100, double 1 sings straighter: depth at most half the lead's = 3.691 cents
+PASS  Vibrato Variation 100, double 2 sings wider: depth at least 1.25 times the lead's = 70.471 cents
+PASS  Vibrato Variation 100, double 3 somewhat straighter: depth at most 0.8 times the lead's = 25.798 cents
+PASS  Vibrato Variation 50 falls between 0 and 100 on double 1 = 25.820 cents
+PASS  Vibrato Variation 100 at 44100 Hz, double 1: depth at most half the lead's = 3.458 cents
+PASS  Vibrato Variation 100 at 96000 Hz, double 1: depth at most half the lead's = 3.676 cents
+PASS  Vibrato Variation 100, double 1, vibrato at 4.5 Hz: depth at most 0.7 of the lead's = 3.005 cents
+PASS  Vibrato Variation 100, double 1, vibrato at 6.8 Hz: depth at most 0.7 of the lead's = 9.572 cents
+PASS  Vocal Range Soprano does not follow a 110 Hz note, depth stays = 42.939 cents
+PASS  Vocal Range Baritone or Bass follows a 110 Hz note, depth at most half = 3.162 cents
+PASS  Vibrato Variation 100 on a steady note adds no movement, pitch peak = 0.000 cents
+PASS  noise reads as no pitch, share of blocks with a pitch = 0.000 
+PASS  note steps of a fifth with Vibrato Variation 100: bend added stays under 30 cents, worst = 0.000 cents
+PASS  slides of 3 semitones with Vibrato Variation 100: bend added stays under 40 cents, worst = 0.000 cents
+PASS  Precise Vibrato, Tightness 0, vibrato at 4.5 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.062 
+INFO  Precise Vibrato, Tightness 0, vibrato at 4.5 Hz, wandering: the 0.3 law, double 1 keeps = 0.401 
+PASS  Precise Vibrato, Tightness 0, vibrato at 4.5 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.471 
+INFO  Precise Vibrato, Tightness 0, vibrato at 4.5 Hz, wandering: the 0.3 law, double 2 sings = 1.330 
+PASS  Precise Vibrato, Tightness 0, vibrato at 5.5 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.076 
+INFO  Precise Vibrato, Tightness 0, vibrato at 5.5 Hz, wandering: the 0.3 law, double 1 keeps = 0.157 
+PASS  Precise Vibrato, Tightness 0, vibrato at 5.5 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.459 
+INFO  Precise Vibrato, Tightness 0, vibrato at 5.5 Hz, wandering: the 0.3 law, double 2 sings = 1.436 
+PASS  Precise Vibrato, Tightness 0, vibrato at 6.8 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.203 
+INFO  Precise Vibrato, Tightness 0, vibrato at 6.8 Hz, wandering: the 0.3 law, double 1 keeps = 0.675 
+PASS  Precise Vibrato, Tightness 0, vibrato at 6.8 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.442 
+INFO  Precise Vibrato, Tightness 0, vibrato at 6.8 Hz, wandering: the 0.3 law, double 2 sings = 1.403 
+PASS  Precise Vibrato, Tightness 30, vibrato at 4.5 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.062 
+INFO  Precise Vibrato, Tightness 30, vibrato at 4.5 Hz, wandering: the 0.3 law, double 1 keeps = 0.484 
+PASS  Precise Vibrato, Tightness 30, vibrato at 4.5 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.468 
+INFO  Precise Vibrato, Tightness 30, vibrato at 4.5 Hz, wandering: the 0.3 law, double 2 sings = 1.304 
+PASS  Precise Vibrato, Tightness 30, vibrato at 5.5 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.077 
+INFO  Precise Vibrato, Tightness 30, vibrato at 5.5 Hz, wandering: the 0.3 law, double 1 keeps = 0.124 
+PASS  Precise Vibrato, Tightness 30, vibrato at 5.5 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.456 
+INFO  Precise Vibrato, Tightness 30, vibrato at 5.5 Hz, wandering: the 0.3 law, double 2 sings = 1.423 
+PASS  Precise Vibrato, Tightness 30, vibrato at 6.8 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.196 
+INFO  Precise Vibrato, Tightness 30, vibrato at 6.8 Hz, wandering: the 0.3 law, double 1 keeps = 0.509 
+PASS  Precise Vibrato, Tightness 30, vibrato at 6.8 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.436 
+INFO  Precise Vibrato, Tightness 30, vibrato at 6.8 Hz, wandering: the 0.3 law, double 2 sings = 1.428 
+PASS  Precise Vibrato, Tightness 85, vibrato at 4.5 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.062 
+INFO  Precise Vibrato, Tightness 85, vibrato at 4.5 Hz, wandering: the 0.3 law, double 1 keeps = 0.647 
+PASS  Precise Vibrato, Tightness 85, vibrato at 4.5 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.458 
+INFO  Precise Vibrato, Tightness 85, vibrato at 4.5 Hz, wandering: the 0.3 law, double 2 sings = 1.235 
+PASS  Precise Vibrato, Tightness 85, vibrato at 5.5 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.076 
+INFO  Precise Vibrato, Tightness 85, vibrato at 5.5 Hz, wandering: the 0.3 law, double 1 keeps = 0.324 
+PASS  Precise Vibrato, Tightness 85, vibrato at 5.5 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.443 
+INFO  Precise Vibrato, Tightness 85, vibrato at 5.5 Hz, wandering: the 0.3 law, double 2 sings = 1.365 
+PASS  Precise Vibrato, Tightness 85, vibrato at 6.8 Hz, wandering: double 1 keeps at most 0.35 of the lead's depth = 0.183 
+INFO  Precise Vibrato, Tightness 85, vibrato at 6.8 Hz, wandering: the 0.3 law, double 1 keeps = 0.205 
+PASS  Precise Vibrato, Tightness 85, vibrato at 6.8 Hz, wandering: double 2 sings 1.35 to 1.65 times as wide = 1.415 
+INFO  Precise Vibrato, Tightness 85, vibrato at 6.8 Hz, wandering: the 0.3 law, double 2 sings = 1.415 
+PASS  Precise Vibrato, double 3 sings 0.35 to 0.65 times as wide = 0.534 
+PASS  Precise Vibrato, Vibrato Variation 50: double 1 keeps 0.35 to 0.65 of the depth = 0.534 
+PASS  Precise Vibrato, Vibrato Variation 0: double 1 has the lead's depth within 5 percent = 0.997 
+PASS  vibrato that comes and goes: on the straight part the bend adds at most 5 cents = 0.708 cents
+PASS  vibrato that comes and goes: half a second after it starts, double 1 keeps at most 0.35 of it = 0.086 
+PASS  Mono Safe, Natural Pair: left plus right is the lead alone, what is left = -151.307 dB
+PASS  Mono Safe, Natural Pair: the doubles are all there in left minus right, against their levels = -0.132 dB
+PASS  Mono Safe, Wide Stack: left plus right is the lead alone, what is left = -146.873 dB
+PASS  Mono Safe, Wide Stack: the doubles are all there in left minus right, against their levels = -0.260 dB
+PASS  Mono Safe, Loose Gang: left plus right is the lead alone, what is left = -145.991 dB
+PASS  Mono Safe, Loose Gang: the doubles are all there in left minus right, against their levels = -0.265 dB
+PASS  Mono Safe, Two Singers: left plus right is the lead alone, what is left = -147.544 dB
+PASS  Mono Safe, Two Singers: the doubles are all there in left minus right, against their levels = -0.229 dB
+PASS  Mono Safe on against off at the default: level of left and right together = 0.003 dB
+PASS  Mono Safe with one output changes nothing, bit for bit
+PASS  Mono Safe with Bypass on: exact dry on both sides, largest difference = 0.000 
+PASS  Match Level, Natural Pair: left and right together are as loud as the input within 0.5 dB (off: 1.720 dB) = -0.047 dB
+PASS  Match Level, Natural Pair: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Tight Double: left and right together are as loud as the input within 0.5 dB (off: 0.628 dB) = -0.011 dB
+PASS  Match Level, Tight Double: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Quiet Thickener: left and right together are as loud as the input within 0.5 dB (off: 0.486 dB) = -0.029 dB
+PASS  Match Level, Quiet Thickener: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Wide Stack: left and right together are as loud as the input within 0.5 dB (off: 1.508 dB) = -0.121 dB
+PASS  Match Level, Wide Stack: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Loose Gang: left and right together are as loud as the input within 0.5 dB (off: 1.844 dB) = -0.141 dB
+PASS  Match Level, Loose Gang: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Doubles Only Wide: left and right together are as loud as the input within 0.5 dB (off: 2.862 dB) = -0.148 dB
+PASS  Match Level, Doubles Only Wide: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Two Singers: left and right together are as loud as the input within 0.5 dB (off: 2.893 dB) = -0.116 dB
+PASS  Match Level, Two Singers: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level, Slapback Double: left and right together are as loud as the input within 0.5 dB (off: 0.494 dB) = -0.020 dB
+PASS  Match Level, Slapback Double: the same sound turned down, nothing else changed, largest difference = 0.000 
+PASS  Match Level with one output: as loud as the input within 0.5 dB = -0.049 dB
+PASS  Match Level with Bypass on: exact dry on both sides, largest difference = 0.000 
+PASS  Match Level with every voice off: silence, nothing blows up
+PASS  Mono Safe with Match Level: left plus right is the lead alone at the matched level, what is left = -147.234 dB
+PASS  a new Duo opens with Precise Vibrato on, Mono Safe off and Match Level on
+PASS  a session saved before 0.4.0 loads with Precise Vibrato, Mono Safe and Match Level off
+PASS  and keeps its other settings
+PASS  a session saved by 0.4.0 keeps all three switches as saved
+PASS  preset Natural Pair: Precise Vibrato on, Mono Safe off, Match Level on
+PASS  preset Tight Double: Precise Vibrato on, Mono Safe and Match Level off
+PASS  preset Quiet Thickener: Precise Vibrato on, Mono Safe and Match Level off
+PASS  preset Wide Stack: Precise Vibrato on, Mono Safe and Match Level off
+PASS  preset Loose Gang: Precise Vibrato on, Mono Safe and Match Level off
+PASS  preset Doubles Only Wide: Precise Vibrato on, Mono Safe and Match Level off
+PASS  preset Two Singers: Precise Vibrato on, Mono Safe and Match Level off
+PASS  preset Slapback Double: Precise Vibrato on, Mono Safe and Match Level off
+PASS  an old session with Wide Stack's settings sounds as the preset did before it used Precise Vibrato, bit for bit
+PASS  switching Precise Vibrato on changes what Vibrato Variation does
+PASS  delay reading matches the delay measured from the audio, reading = 36.000 ms
+PASS  pitch reading matches a 220 Hz note, reading = 220.314 Hz
+INFO  Doubles 1 Width 0 left and right correlation, doubles only, noise = 1.000 
+PASS  Doubles 1 Width 0: left equals right, correlation = 1.000 
+INFO  Doubles 1 Width 25 left and right correlation, doubles only, noise = 0.854 
+INFO  Doubles 1 Width 50 left and right correlation, doubles only, noise = 0.500 
+INFO  Doubles 1 Width 75 left and right correlation, doubles only, noise = 0.147 
+INFO  Doubles 1 Width 100 left and right correlation, doubles only, noise = -0.000 
+PASS  Doubles 1 Width 100: left and right separate, correlation = -0.000 
+PASS  Doubles 1: correlation falls by at least 0.05 at every step of Width
+PASS  Doubles 1 Width 100, voice band noise, correlation = -0.005 
+PASS  Doubles 1 Width 100 with lead 0 dB and doubles -6 dB, correlation close to lead power share 0.799 = 0.805 
+INFO  Doubles 2 Width 0 left and right correlation, doubles only, noise = 1.000 
+PASS  Doubles 2 Width 0: left equals right, correlation = 1.000 
+INFO  Doubles 2 Width 25 left and right correlation, doubles only, noise = 0.924 
+INFO  Doubles 2 Width 50 left and right correlation, doubles only, noise = 0.707 
+INFO  Doubles 2 Width 75 left and right correlation, doubles only, noise = 0.383 
+INFO  Doubles 2 Width 100 left and right correlation, doubles only, noise = -0.000 
+PASS  Doubles 2 Width 100: left and right separate, correlation = -0.000 
+PASS  Doubles 2: correlation falls by at least 0.05 at every step of Width
+PASS  Doubles 2 Width 100, voice band noise, correlation = -0.005 
+PASS  Doubles 2 Width 100 with lead 0 dB and doubles -6 dB, correlation close to lead power share 0.665 = 0.673 
+INFO  Doubles 3 Width 0 left and right correlation, doubles only, noise = 1.000 
+PASS  Doubles 3 Width 0: left equals right, correlation = 1.000 
+INFO  Doubles 3 Width 25 left and right correlation, doubles only, noise = 0.900 
+INFO  Doubles 3 Width 50 left and right correlation, doubles only, noise = 0.637 
+INFO  Doubles 3 Width 75 left and right correlation, doubles only, noise = 0.302 
+INFO  Doubles 3 Width 100 left and right correlation, doubles only, noise = -0.002 
+PASS  Doubles 3 Width 100: left and right separate, correlation = -0.002 
+PASS  Doubles 3: correlation falls by at least 0.05 at every step of Width
+PASS  Doubles 3 Width 100, voice band noise, correlation = -0.002 
+PASS  Doubles 3 Width 100 with lead 0 dB and doubles -6 dB, correlation close to lead power share 0.570 = 0.578 
+PASS  control: a fixed copy 20 ms later reads as the same signal, correlation at best lag = 0.999 
+PASS  Tightness 0: doubles against each other, noise, same time, worst pair = 0.002 
+PASS  Tightness 0: doubles against each other, noise, best lag up to 100 ms, worst pair = 0.049 
+PASS  Tightness 0: doubles against each other, voice band noise, best lag up to 100 ms, worst pair = 0.154 
+PASS  Tightness 30: doubles against each other, noise, same time, worst pair = 0.002 
+PASS  Tightness 30: doubles against each other, noise, best lag up to 100 ms, worst pair = 0.020 
+PASS  Tightness 30: doubles against each other, voice band noise, best lag up to 100 ms, worst pair = 0.055 
+PASS  Tightness 100: doubles against each other, noise, same time, worst pair = 0.001 
+PASS  Tightness 100: doubles against each other, noise, best lag up to 100 ms, worst pair = 0.012 
+PASS  Tightness 100: doubles against each other, voice band noise, best lag up to 100 ms, worst pair = 0.031 
+PASS  timing paths over 5 minutes, correlation between doubles, worst pair = 0.160 
+PASS  pitch paths over 5 minutes, correlation between doubles, worst pair = 0.065 
+PASS  zipper and read noise, double 1, 1000 Hz, against the note, limit -70 = -101.480 dB
+PASS  level ripple, double 1, 1000 Hz, peak to peak, limit 0.1 = 0.000 dB
+PASS  zipper and read noise, double 2, 1000 Hz, against the note, limit -70 = -101.101 dB
+PASS  level ripple, double 2, 1000 Hz, peak to peak, limit 0.1 = 0.000 dB
+PASS  zipper and read noise, double 3, 1000 Hz, against the note, limit -70 = -102.620 dB
+PASS  level ripple, double 3, 1000 Hz, peak to peak, limit 0.1 = 0.000 dB
+PASS  zipper and read noise, double 1, 4800 Hz, against the note, limit -70 = -92.804 dB
+PASS  level ripple, double 1, 4800 Hz, peak to peak, limit 0.1 = 0.000 dB
+PASS  zipper and read noise, double 2, 4800 Hz, against the note, limit -70 = -93.110 dB
+PASS  level ripple, double 2, 4800 Hz, peak to peak, limit 0.1 = 0.000 dB
+PASS  zipper and read noise, double 3, 4800 Hz, against the note, limit -70 = -95.829 dB
+PASS  level ripple, double 3, 4800 Hz, peak to peak, limit 0.1 = 0.000 dB
+PASS  zipper and read noise, double 1, 9600 Hz, against the note, limit -70 = -92.395 dB
+PASS  level ripple, double 1, 9600 Hz, peak to peak, limit 0.1 = 0.000 dB
+PASS  zipper and read noise, double 2, 9600 Hz, against the note, limit -70 = -91.816 dB
+PASS  level ripple, double 2, 9600 Hz, peak to peak, limit 0.1 = 0.000 dB
+PASS  zipper and read noise, double 3, 9600 Hz, against the note, limit -70 = -92.334 dB
+PASS  level ripple, double 3, 9600 Hz, peak to peak, limit 0.1 = 0.000 dB
+PASS  zipper and read noise, double 1, 16000 Hz, against the note, limit -50 = -89.216 dB
+INFO  level ripple, double 1, 16000 Hz, peak to peak = 0.000 dB
+PASS  zipper and read noise, double 2, 16000 Hz, against the note, limit -50 = -89.597 dB
+INFO  level ripple, double 2, 16000 Hz, peak to peak = 0.000 dB
+PASS  zipper and read noise, double 3, 16000 Hz, against the note, limit -50 = -90.092 dB
+INFO  level ripple, double 3, 16000 Hz, peak to peak = 0.000 dB
+PASS  instrument floor at 1000 Hz is at least 10 dB under the limit = -98.105 dB
+PASS  instrument reads a known -60 dB side tone at 1000 Hz as = -60.000 dB
+PASS  instrument floor at 4800 Hz is at least 10 dB under the limit = -88.185 dB
+PASS  instrument reads a known -60 dB side tone at 4800 Hz as = -59.994 dB
+PASS  instrument floor at 9600 Hz is at least 10 dB under the limit = -93.758 dB
+PASS  instrument reads a known -60 dB side tone at 9600 Hz as = -59.998 dB
+PASS  instrument floor at 16000 Hz is at least 10 dB under the limit = -92.890 dB
+PASS  instrument reads a known -60 dB side tone at 16000 Hz as = -59.999 dB
+PASS  sweep rate: largest share of timing path energy in one spectral line, limit 0.30 = 0.210 
+PASS  sweep rate: largest share of pitch path energy in one spectral line, limit 0.10 = 0.075 
+PASS  control: a repeating 0.8 Hz sweep does show as a line in timing, share = 0.956 
+PASS  control: a repeating 0.8 Hz sweep does show as a line in pitch, share = 0.956 
+INFO  method: moving delay residual at 1000 Hz = -104.438 dB
+INFO  method: moving delay level ripple at 1000 Hz = 0.000 dB
+INFO  method: two head pitch shifter residual at 1000 Hz = -12.005 dB
+INFO  method: two head pitch shifter level ripple at 1000 Hz = 6.859 dB
+PASS  method: moving delay is at least 20 dB cleaner than a two head shifter at 1000 Hz, moving delay minus shifter = -92.433 dB
+INFO  method: moving delay residual at 4800 Hz = -107.195 dB
+INFO  method: moving delay level ripple at 4800 Hz = 0.000 dB
+INFO  method: two head pitch shifter residual at 4800 Hz = -16.307 dB
+INFO  method: two head pitch shifter level ripple at 4800 Hz = 3.912 dB
+PASS  method: moving delay is at least 20 dB cleaner than a two head shifter at 4800 Hz, moving delay minus shifter = -90.888 dB
+PASS  timing path matches 48 kHz at 44100 Hz, worst = 0.005 ms
+PASS  pitch peak matches 48 kHz within 10 percent at 44100 Hz = 15.030 cents
+PASS  timing path matches 48 kHz at 96000 Hz, worst = 0.004 ms
+PASS  pitch peak matches 48 kHz within 10 percent at 96000 Hz = 15.031 cents
+PASS  block size 1 gives the same output as 512
+PASS  block size 7 gives the same output as 512
+PASS  block size 64 gives the same output as 512
+PASS  block size 4096 gives the same output as 512
+PASS  a playhead changes nothing
+PASS  prepare called again restarts cleanly, same bounce
+PASS  worst case at 96 kHz, 3 doubles with split heads, share of one core = 0.016 
+PASS  Precise Vibrato, Tightness 30, vibrato then a jump up a fifth: once double 1 sings the new note it gets no bend (60 to 290 ms after), worst = 2.655 cents
+INFO  Precise Vibrato, Tightness 30, vibrato then a jump up a fifth: largest delay walk over the 290 ms after the jump = 1.266 ms
+PASS  Precise Vibrato, Tightness 85, vibrato then a jump up a fifth: once double 1 sings the new note it gets no bend (60 to 290 ms after), worst = 2.387 cents
+INFO  Precise Vibrato, Tightness 85, vibrato then a jump up a fifth: largest delay walk over the 290 ms after the jump = 1.231 ms
+PASS  Precise Vibrato switched back on while a straight note plays: no bend from before it was switched off, worst = 1.664 cents
+PASS  Precise Vibrato, a 50 ms consonant in a vibrato: in the 250 ms after it, double 1 keeps no more vibrato than with no bend = 0.135 
+PASS  Precise Vibrato, vibrato then a slide: on the slide double 1 is bent no more than its old vibrato, worst = 42.232 cents
+PASS  Precise Vibrato, vibrato then a slide: once double 1 holds the new note it gets no vibrato bend (the leak taken out), worst = 0.379 cents
+PASS  play, reset, play: the second part equals a new instance playing it, largest difference = 0.000 
+PASS  after a reset, silence in gives silence out: largest sample = 0.000 
+PASS  reset allocates nothing, allocations = 0.000 
+PASS  a reset before the first prepare is harmless
+PASS  the reset that comes with host bypass switching on changes nothing: the fade to dry goes on, largest difference = 0.000 
+PASS  a reset later on while bypassed is not left out
+PASS  Timbre frame at 44100 Hz is 10.5 to 12 ms = 11.610 ms
+PASS  Timbre frame at 48000 Hz is 10.5 to 12 ms = 10.667 ms
+PASS  Timbre frame at 88200 Hz is 10.5 to 12 ms = 11.610 ms
+PASS  Timbre frame at 96000 Hz is 10.5 to 12 ms = 10.667 ms
+PASS  Timbre frame at 176400 Hz is 10.5 to 12 ms = 11.610 ms
+PASS  Timbre frame at 192000 Hz is 10.5 to 12 ms = 10.667 ms
+PASS  Timbre Variation 100 at 176400 Hz, double 1: formant moves by 1.189 within 0.04, measured = 1.174 
+PASS  Timbre Variation 100 at 176400 Hz, double 2: formant moves by 0.840 within 0.04, measured = 0.859 
+PASS  Timbre Variation 100 at 192000 Hz, double 1: formant moves by 1.189 within 0.04, measured = 1.153 
+PASS  Timbre Variation 100 at 192000 Hz, double 2: formant moves by 0.840 within 0.04, measured = 0.847 
+INFO  Timbre Variation 100 at 48000 Hz, double 1: level ripple over 20 ms windows = 0.420 dB
+INFO  Timbre Variation 100 at 192000 Hz, double 1: level ripple over 20 ms windows = 0.435 dB
+PASS  a new Duo names Natural Pair, which is its default state = 0.000 
+PASS  a session saved after choosing Loose Gang reloads naming it = 4.000 
+PASS  the preset is not applied again on reload: a Width changed after choosing it stays
+PASS  the preset number stays out of the sound's value tree
+PASS  a damaged preset number (99) is kept in range = 7.000 
+PASS  a damaged preset number (-5) is kept in range = 0.000 
+PASS  a damaged preset number (x) is kept in range = 0.000 
+PASS  the 0.4.2 input file loads = 96000.000 
+PASS  v0.4.2-default: names no preset, since 0.4.2 did not save which one = -1.000 
+PASS  v0.4.2-default: the session the installed 0.4.2 saved, against what 0.4.2 played with it, largest difference (limit -90) = -240.000 dBFS
+INFO  v0.4.2-default: bit for bit the same (1 yes) = 1.000 
+PASS  v0.4.2-slapback-double: names no preset, since 0.4.2 did not save which one = -1.000 
+PASS  v0.4.2-slapback-double: the session the installed 0.4.2 saved, against what 0.4.2 played with it, largest difference (limit -90) = -240.000 dBFS
+INFO  v0.4.2-slapback-double: bit for bit the same (1 yes) = 1.000 
+PASS  v0.4.2-loose-gang-precise-off: names no preset, since 0.4.2 did not save which one = -1.000 
+PASS  v0.4.2-loose-gang-precise-off: the session the installed 0.4.2 saved, against what 0.4.2 played with it, largest difference (limit -90) = -240.000 dBFS
+INFO  v0.4.2-loose-gang-precise-off: bit for bit the same (1 yes) = 1.000 
+PASS  v0.4.2-loose-gang: names no preset, since 0.4.2 did not save which one = -1.000 
+INFO  v0.4.2-loose-gang: the session the installed 0.4.2 saved, against what 0.4.2 played with it, largest difference (Precise Vibrato on, changed by the note change fix) = -18.861 dBFS
+INFO  v0.4.2-loose-gang: bit for bit the same (1 yes) = 0.000 
+PASS  Precise Vibrato, Tightness 30, a 50 cent 5.5 Hz vibrato that stops on a held note: on the straight part after it double 1 gets no bend (60 ms to 0.6 s after), worst = 3.214 cents
+PASS  Precise Vibrato, Tightness 85, a 50 cent 5.5 Hz vibrato that stops on a held note: on the straight part after it double 1 gets no bend (60 ms to 0.6 s after), worst = 2.689 cents
+PASS  a vibrato that keeps going plays bit for bit as on 0.4.3: Natural Pair with Vibrato Variation 100, steady 5.5 Hz 50 cents
+PASS  a vibrato that keeps going plays bit for bit as on 0.4.3: Wide Stack, steady 5.5 Hz 50 cents
+PASS  a vibrato that keeps going plays bit for bit as on 0.4.3: Loose Gang, steady 5.5 Hz 50 cents
+PASS  a vibrato that keeps going plays bit for bit as on 0.4.3: Two Singers, steady 5.5 Hz 50 cents
+PASS  a vibrato that keeps going plays bit for bit as on 0.4.3: Natural Pair with Vibrato Variation 100, wandering 4.9 to 6.1 Hz, 30 to 60 cents
+PASS  a vibrato that keeps going plays bit for bit as on 0.4.3: Wide Stack, wandering 4.9 to 6.1 Hz, 30 to 60 cents
+PASS  a vibrato that keeps going plays bit for bit as on 0.4.3: Loose Gang, wandering 4.9 to 6.1 Hz, 30 to 60 cents
+PASS  a vibrato that keeps going plays bit for bit as on 0.4.3: Two Singers, wandering 4.9 to 6.1 Hz, 30 to 60 cents
+PASS  the sung recording loads
+PASS  null test: bit for bit the same as 0.2.0, no window, as first opened
+PASS  null test: bit for bit the same with the window open and drawing, as first opened
+PASS  null test: bit for bit the same as 0.2.0, no window, Natural Pair
+PASS  null test: bit for bit the same with the window open and drawing, Natural Pair
+PASS  null test: bit for bit the same as 0.2.0, no window, Tight Double
+PASS  null test: bit for bit the same with the window open and drawing, Tight Double
+PASS  null test: bit for bit the same as 0.2.0, no window, Quiet Thickener
+PASS  null test: bit for bit the same with the window open and drawing, Quiet Thickener
+PASS  null test: bit for bit the same as 0.2.0, no window, Wide Stack
+PASS  null test: bit for bit the same with the window open and drawing, Wide Stack
+PASS  null test: bit for bit the same as 0.2.0, no window, Loose Gang
+PASS  null test: bit for bit the same with the window open and drawing, Loose Gang
+PASS  null test: bit for bit the same as 0.2.0, no window, Doubles Only Wide
+PASS  null test: bit for bit the same with the window open and drawing, Doubles Only Wide
+PASS  null test: bit for bit the same as 0.2.0, no window, Two Singers
+PASS  null test: bit for bit the same with the window open and drawing, Two Singers
+PASS  null test: bit for bit the same as 0.2.0, no window, Slapback Double
+PASS  null test: bit for bit the same with the window open and drawing, Slapback Double
+PASS  null test: bit for bit the same as 0.2.0, no window, mono in, stereo out
+PASS  null test: bit for bit the same with the window open and drawing, mono in, stereo out
+PASS  null test: bit for bit the same as 0.2.0, no window, mono in, mono out
+PASS  null test: bit for bit the same with the window open and drawing, mono in, mono out
+PASS  null test: bit for bit the same as 0.2.0, no window, 44.1 kHz, small blocks
+PASS  null test: bit for bit the same with the window open and drawing, 44.1 kHz, small blocks
+PASS  null test: bit for bit the same as 0.2.0, no window, 96 kHz, big blocks
+PASS  null test: bit for bit the same with the window open and drawing, 96 kHz, big blocks
+PASS  null test: bit for bit the same as 0.2.0, no window, every control moving
+PASS  null test: bit for bit the same with the window open and drawing, every control moving
+PASS  the processor opens the Duo window
+PASS  on screen: Doubles
+PASS  on screen: Tightness
+PASS  on screen: Width
+PASS  on screen: Lead Level
+PASS  on screen: Double 1 Level
+PASS  on screen: Double 2 Level
+PASS  on screen: Double 3 Level
+PASS  on screen: Timing Amount
+PASS  on screen: Pitch Amount
+PASS  on screen: Vibrato Variation
+PASS  on screen: Timbre Variation
+PASS  on screen: Lead Pan
+PASS  on screen: Doubles Pan
+PASS  on screen: Extra Delay
+PASS  on screen: Vocal Range
+PASS  on screen: Bypass
+PASS  on screen: Precise Vibrato
+PASS  on screen: Mono Safe
+PASS  on screen: Match Level
+PASS  control is a real parameter: bypass
+PASS  control is a real parameter: double1
+PASS  control is a real parameter: double2
+PASS  control is a real parameter: double3
+PASS  control is a real parameter: doubles
+PASS  control is a real parameter: doublespan
+PASS  control is a real parameter: extradelay
+PASS  control is a real parameter: lead
+PASS  control is a real parameter: leadpan
+PASS  control is a real parameter: matchlevel
+PASS  control is a real parameter: monosafe
+PASS  control is a real parameter: pitchamount
+PASS  control is a real parameter: precisevibrato
+PASS  control is a real parameter: range
+PASS  control is a real parameter: tightness
+PASS  control is a real parameter: timbre
+PASS  control is a real parameter: timingamount
+PASS  control is a real parameter: vibrato
+PASS  control is a real parameter: width
+PASS  the build name is unchanged until the rename
+PASS  found control width
+PASS  automation moves the control: width
+PASS  one begin and one end gesture on a drag: width
+PASS  a drag moves the parameter: width
+PASS  double-click resets: width
+PASS  found control tightness
+PASS  automation moves the control: tightness
+PASS  one begin and one end gesture on a drag: tightness
+PASS  a drag moves the parameter: tightness
+PASS  double-click resets: tightness
+PASS  found control lead
+PASS  automation moves the control: lead
+PASS  one begin and one end gesture on a drag: lead
+PASS  a drag moves the parameter: lead
+PASS  double-click resets: lead
+PASS  found control double1
+PASS  automation moves the control: double1
+PASS  one begin and one end gesture on a drag: double1
+PASS  a drag moves the parameter: double1
+PASS  double-click resets: double1
+PASS  found control double2
+PASS  automation moves the control: double2
+PASS  one begin and one end gesture on a drag: double2
+PASS  a drag moves the parameter: double2
+PASS  double-click resets: double2
+PASS  found control double3
+PASS  automation moves the control: double3
+PASS  one begin and one end gesture on a drag: double3
+PASS  a drag moves the parameter: double3
+PASS  double-click resets: double3
+PASS  found control timingamount
+PASS  automation moves the control: timingamount
+PASS  one begin and one end gesture on a drag: timingamount
+PASS  a drag moves the parameter: timingamount
+PASS  double-click resets: timingamount
+PASS  found control pitchamount
+PASS  automation moves the control: pitchamount
+PASS  one begin and one end gesture on a drag: pitchamount
+PASS  a drag moves the parameter: pitchamount
+PASS  double-click resets: pitchamount
+PASS  found control vibrato
+PASS  automation moves the control: vibrato
+PASS  one begin and one end gesture on a drag: vibrato
+PASS  a drag moves the parameter: vibrato
+PASS  double-click resets: vibrato
+PASS  found control timbre
+PASS  automation moves the control: timbre
+PASS  one begin and one end gesture on a drag: timbre
+PASS  a drag moves the parameter: timbre
+PASS  double-click resets: timbre
+PASS  found control leadpan
+PASS  automation moves the control: leadpan
+PASS  one begin and one end gesture on a drag: leadpan
+PASS  a drag moves the parameter: leadpan
+PASS  double-click resets: leadpan
+PASS  found control doublespan
+PASS  automation moves the control: doublespan
+PASS  one begin and one end gesture on a drag: doublespan
+PASS  a drag moves the parameter: doublespan
+PASS  double-click resets: doublespan
+PASS  found control extradelay
+PASS  automation moves the control: extradelay
+PASS  one begin and one end gesture on a drag: extradelay
+PASS  a drag moves the parameter: extradelay
+PASS  double-click resets: extradelay
+PASS  typing a level = -12.500 dB
+PASS  typing off
+PASS  typing 35 L, and it reads back the same
+PASS  typing nonsense changes nothing
+PASS  typing past the end stops at the end
+PASS  the Doubles buttons set Doubles
+PASS  the Bypass button sets Bypass
+PASS  automation moves Vocal Range
+PASS  the pair stand at Width 0, mirrored
+PASS  the pair stand at Width 25, mirrored
+PASS  the pair stand at Width 70, mirrored
+PASS  the pair stand at Width 100, mirrored
+PASS  a click under hard right on the stage is Width 100 = 100.000 %
+PASS  the lane grows with Tightness at 0 = 8.779 px
+PASS  the mark moves back with Tightness at 0
+PASS  the lane grows with Tightness at 30 = 25.311 px
+PASS  the mark moves back with Tightness at 30
+PASS  the lane grows with Tightness at 60 = 37.614 px
+PASS  the mark moves back with Tightness at 60
+PASS  the lane grows with Tightness at 100 = 49.803 px
+PASS  the mark moves back with Tightness at 100
+PASS  the furthest setting is still on the stage = 68.525 px from the top
+PASS  the lead stands at Lead Pan
+PASS  Doubles Pan moves the pair together
+PASS  one double on stage
+PASS  three doubles on stage
+PASS  live while the voice plays, Natural Pair
+PASS  the singer stays on its real delay, worst, Natural Pair = 0.498 px
+PASS  share of time a singer is outside its lane, Natural Pair = 0.000 %
+PASS  the readout shows the delay: 22 ms
+PASS  live while the voice plays, Wide Stack
+PASS  the singer stays on its real delay, worst, Wide Stack = 0.633 px
+PASS  share of time a singer is outside its lane, Wide Stack = 0.000 %
+PASS  the readout shows the delay: 23 ms
+PASS  live while the voice plays, Loose Gang
+PASS  the singer stays on its real delay, worst, Loose Gang = 0.943 px
+PASS  share of time a singer is outside its lane, Loose Gang = 0.000 %
+PASS  the readout shows the delay: 26 ms
+PASS  live while the voice plays, Slapback Double
+PASS  the singer stays on its real delay, worst, Slapback Double = 0.075 px
+PASS  share of time a singer is outside its lane, Slapback Double = 0.000 %
+PASS  the readout shows the delay: 91 ms
+PASS  moving while the voice plays
+PASS  nothing moving after silence, with audio still running
+PASS  a double is back on its mark in silence
+PASS  dragging a double outward widens = 84.300 %
+PASS  a sideways drag leaves Tightness alone
+PASS  that drag is one Width gesture and nothing else
+PASS  dragging a double back loosens = 58.900 %
+PASS  a drag back leaves Width alone
+PASS  that drag is one Tightness gesture
+PASS  dragging the lead moves Lead Pan = -21.500 %
+PASS  that drag is one Lead Pan gesture
+PASS  double-click on the lead centres it = 0.000 %
+PASS  double-click on a double resets Width and Tightness
+PASS  dragging empty floor does nothing
+PASS  the hint names the singer under the mouse
+PASS  mono layout accepted
+PASS  on a mono track everyone stands in the middle
+PASS  the window opens at the saved size
+PASS  opening Advanced is remembered
+PASS  Advanced is open
+PASS  resizing is remembered
+PASS  window size and Advanced come back with the session
+PASS  they stay out of the sound's value tree
+PASS  a 0.2.0 session opens with the default window
+PASS  a damaged size goes back in range
+PASS  30 opens and closes with audio running
+PASS  30 opens and closes with no audio
+PASS  audio still runs after the window closes
+PASS  no allocation with the new reading
+PASS  the input peak reading
+PASS  reading it clears it
+PASS  Mono Safe on a stereo track dims Doubles Pan = 0.451 
+PASS  Mono Safe on a stereo track leaves Lead Pan lit, since it still pans the lead = 1.000 
+PASS  on a mono track Lead Pan and Doubles Pan are both dimmed
+PASS  the Precise Vibrato hint no longer says three presets keep it off
+PASS  a session saved on Loose Gang reopens with the preset box reading Loose Gang
+PASS  a session saved by 0.4.2 shows a neutral preset label, not a wrong preset name
+PASS  from no preset the right arrow loads the first preset = 0.000 
+PASS  from no preset the left arrow loads the last preset = 7.000 
+PASS  link: the card lists all 19 parameters by their IDs, in order, with Tightness, Width and the four levels as the main controls
+PASS  link: the text command "60" on Tightness sets it and lands in done; Tightness now = 60.000 % loose
+RESULT PASS  0 failures

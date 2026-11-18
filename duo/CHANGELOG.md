@@ -1,0 +1,73 @@
+# Changelog
+
+## 0.5.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+- The link is `src/SmoothLink.h`, a byte copy of Switchboard's. It puts a card of every parameter and its value in the shared link folder, and applies set commands by moving the real parameter with a begin and end gesture, as a drag in the window does, so automation records it. The card names Tightness, Width, Lead Level and the three Double levels as the main controls.
+- No control, preset, parameter ID, AU code or latency changed.
+- Tests: 654 pass, 0 fail (0.4.4 had 652). New: the card lists all 19 parameters by their IDs, and a text command sets Tightness and lands in the card's done list.
+
+## 0.4.4, 2026-11-13
+
+One fix from Phase 2 round 3. No control, preset or default value changed.
+
+- **A vibrato that stops on a held note.** Precise Vibrato fits its sinusoid to the last cycle and a half of pitch readings, so the fit went on passing for a while after a vibrato stopped, and double 1 was bent by a vibrato the lead no longer sang: up to 31 cents at Tightness 30 and 35 at Tightness 85 on a 50 cent 5.5 Hz vibrato (33 cents in the Phase 2 report, on 0.4.2 and 0.4.3 alike). Now each new reading is checked against a passing fit from 20 to 40 ms before it. Once fits have passed for 100 ms, two readings in a row that land off it towards its line by 0.3 of its swing (at least 6 cents, plus what it missed its own newest reading by), and by 6 times as far as readings have lately been landing off, mean the vibrato has ended. From there a double gets no bend, as after a note change, and no fit is used until the readings follow one again for 30 ms. The "lately" part is there because a first version without it read a real voice's wander as ends: with a 40 cent vibrato put onto Luke's held notes, double 1 kept 0.48 to 0.52 of it instead of 0.18 to 0.25 in the real vocal check (3 lines failed), so it was not shipped. On the straight part from 60 ms after the stop the bend is now 3.2 cents at Tightness 30 and 2.7 at Tightness 85 (limit 5). A vibrato that keeps going, steady or wandering in speed and depth, plays bit for bit as on 0.4.3 on Natural Pair (Vibrato 100), Wide Stack, Loose Gang and Two Singers. This changes what Wide Stack, Loose Gang, Two Singers and any session with Precise Vibrato on and Vibrato Variation above 0 play where a sung vibrato leaves its sinusoid. Sessions with Precise Vibrato off play exactly as before.
+- Real vocal checks rerun on the working set for the default, Wide Stack, Loose Gang and Two Singers against 0.4.3 (runs `0.4.3-p2` and `0.4.4-p3` in `_vox/rode/work/duo`): no pass flag that was true is false now (default 594 true stay true, Wide Stack 239, Loose Gang 240, Two Singers 217; nothing changed the other way). On the default only four numbers moved: with the 40 cent vibrato put on at 4.5 Hz, double 1 keeps 0.258 instead of 0.253 at Tightness 30 and 0.256 instead of 0.252 at Tightness 85, double 2 1.421 and 1.423 instead of 1.423 and 1.424 (limits 0.5 or under, 1.25 to 1.75).
+- Tests: `PluginTest round3` runs only these checks. The bit for bit check holds output hashes printed by `PluginTest capture043` from the 0.4.3 source before the change.
+
+## 0.4.3, 2026-11-13
+
+Bug fixes from the Phase 2 bug check. No control, preset or default changed.
+
+- **Precise Vibrato at a note change.** After a jump of more than 150 cents the doubles were still bent by the old note's vibrato for about 50 ms, read at one frozen moment, so double 1 got a one-sided push of up to 31 cents on its new note (a scoop). Now a double gets no bend from the old note once it plays the new one. A fit that fails the vibrato checks is never used any more: the last good one runs on while the bend fades. Switching Precise Vibrato back on fades in from nothing instead of where it was left (it pushed a straight note by 35 cents). This changes what Wide Stack, Loose Gang, Two Singers and any session with Precise Vibrato on and Vibrato Variation above 0 play at note changes; held vibrato measures as before.
+- **Host Reset.** Duo did nothing on the host's Reset, so after one the doubles could sing up to 220 ms of what came before it, and the wander carried on from wherever it was, so two bounces of the same part differed. Reset now clears what preparing clears, without allocating. The Reset JUCE sends right after the host's own bypass switches on is left out, so the 20 ms fade to dry still runs.
+- **The chosen preset is saved.** A reopened session named Natural Pair whatever it came from, and the arrows stepped from there. The preset last chosen is now saved, only to name it. Sessions saved before 0.4.3 read "Choose a preset" and sound exactly as before (proven against the installed 0.4.2, `tests/baseline/`).
+- **176.4 and 192 kHz.** The Timbre spectrum frame was 5.3 to 5.8 ms there instead of about 11 ms, so formants moved short (1.13 instead of 1.19 for double 1) and the smoothers ran twice as fast. It is 11 ms at every rate now.
+- **Window.** Lead Pan is no longer dimmed while Mono Safe is on, since it still pans the lead; it is dimmed only on a mono track. The Precise Vibrato hint no longer says three presets keep it off.
+- Tests: `PluginTest phase2` runs only these checks. The slide check takes the engine's slow leak out, since the leak pulling a bend back to the mark can read as 5.2 cents by itself.
+
+## 0.4.2, 2026-11-11
+
+Luke said yes to this on 2026-11-11.
+
+Wide Stack, Loose Gang and Two Singers now use Precise Vibrato, like the other presets and like a new Duo. Until now they kept the 0.3 vibrato law so that they would sound exactly as they did.
+
+- What changes: these three presets set Vibrato Variation to 20, 40 and 30. With the 0.3 law the doubles are bent all the time by whatever the pitch does at about 4 to 9 Hz, vibrato or not, a little out of step. With Precise Vibrato they are bent only where there is a real vibrato, and then in step with it. On a voice with no vibrato, like Luke's on these takes, the doubles of these presets therefore move a little less against the lead than before. Measured on the 11 working takes: the level of each preset is the same within 0.05 dB, and what a pitch tracker after Duo gets is the same (0.10% of held-note frames off against 0.11% for Wide Stack, 0.50% against 0.46% for Loose Gang, 0.41% against 0.36% for Two Singers). On the 30 s clips of takes 09 and 16 the old and the new Wide Stack differ by 6 to 8 dB under the signal and Loose Gang by 2 to 4 dB under it, which is the doubles sitting a fraction of a millisecond elsewhere. Clips of the old and the new presets are in `_vox/rode/work/duo/demo/presets-main` and `demo/presets-precise-vibrato`.
+- A session saved with one of these presets keeps the vibrato law it was saved with.
+- The null test still holds every case to the 0.2.0 sound bit for bit, with Precise Vibrato switched off for it.
+- Two test lines follow the presets: the line that held these three presets to "keeps the 0.3 vibrato it was made with" now holds every preset to Precise Vibrato on, and the old session test compares against Wide Stack with Precise Vibrato switched off. No limit changed.
+
+## 0.4.1, 2026-11-11
+
+Luke said yes to this on 2026-11-11.
+
+A new Duo, and the Natural Pair preset, open with Match Level on. The default then comes out as loud as the dry vocal instead of 1.6 to 1.8 dB over it, so it no longer pushes whatever comes after it harder. Nothing else about the default changes: the same two doubles at the same balance, the same pans.
+
+- On the 11 working takes the default is now within 0.16 dB (-0.16 to +0.05 dB, median -0.02 dB) of the dry over sung parts (it was +1.61 to +1.82 dB), and its peak is -7.5 dBFS (it was -5.7 dBFS).
+- What it costs: at the default the lead is your vocal turned down by 1.8 dB, not your vocal sample for sample. Switch Match Level off and it is exact again.
+- Sessions saved before keep Match Level off, so they sound and measure as they did. The other seven presets keep their level.
+- The null test still holds every case to the 0.2.0 sound bit for bit, with Match Level switched off for it.
+
+## 0.4.0, 2026-11-11
+
+Three new switches in Advanced. With all three as an older session loads them, the sound is bit for bit what it was (the null test still passes for every preset).
+
+- **Precise Vibrato**, on in a new Duo. Vibrato Variation was built around one vibrato speed and one distance: it only sang double 1 almost straight when your vibrato was near 5.5 Hz and the double was about 25 ms behind. Measured on Luke's takes with a known vibrato put onto the held notes (he sings almost none of his own: 3 of the 324 stretches the first check called vibrato hold one, the rest are slides and wobble), double 1 kept 0.52 of a 4.5 Hz vibrato, 0.47 of a 6.8 Hz one, and 0.70 at Tightness 85, against a limit of 0.5. Now Duo fits your vibrato's own speed and reads it at the moment each double is playing: double 1 keeps 0.18 to 0.29 at every speed and Tightness tried, double 2 sings 1.41 to 1.44 times as wide, double 3 0.56 times. Slides and note changes are left alone (the bend added on the slide test went from 33 cents to 0).
+  Sessions saved before 0.4.0 load with it off and sound exactly as they did. Wide Stack, Loose Gang and Two Singers, the presets that use Vibrato, keep it off for the same reason. Switch it on to hear the fix.
+- **Mono Safe**, off unless you switch it on. Each double goes to the left and the right with opposite signs, so adding left and right leaves your own voice alone (what is left of the doubles is under -150 dB). A phone speaker then plays the lead only, and a plug-in after Duo that listens to left plus right, as Choir Loft does, tracks a clean voice instead of a doubled one. In stereo the doubles are all there at the same level, wide and not placed. Width and Doubles Pan are dimmed while it is on.
+- **Match Level**, off unless you switch it on. Duo adds voices, so it is louder than what goes in: 1.6 to 1.8 dB at the default. Match Level turns the lead and the doubles down together by what they add up to, so the output is as loud as the dry vocal (within 0.2 dB on Luke's takes, on the default and on the widest presets). The balance between you and the doubles stays. With it on the lead is the input turned down, not the input sample for sample.
+
+Checked on the 11 working takes of the Rode session. The small steps the shared click check counted as Duo's own (13) are all sounds of the take itself, copied by a double: with the take low passed so that it holds nothing sharp, every one is gone and nothing above 8 kHz comes out (-76 dB), and a 9.6 kHz sine comes out clean for the whole length of every take (-105 dB). Timbre Variation at 100 does not move the pitch: the harmonics stay within 0.8 cents; what the pitch reader saw 3 semitones away were breaths and consonants whose resonance Timbre is meant to move.
+
+## 0.3.1, 2026-11-07
+
+Renamed to Duo, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
+## 0.3.0
+
+New window: the stage from straight above, in slate and sky blue. Left to right is pan, and further back is later behind the lead, read live from the sound. Each double has a tape mark and a lane showing how far it can drift, its shoulders turn with its pitch drift, and a pool of light is as big as what it is singing. Drag a double sideways for Width or back for Tightness, drag the lead for Lead Pan. Width sits under the stage with a handle under each double, Tightness runs up its side, plus level faders, the note being followed and each double's live delay. Advanced holds Timing, Pitch, Vibrato, Timbre, Vocal Range, both pans and Extra Delay. Resizable, with the size and open section saved in the session. Audio is bit identical to 0.2.0, proven by a null test on real speech. The processor gained one read-only input peak for the window.
+
+## 0.2.0
+
+First installed version. Vocal doubling with 1 to 3 copies, Tightness, Width, Lead Level and a level per double, plus Timing Amount, Pitch Amount, Vibrato Variation, Timbre Variation, Vocal Range, Lead Pan, Doubles Pan and Extra Delay. Eight factory presets. Zero latency.

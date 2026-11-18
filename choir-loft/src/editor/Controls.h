@@ -1,0 +1,294 @@
+#pragma once
+
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <functional>
+
+#include "Theme.h"
+
+namespace ui
+{
+    /** How long ago, in words a glance can take: "under a minute ago", "4 min ago", "2 h ago". */
+    juce::String ageText (double seconds);
+
+    using Apvts = juce::AudioProcessorValueTreeState;
+
+    /** The value box a click on a value opens, centred, without the label's own frame. */
+    struct TypeBox final : public juce::Label
+    {
+        juce::TextEditor* createEditorComponent() override
+        {
+            auto* editor = juce::Label::createEditorComponent();
+            editor->setJustification (juce::Justification::centred);
+            editor->setIndents (0, 2);
+            editor->setBorder ({});
+            return editor;
+        }
+    };
+
+    /** A real parameter as a full width bar: the name and value sit inside it, and the fill is the value. The attachment carries begin and
+        end gesture, automation moves it, double-click returns to the parameter's default, a click on the value lets you type one. */
+    class BarSlider final : public juce::Slider,
+                            public Hinted,
+                            private juce::Timer
+    {
+    public:
+        BarSlider (Apvts&, const juce::String& paramId, const juce::String& labelText, const juce::String& hintText, juce::Colour accentColour);
+        ~BarSlider() override;
+
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+        void mouseDoubleClick (const juce::MouseEvent&) override;
+
+        void setForcedHover (bool shouldShow)  { forcedHover = shouldShow; repaint(); }
+        /** Puts a plus on positive values, for a control whose rest is the middle. */
+        void setSigned (bool shouldBe)         { showSign = shouldBe; }
+
+        juce::String valueText() const;
+        void startTyping();
+        void applyTyped (const juce::String&);
+
+        /** How much wider the name and the value together are than the bar, with a gap between them, in pixels. 0 or less means both show whole. */
+        float textOverflow() const;
+        const juce::String& labelText() const noexcept  { return label; }
+
+    private:
+        void timerCallback() override;
+        juce::Rectangle<int> valueArea() const;
+
+        juce::RangedAudioParameter& param;
+        const juce::String label;
+        const juce::Colour accent;
+        bool forcedHover = false, showSign = false;
+        TypeBox typeBox;
+        std::unique_ptr<juce::SliderParameterAttachment> attachment;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BarSlider)
+    };
+
+    /** A voice's interval, as words. Drag it up or down, use the arrows, click it to type, double-click to reset.
+        Its wording follows the Mode, because the same number means different things in each. */
+    class IntervalField final : public juce::Slider,
+                                public Hinted,
+                                private juce::Timer
+    {
+    public:
+        IntervalField (Apvts&, const juce::String& paramId, int voiceIndex, juce::Colour accentColour);
+        ~IntervalField() override;
+
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDrag (const juce::MouseEvent&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+        void mouseMove (const juce::MouseEvent&) override;
+        void mouseExit (const juce::MouseEvent&) override;
+        void mouseDoubleClick (const juce::MouseEvent&) override;
+
+        void setMode (int);
+        /** How many notes the scale in use has (seven unless a Scale with more or fewer is chosen): in seven the arrows step by name. */
+        void setScaleNotes (int);
+        void setForcedHover (bool shouldShow)  { forcedHover = shouldShow; repaint(); }
+        /** Smaller type on two lines, for a narrow card. */
+        void setCompact (bool shouldBe)        { if (compact != shouldBe) { compact = shouldBe; repaint(); } }
+
+        void step (int direction);
+        void startTyping();
+        void applyTyped (const juce::String&);
+
+        /** How much wider the words are than the room beside the arrows, in pixels, at this size and Mode. 0 or less means they fit. */
+        float wordsOverflow() const;
+        /** How much a narrow card narrows its words to make them fit, 0 to 0.05. 0 is as designed. */
+        float wordsSqueeze() const  { return 1.0f - bigScale(); }
+
+    private:
+        void timerCallback() override;
+        int arrowAt (juce::Point<float>) const;
+        void words (juce::String& big, juce::String& small) const;
+        float bigScale() const;
+        float textTrim() const noexcept  { return compact ? 16.0f : 30.0f; }   // the arrows' side
+
+        juce::RangedAudioParameter& param;
+        const int index;
+        const juce::Colour accent;
+        int mode = 0, hoveredArrow = 0, scaleNotes = 7;
+        bool forcedHover = false, onArrow = false, compact = false;
+        TypeBox typeBox;
+        std::unique_ptr<juce::SliderParameterAttachment> attachment;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (IntervalField)
+    };
+
+    /** A list parameter: name, value and a small chevron. A click opens the list. */
+    class ChoiceField final : public juce::Component,
+                              public Hinted
+    {
+    public:
+        ChoiceField (Apvts&, const juce::String& paramId, const juce::String& labelText, const juce::String& hintText);
+
+        void paint (juce::Graphics&) override;
+        void mouseEnter (const juce::MouseEvent&) override;
+        void mouseExit (const juce::MouseEvent&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDoubleClick (const juce::MouseEvent&) override;
+
+        /** Shown in place of the value while something else is deciding it. Empty for the value itself. */
+        void setOverride (const juce::String&);
+        void setForcedHover (bool shouldShow)  { hovered = shouldShow; repaint(); }
+        int getSelected() const noexcept  { return selected; }
+
+        /** What a pick from the list does: sets the parameter as one gesture, then calls onUserPick. */
+        void pick (int index);
+        /** Called after the user picks a value or resets it by hand. Never called by automation. */
+        std::function<void()> onUserPick;
+
+    private:
+        juce::RangedAudioParameter& param;
+        const juce::String label;
+        const juce::StringArray choices;
+        juce::String overrideText;
+        int selected = 0;
+        bool hovered = false;
+        juce::ParameterAttachment attachment;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChoiceField)
+    };
+
+    /** A list or a whole number parameter as a row of joined buttons. */
+    class Segments final : public juce::Component,
+                           public Hinted
+    {
+    public:
+        Segments (Apvts&, const juce::String& paramId, juce::StringArray labels, int firstValue, const juce::String& hintText);
+
+        void paint (juce::Graphics&) override;
+        void mouseMove (const juce::MouseEvent&) override;
+        void mouseExit (const juce::MouseEvent&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDoubleClick (const juce::MouseEvent&) override;
+
+        int getSelectedValue() const noexcept  { return first + selected; }
+        void setCellHints (juce::StringArray hints)  { cellHints = std::move (hints); }
+        void setForcedHover (int cell)  { hovered = cell; repaint(); }
+        /** Clicks a cell, as the mouse would. */
+        void choose (int cell);
+
+    private:
+        int cellAt (juce::Point<float>) const;
+        juce::Rectangle<float> cellBounds (int) const;
+
+        juce::RangedAudioParameter& param;
+        const juce::StringArray labels;
+        juce::StringArray cellHints;
+        const juce::String mainHint;
+        std::vector<float> weights;
+        const int first;
+        int selected = 0, hovered = -1;
+        juce::ParameterAttachment attachment;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Segments)
+    };
+
+    /** A singer's name with its dot, as a switch: click to hear it or not. The dot is filled when it is heard and hollow when it is off.
+        Text on the right says what it sings. The whole row is the switch. */
+    class SingerSwitch final : public juce::Component,
+                               public Hinted
+    {
+    public:
+        SingerSwitch (Apvts&, const juce::String& paramId, const juce::String& labelText, const juce::String& hintText, juce::Colour colourToUse);
+
+        void paint (juce::Graphics&) override;
+        void mouseEnter (const juce::MouseEvent&) override;
+        void mouseExit (const juce::MouseEvent&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+
+        void setRight (const juce::String& text, juce::Colour colour, float size);
+        const juce::String& getRight() const noexcept  { return rightText; }
+        void setCompact (bool shouldBe)  { if (compact != shouldBe) { compact = shouldBe; repaint(); } }
+        bool isHeard() const noexcept    { return heard; }
+        void toggle();
+
+        /** Takes the click first, for a voice past the count, where a click adds it. Returns true if it did. */
+        std::function<bool()> onClickFirst;
+
+    private:
+        const juce::String label;
+        const juce::Colour colour;
+        juce::String rightText;
+        juce::Colour rightColour;
+        float rightSize = 20.0f;
+        bool heard = true, hovered = false, compact = false;
+        juce::ParameterAttachment attachment;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SingerSwitch)
+    };
+
+    /** How many voices sing, 1 to 8, as one row. Behind it are two parameters: Voices 1 to 4, and More Voices on top. */
+    class VoicePicker final : public juce::Component,
+                              public Hinted
+    {
+    public:
+        VoicePicker (Apvts&, const juce::String& hintText);
+
+        void paint (juce::Graphics&) override;
+        void mouseMove (const juce::MouseEvent&) override;
+        void mouseExit (const juce::MouseEvent&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDoubleClick (const juce::MouseEvent&) override;
+
+        int getCount() const noexcept  { return first + more; }
+        void choose (int count);
+
+    private:
+        int cellAt (juce::Point<float>) const;
+
+        juce::RangedAudioParameter& firstParam, & moreParam;
+        int first = 2, more = 0, hovered = -1;
+        juce::ParameterAttachment firstAttachment, moreAttachment;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VoicePicker)
+    };
+
+    /** A switch for an on or off parameter. */
+    class PillToggle final : public juce::ToggleButton,
+                             public Hinted
+    {
+    public:
+        PillToggle (Apvts&, const juce::String& paramId, const juce::String& labelText, const juce::String& hintText);
+
+        void paintButton (juce::Graphics&, bool isOver, bool isDown) override;
+        void setForcedHover (bool shouldShow)  { forcedHover = shouldShow; repaint(); }
+
+    private:
+        bool forcedHover = false;
+        std::unique_ptr<juce::ButtonParameterAttachment> attachment;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PillToggle)
+    };
+
+    /** The output's highest level of the last moments, in words, lit when it is within 1 dB of full scale (1.5.2). Neutral like every
+        control that is not a singer: muted when there is room, warm white when there is not. */
+    class OutputLight final : public juce::Component,
+                              public Hinted
+    {
+    public:
+        OutputLight();
+
+        /** The highest sample since the last call, 1 is full scale, and the time since then. The reading holds for 1.5 s, then falls. */
+        void feed (float peak, double dtSeconds);
+        bool isHot() const noexcept            { return shownDb >= hotFromDb; }
+        float peakDb() const noexcept          { return shownDb; }
+        juce::String text() const              { return textFor (shownDb); }
+        void paint (juce::Graphics&) override;
+
+        static juce::String textFor (float db);
+        /** Width of the widest thing it can say, in its own type. */
+        static float widestText();
+        static constexpr float hotFromDb = -1.0f, quietDb = -60.0f;
+
+    private:
+        float shownDb = -200.0f;
+        double heldFor = 0.0;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OutputLight)
+    };
+}

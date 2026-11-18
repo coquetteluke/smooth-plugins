@@ -2,7 +2,7 @@
 
 15 free Audio Unit plug-ins for Logic Pro, made mostly for vocals: tuning, doubling, harmonies, voice changing, tape effects and more. Free to use in any music, including releases you sell.
 
-**[Download the latest release](https://github.com/coquetteluke/smooth-plugins/releases/latest)**
+**[Download the installer](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-Installer.pkg)** · [All releases](https://github.com/coquetteluke/smooth-plugins/releases)
 
 ## What you need
 
@@ -12,10 +12,27 @@
 
 ## Install
 
+The installer lets you tick the plug-ins you want:
+
+![The installer's list of plug-ins, each with a checkbox](docs/installer.jpg)
+
+1. Download [Smooth-Plugins-Installer.pkg](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-Installer.pkg) and double-click it.
+2. macOS says it can't verify the installer, because it isn't signed with a paid Apple developer account. Click **Done**.
+3. Open System Settings > Privacy & Security, scroll down to the message about Smooth-Plugins-Installer.pkg and click **Open Anyway**, then enter your password. (On macOS 13 or 14 you can instead right-click the file and choose Open.)
+4. Click Continue, choose **Install for all users** or **Install for me only**, untick any plug-ins you don't want, and click Install.
+5. Open Logic Pro. The plug-ins are under Audio Units > Luke Garito.
+
+To add or remove plug-ins later, run the installer again, or delete the `.component` file from `Library/Audio/Plug-Ins/Components` (in your home folder for "me only", in the main Library for "all users").
+
+If Logic lists a plug-in as failed, open Logic Pro > Settings > Plug-in Manager, select it and click Reset & Rescan Selection.
+
+<details>
+<summary>Install by hand from the zip instead</summary>
+
 1. Download `Smooth-Plugins.zip` from the [latest release](https://github.com/coquetteluke/smooth-plugins/releases/latest) and unzip it.
 2. In Finder, choose Go > Go to Folder, paste `~/Library/Audio/Plug-Ins/Components` and press Return.
 3. Drag the `.component` files you want into that folder.
-4. Open Terminal and run this once. The plug-ins are not notarized by Apple, so macOS blocks downloaded copies until you do:
+4. Open Terminal and run this once. macOS blocks plug-ins copied out of a downloaded zip until you do:
 
    ```bash
    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/*.component
@@ -23,7 +40,7 @@
 
 5. Open Logic Pro. The plug-ins are under Audio Units > Luke Garito.
 
-If Logic still lists one as failed, open Logic Pro > Settings > Plug-in Manager, select it and click Reset & Rescan Selection.
+</details>
 
 ## The plug-ins
 
@@ -62,6 +79,8 @@ cmake --build duo/build --target InstallAU -j 8
 ```
 
 `InstallAU` builds the plug-in, signs it for your Mac and copies it into `~/Library/Audio/Plug-Ins/Components`. Swap `duo` for any other folder. To use a JUCE checkout you already have, add `-DJUCE_DIR=/path/to/JUCE` to the first command.
+
+To make the installer from a folder of built `.component` files, run `installer/build-installer.sh <folder> <output.pkg>`.
 
 The tests' voice recordings are not in this repo, because they were made with the macOS text to speech voices, which Apple does not allow redistributing. Run `tests/make_corpus.sh` inside a plug-in's folder to make them on your own Mac. Tests that compare against saved renders from earlier versions will report those files missing.
 

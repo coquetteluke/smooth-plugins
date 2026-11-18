@@ -1,0 +1,17 @@
+PASS  [HQ] twelfth held out set, Greek and Portuguese women's vowels 186 to 252 Hz, worst formant move against a real voice at the new pitch = 2.905 %
+INFO  [HQ]   worst formant move against the input (no verdict: a perfect shifter reads over the limit here, next line) = 4.146 %
+INFO  [HQ]   what a perfect shifter reads on that line: the real voice at the new pitch itself against the input, worst = 4.045 %
+INFO  [HQ]   and the tool's floor there = 4.999 %
+PASS  [HQ]   formant move against the input, worst, against the floor plus 2% = 4.146 %
+PASS  [HQ]   level change, worst = 1.054 dB
+INFO  [HQ]   first formant against its surroundings, flatter than a real voice, worst = 3.395 dB
+INFO  [HQ]   colour, worst = 1.998 dB
+PASS  [LL] twelfth held out set, Greek and Portuguese women's vowels 186 to 252 Hz in Wide Range, worst formant move against a real voice at the new pitch = 2.888 %
+PASS  [LL]   worst formant move against the input = 3.111 %
+INFO  [LL]   what a perfect shifter reads on that line: the real voice at the new pitch itself against the input, worst = 3.524 %
+INFO  [LL]   and the tool's floor there = 4.045 %
+PASS  [LL]   formant move against the input, worst, against the floor plus 2% = 3.111 %
+PASS  [LL]   level change, worst = 0.895 dB
+INFO  [LL]   first formant against its surroundings, flatter than a real voice, worst = 3.489 dB
+INFO  [LL]   colour, worst = 1.578 dB
+RESULT PASS  0 failures

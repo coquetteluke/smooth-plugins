@@ -1,0 +1,15 @@
+PASS  [HQ] seventh held out set, Korean men 93 to 146 Hz and women 183 to 237 Hz, worst formant move against the input = 2.905 %
+INFO  [HQ]   and the tool's floor there = 3.111 %
+PASS  [HQ]   level change, worst = 1.121 dB
+INFO  [HQ]   first formant against its surroundings, flatter than a real voice, worst = 6.769 dB
+INFO  [HQ]   colour, worst = 2.369 dB
+FAIL  [HQ] seventh held out set, Korean women 405 to 776 Hz and men 294 and 405 Hz, first formant flatter than a real voice, where a harmonic crosses it, worst = 13.832 dB
+INFO  [HQ]   the same with every case, including where the whole glide stays above the formant = 13.832 dB
+PASS  [HQ]   first formant sharper than a real voice, worst = 0.638 dB
+PASS  [HQ]   formant move against the input, worst, against the floor plus 2% = 40.000 %
+INFO  [HQ]   and the tool's floor there = 40.000 %
+INFO  [HQ]   colour, worst = 5.497 dB
+INFO  [HQ]   level change, worst = 0.987 dB
+INFO  [HQ]   held notes, harmonics against a real voice, worst RMS = 9.321 dB
+FAIL  [HQ]   held notes, harmonics against a real voice, mean of the RMS = 3.647 dB
+RESULT FAIL  2 failures

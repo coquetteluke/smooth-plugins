@@ -17,16 +17,41 @@ The Smooth Plugins app installs the plug-ins you pick and keeps them up to date:
 ![The Smooth Plugins app: every plug-in with a checkbox, its version and whether it has an update](docs/app.jpg)
 
 1. Download [Smooth-Plugins-App.zip](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-App.zip), unzip it and drag **Smooth Plugins** into your Applications folder.
-2. Open it. macOS says it can't verify the app, because it isn't signed with a paid Apple developer account. Click **Done**.
-3. Open System Settings > Privacy & Security, scroll down to the message about Smooth Plugins and click **Open Anyway**, then enter your password. (On macOS 13 or 14 you can instead right-click the app and choose Open.)
-4. Tick the plug-ins you want and click **Install**.
-5. Open Logic Pro. The plug-ins are under Audio Units > Luke Garito.
+2. Open it. The first time, macOS blocks it with a warning: follow [Opening the app the first time](#opening-the-app-the-first-time) below (about 30 seconds, only once).
+3. Tick the plug-ins you want and click **Install**.
+4. Open Logic Pro. The plug-ins are under Audio Units > Luke Garito.
 
 **Updates:** the app checks for updates once a day. When new versions come out, it opens in the background (it doesn't take you away from what you're doing) with the number of updates on its Dock icon. Click **Update** and restart Logic. You can turn the daily check off at the bottom of the app; untick it before deleting the app.
 
 **Removing:** tick the plug-ins and click **Remove**. They go to the Trash.
 
 If Logic lists a plug-in as failed, open Logic Pro > Settings > Plug-in Manager, select it and click Reset & Rescan Selection.
+
+## Opening the app the first time
+
+The first time you open Smooth Plugins, macOS blocks it and shows a warning. This is normal for free apps from outside the App Store, and you only do it once.
+
+**Why it happens:** macOS only trusts an app straight away if its developer pays Apple $99 a year for a developer account and sends every version to Apple to be checked (Apple calls this notarizing). Smooth Plugins is free, and that fee isn't paid, so macOS can't vouch for it. The warning doesn't mean anything wrong was found in it: Apple just hasn't looked at it. All of the code is here on GitHub for anyone to read, and the app only downloads plug-ins from this page's releases and checks every file before installing it.
+
+**How to open it:**
+
+1. Double-click **Smooth Plugins**. macOS says it wasn't opened. Click **Done** (not Move to Trash).
+
+   <img src="docs/open-step-1.png" width="312" alt="The warning that Smooth Plugins was not opened, with the Done button circled">
+
+2. Open **System Settings > Privacy & Security** and scroll down to **Security**. Next to "Smooth Plugins.app was blocked to protect your Mac", click **Open Anyway**. The button is there for about an hour after step 1; if it's gone, do step 1 again.
+
+   <img src="docs/open-step-2.png" width="562" alt="Privacy and Security settings, with the Open Anyway button circled">
+
+3. macOS asks one more time. Click **Open Anyway**, then enter your password or use Touch ID. Careful: the blue button here is **Move to Trash**, so don't just press Return.
+
+   <img src="docs/open-step-3.png" width="312" alt="The last warning, with the Open Anyway button circled below the blue Move to Trash button">
+
+From then on, Smooth Plugins opens normally. The plug-ins it installs don't need this step. A new version of the app (the app tells you when one is out) needs it once more.
+
+On macOS 13 or 14 there's a shortcut: Control-click (or right-click) the app, choose **Open**, then click **Open** again.
+
+The installer package shows the same warning, and the same steps open it.
 
 <details>
 <summary>Other ways to install: the installer package or the zip</summary>
@@ -36,7 +61,7 @@ If Logic lists a plug-in as failed, open Logic Pro > Settings > Plug-in Manager,
 ![The installer's list of plug-ins, each with a checkbox](docs/installer.jpg)
 
 1. Download [Smooth-Plugins-Installer.pkg](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-Installer.pkg) and double-click it.
-2. Click **Done** when macOS says it can't verify it, then click **Open Anyway** in System Settings > Privacy & Security.
+2. macOS blocks it the first time: follow [Opening the app the first time](#opening-the-app-the-first-time), with the installer's name in place of the app's.
 3. Click Continue, choose **Install for all users** or **Install for me only**, untick any plug-ins you don't want, and click Install.
 
 **Zip, by hand.**

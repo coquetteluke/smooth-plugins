@@ -44,7 +44,9 @@ cat > "$work/all/Smooth-Plugins/INSTALL.txt" <<'EOF'
 Smooth Plugins: free Audio Units for Logic Pro (Apple Silicon Mac, macOS 13 or newer)
 
 Easiest: download Smooth-Plugins-App.zip from the release page instead. The app installs the
-plug-ins you pick and keeps them up to date.
+plug-ins you pick and keeps them up to date. macOS blocks it the first time; the steps to open it
+are in "How to open Smooth Plugins.txt" inside that zip, and with pictures at
+https://github.com/coquetteluke/smooth-plugins#opening-the-app-the-first-time
 
 By hand:
 1. In Finder, choose Go > Go to Folder, paste ~/Library/Audio/Plug-Ins/Components and press Return.
@@ -63,7 +65,28 @@ EOF
 "$root/installer/build-installer.sh" "$src" "$out/Smooth-Plugins-Installer.pkg" | tail -1
 "$root/updater/build-app.sh" "$work/app" | tail -1
 app_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$work/app/Smooth Plugins.app/Contents/Info.plist")
-( cd "$work/app" && ditto -c -k --sequesterRsrc --keepParent "Smooth Plugins.app" "$out/Smooth-Plugins-App.zip" )
+cat > "$work/app/How to open Smooth Plugins.txt" <<'EOF'
+How to open Smooth Plugins the first time
+=========================================
+
+1. Drag "Smooth Plugins" into your Applications folder and double-click it.
+2. macOS says it was not opened. Click Done (not Move to Trash).
+3. Open System Settings > Privacy & Security, scroll down to Security, and click Open Anyway
+   next to "Smooth Plugins.app was blocked to protect your Mac".
+4. macOS asks once more. Click Open Anyway, then enter your password or use Touch ID.
+   Careful: the blue button there is Move to Trash, so don't just press Return.
+
+You only do this once. From then on Smooth Plugins opens normally, and the plug-ins it installs
+don't need this step.
+
+Why: macOS only trusts an app straight away if its developer pays Apple $99 a year and sends every
+version to Apple to be checked. Smooth Plugins is free and that fee isn't paid, so Apple hasn't
+checked it. The warning does not mean anything wrong was found. All of the code is public:
+https://github.com/coquetteluke/smooth-plugins
+
+Pictures of each step: https://github.com/coquetteluke/smooth-plugins#opening-the-app-the-first-time
+EOF
+( cd "$work/app" && ditto -c -k --sequesterRsrc . "$out/Smooth-Plugins-App.zip" )
 
 # The manifest the app reads.
 /usr/bin/python3 -I - "$work/rows.tsv" "$out/manifest.json" "$tag" "$base" "$app_version" <<'EOF'

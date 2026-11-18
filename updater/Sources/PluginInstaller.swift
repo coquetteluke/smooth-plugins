@@ -38,7 +38,7 @@ enum PluginInstaller {
             case .me:
                 try replaceForMe(target.url, with: bundle)
             case .allUsers:
-                try await Admin.replace(target.url, with: bundle)
+                try await Admin.install(zip: zip, sha256: plugin.sha256, bundleName: "\(plugin.name).component", at: target.url)
             }
         }
     }

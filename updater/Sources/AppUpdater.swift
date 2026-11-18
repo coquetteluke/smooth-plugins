@@ -60,7 +60,7 @@ enum AppUpdater {
             try Shell.run("/usr/bin/ditto", [newApp.path, staged.path])
             _ = try fileManager.replaceItemAt(current, withItemAt: staged)
         } else {
-            try await Admin.replace(current, with: newApp)
+            try await Admin.install(zip: zip, sha256: expected, bundleName: "Smooth Plugins.app", at: current)
         }
     }
 

@@ -1,0 +1,205 @@
+INFO  accuracy runs on seed 20261110, not the held out seed 20261111
+PASS  parameter names are clear, unique, no em dash
+INFO  parameter count = 15.000 
+PASS  factory presets = 5.000 
+PASS  preset names are not empty, no em dash
+PASS  presets change the state
+PASS  state save and restore
+PASS  damaged state value 'nan' gives finite output
+PASS  damaged state value 'nan' leaves controls in range
+PASS  damaged state value 'inf' gives finite output
+PASS  damaged state value 'inf' leaves controls in range
+PASS  damaged state value '-inf' gives finite output
+PASS  damaged state value '-inf' leaves controls in range
+PASS  damaged state value '-1e30' gives finite output
+PASS  damaged state value '-1e30' leaves controls in range
+PASS  damaged state value '1e30' gives finite output
+PASS  damaged state value '1e30' leaves controls in range
+PASS  damaged state value '-1' gives finite output
+PASS  damaged state value '-1' leaves controls in range
+PASS  damaged state value 'garbage' gives finite output
+PASS  damaged state value 'garbage' leaves controls in range
+PASS  sweeps finished, mono
+PASS  sweeps finished, stereo
+PASS  no NaN after silence
+PASS  no denormals decaying into silence = 0.000 samples
+PASS  recovers after NaN, inf and huge input, peak in the last second = 0.250 
+INFO  click test baseline step = 0.004 
+PASS  no click when Listening jumps, biggest step = 0.004 
+PASS  no click when Reset jumps, biggest step = 0.004 
+PASS  no click when Response jumps, biggest step = 0.004 
+PASS  no click when Source jumps, biggest step = 0.004 
+PASS  no click when Mode jumps, biggest step = 0.004 
+PASS  no click when Manual Key jumps, biggest step = 0.004 
+PASS  no click when Manual Scale jumps, biggest step = 0.004 
+PASS  no click when Relative Swap jumps, biggest step = 0.004 
+PASS  no click when Tempo Scale jumps, biggest step = 0.004 
+PASS  no click when Bypass jumps, biggest step = 0.004 
+PASS  latency 1ch 44100 Hz block 32 = 0.000 samples
+PASS  latency 1ch 44100 Hz block 441 = 0.000 samples
+PASS  latency 1ch 44100 Hz block 4096 = 0.000 samples
+PASS  latency 1ch 48000 Hz block 32 = 0.000 samples
+PASS  latency 1ch 48000 Hz block 441 = 0.000 samples
+PASS  latency 1ch 48000 Hz block 4096 = 0.000 samples
+PASS  latency 1ch 96000 Hz block 32 = 0.000 samples
+PASS  latency 1ch 96000 Hz block 441 = 0.000 samples
+PASS  latency 1ch 96000 Hz block 4096 = 0.000 samples
+PASS  latency 2ch 44100 Hz block 32 = 0.000 samples
+PASS  latency 2ch 44100 Hz block 441 = 0.000 samples
+PASS  latency 2ch 44100 Hz block 4096 = 0.000 samples
+PASS  latency 2ch 48000 Hz block 32 = 0.000 samples
+PASS  latency 2ch 48000 Hz block 441 = 0.000 samples
+PASS  latency 2ch 48000 Hz block 4096 = 0.000 samples
+PASS  latency 2ch 96000 Hz block 32 = 0.000 samples
+PASS  latency 2ch 96000 Hz block 441 = 0.000 samples
+PASS  latency 2ch 96000 Hz block 4096 = 0.000 samples
+PASS  output bit identical to input over 720 blocks, listening, paused, manual and bypassed = 0.000 channels differing
+PASS  malloc or free calls on the audio thread, system hook = 0.000 
+PASS  operator new anywhere during audio, background thread included = 0.000 
+PASS  the malloc hook does see a real allocation, calls = 2.000 
+PASS  exact format: {"key":"C#","scale":"minor","confidence":0.87,"time":1794011292.5,"listening":true}
+PASS  exact format: {"key":"B","scale":"major","confidence":1.00,"time":2000000000.0,"listening":false}
+PASS  decimal points kept under a comma locale (locale was available)
+PASS  path ignores a redirected HOME: ~/Library/Application Support/SmoothPlugins/key.json
+PASS  the folder is created when missing
+PASS  contents parse as valid JSON with the five fields
+INFO  atomic write test: writes = 14204.000 
+INFO  atomic write test: reads while writing = 106622.000 
+PASS  the atomic test really raced reads against writes
+PASS  reads that saw a partial or missing file = 0.000 
+PASS  each write replaces the file by rename rather than writing into it, replacements = 14204.000 
+PASS  no temporary files left behind, files in the folder = 1.000 
+PASS  nothing changed: one write in 10 s = 1.000 
+PASS  changing every 0.1 s for 10 s: writes (limit 2 per second) = 20.000 
+PASS  a write failure is noticed
+PASS  audio still bit identical after the write failed
+PASS  readings still work after the write failed
+PASS  the window shows a note: Could not save key.json, so other plug-ins will not see this key
+PASS  that note is on screen
+PASS  write retries after 5 s and recovers when the folder can be made
+PASS  Manual mode shows all 24 keys at confidence 1 = 100.000 %
+PASS  Manual mode writes all 24 keys to key.json = 100.000 %
+PASS  a Manual Key change reaches key.json within = 0.644 s
+PASS  Relative Swap off shows the detected key
+INFO  Relative Swap, key.json key index matches (1 is yes) = 1.000 
+PASS  Relative Swap off shows the detected key
+INFO  Relative Swap, key.json key index matches (1 is yes) = 1.000 
+PASS  Relative Swap shows the relative of the detected key = 100.000 %
+PASS  tempo through the real path, 120 BPM played = 120.000 BPM
+PASS  Tempo Scale Half and Double read exactly half and double, error = 0.000 BPM
+PASS  each preset sets the controls it says
+PASS  window created, painted and destroyed 20 times offline
+PASS  window with no key yet shows no key
+PASS  window shows the key: A#
+INFO  key letters, dark rows in the window, of height = 266.000 px
+INFO  window height = 636.000 px
+PASS  key letters are at least a fifth of the window height, rows = 266.000 
+PASS  window closed before the plug-in
+PASS  every reading bit identical to the saved analyser fingerprint
+PASS  the font gives a true heavy weight, wider than regular by a factor of = 1.140 
+PASS  typed keys are read correctly
+PASS  typing something that is not a key does nothing
+PASS  the window opens
+PASS  every writable parameter has a visible control in the window
+PASS  Advanced does not cover the keyboard
+PASS  Advanced folds away
+PASS  Advanced remembers it is shut
+PASS  automation moves the window's controls
+PASS  clicking Half sets Tempo Scale, as one gesture
+PASS  double-click returns Tempo Scale to its default
+PASS  Swap sets Relative Swap, as one gesture
+PASS  double-click returns Relative Swap to its default
+PASS  Listening turns off, as one gesture
+PASS  Reset is held while pressed and lets go, as real presses
+PASS  typing Bb minor sets Manual Key and Manual Scale, as a gesture each
+PASS  typing nonsense leaves the key alone
+PASS  double-click returns Manual Key to its default
+PASS  each of the 24 keys on the circle is where its label says
+PASS  the middle of the circle is not a key
+PASS  clicking the circle in Listen changes nothing
+PASS  clicking E minor on the circle in Manual sets it
+PASS  each of the 12 keyboard notes is under its label
+INFO  height of the key letters at the smallest window = 204.509 pt
+PASS  key letters at least 150 points tall at the smallest window = 204.509 pt
+PASS  window size and Advanced come back with the session
+PASS  the window reopens at its saved size with Advanced open
+PASS  only window size and open section are added to saved state, attributes = 2.000 
+PASS  a damaged window size is clamped
+PASS  a session from before the window opens at the default size
+PASS  audio bit identical while the window opened, drew and closed 30 times, blocks = 182.000 
+INFO  slowest audio block during that = 0.006 ms
+PASS  no audio block took longer than the block itself during that = 0.006 ms
+PASS  no file written before there is a key
+PASS  real background thread finds G minor through processBlock
+PASS  samples dropped by the queue at 7 times real time = 0.000 
+PASS  key.json writes per second while confidence moves = 0.339 per s
+PASS  key.json is valid: {"key":"G","scale":"minor","confidence":0.98,"time":1794157002.9,"listening":true}
+PASS  key.json holds the key found
+PASS  key.json says listening
+PASS  key.json time is Unix seconds, now
+PASS  readings as AU parameters: G Minor 100.000000
+PASS  readings changing never notify the host as automation, notifications = 0.000 
+PASS  Listening off: reading frozen with another key playing, confidence moved = 0.000 
+PASS  Listening off: key.json says listening false
+PASS  nothing changing: no more writes in 1.2 s, writes = 0.000 
+PASS  no calls from the host for 5 s: confidence falls = 0.132 
+PASS  the key stays shown when the host stops
+PASS  Reset: no key and confidence 0
+PASS  Reset: key.json shows confidence 0
+PASS  closing the plug-in leaves key.json saying listening false
+PASS  bypassed: nothing was analysed
+PASS  real shared file written from this process: ~/Library/Application Support/SmoothPlugins/key.json
+PASS  20 s of silence from the start gives no key and confidence 0, frames with a reading = 0.000 
+PASS  Stable: C major found before the silence
+INFO  Stable: confidence before the silence = 1.000 
+PASS  Stable: confidence after 10 s of silence = 0.023 
+PASS  Stable: silence does not change the key shown
+PASS  Fast: C major found before the silence
+INFO  Fast: confidence before the silence = 1.000 
+PASS  Fast: confidence after 10 s of silence = 0.000 
+PASS  Fast: silence does not change the key shown
+PASS  white noise alone, confidence = 0.000 
+PASS  white noise alone shows no key, key index (-1 is none) = -1.000 
+PASS  Reference Pitch, biggest error for music tuned -40 to +45 cents = 0.525 Hz
+PASS  tempo within 1 BPM, half or double also counting, 62 to 200 BPM = 100.000 %
+INFO  tempo within 1 BPM at exactly the played tempo = 58.333 %
+INFO  worst tempo error among those found = 0.050 BPM
+PASS  a steady tone shows no tempo = 0.000 BPM
+PASS  Source Single Voice, melody over a clashing low rumble, exact = 100.000 %
+INFO  Source Full Mix on the same clips, exact = 0.000 %
+PASS  Stable: key change followed within 30 s = 100.000 %
+PASS  Stable: median time to follow a key change = 8.597 s
+INFO  Stable: slowest key change followed = 19.520 s
+INFO  Stable: key change ended on the right key or its relative = 100.000 %
+PASS  Fast: key change followed within 30 s = 100.000 %
+PASS  Fast: median time to follow a key change = 6.379 s
+INFO  Fast: slowest key change followed = 17.813 s
+INFO  Fast: key change ended on the right key or its relative = 100.000 %
+PASS  melody only, Single Voice exact (floor only catches a broken detector) = 98.611 %
+PASS  melody only, Single Voice exact, relative or a fifth away (floor) = 100.000 %
+INFO  melody only, Single Voice median time to the correct answer = 7.851 s
+INFO  melody only, Single Voice 90th percentile time to the correct answer = 14.165 s
+INFO  melody only, Single Voice mean confidence when right = 0.942 
+INFO  melody only, Full Mix exact = 100.000 %
+INFO  melody only, Full Mix exact, relative or a fifth away = 100.000 %
+INFO  melody only, Full Mix median time to the correct answer = 7.851 s
+INFO  melody only, Full Mix 90th percentile time to the correct answer = 13.312 s
+INFO  melody only, Full Mix mean confidence when right = 0.974 
+INFO  chord clips, all 24 keys, 5 timbres, held out seed = 480.000 
+PASS  chord progressions exact = 99.375 %
+PASS  chord progressions exact, relative or a fifth away = 100.000 %
+PASS  chords, Stable, median time to the correct answer = 7.851 s
+INFO  chords, Stable, 90th percentile time to the correct answer = 7.851 s
+INFO  chords, mean confidence when right = 0.975 
+INFO  chords, mean confidence when wrong = 0.211 
+PASS  Stable never goes A to B and back to A, bounces = 0.000 
+PASS  Stable clips whose reading moves after 8 s = 0.000 %
+INFO  chords, Fast, exact = 99.167 %
+INFO  chords, Fast, exact, relative or a fifth away = 99.583 %
+PASS  chords, Fast, median time to the correct answer = 3.072 s
+INFO  chords, Fast, bounces (Stable is the setting that promises none) = 19.000 
+PASS  chord progressions exact at 44100 Hz = 100.000 %
+PASS  chord progressions exact at 96000 Hz = 100.000 %
+INFO  chords, loop heard from its second chord, exact = 65.625 %
+INFO  chords, loop heard from its second chord, exact, relative or a fifth away = 100.000 %
+RESULT PASS  0 failures

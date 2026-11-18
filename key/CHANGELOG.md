@@ -1,0 +1,266 @@
+# Changelog
+
+## 1.8.0, 2026-11-17
+
+Switchboard can now see and set every control through the link. Sound unchanged.
+
+The link is `src/SmoothLink.h`, a byte copy of Switchboard's. It puts a card of every parameter and its value in the shared link folder (the five readings too, read only), and applies set commands by moving the real parameter with a begin and end gesture, as a drag in the window does, so automation records it. The card names Source, Mode, Tempo Scale, Listening and Lock as the main controls. No control, parameter ID, AU code, detection reading or key.json field changed. Tests: 372 pass, 0 fail (1.7.3 had 370). New: the card lists all 16 parameters by their IDs, and a text command picks Single Voice and lands in the card's done list.
+
+## 1.7.3, 2026-11-13
+
+The top of the note range is read, not made up (key-dsp-r2-1). Music tuned more than about 24 cents sharp put the top note's band past the last FFT bin Key reads, and the log spectrum drew a line on past it instead of reading a bin: up to 30 times the bins it is drawn from (30.6 for F# major 45 cents sharp with noise above 5 kHz, 1.000 now). It stops at the last bin now. The check that failed on 1.7.2 is in tests/Phase2Tests.h (`PluginTest --phase2 analyser`). Key's audio passes untouched as before; latency 0.
+
+One test changed, with Luke's yes on 2026-11-13 ("u can do all of these"). "chords in Full Mix: every reading over 96 clips bit identical to 1.5.1" became "chords in Full Mix: every reading over 96 clips bit identical to 1.7.3", pinned to 1.7.3's value (0xecdc4ad4cc3a786a, was 0x6d8feb3810100d9f). 3 of the 96 clips read differently, all tuned 25 to 28 cents sharp (E I IV V I, Ab I vi IV V, Bb i iv V i): confidence moves by at most 0.000022, and the key on show is the same at every moment of every clip (95 of 96 end on their own key, as before). A new check holds the old value: with the top bin drawn on as up to 1.7.2 (a switch for tests only), the 1.7.3 source still gives 1.5.1's value bit for bit. The other fingerprint, every reading over 12 clips bit identical to 1.5.0, is unchanged. The old test's text and number are kept in a comment in tests/PluginTest.cpp.
+
+Luke's real vocal takes, round 1's checks rerun on the working set: realvox `1.7.3-round3` against 1.7.2's `1.7.2-phase2`, the same check file. All 4 pass lines and 4 honesty lines are identical, no pass field went from true to false, and all 44 final keys (11 takes, 4 readings) are the same. Settle times moved by up to 1.4 s and right notes shares by up to 1 point, about as much as two runs of 1.7.1 differ. Clicks 0 and nulls at or under -332.7 dB on every take. Luke's key.json is unchanged. 370 of 370 tests pass.
+
+## 1.7.2, 2026-11-13
+
+Phase 2 bug check: 23 of the 24 bugs the hunt kept are fixed (the 24th is below), each with a test that failed on 1.7.1 first (tests/Phase2Tests.h, `PluginTest --phase2`). Music reads exactly as in 1.7.1: both reading fingerprints are unchanged. The window's footer now says what key.json holds from this Key and when it was written.
+
+Luke's real vocal takes, round 1's checks rerun on the working set (realvox `1.7.2-phase2`, against `1.7.1-p4-final-installed`): every pass and honesty line is the same, nothing that passed fails, and no take is ever sure on other notes. The takes' numbers move by about as much as two runs of 1.7.1 differ from each other (a settle time by up to 1.4 s, a right notes share by up to 2 points). 367 of 367 tests pass.
+
+key.json, what the followers read:
+- A key set by hand, or frozen with Listening off or Bypass, is written again every 4 minutes, as a locked one was. Before, it was written once, and a Tune, Choir Loft or Tune Pro added 10 minutes later took it for stale and fell back to its own key.
+- Closing writes `listening` false into its own last line with that line's time, and only while the file still holds that line. Before, it wrote its last key stamped as brand new, over any newer line from another Key.
+- After a failed write, a key that goes back to the line on disk clears the note.
+- In an offline bounce or freeze a new reading is written at once instead of up to half a second of wall time later (0.13 s against 0.49 s). The followers' own polling is theirs to fix; the README says to set Lock or Manual before bouncing a song that changes key.
+- A double-click on Manual or Lock in the window no longer puts the step between into key.json at confidence 1 (21 and 17 reads of it before, 0 after). A click on Mode or Lock reaches the file after the double-click time, 0.49 s against a 1.5 s limit.
+- A session saved with Lock on and waiting, recalled while a guess is on show, waits for a sure key instead of holding the guess. The session now carries its Lock to the background thread with its key.
+
+The reading:
+- After 8 s of silence, or of a host that stops calling, every timer keeps the age it had at the pause. Before, they were left on the old clock: C major, G major, a pause, C major again stayed on G for the whole 30 s; now C is back after 2.4 s (2.9 s with the host stopped).
+- A steady DC offset with no notes counts as silence: confidence falls to 0.025 in 10 s, as in silence, instead of staying at 1.00.
+- In silence the runner up fades with the key on show (0.104 before, 0 after).
+- Not changed: past the top FFT bin the log spectrum draws on rather than reads (music more than about 24 cents sharp, up to 30 times the bin at +45 cents with noise above 5 kHz). Clamping it changes readings of the detuned chord clips the Full Mix fingerprint pins, and no reading was shown to go wrong by it (A, E and C share 0.005 at +45 and -45 cents). Left for Luke. Fixed in 1.7.3.
+
+The host: Confidence is a whole percent ("78", not "78.4615"), and each reading's text reads back as the value it shows, so HostStress paramtext passes ("None" and "Minor" read back as 0 before). A host Reset lets go of the audio not analysed yet, as prepareToPlay does, and keeps the reading, Lock and key.json; it allocates nothing. The preset last chosen is saved with the session to name it; a new instance and every older session name none. Seven sessions saved by the installed 1.7.1 (tests/baseline/v1.7.1, made by tests/baseline/capture.mm) load and save again byte for byte as 1.7.1 did, with their held keys held.
+
+The window: the footer line (`key.json: E major, locked, 3 min ago`, `not sure`, `by hand`, or in red `changed by another Key`), with the folder in its hint. An empty note no longer paints over the end of a long hint (61 pt cut before). The hint follows the part under the mouse as it changes. Lock clicked holds the key the window showed, not one that arrived since. Clicking Lock with a key on show no longer says it is waiting for one. Tempo is black while the beat is heard and grey when not, whatever the key. The tuning shown and its red agree (A 439.0 Hz is red). With no key, Listening off and Bypass say paused and bypassed in the big reading. The tails of j and y under the reading are drawn whole (the key letters are 3% smaller for it). Dragging or scrolling Manual Key is one gesture.
+
+## 1.7.1, 2026-11-12
+
+A lone voice is called sure only on real evidence, so a follower never acts on a guess. Luke left this call to the lead on 2026-11-11. Music reads exactly as in 1.7.0 and 1.5.0: both reading fingerprints are unchanged, and every music alone, voice under and voice as loud line of the music with a voice test is identical to 1.7.0.
+
+Why. In the Rode blind set Key was sure (confidence 0.5 or more, what Choir Loft, Tune and Tune Pro act on) of a wrong key on take 13 for 15.8% of the take. "Sure" for a lone voice counted seconds of held notes against the square root of the seconds in memory, so two or three long notes could make it sure. Counted as notes (each held note once, however long), the notes that tell the shown key from its nearest rival never pass even a one sided 1% sign test on any of Luke's working takes: the highest is z 1.54 for a right key (take 04) and 1.67 for a wrong one (take 14), against 2.33 (work/key/p4/ev.py over the working set and the first session).
+
+- Sure now also needs that sign test: for every rival set of 7 notes, the held notes in the shown set and not the rival (a) against the rival's (b) give (a - b) / sqrt (a + b) of at least 2.33 (`voiceSureEvents`). It only ever takes sureness away. The margin in the window and key.json is the smaller of the two tests, 0.5 at the line.
+- Entering the lone voice reading, the margin starts from nothing instead of the music reading's, so the first half second cannot be sure on the old reading's key.
+- A key change move needs the same kind of count on the notes since the change began, at 2.0 (one sided 2.3%, `voiceChangeEvents`): two long notes that stray are not a key change. 2.33 followed one semitone clip fewer on dev seed 3000 (79.2%, limit 80); 2.0 follows exactly as 1.7.0 on dev seeds 2000, 1030 and 3000.
+
+Measured (limits unchanged):
+
+| | 1.7.0 | 1.7.1 |
+|---|---|---|
+| Luke's 9 sung working takes, through the plug-in, sure and on other notes | 0% | 0% |
+| Same, sure at all | 0.2% (take 10 only, all right) | 0% |
+| Same, readings (keys and changes) | | identical to 1.7.0 on all 11 takes, analyser offline |
+| Same takes played in a row (11 joins, same 7 notes), key change moves / sure and wrong | 0 / 0% | 0 / 0% |
+| First session (11 takes), key change moves | 5 | 4 (2 of them move to the song's real key) |
+| First session, sure at all | 4.2% (all right) | 0% |
+| Lone singer up a semitone, followed in 30 s (held out seed, limit 80) | 91.7% | 91.7% |
+| Up two semitones, followed or not sure from 30 s (limit 80) | 95.8% | 100% |
+| Made up singer alone, sure and wrong (INFO) | 1.20% | 1.19% |
+| Music with the singer 6 dB over it, sure and right (INFO) | 76.10% | 76.09% |
+
+The made up singer's sure and wrong time is not from the lone voice reading: his tuning clarity takes 8 to 17 s to fall under 0.20, and until then the music reading hears him. Luke's real takes are taken for a lone voice 1.2 to 4.7 s in, before any reading, so this does not reach him. Closing it would mean changing the music reading, which this version does not touch.
+
+Rap take 12 still ends on A# minor, marked not sure, at confidence under 0.5, with 3 changes in 3.5 minutes (allowed 4). Hiding a reading whose held notes fit no key well cannot be done by fit: rap 12's best set covers 0.66 to 0.80 of its held notes, sung take 14 (right 91% of the take) 0.68 to 0.80.
+
+Tests: 334 pass, 0 fail. Tools: VoxEval plays several files joined by + as one take and prints lone voice and tuning clarity; MixVoiceEval takes any lone voice knob, nolevels and nomusic.
+
+## 1.7.0, 2026-11-11
+
+Key now says when it does not know, can be locked, and reads music exactly as 1.5.0 did. The short advice that the numbers below support: put Key on the beat or the mix bus, not on the vocal. On a lone off key voice it shows its best reading and says Not sure; play the song through once on the music, press Lock, done.
+
+Where to put it, measured (tests/MixVoiceTests.h, held out seed, 96 one minute clips a row, Stable, Full Mix):
+
+| What Key hears | Ends on the exact key | Right 7 notes at the end | Median time to the right key | Time sure and right | Time sure and wrong |
+|---|---|---|---|---|---|
+| Music alone | 99.0% | 100% | 7.85 s | 82.6% | 0% |
+| Music, off key voice 6 dB under it | 99.0% | 100% | 7.85 s | 83.7% | 0% |
+| Music, off key voice as loud | 94.8% | 100% | 7.85 s | 80.4% | 0.24% |
+| Music, off key voice 6 dB over it | 95.8% | 97.9% | 7.85 s | 76.1% | 0.26% |
+| The made up off key singer alone (24 clips) | 95.8% | 95.8% | 14.5 s | 3.2% | 1.2% |
+| Luke's 9 real sung takes alone, analyser offline | 7 of 9 right notes | | about 77 s | 0.2% | 0% |
+
+Lock. A new control on the top row. On, the key on show is held: the readings and key.json say that key at confidence 1 until Lock is off, through Reset, silence and a restart, and it comes back with the session. Switched on before there is a key, it waits for the first reading at confidence 0.5 or more. While a key is held the plug-in goes on listening, and the window says what it hears. Lock is a new parameter, added last: the 15 there were keep their order, IDs and Audio Unit numbers, and a 1.6.0 session loads exactly as before.
+
+Not sure. The window names the runner up and how close it is, under the reading. When two keys fit about equally it says Not sure and names both, the big letters go grey, and the confidence stays under 0.5 so Choir Loft and the tuners do not follow a guess. Use takes the runner up as the manual key. For a lone voice the margin is now built on evidence: by how many seconds of held notes the notes that tell the shown key from its nearest rival favour the shown one, against what chance gives for that many notes (0.3 times the square root of the seconds in memory). A whole step change that is being weighed, and a reading the long memory has just moved, are also called not sure.
+
+key.json keeps its five fields exactly as they were and gains seven after them: altKey, altScale, altConfidence, margin, unsure, locked, source (heard, manual or locked). Choir Loft, Tune, Tune Pro and Glitter read the new line unchanged, checked against their own parsers. A held key is written again every 4 minutes, because followers ignore a file older than 10.
+
+A lone voice changing key. The quick rule of 1.6.0 is gone. For every other set of 7 notes a running count is kept, in seconds of held notes, against the last key that was sure or on show for 20 s; at 2.5 s, with the new set covering 85% of the notes since the count began and the old one 45% or less, the reading moves and is rebuilt from where the change began. Held out seed: a singer who goes up a semitone is followed within 30 s on 91.7% of clips (limit 80; 1.6.0 as installed: 8.3%, its test failed), median 12 s. False key change moves on Luke's 9 sung working takes: 0 (1.6.0's rule: 14); on his 2 rap takes: 0.
+
+Music reads as in 1.5.0 again. The lone voice reading applies only to a sound with no tuning of its own, in either Source. The reading fingerprint over the clean clips is back to the 1.5.0 value (0x7630f100ad4cf801) and is a test; melody only: 100% exact and 7.85 s in both Sources.
+
+One limit of this re-test was replaced, with proof. "A singer who goes up two semitones: the new 7 notes within 30 s on 80% of clips" cannot be met by any reader of a lone voice without also moving when Luke only strays: `tests/proofs/ideal_reader.py step` shows a reader with no noise, told the moment of the change, needs to move at a lead of +0.18 to follow 80% of 192 made up clips, and Luke's take 06, where nothing changes, shows +0.23 for the same move (a semitone needs +0.49, his highest is +0.18). The test now reads: the new 7 notes within 30 s, or from 30 s on never at confidence 0.5 or more on any other notes. Same number, 80; measured 95.8%. The first wording is still printed as information: 4.2%.
+
+Luke's working set takes, analyser offline, Stable, Full Mix: 7 of 9 sung takes end on the right 7 notes; takes 01 and 09 end one note off and say Not sure with the real key named as the runner up; 0% of the singing is at confidence 0.5 or more on wrong or one off notes (1.6.0: one take sat on a wrong key at 0.79); the right notes are on show 62.8% of the singing. The price: on his lone voice Key is sure only 0.2% of the time, so on a vocal track it informs and Lock or Manual decides. Rap: take 16 shows nothing, take 12 shows a wrong key at confidence 0.00, marked not sure.
+
+Validation, run once at the end, analyser offline (not blind any more for Key, both sets had been seen): Rode blind set, 5 sung takes: 1 ends on the right notes, 3 end two or more notes off, all at confidence under 0.5 and marked not sure; 3.0% of the singing is at 0.5 or more on wrong notes (take 13, 15.8% of that take); 3 key change moves that were not real (takes 08, 13, 15). First session, 11 takes: 5 end right, 2 end two or more notes off (not sure), 0% of the singing sure and wrong, 5 false key change moves on 4 takes. On takes 03, 11, 13 and 15 of the blind set the sung notes never favour the song's real key (`tests/proofs/ideal_reader.py floor`).
+
+Tests: 334 pass, 0 fail. 131 new ones for Lock, the window and key.json in tests/LockTests.h; the music with a voice on top in tests/MixVoiceTests.h. Two flicker lines drafted for that test as checks are printed as information: over one minute clips the music alone, whose reading is unchanged from 1.5.0, moves after 8 s on 1.0% of clips, so they would have judged 1.5.0 on long clips. Window CPU with other work running: 2.2% of one core on music, 1.9% locked, 2.9% on speech.
+
+## 1.6.0, 2026-11-11
+
+A lone voice is read by its held notes, at A440. Made for an untrained singer on his own track, which is what Choir Loft and the tuners follow. Chords in Full Mix are untouched: every reading over 96 chord clips is bit identical to 1.5.1, and that is now a test.
+
+On Luke's real takes (Rode session, 2026-11-10: 9 sung takes and 2 rap takes of the working set, each in its song's real key), through the built plug-in, default settings (Stable, Full Mix):
+
+| | 1.5.1 (1.5.0 detection) | 1.6.0 | Limit set before |
+|---|---|---|---|
+| Sung takes ending on the right 7 notes | 2 of 9 | 6 of 9 | 80% |
+| Sung takes ending two or more notes off | 2 | 1 | 0 |
+| Share of the singing with the right 7 notes shown | 16.5% | 59.4% | 70% |
+| Share two or more notes off | 39.6% | 19.5% | 5% |
+| Changes of the reading per minute | 2.85 | 0.65 | 0.5 |
+| Sung takes whose 7 notes change at most twice | 0 of 9 | 8 of 9 | 80% |
+| Median time until the right notes are shown and kept | never | 127.7 s | 20 s |
+| Rap takes with at most one change a minute | 1 of 2 | 2 of 2 | all |
+
+Only one of those limits passes. The reading is much more often right and far steadier, but it is still slow: on these songs the first verse does not hold enough held notes to tell a key from its neighbour a fifth away, whatever was tried. Vocal Track (Stable, Single Voice) gives the same 6 of 9 and 59.6%, where 1.5.1 gave 3 of 9 and 16.7%. Blind set numbers are in `_vox/rode/work/key/REPORT.md`.
+
+What changed, and why each holds for any singer:
+
+- The grid stays at A440 unless the sound clearly sits on one offset. On Luke's takes the spectral peaks spread evenly round the semitone (clarity 0.00 to 0.13, where test music gives 0.27 to 0.98), so the tuning estimate wandered 35 cents either way and moved the note names with it. Under a clarity of 0.12 the offset is now 0, from 0.22 it is used in full, so every clip with a real tuning reads bit for bit as before. Reference Pitch shows 440 for such a singer.
+- Only held notes count: the frame's strongest note, when it has 45% of the notes heard in the frame and was the strongest in the frame before, counting in full after about half a second. Rap and speech leave few held notes and they fit no key, so the reading stays empty or its confidence low.
+- Held notes are remembered for two minutes instead of 14 s.
+- The 7 notes are scored with a profile in which every scale note counts about the same (Temperley's revision of the listener ratings), minus twice the share of held notes outside the key. Between a key and its relative the listener ratings still decide. With the listener ratings alone a tune sitting on its fifth or third read as the key a fifth up: on whole takes that got 4 of 9 right, the even profile 8 of 9, at any weight from 1.2 to 6 for the outside notes.
+- Full Mix reads one line at a time as a lone voice by itself: under 20% of frames with two pitch classes sounding together through five frames. Chord clips never get under 36%, a real voice sits at 4 to 18%. Before, Luke's low voice was heard as a bass line with a chord on every note.
+- A new key must lead by twice the usual margin, and the old one is let go only after about 3 s of held notes that sit mostly outside it and make a key of their own. Confidence for a lone voice is the key and its relative together, as they have the same notes.
+
+Tests, held out seed 20261112 (limits in `tests/PassLimits.h`, written before these ran): 184 pass, 1 fails.
+
+| A made up off key singer and rap, one minute clips | 1.5.1 Single Voice | 1.6.0 Single Voice | 1.5.1 Full Mix | 1.6.0 Full Mix | Limit |
+|---|---|---|---|---|---|
+| Ends on the right 7 notes | 87.5% | 100% | 87.5% | 100% | at least 90% |
+| Median time until right and kept | 15.5 s | 15.5 s | 28.2 s | 15.5 s | up to 20 s |
+| Clips whose 7 notes change more than once | 8.3% | 4.2% | 37.5% | 4.2% | up to 10% |
+| Reference Pitch within 2 Hz of 440 | 50% | 100% | 50% | 100% | at least 90% |
+| Rap clips with at most one change a minute | 58.3% | 100% | 83.3% | 100% | at least 90% |
+| Singer goes up a semitone: new notes within 30 s | 87.5% | **8.3%, fails** | | | at least 80% |
+
+What got worse, plainly:
+
+- A lone singer's real key change is followed late. After a move up a semitone the new notes are shown within 30 s in 8.3% of clips (1.5.1: 87.5%) and by 45 s in 16.7%. This is a trade against false key changes: Luke's sung takes have no key change, and a rule quick enough to pass this test (83% on a dev seed) let go of its key 14 times on them, the rule shipped once. In between: 6 times, for 25% followed. Luke to choose (`recentVoice`, `voiceOutsideHeld`, `voiceOutsideSeconds` in `KeyAnalyser::Knobs`: 1.0, 0.7, 0.5 is the quick rule, 3.0, 2.0, 1.0 is shipped).
+- Clean synthetic tunes: Single Voice exact 100% to 99.3% (one clip of 144, read as a related key), median time to the right key 7.85 s to 9.22 s. Full Mix exact 100% to 97.9% (one of 48), 7.85 s to 11.6 s, as it now waits to see whether it hears one line or chords. Exact, relative or a fifth away stays 100%. On dev seed 1030 the same tunes went 99.3% to 99.3% (Single Voice) and 96.5% to 99.3% (Full Mix).
+- Full Mix on a tune over a clashing low rumble went from 0% to 100% exact, and Single Voice stays 100%.
+
+Also: `tests/VoxEval.cpp` runs the analyser over any recording and prints the reading over time, `tests/VoiceEval.cpp` runs the lone voice tests on a dev seed, `tests/VoiceTests.h` holds them. The older test that the real key.json is untouched no longer fails when another program writes that file at the same moment. New detection fingerprint (Single Voice changed on purpose).
+
+## 1.5.1, 2026-11-10
+
+Tests can no longer change the key file a live session follows. Detection is unchanged: every reading is bit identical to 1.5.0 (the saved fingerprint still matches).
+
+- When the environment variable `SMOOTH_KEY_JSON` holds an absolute path, key.json is written there instead of `~/Library/Application Support/SmoothPlugins/key.json`. Not set, empty or not an absolute path, the plug-in behaves exactly as before. It is read once as the plug-in is made, off the audio thread. Logic never sets it.
+- Why: on 2026-11-10 a test run left A minor in the shared file while Logic was open, and Choir Loft followed it. Test runs now set the variable (`_vox/rode/work/key/keyrun.sh` does, and also puts the real file back if anything changed it).
+- Six new tests: no override when the variable is unset, empty or relative; the path is used when absolute; the plug-in writes there; the real file keeps its bytes and its time. The older test that writes the real shared path follows the variable when it is set.
+
+## 1.5.0, 2026-11-08
+
+Stable follows a key change more often and sooner, by reading the chords as Fast has since 1.4.0. Fast is unchanged: every Fast reading is bit identical to 1.4.0. Run on the new held out seed 20261112, after the expected result was committed (7e219ab), and on the two before it:
+
+| Stable | 1.4.0, 20261111 | 1.5.0, 20261111 | 1.4.0, 20261110 | 1.5.0, 20261110 | 1.5.0, 20261112 | Limit |
+|---|---|---|---|---|---|---|
+| Key change followed in 30 s | 83.3% | **95.8%** | 100% | 100% | 100% | at least 90% |
+| Key change median | 10.13 s | 8.26 s | 10.82 s | 8.60 s | 8.43 s | up to 15 s |
+| Key change slowest | 24.5 s | 18.3 s | 22.1 s | 19.5 s | 25.0 s | none |
+| Key change ended on the right key or its relative | 95.8% | 100% | 100% | 100% | 100% | none |
+| Chords exact, no key change | 99.6% | 99.6% | 99.4% | 99.4% | 99.8% | at least 90% |
+| Clips moving after 8 s | 0.42% | 0% | 0.83% | 0% | 0% | up to 1% |
+| Bounces, A to B and back | 0 | 0 | 0 | 0 | 0 | 0 |
+| Chords median time to correct | 7.85 s | 7.85 s | 7.85 s | 7.85 s | 7.85 s | up to 8 s |
+| Loop heard from its second chord, exact | 65.0% | 63.8% | 65.0% | 65.6% | 61.9% | none |
+
+Bold now passes. Every test passes on all three seeds. Fast on 20261112: followed 100%, median 5.18 s, chords exact 100%, 13 bounces. 1.4.0 was not run on 20261112, so that seed has no before column.
+
+On dev seeds 1018 to 1023, where it was tuned: Stable followed 94.4% to 97.9%, median 10.8 s to 8.8 s, chords moving after 8 s 0.6% to 0%. On unseen dev seeds 1024 to 1029: followed 91.7% to 97.2%, median 11.2 s to 8.8 s, chords exact 99.3% to 99.6%, moving after 8 s 0.6% to 0.1%, bounces 0 both. The lowest single unseen seed followed 21 of 24, so another seed could still dip under 90%.
+
+- Stable now also reads the chords since the current section began, at 0.7 of Fast's weight. It mostly fixes moves to the relative minor's loop and to a close key, which add too few new notes to let go of the old memory.
+- In Stable only, the section's opening chord counts only while the section's chords all fit the key: one chord of four outside the key takes its credit away. Without that, ii V I I loops were read as the key of their ii chord, and Stable went there and back (2 bounces on dev at full weight).
+- Tried on dev seeds: without the opening chord rule, full weight gave 2 bounces and 0.6 gave 1; 0.3 to 0.5 followed the same share but slower. With the rule, full weight read 2 chord clips wrong. The rule at 8 instead of 4 gave the same results; at 2, one ii V I I clip moved after 8 s.
+- `tests/KeyEval.cpp` takes `stableonly 1`, and runs chords on every seed asked for. New detection fingerprint.
+
+## 1.4.0, 2026-11-08
+
+Fast follows a key change sooner and more often, by reading the chords as well as the notes. Stable is unchanged: every Stable reading is bit identical to 1.3.0. Both versions run on the new held out seed 20261111, which nothing was tuned on, and on 20261110:
+
+| Fast | 1.3.0, 20261111 | 1.4.0, 20261111 | 1.3.0, 20261110 | 1.4.0, 20261110 | Limit |
+|---|---|---|---|---|---|
+| Key change followed in 30 s | 83.3% | **91.7%** | 87.5% | **100%** | at least 90% |
+| Key change median | 7.23 s | 4.50 s | 9.11 s | **6.38 s** | up to 8 s |
+| Key change slowest | 15.9 s | 14.2 s | 21.9 s | 17.8 s | none |
+| Key change ended on the right key or its relative | 95.8% | 100% | 100% | 100% | none |
+| Chords exact, no key change | 98.75% | 100% | 97.50% | 99.17% | none |
+| Chords exact, relative or a fifth away | 99.17% | 100% | 98.75% | 99.58% | none |
+| Bounces, A to B and back | 32 | 8 | 39 | 19 | none |
+| Chords median time to correct | 3.07 s | 3.07 s | 3.07 s | 3.07 s | up to 5 s |
+
+Bold now passes. On dev seeds 1000 to 1005, where it was tuned: followed 94.4% to 96.5%, median 8.1 s to 5.2 s. On unseen dev seeds 1012 to 1017: 93.8% to 95.8%, median 8.4 s to 5.2 s, chords exact 98.07% to 99.25%, bounces 213 to 62.
+
+New fail, not from this change: on seed 20261111 Stable follows 83.3% of key changes within 30 s, against 90%. 1.3.0 gives exactly the same on that seed, as Stable did not change. On 20261110 Stable follows 100%.
+
+- In Fast, the chords since the current section began now count. A section starts at the first run of chord changes not heard lately. For each key: how much of the section's time is on chords outside it, whether the section opened on its home chord, and how long it stays there. A move to a close key adds only one or two new notes, but its chords show it within a chord or two, so Fast no longer waits for its 12 s memory to fade.
+- Tried and left out: also crediting the chord a dominant resolves to (made more i iv VII III loops read as the relative major), and taking the chord before the first new change as the section's first.
+- Tuned on dev seeds 1000 to 1005 only. New detection fingerprint. `PluginTest --seed N` runs the accuracy tests on another seed; `tests/results-20261110.txt` is the run on 20261110.
+
+## 1.3.0, 2026-11-07
+
+Steadier and more often right. 1.2.0 and 1.3.0 were run on the same new held out seed, 20261110, which nothing was tuned on:
+
+| | 1.2.0 | 1.3.0 | Limit |
+|---|---|---|---|
+| Stable clips moving after 8 s | 2.50% | **0.83%** | up to 1% |
+| Chords exact | 97.5% | 99.4% | at least 90% |
+| Key change followed in 30 s, Stable | 95.8% | 100% | at least 90% |
+| Key change followed in 30 s, Fast | 87.5% | 87.5% | at least 90% |
+| Key change median, Fast | 10.30 s | 9.11 s | up to 8 s |
+| Melody only, Full Mix | 95.8% | 100% | none |
+| Chords at 44.1 and 96 kHz | 97.9% | 100% | at least 90% |
+
+Bold now passes. Fast still misses its two limits. Most of its misses are a minor loop of i, iv, VII, III, which is the same chords as vi, ii, V, I in the relative major, and Fast drifts to that reading later on.
+
+- A note can now be heard as odd harmonics only, as from a clarinet or a hollow synth. Before, its third harmonic was heard as a fifth above it, which pulled readings to the key a fifth up.
+- Notes clearly outside a key's scale now count against that key. The listener profiles barely minded them, and one outside note is often all that tells two keys a fifth apart.
+- Stable's first reading waits while the leader is close to another key, its relative included, instead of guessing at 8 s and correcting later. Most clips still read at 7.9 s.
+- Tuned on dev seeds 1000 to 1005 only, now with all 12 keys per seed. New detection fingerprint.
+- The analysis thread does about four times the note solving work. It runs off the audio thread, so audio is unchanged.
+
+## 1.2.0, 2026-11-07
+
+Better at following a key change. Both versions were run on the same new held out seed, 20261109, which nothing was tuned on:
+
+| | 1.1.1 | 1.2.0 | Limit |
+|---|---|---|---|
+| Key change followed in 30 s, Stable | 75.0% | **91.7%** | at least 90% |
+| Key change median, Stable | 12.0 s | 10.1 s | up to 15 s |
+| Key change followed in 30 s, Fast | 62.5% | 83.3% | at least 90% |
+| Key change median, Fast | 9.62 s | **6.21 s** | up to 8 s |
+| Stable clips moving after 8 s | 1.67% | 2.29% | up to 1% |
+| Chords exact | 95.4% | 97.9% | at least 90% |
+| Loop heard from its second chord | 67.5% | 66.3% | none |
+
+Bold now passes. Two limits still fail, and one of them got worse: 11 of 480 Stable clips move after 8 s, against 8 before.
+
+- When the notes leave the key, it finds where the new notes began. What was heard since then stays whole, and only what came before is mostly dropped. Before, everything was cut to 15%, the new notes too.
+- The chord at that point is heard as the opening of the new section, which helps tell the new key from its relative.
+- A chord change not heard lately, after a settled loop, also counts as a new section.
+- Right after a key change the reading may correct itself sooner, while the new memory fills.
+- A little more trust in the opening chord when there is a bass line. More than this made Stable readings move after 8 s.
+- Tuned on dev seeds 1000 to 1002 only. Every detection reading has a new fingerprint, as this changes detection on purpose.
+- Test fix: the window test waited a fixed 100 ms for the Manual key and failed most runs, in 1.1.1 too. It now waits up to 2 s.
+
+## 1.1.1, 2026-11-07
+
+Renamed to Key, as Luke chose. Logic's slots cut long names off, so they all read Smooth something. The AU codes and parameters are unchanged, so saved sessions still load.
+
+## 1.1.0
+
+New window, in a light theme: paper white, black type, one red. The key and scale fill most of the window, so they read from across a room, beside a circle of fifths whose ink shows how likely each key looks right now, with how sure it is in the middle. A keyboard shows the notes of the key with the home note in red, and dots for the notes sounding now. Tuning goes red when the music is 1 Hz or more from A 440. In Manual, click the circle or the keyboard, or type a key. Advanced holds Manual Key, Manual Scale, Response and Bypass. The note about key.json failing to save stays, in red in the footer. Resizable, with the size and open section saved in the session. Audio stays bit identical and every detection reading stays bit identical to 1.0.0: the analyser only gained two read-only outputs for the window.
+
+## 1.0.0
+
+First version. Live key, scale and tempo detection with bit identical pass-through and no latency. Analysis on one background thread fed by a lock-free queue. Big readout window. Controls: Mode, Response, Source, Listening, Reset, Manual Key, Manual Scale, Relative Swap, Tempo Scale, Bypass. Readings exposed as read-only parameters: Detected Key, Detected Scale, Confidence, Reference Pitch, Detected Tempo. Writes key.json for the other plug-ins. Five factory presets.
+
+Known misses against the limits set before testing: key changes followed within 30 s (79.2% against 90%), Fast median key change time (10.30 s against 8 s), Stable clips moving after 8 s (1.46% against 1%). See README.md.

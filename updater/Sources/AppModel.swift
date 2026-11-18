@@ -122,6 +122,25 @@ final class AppModel: ObservableObject {
         NSWorkspace.shared.open(Config.releasesPage)
     }
 
+    /// Whether the app-update notice should offer the releases page instead of updating in place.
+    @Published private(set) var appUpdateNeedsDownload = false
+
+    /// Downloads the new app, swaps it in and reopens it. On failure, says why and offers the download page.
+    func updateApp() async {
+        guard let release = appUpdate else { return }
+        busyMessage = "Updating Smooth Plugins to \(release.version)"
+        resultMessage = nil
+        do {
+            try await AppUpdater.install(release)
+            busyMessage = "Reopening Smooth Plugins \(release.version)"
+            AppUpdater.relaunch()
+        } catch {
+            busyMessage = nil
+            appUpdateNeedsDownload = true
+            resultMessage = "Couldn't update the app: \(error.localizedDescription)."
+        }
+    }
+
     private func finish(done: [String], verb: String, failed: [String]) {
         PluginInstaller.refreshHosts()
         busyMessage = nil

@@ -89,16 +89,19 @@ EOF
 ( cd "$work/app" && ditto -c -k --sequesterRsrc . "$out/Smooth-Plugins-App.zip" )
 
 # The manifest the app reads.
-/usr/bin/python3 -I - "$work/rows.tsv" "$out/manifest.json" "$tag" "$base" "$app_version" <<'EOF'
+app_sha=$(shasum -a 256 "$out/Smooth-Plugins-App.zip" | cut -d' ' -f1)
+app_size=$(stat -f %z "$out/Smooth-Plugins-App.zip")
+/usr/bin/python3 -I - "$work/rows.tsv" "$out/manifest.json" "$tag" "$base" "$app_version" "$app_sha" "$app_size" <<'EOF'
 import json, sys
-rows_path, out_path, tag, base, app_version = sys.argv[1:6]
+rows_path, out_path, tag, base, app_version, app_sha, app_size = sys.argv[1:8]
 plugins = []
 for line in open(rows_path, encoding="utf-8"):
     slug, name, kind, desc, version, bundle, asset, sha, size = line.rstrip("\n").split("\t")
     plugins.append({"id": slug, "name": name, "kind": kind, "description": desc, "version": version,
                     "bundleId": bundle, "url": f"{base}/{asset}", "sha256": sha, "size": int(size)})
 manifest = {"formatVersion": 1, "release": tag,
-            "app": {"version": app_version, "url": f"{base}/Smooth-Plugins-App.zip"},
+            "app": {"version": app_version, "url": f"{base}/Smooth-Plugins-App.zip",
+                    "sha256": app_sha, "size": int(app_size)},
             "plugins": plugins}
 with open(out_path, "w", encoding="utf-8") as f:
     json.dump(manifest, f, indent=2)

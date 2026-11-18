@@ -24,7 +24,7 @@ The Smooth Plugins app installs the plug-ins you pick and keeps them up to date:
 3. Tick the plug-ins you want and click **Install**.
 4. Open Logic Pro. The plug-ins are under Audio Units > Luke Garito.
 
-**Updates:** the app checks for updates once a day. When new versions come out, it opens in the background (it doesn't take you away from what you're doing) with the number of updates on its Dock icon. Click **Update** and restart Logic. You can turn the daily check off at the bottom of the app; untick it before deleting the app.
+**Updates:** the app checks for updates once a day, for the plug-ins and for itself. When new versions come out, it opens in the background (it doesn't take you away from what you're doing) with the number of updates on its Dock icon. Click **Update** for plug-ins (then restart Logic), or **Update App** for the app: it downloads the new version, checks it, swaps it in and reopens. You can turn the daily check off at the bottom of the app; untick it before deleting the app.
 
 **Removing:** tick the plug-ins and click **Remove**. They go to the Trash.
 

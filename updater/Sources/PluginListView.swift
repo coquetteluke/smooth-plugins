@@ -16,7 +16,7 @@ struct PluginListView: View {
                     ProgressView("Checking for updates…")
                 case .failed:
                     VStack(spacing: 10) {
-                        Text("Couldn't reach GitHub. Check your internet connection.")
+                        Text("Couldn't reach GitLab. Check your internet connection.")
                             .foregroundStyle(.secondary)
                         Button("Try Again") {
                             Task { await model.refresh() }

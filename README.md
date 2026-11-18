@@ -4,7 +4,7 @@
 
 > **Logic Pro only.** These are made for and tested in Logic Pro on Apple Silicon Macs. Other apps and Windows are not supported.
 
-**[Download the Smooth Plugins app](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-App.zip)** · [All releases](https://github.com/coquetteluke/smooth-plugins/releases)
+**[Download the Smooth Plugins app](https://gitlab.com/coquettelabs/smooth-plugins/-/releases/permalink/latest/downloads/Smooth-Plugins-App.zip)** · [All releases](https://gitlab.com/coquettelabs/smooth-plugins/-/releases)
 
 ## What you need
 
@@ -19,12 +19,14 @@ The Smooth Plugins app installs the plug-ins you pick and keeps them up to date:
 
 ![The Smooth Plugins app: every plug-in with a checkbox, its version and whether it has an update](docs/app.jpg)
 
-1. Download [Smooth-Plugins-App.zip](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-App.zip), unzip it and drag **Smooth Plugins** into your Applications folder.
+1. Download [Smooth-Plugins-App.zip](https://gitlab.com/coquettelabs/smooth-plugins/-/releases/permalink/latest/downloads/Smooth-Plugins-App.zip), unzip it and drag **Smooth Plugins** into your Applications folder.
 2. Open it. The first time, macOS blocks it with a warning: follow [Opening the app the first time](#opening-the-app-the-first-time) below (about 30 seconds, only once).
 3. Tick the plug-ins you want and click **Install**.
 4. Open Logic Pro. The plug-ins are under Audio Units > Luke Garito.
 
 **Updates:** the app checks for updates once a day, for the plug-ins and for itself. When new versions come out, it opens in the background (it doesn't take you away from what you're doing) with the number of updates on its Dock icon. Click **Update** for plug-ins (then restart Logic), or **Update App** for the app: it downloads the new version, checks it, swaps it in and reopens. You can turn the daily check off at the bottom of the app; untick it before deleting the app.
+
+**Have version 1.1.0 of the app or older?** It looks for updates on GitHub, where new versions no longer go. Download the app again once with the link above; from 1.2.0 on it updates itself from here.
 
 **Removing:** tick the plug-ins and click **Remove**. They go to the Trash.
 
@@ -34,7 +36,7 @@ If Logic lists a plug-in as failed, open Logic Pro > Settings > Plug-in Manager,
 
 The first time you open Smooth Plugins, macOS blocks it and shows a warning. This is normal for free apps from outside the App Store, and you only do it once.
 
-**Why it happens:** macOS only trusts an app straight away if its developer pays Apple $99 a year for a developer account and sends every version to Apple to be checked (Apple calls this notarizing). Smooth Plugins is free, and that fee isn't paid, so macOS can't vouch for it. The warning doesn't mean anything wrong was found in it: Apple just hasn't looked at it. All of the code is here on GitHub for anyone to read, and the app only downloads plug-ins from this page's releases and checks every file before installing it.
+**Why it happens:** macOS only trusts an app straight away if its developer pays Apple $99 a year for a developer account and sends every version to Apple to be checked (Apple calls this notarizing). Smooth Plugins is free, and that fee isn't paid, so macOS can't vouch for it. The warning doesn't mean anything wrong was found in it: Apple just hasn't looked at it. All of the code is here on GitLab for anyone to read, and the app only downloads plug-ins from this page's releases and checks every file before installing it.
 
 **How to open it:**
 
@@ -63,13 +65,13 @@ The installer package shows the same warning, and the same steps open it.
 
 ![The installer's list of plug-ins, each with a checkbox](docs/installer.jpg)
 
-1. Download [Smooth-Plugins-Installer.pkg](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-Installer.pkg) and double-click it.
+1. Download [Smooth-Plugins-Installer.pkg](https://gitlab.com/coquettelabs/smooth-plugins/-/releases/permalink/latest/downloads/Smooth-Plugins-Installer.pkg) and double-click it.
 2. macOS blocks it the first time: follow [Opening the app the first time](#opening-the-app-the-first-time), with the installer's name in place of the app's.
 3. Click Continue, choose **Install for all users** or **Install for me only**, untick any plug-ins you don't want, and click Install.
 
 **Zip, by hand.**
 
-1. Download `Smooth-Plugins.zip` from the [latest release](https://github.com/coquetteluke/smooth-plugins/releases/latest) and unzip it.
+1. Download `Smooth-Plugins.zip` from the [latest release](https://gitlab.com/coquettelabs/smooth-plugins/-/releases/permalink/latest) and unzip it.
 2. In Finder, choose Go > Go to Folder, paste `~/Library/Audio/Plug-Ins/Components` and press Return.
 3. Drag the `.component` files you want into that folder.
 4. Open Terminal and run this once. macOS blocks plug-ins copied out of a downloaded zip until you do:

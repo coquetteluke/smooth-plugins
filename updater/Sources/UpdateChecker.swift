@@ -1,6 +1,6 @@
 import Foundation
 
-/// Reads the latest release's manifest from GitHub.
+/// Reads the latest release's manifest from GitLab.
 enum UpdateChecker {
     enum Failure: LocalizedError {
         case http(Int)
@@ -8,7 +8,7 @@ enum UpdateChecker {
 
         var errorDescription: String? {
             switch self {
-            case .http(let code): "GitHub answered with error \(code)"
+            case .http(let code): "GitLab answered with error \(code)"
             case .newerFormat: "this version of the app is too old to read the latest release; download the new app"
             }
         }

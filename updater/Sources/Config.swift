@@ -3,11 +3,11 @@ import Foundation
 /// Where things live. The SMOOTH_* environment variables exist only for testing the app
 /// against a local release and a scratch Components folder.
 enum Config {
-    static let releasesPage = URL(string: "https://github.com/coquetteluke/smooth-plugins/releases/latest")!
-    static let repoPage = URL(string: "https://github.com/coquetteluke/smooth-plugins")!
+    static let releasesPage = URL(string: "https://gitlab.com/coquettelabs/smooth-plugins/-/releases/permalink/latest")!
+    static let repoPage = URL(string: "https://gitlab.com/coquettelabs/smooth-plugins")!
 
-    /// Plug-ins are only ever downloaded from this repo's releases.
-    static let downloadPrefix = "https://github.com/coquetteluke/smooth-plugins/releases/download/"
+    /// Plug-ins and the app are only ever downloaded from this project's releases.
+    static let downloadPrefix = "https://gitlab.com/coquettelabs/smooth-plugins/-/releases/"
 
     static let logicBundleID = "com.apple.logic10"
 
@@ -21,7 +21,7 @@ enum Config {
         if let value = environment["SMOOTH_MANIFEST_URL"], let url = URL(string: value) {
             return url
         }
-        return URL(string: "https://github.com/coquetteluke/smooth-plugins/releases/latest/download/manifest.json")!
+        return URL(string: "https://gitlab.com/coquettelabs/smooth-plugins/-/releases/permalink/latest/downloads/manifest.json")!
     }
 
     /// Plug-ins installed "for me", and where new installs go.

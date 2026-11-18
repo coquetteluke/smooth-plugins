@@ -7,7 +7,7 @@
 #   manifest.json                  versions, checksums and links; the app reads this
 #
 # Usage: release/make-release-assets.sh <folder with .component files> <release tag> <output folder>
-# Set ASSET_BASE_URL to point the manifest's links somewhere other than the GitHub release (tests).
+# Set ASSET_BASE_URL to point the manifest's links somewhere other than the GitLab release (tests).
 set -euo pipefail
 
 src=${1:?usage: make-release-assets.sh <components folder> <tag> <output folder>}
@@ -15,7 +15,7 @@ tag=${2:?usage: make-release-assets.sh <components folder> <tag> <output folder>
 out=${3:?usage: make-release-assets.sh <components folder> <tag> <output folder>}
 root=$(cd "$(dirname "$0")/.." && pwd)
 src=$(cd "$src" && pwd)
-base=${ASSET_BASE_URL:-https://github.com/coquetteluke/smooth-plugins/releases/download/$tag}
+base=${ASSET_BASE_URL:-https://gitlab.com/coquettelabs/smooth-plugins/-/releases/$tag/downloads}
 
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
@@ -46,7 +46,7 @@ Smooth Plugins: free plug-ins for Logic Pro only (Apple Silicon Mac, macOS 13 or
 Easiest: download Smooth-Plugins-App.zip from the release page instead. The app installs the
 plug-ins you pick and keeps them up to date. macOS blocks it the first time; the steps to open it
 are in "How to open Smooth Plugins.txt" inside that zip, and with pictures at
-https://github.com/coquetteluke/smooth-plugins#opening-the-app-the-first-time
+https://gitlab.com/coquettelabs/smooth-plugins#opening-the-app-the-first-time
 
 By hand:
 1. In Finder, choose Go > Go to Folder, paste ~/Library/Audio/Plug-Ins/Components and press Return.
@@ -57,7 +57,7 @@ By hand:
 
 4. Open Logic Pro. The plug-ins are under Audio Units > Luke Garito.
 
-Source code, manuals and license (GNU AGPL v3): https://github.com/coquetteluke/smooth-plugins
+Source code, manuals and license (GNU AGPL v3): https://gitlab.com/coquettelabs/smooth-plugins
 EOF
 ( cd "$work/all" && ditto -c -k --sequesterRsrc --keepParent Smooth-Plugins "$out/Smooth-Plugins.zip" )
 
@@ -82,9 +82,9 @@ don't need this step.
 Why: macOS only trusts an app straight away if its developer pays Apple $99 a year and sends every
 version to Apple to be checked. Smooth Plugins is free and that fee isn't paid, so Apple hasn't
 checked it. The warning does not mean anything wrong was found. All of the code is public:
-https://github.com/coquetteluke/smooth-plugins
+https://gitlab.com/coquettelabs/smooth-plugins
 
-Pictures of each step: https://github.com/coquetteluke/smooth-plugins#opening-the-app-the-first-time
+Pictures of each step: https://gitlab.com/coquettelabs/smooth-plugins#opening-the-app-the-first-time
 EOF
 ( cd "$work/app" && ditto -c -k --sequesterRsrc . "$out/Smooth-Plugins-App.zip" )
 

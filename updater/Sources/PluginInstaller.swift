@@ -62,7 +62,9 @@ enum PluginInstaller {
     }
 
     static func isTrusted(_ url: URL) -> Bool {
-        if url.absoluteString.hasPrefix(Config.downloadPrefix) {
+        let link = url.absoluteString
+        // No ".." (plain or percent-encoded), so a link can't climb out of this project's releases.
+        if link.hasPrefix(Config.downloadPrefix), !url.pathComponents.contains(".."), !link.lowercased().contains("%2e") {
             return true
         }
         return Config.isTesting && url.isFileURL

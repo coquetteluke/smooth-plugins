@@ -1,0 +1,17 @@
+# One plug-in per line, in the order the installer, the app and the release notes show them:
+# folder|component name|kind|description
+tune-pro|Tune Pro|MIDI-controlled effect|Advanced automatic vocal tuning with two engines, MIDI targets and a pitch window.
+tune|Tune|Effect|Low latency real time vocal pitch correction with formant preservation.
+glitter|Glitter|MIDI-controlled effect|Fast creative vocal tuner with effect modules.
+choir-loft|Choir Loft|MIDI-controlled effect|Up to eight formant preserving harmony voices from one lead vocal.
+duo|Duo|Effect|Automatic vocal doubling.
+alter-ego|Alter Ego|Effect|Real time voice changer with independent pitch and formants, characters, vibrato and whisper.
+throat|Throat|Effect|Reshapes the vocal tract of a voice without moving its pitch.
+velvet-rope|Velvet Rope|Effect|Finds the narrow peaks that stick out of a voice and turns them down only while they are there.
+punch|Punch|Effect|Vocal impact: transient shaper, compressors and output ceiling.
+key|Key|Effect|Live key, scale and tempo detection.
+cutup|Cutup|Instrument|Vocal sample slicer played from MIDI.
+tape-color|Tape Color|Effect|Oversampled tape saturation with wow, flutter, noise and age.
+tape-chorus|Tape Chorus|Effect|Tape style chorus with 1 to 8 voices, feedback, wow, flutter and saturation.
+tape-flanger|Tape Flanger|Effect|Through-zero tape style flanger.
+switchboard|Switchboard|Effect|Put it on Stereo Out to see and set the controls of these plug-ins on every track from one window.

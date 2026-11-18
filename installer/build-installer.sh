@@ -14,22 +14,8 @@ out=${2:?usage: build-installer.sh <folder with .component files> <output .pkg>}
 here=$(cd "$(dirname "$0")" && pwd)
 src=$(cd "$src" && pwd)
 
-# Order shown in the installer: slug|component name|description
-PLUGINS="tune-pro|Tune Pro|Advanced automatic vocal tuning with two engines, MIDI targets and a pitch window.
-tune|Tune|Low latency real time vocal pitch correction with formant preservation.
-glitter|Glitter|Fast creative vocal tuner with effect modules.
-choir-loft|Choir Loft|Up to eight formant preserving harmony voices from one lead vocal.
-duo|Duo|Automatic vocal doubling.
-alter-ego|Alter Ego|Real time voice changer with independent pitch and formants, characters, vibrato and whisper.
-throat|Throat|Reshapes the vocal tract of a voice without moving its pitch.
-velvet-rope|Velvet Rope|Finds the narrow peaks that stick out of a voice and turns them down only while they are there.
-punch|Punch|Vocal impact: transient shaper, compressors and output ceiling.
-key|Key|Live key, scale and tempo detection.
-cutup|Cutup|Vocal sample slicer played from MIDI (an instrument).
-tape-color|Tape Color|Oversampled tape saturation with wow, flutter, noise and age.
-tape-chorus|Tape Chorus|Tape style chorus with 1 to 8 voices, feedback, wow, flutter and saturation.
-tape-flanger|Tape Flanger|Through-zero tape style flanger.
-switchboard|Switchboard|Put it on Stereo Out to see and set the controls of these plug-ins on every track from one window."
+# The plug-ins and their order: installer/plugins.txt (folder|component name|kind|description)
+PLUGINS=$(grep -v '^#' "$here/plugins.txt" | grep .)
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -46,7 +32,7 @@ chmod 755 "$work/scripts/postinstall"
 xml_escape() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g'; }
 
 outline=""; choices=""; refs=""; count=0
-while IFS='|' read -r slug name desc; do
+while IFS='|' read -r -u 3 slug name kind desc; do
     comp="$src/$name.component"
     if [ ! -d "$comp" ]; then echo "skipped (not in $src): $name"; continue; fi
     plist="$comp/Contents/Info.plist"
@@ -77,7 +63,7 @@ while IFS='|' read -r slug name desc; do
     refs+="    <pkg-ref id=\"$id\" version=\"$version\" onConclusion=\"none\">$slug.pkg</pkg-ref>"$'\n'
     count=$((count + 1))
     echo "added: $name $version"
-done <<< "$PLUGINS"
+done 3<<< "$PLUGINS"
 
 [ "$count" -gt 0 ] || { echo "no plug-ins found in $src"; exit 1; }
 

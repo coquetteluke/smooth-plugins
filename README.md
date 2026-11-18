@@ -2,7 +2,7 @@
 
 15 free Audio Unit plug-ins for Logic Pro, made mostly for vocals: tuning, doubling, harmonies, voice changing, tape effects and more. Free to use in any music, including releases you sell.
 
-**[Download the installer](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-Installer.pkg)** · [All releases](https://github.com/coquetteluke/smooth-plugins/releases)
+**[Download the Smooth Plugins app](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-App.zip)** · [All releases](https://github.com/coquetteluke/smooth-plugins/releases)
 
 ## What you need
 
@@ -12,22 +12,34 @@
 
 ## Install
 
-The installer lets you tick the plug-ins you want:
+The Smooth Plugins app installs the plug-ins you pick and keeps them up to date:
 
-![The installer's list of plug-ins, each with a checkbox](docs/installer.jpg)
+![The Smooth Plugins app: every plug-in with a checkbox, its version and whether it has an update](docs/app.jpg)
 
-1. Download [Smooth-Plugins-Installer.pkg](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-Installer.pkg) and double-click it.
-2. macOS says it can't verify the installer, because it isn't signed with a paid Apple developer account. Click **Done**.
-3. Open System Settings > Privacy & Security, scroll down to the message about Smooth-Plugins-Installer.pkg and click **Open Anyway**, then enter your password. (On macOS 13 or 14 you can instead right-click the file and choose Open.)
-4. Click Continue, choose **Install for all users** or **Install for me only**, untick any plug-ins you don't want, and click Install.
+1. Download [Smooth-Plugins-App.zip](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-App.zip), unzip it and drag **Smooth Plugins** into your Applications folder.
+2. Open it. macOS says it can't verify the app, because it isn't signed with a paid Apple developer account. Click **Done**.
+3. Open System Settings > Privacy & Security, scroll down to the message about Smooth Plugins and click **Open Anyway**, then enter your password. (On macOS 13 or 14 you can instead right-click the app and choose Open.)
+4. Tick the plug-ins you want and click **Install**.
 5. Open Logic Pro. The plug-ins are under Audio Units > Luke Garito.
 
-To add or remove plug-ins later, run the installer again, or delete the `.component` file from `Library/Audio/Plug-Ins/Components` (in your home folder for "me only", in the main Library for "all users").
+**Updates:** the app checks for updates once a day. When new versions come out, it opens in the background (it doesn't take you away from what you're doing) with the number of updates on its Dock icon. Click **Update** and restart Logic. You can turn the daily check off at the bottom of the app; untick it before deleting the app.
+
+**Removing:** tick the plug-ins and click **Remove**. They go to the Trash.
 
 If Logic lists a plug-in as failed, open Logic Pro > Settings > Plug-in Manager, select it and click Reset & Rescan Selection.
 
 <details>
-<summary>Install by hand from the zip instead</summary>
+<summary>Other ways to install: the installer package or the zip</summary>
+
+**Installer package.** It has a checkbox for each plug-in, but it does not check for updates.
+
+![The installer's list of plug-ins, each with a checkbox](docs/installer.jpg)
+
+1. Download [Smooth-Plugins-Installer.pkg](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-Installer.pkg) and double-click it.
+2. Click **Done** when macOS says it can't verify it, then click **Open Anyway** in System Settings > Privacy & Security.
+3. Click Continue, choose **Install for all users** or **Install for me only**, untick any plug-ins you don't want, and click Install.
+
+**Zip, by hand.**
 
 1. Download `Smooth-Plugins.zip` from the [latest release](https://github.com/coquetteluke/smooth-plugins/releases/latest) and unzip it.
 2. In Finder, choose Go > Go to Folder, paste `~/Library/Audio/Plug-Ins/Components` and press Return.
@@ -38,7 +50,7 @@ If Logic lists a plug-in as failed, open Logic Pro > Settings > Plug-in Manager,
    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/*.component
    ```
 
-5. Open Logic Pro. The plug-ins are under Audio Units > Luke Garito.
+The app also updates plug-ins installed either of these ways.
 
 </details>
 
@@ -80,7 +92,7 @@ cmake --build duo/build --target InstallAU -j 8
 
 `InstallAU` builds the plug-in, signs it for your Mac and copies it into `~/Library/Audio/Plug-Ins/Components`. Swap `duo` for any other folder. To use a JUCE checkout you already have, add `-DJUCE_DIR=/path/to/JUCE` to the first command.
 
-To make the installer from a folder of built `.component` files, run `installer/build-installer.sh <folder> <output.pkg>`.
+To build the Smooth Plugins app, run `updater/build-app.sh <output folder>`. To make every release file (app, installer, zips and the `manifest.json` the app reads) from a folder of built `.component` files, run `release/make-release-assets.sh <folder> <release tag> <output folder>`.
 
 The tests' voice recordings are not in this repo, because they were made with the macOS text to speech voices, which Apple does not allow redistributing. Run `tests/make_corpus.sh` inside a plug-in's folder to make them on your own Mac. Tests that compare against saved renders from earlier versions will report those files missing.
 

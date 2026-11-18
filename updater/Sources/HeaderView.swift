@@ -39,7 +39,7 @@ struct HeaderView: View {
                 return updates == 1 ? "1 update available" : "\(updates) updates available"
             }
             if model.rows.allSatisfy({ $0.status == .notInstalled }) {
-                return "\(model.rows.count) free plug-ins for Logic Pro"
+                return "\(model.rows.count) free plug-ins for Logic Pro only"
             }
             return "Everything is up to date"
         }

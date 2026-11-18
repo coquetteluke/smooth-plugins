@@ -41,7 +41,7 @@ done 3< <(grep -v '^#' "$root/installer/plugins.txt" | grep .)
 
 # Everything in one zip, for installing by hand.
 cat > "$work/all/Smooth-Plugins/INSTALL.txt" <<'EOF'
-Smooth Plugins: free Audio Units for Logic Pro (Apple Silicon Mac, macOS 13 or newer)
+Smooth Plugins: free plug-ins for Logic Pro only (Apple Silicon Mac, macOS 13 or newer)
 
 Easiest: download Smooth-Plugins-App.zip from the release page instead. The app installs the
 plug-ins you pick and keeps them up to date. macOS blocks it the first time; the steps to open it

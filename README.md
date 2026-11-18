@@ -1,6 +1,8 @@
 # Smooth Plugins
 
-15 free Audio Unit plug-ins for Logic Pro, made mostly for vocals: tuning, doubling, harmonies, voice changing, tape effects and more. Free to use in any music, including releases you sell.
+15 free plug-ins for **Logic Pro only**, made mostly for vocals: tuning, doubling, harmonies, voice changing, tape effects and more. Free to use in any music, including releases you sell.
+
+> **Logic Pro only.** These are made for and tested in Logic Pro on Apple Silicon Macs. Other apps and Windows are not supported.
 
 **[Download the Smooth Plugins app](https://github.com/coquetteluke/smooth-plugins/releases/latest/download/Smooth-Plugins-App.zip)** · [All releases](https://github.com/coquetteluke/smooth-plugins/releases)
 
@@ -8,7 +10,8 @@
 
 - A Mac with Apple Silicon (M1 or newer). Intel Macs are not supported.
 - macOS 13 Ventura or newer.
-- Logic Pro. They are standard Audio Units, so other AU hosts may work, but they were only tested in Logic.
+- Logic Pro. The plug-ins are made for Logic Pro only; other apps are not supported.
+- Normal macOS security settings are fine: nothing here needs System Integrity Protection or any other protection turned off.
 
 ## Install
 

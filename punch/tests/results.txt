@@ -1,0 +1,657 @@
+PASS  parameter names are clear, unique, no em dash
+INFO  parameter count = 14.000 
+PASS  factory presets = 20.000 
+PASS  preset names are not empty, no em dash
+PASS  presets change the state
+PASS  state save and restore
+PASS  damaged state value 'nan' gives finite output
+PASS  damaged state value 'nan' leaves controls in range
+PASS  damaged state value 'inf' gives finite output
+PASS  damaged state value 'inf' leaves controls in range
+PASS  damaged state value '-inf' gives finite output
+PASS  damaged state value '-inf' leaves controls in range
+PASS  damaged state value '-1e30' gives finite output
+PASS  damaged state value '-1e30' leaves controls in range
+PASS  damaged state value '1e30' gives finite output
+PASS  damaged state value '1e30' leaves controls in range
+PASS  damaged state value '-1' gives finite output
+PASS  damaged state value '-1' leaves controls in range
+PASS  damaged state value 'garbage' gives finite output
+PASS  damaged state value 'garbage' leaves controls in range
+PASS  sweeps finished, mono
+PASS  sweeps finished, stereo
+PASS  no NaN after silence
+PASS  no denormals decaying into silence = 0.000 samples
+PASS  recovers after NaN, inf and huge input, peak in the last second = 0.250 
+INFO  click test baseline step = 0.004 
+PASS  no click when Punch jumps, biggest step = 0.004 
+PASS  no click when Attack jumps, biggest step = 0.004 
+PASS  no click when Sustain jumps, biggest step = 0.004 
+PASS  no click when Mix jumps, biggest step = 0.004 
+PASS  no click when Bypass jumps, biggest step = 0.004 
+PASS  no click when Gain jumps, biggest step = 0.057 
+PASS  no click when Impact jumps, biggest step = 0.013 
+PASS  no click when Ceiling jumps, biggest step = 0.004 
+PASS  no click when Ceiling On jumps, biggest step = 0.004 
+PASS  no click when Steady Notes jumps, biggest step = 0.004 
+PASS  Attack 9 dB, 1 kHz decaying burst: first 3 ms change = 8.973 dB
+PASS  Attack 9 dB, 1 kHz decaying burst: tail change = 0.000 dB
+PASS  Attack -9 dB, 1 kHz decaying burst: first 3 ms change = -8.973 dB
+PASS  Attack -9 dB, 1 kHz decaying burst: tail change = 0.000 dB
+PASS  Attack 3 dB, 1 kHz decaying burst: first 3 ms change = 2.991 dB
+PASS  Attack 3 dB, 1 kHz decaying burst: tail change = 0.000 dB
+PASS  Attack -3 dB, 1 kHz decaying burst: first 3 ms change = -2.991 dB
+PASS  Attack -3 dB, 1 kHz decaying burst: tail change = 0.000 dB
+PASS  Attack 15 dB, 1 kHz decaying burst: first 3 ms change = 14.955 dB
+PASS  Attack 15 dB, 1 kHz decaying burst: tail change = 0.000 dB
+PASS  Attack -15 dB, 1 kHz decaying burst: first 3 ms change = -14.954 dB
+PASS  Attack -15 dB, 1 kHz decaying burst: tail change = 0.000 dB
+PASS  Sustain 9 dB, 1 kHz decaying burst: tail change = 8.962 dB
+PASS  Sustain 9 dB, 1 kHz decaying burst: first 3 ms change = 0.000 dB
+PASS  Sustain -9 dB, 1 kHz decaying burst: tail change = -8.956 dB
+PASS  Sustain -9 dB, 1 kHz decaying burst: first 3 ms change = 0.000 dB
+PASS  Sustain 15 dB, 1 kHz decaying burst: tail change = 14.939 dB
+PASS  Sustain 15 dB, 1 kHz decaying burst: first 3 ms change = 0.000 dB
+PASS  Sustain -15 dB, 1 kHz decaying burst: tail change = -14.922 dB
+PASS  Sustain -15 dB, 1 kHz decaying burst: first 3 ms change = 0.000 dB
+INFO  Sustain 3 dB: tail change = 2.987 dB
+INFO  Attack +9 at -6 dBFS: first 3 ms = 8.973 dB
+INFO  Attack +9 at -6 dBFS: tail = 0.000 dB
+INFO  Attack +9 at -18 dBFS: first 3 ms = 8.973 dB
+INFO  Attack +9 at -18 dBFS: tail = 0.000 dB
+INFO  Attack +9 at -30 dBFS: first 3 ms = 8.973 dB
+INFO  Attack +9 at -30 dBFS: tail = 0.000 dB
+INFO  Attack +9 at -42 dBFS: first 3 ms = 8.973 dB
+INFO  Attack +9 at -42 dBFS: tail = 0.000 dB
+PASS  Attack +9: first 3 ms, spread across 36 dB of input level = 0.000 dB
+PASS  Attack +9: tail, spread across 36 dB of input level = 0.000 dB
+INFO  Attack -9 at -6 dBFS: first 3 ms = -8.973 dB
+INFO  Attack -9 at -6 dBFS: tail = 0.000 dB
+INFO  Attack -9 at -18 dBFS: first 3 ms = -8.973 dB
+INFO  Attack -9 at -18 dBFS: tail = 0.000 dB
+INFO  Attack -9 at -30 dBFS: first 3 ms = -8.973 dB
+INFO  Attack -9 at -30 dBFS: tail = 0.000 dB
+INFO  Attack -9 at -42 dBFS: first 3 ms = -8.973 dB
+INFO  Attack -9 at -42 dBFS: tail = 0.000 dB
+PASS  Attack -9: first 3 ms, spread across 36 dB of input level = 0.000 dB
+PASS  Attack -9: tail, spread across 36 dB of input level = 0.000 dB
+INFO  Sustain +9 at -6 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain +9 at -6 dBFS: tail = 8.962 dB
+INFO  Sustain +9 at -18 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain +9 at -18 dBFS: tail = 8.962 dB
+INFO  Sustain +9 at -30 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain +9 at -30 dBFS: tail = 8.962 dB
+INFO  Sustain +9 at -42 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain +9 at -42 dBFS: tail = 8.962 dB
+PASS  Sustain +9: first 3 ms, spread across 36 dB of input level = 0.000 dB
+PASS  Sustain +9: tail, spread across 36 dB of input level = 0.000 dB
+INFO  Sustain -9 at -6 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain -9 at -6 dBFS: tail = -8.956 dB
+INFO  Sustain -9 at -18 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain -9 at -18 dBFS: tail = -8.956 dB
+INFO  Sustain -9 at -30 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain -9 at -30 dBFS: tail = -8.956 dB
+INFO  Sustain -9 at -42 dBFS: first 3 ms = 0.000 dB
+INFO  Sustain -9 at -42 dBFS: tail = -8.956 dB
+PASS  Sustain -9: first 3 ms, spread across 36 dB of input level = 0.000 dB
+PASS  Sustain -9: tail, spread across 36 dB of input level = 0.000 dB
+PASS  Attack +9 on 200 Hz: first 3 ms = 8.981 dB
+PASS  Attack +9 on 200 Hz: tail = 0.000 dB
+PASS  Sustain +9 on 200 Hz: tail = 8.961 dB
+PASS  Sustain +9 on 200 Hz: first 3 ms = 0.000 dB
+PASS  Attack +9 on 4 kHz: first 3 ms = 8.972 dB
+PASS  Attack +9 on 4 kHz: tail = 0.000 dB
+PASS  Sustain +9 on 4 kHz: tail = 8.962 dB
+PASS  Sustain +9 on 4 kHz: first 3 ms = 0.000 dB
+PASS  Attack +9 on noise: first 3 ms = 8.970 dB
+PASS  Attack +9 on noise: tail = 0.000 dB
+PASS  Sustain +9 on noise: tail = 8.940 dB
+PASS  Sustain +9 on noise: first 3 ms = 0.000 dB
+INFO  Sustain +9, decay time 30 ms: tail = 9.000 dB
+INFO  Sustain +9, decay time 100 ms: tail = 8.962 dB
+INFO  Sustain +9, decay time 300 ms: tail = 7.519 dB
+INFO  Sustain +9, decay time 1000 ms: tail = 2.554 dB
+PASS  Attack +9, first 3 ms, spread across sample rates = 0.000 dB
+PASS  Sustain +9, tail, spread across sample rates = 0.002 dB
+PASS  steady 60 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
+PASS  steady 100 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
+PASS  steady 1000 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
+PASS  steady 9000 Hz, Attack and Sustain at maximum: difference from input = -224.949 dB
+PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, soft start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, soft start: change of its tail = 5.765 dB
+PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, soft start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, soft start: change of its tail = -4.171 dB
+PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, soft start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, soft start: change of its tail = 3.703 dB
+PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, soft start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, soft start: change of its tail = -3.401 dB
+PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, hard start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain 9 dB on a held note with a 3 dB swing, hard start: change of its tail = 5.765 dB
+PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, hard start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain -9 dB on a held note with a 3 dB swing, hard start: change of its tail = -4.171 dB
+PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, hard start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain 6 dB on a held note with a 3 dB swing, hard start: change of its tail = 3.703 dB
+PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, hard start: largest change while it is held = 0.000 dB
+PASS  Steady Notes, Sustain -7 dB on a held note with a 3 dB swing, hard start: change of its tail = -3.401 dB
+PASS  Steady Notes, Sustain 9: first 15 ms of a quieter note after a louder one = 0.000 dB
+INFO  Steady Notes off, Sustain 9: first 15 ms of a quieter note after a louder one = 1.097 dB
+PASS  Steady Notes, Sustain 6: a hiss after a note = 0.000 dB
+PASS  Steady Notes, Sustain 6: a dull sound of the same kind after the same note still gets its tail = 3.271 dB
+PASS  Steady Notes is off by default
+PASS  Steady Notes is off in all 14 presets that were there before 0.5.0 = 20.000 
+PASS  Steady Notes is on in every preset added after them = 6.000 
+PASS  turning it on shows the preset as edited
+PASS  Steady Notes comes back with the session
+PASS  a session from before 0.4.0 loads with Steady Notes off
+INFO  300 Hz burst train: input crest factor = 12.099 dB
+PASS  Punch 25, 300 Hz burst train: crest factor reduction = 1.488 dB
+PASS  Punch 25, 300 Hz burst train: RMS level change = -0.007 dB
+PASS  Punch 50, 300 Hz burst train: crest factor reduction = 3.342 dB
+PASS  Punch 50, 300 Hz burst train: RMS level change = -0.013 dB
+PASS  Punch 50, 300 Hz burst train: at least 3 dB = 3.342 dB
+PASS  Punch 75, 300 Hz burst train: crest factor reduction = 4.682 dB
+PASS  Punch 75, 300 Hz burst train: RMS level change = -0.025 dB
+PASS  Punch 100, 300 Hz burst train: crest factor reduction = 5.346 dB
+PASS  Punch 100, 300 Hz burst train: RMS level change = -0.028 dB
+PASS  Punch 100, 300 Hz burst train: at least 5 dB = 5.346 dB
+INFO  noise burst train: input crest factor = 13.959 dB
+PASS  Punch 25, noise burst train: crest factor reduction = 1.431 dB
+PASS  Punch 25, noise burst train: RMS level change = 0.016 dB
+PASS  Punch 50, noise burst train: crest factor reduction = 3.206 dB
+PASS  Punch 50, noise burst train: RMS level change = -0.004 dB
+PASS  Punch 50, noise burst train: at least 3 dB = 3.206 dB
+PASS  Punch 75, noise burst train: crest factor reduction = 4.450 dB
+PASS  Punch 75, noise burst train: RMS level change = -0.031 dB
+PASS  Punch 100, noise burst train: crest factor reduction = 5.023 dB
+PASS  Punch 100, noise burst train: RMS level change = -0.027 dB
+PASS  Punch 100, noise burst train: at least 5 dB = 5.023 dB
+PASS  Punch 100, steady 100 Hz: level change = -0.018 dB
+PASS  Punch 100, steady 100 Hz: everything other than level, relative to the tone = -113.234 dB
+PASS  Punch 100, steady 65 Hz: everything other than level, relative to the tone = -127.269 dB
+PASS  Punch 50: crest reduction spread across 36 dB of input level = 0.001 dB
+INFO  Punch 50: first hit after silence, level against the input = -2.738 dB
+INFO  Punch 50: second hit = -0.593 dB
+INFO  Punch 50: fifth hit = -0.004 dB
+PASS  Punch 50, noise at -80 dBFS: level lift = 4.190 dB
+PASS  Mix 0 with everything else on: difference from delayed input = -222.183 dB
+PASS  Mix 50 against the average of Mix 0 and Mix 100: difference = -144.048 dB
+PASS  Mix 50 with noise bursts: response spread, 200 Hz to 16 kHz = 1.227 dB
+INFO  Mix 100 with noise bursts: response spread, 200 Hz to 16 kHz = 1.843 dB
+PASS  control: a 20 sample misaligned dry reads as a comb, spread = 8.265 dB
+PASS  Attack +12 at Mix 50 lands between Mix 0 and Mix 100 = 7.897 dB
+PASS  neutral at Mix 100: difference from delayed input = -225.333 dB
+PASS  neutral at Mix 50: difference from delayed input = -225.333 dB
+PASS  impulse delay equals reported latency at 44100 Hz = 88.000 samples
+PASS  impulse delay equals reported latency at 48000 Hz = 96.000 samples
+PASS  impulse delay equals reported latency at 88200 Hz = 176.000 samples
+PASS  impulse delay equals reported latency at 96000 Hz = 192.000 samples
+PASS  Bypass parameter: the input, delayed by the same latency
+PASS  processBlockBypassed after its fade: difference from delayed input = -216.626 dB
+PASS  block size 1 against 512: difference = -220.005 dB
+PASS  block size 32 against 512: difference = -220.005 dB
+PASS  block size 777 against 512: difference = -220.005 dB
+PASS  block size 4096 against 512: difference = -220.005 dB
+PASS  after preparing again at other rates: same output, difference = -220.005 dB
+PASS  Attack -15 with Sustain +15 on 100 Hz bursts: largest gain move in one sample = 0.497 dB
+PASS  stereo: left to right balance stays put, biggest move = 0.000 dB
+PASS  stereo: silence on one side stays silent = 0.000 
+INFO  latency at 48 kHz = 96.000 samples
+PASS  state with NaN in Attack: Attack back at default, the rest kept = 0.000 dB
+PASS  state with a huge Attack: clamped to the top of its range = 15.000 dB
+PASS  cut off or foreign state: controls unchanged = 7.000 dB
+PASS  NaN and infinity in the input: none in the output = 0.000 samples
+PASS  Gain -12 dB at neutral: level change = -12.000 dB
+PASS  Gain 6 dB at neutral: level change = 6.000 dB
+PASS  Gain 12 dB at neutral: level change = 12.000 dB
+PASS  Gain 24 dB at neutral: level change = 24.000 dB
+PASS  Attack +9 with Gain +12: first 3 ms, against no Gain = 0.000 dB
+PASS  Sustain +9 with Gain +12: tail, against no Gain = 0.000 dB
+PASS  Gain +18 into Impact 50 on a -30 dBFS tone: level rise = 11.571 dB
+PASS  Mix 0 with Gain +6: difference from the delayed input raised 6 dB = -142.966 dB
+PASS  Bypass with Gain, Impact and Ceiling on: difference from the delayed input = -211.947 dB
+PASS  Impact 25: 24 dB level gap shrinks by = 3.808 dB
+PASS  Impact 25: 24 dB level gap shrinks by (at least 2 dB more than the step before) = 3.808 dB
+PASS  Impact 50: 24 dB level gap shrinks by = 9.796 dB
+PASS  Impact 50: 24 dB level gap shrinks by (at least 2 dB more than the step before) = 5.988 dB
+PASS  Impact 75: 24 dB level gap shrinks by = 16.113 dB
+PASS  Impact 75: 24 dB level gap shrinks by (at least 2 dB more than the step before) = 6.317 dB
+PASS  Impact 100: 24 dB level gap shrinks by = 18.298 dB
+PASS  Impact 100: 24 dB level gap shrinks by (at least 2 dB more than the step before) = 2.185 dB
+PASS  Impact 25, -24 dBFS tone: level rise = 6.000 dB
+PASS  Impact 50, -24 dBFS tone: level rise = 12.000 dB
+PASS  Impact 100, -24 dBFS tone: level rise = 14.000 dB
+PASS  Impact 100, -40 dBFS tone: level rise = 24.000 dB
+PASS  Impact 100, -6 dBFS tone: level rise = -1.000 dB
+INFO  speech shaped signal: input level spread = 18.070 dB
+PASS  Impact 50, speech shaped signal: level spread shrinks by = 5.539 dB
+PASS  Impact 100, speech shaped signal: level spread shrinks by = 9.634 dB
+PASS  Impact 100, steady 65 Hz: everything other than level = -228.990 dB
+PASS  Impact 100, steady 100 Hz: everything other than level = -228.990 dB
+PASS  Impact 100, steady 1000 Hz: everything other than level = -228.990 dB
+PASS  Impact 100, jump from -30 to -6 dBFS: gain 25 ms later, against settled = 0.091 dB
+PASS  Impact 100: recovery after a 50 ms peak = 184.000 ms
+PASS  Impact 100: recovery after a 1.5 s hold = 948.000 ms
+PASS  Impact 100, noise at -80 dBFS: level lift = 0.000 dB
+PASS  Mix 0 with Impact 80: difference from the delayed input = -214.251 dB
+PASS  Mix 50 with Impact 80, against the average of Mix 0 and Mix 100 = -141.561 dB
+PASS  Impact 50: gap shrink, spread across sample rates = 0.000 dB
+PASS  Ceiling -1 dBFS, noise hits, all boosts on: peak over the ceiling = -0.798 dB
+PASS  Ceiling -1 dBFS, 300 Hz hits, all boosts on: peak over the ceiling = -2.475 dB
+PASS  Ceiling -6 dBFS, noise hits, all boosts on: peak over the ceiling = -0.798 dB
+PASS  Ceiling -6 dBFS, 300 Hz hits, all boosts on: peak over the ceiling = -2.475 dB
+PASS  Ceiling -12 dBFS, noise hits, all boosts on: peak over the ceiling = -0.798 dB
+PASS  Ceiling -12 dBFS, 300 Hz hits, all boosts on: peak over the ceiling = -2.475 dB
+PASS  Ceiling -24 dBFS, noise hits, all boosts on: peak over the ceiling = -0.798 dB
+PASS  Ceiling -24 dBFS, 300 Hz hits, all boosts on: peak over the ceiling = -2.475 dB
+PASS  Ceiling -6 dBFS at 44100 Hz: peak over the ceiling = -0.634 dB
+PASS  Ceiling -6 dBFS at 96000 Hz: peak over the ceiling = -0.511 dB
+PASS  Ceiling -12 dBFS, lone spike at an onset with Attack +15: peak over the ceiling = 0.000 dB
+PASS  Ceiling -6 dBFS on a -12 dBFS tone: difference from the delayed input = -224.990 dB
+PASS  Ceiling -12 dBFS, steady 60 Hz at -6 dBFS: peak against the ceiling = -0.000 dB
+PASS  Ceiling -12 dBFS, steady 60 Hz at -6 dBFS: everything other than level = -224.990 dB
+PASS  Ceiling -12 dBFS, steady 100 Hz at -6 dBFS: peak against the ceiling = -0.000 dB
+PASS  Ceiling -12 dBFS, steady 100 Hz at -6 dBFS: everything other than level = -224.990 dB
+PASS  Ceiling -12 dBFS, steady 1000 Hz at -6 dBFS: peak against the ceiling = -0.000 dB
+PASS  Ceiling -12 dBFS, steady 1000 Hz at -6 dBFS: everything other than level = -224.990 dB
+PASS  Ceiling -12 dBFS, hard onset, Attack 0 dB: largest gain move in one sample = 0.002 dB
+PASS  Ceiling -12 dBFS, hard onset, Attack 12 dB: largest gain move in one sample = 0.358 dB
+PASS  Ceiling -12 dBFS: gain back within 1 dB after a hit = 165.000 ms
+PASS  Ceiling On off, Ceiling -24 dBFS: difference from the delayed input = -223.988 dB
+PASS  Gain, Impact and Ceiling on: impulse delay equals the same latency at 44100 Hz = 88.000 samples
+PASS  Gain, Impact and Ceiling on: impulse delay equals the same latency at 48000 Hz = 96.000 samples
+PASS  Gain, Impact and Ceiling on: impulse delay equals the same latency at 96000 Hz = 192.000 samples
+PASS  stereo with Gain, Impact and Ceiling on: left to right balance, biggest move = 0.000 dB
+PASS  stereo with Gain, Impact and Ceiling on: silence on one side stays silent = 0.000 
+PASS  Gain, Impact and Ceiling on, block size 1 against 512: difference = -218.209 dB
+PASS  Gain, Impact and Ceiling on, block size 32 against 512: difference = -218.209 dB
+PASS  Gain, Impact and Ceiling on, block size 777 against 512: difference = -218.209 dB
+PASS  Gain, Impact and Ceiling on, block size 4096 against 512: difference = -218.209 dB
+PASS  mono against stereo with identical channels: difference = -218.209 dB
+PASS  Input Level with a -12 dBFS tone and Gain +6: reads before Gain = -12.000 dBFS
+PASS  Output Level with a -12 dBFS tone and Gain +6: reads after everything = -6.000 dBFS
+PASS  readings write no automation during audio = 0.000 changes
+PASS  Impact Reduction, Impact 50 with a -6 dBFS tone = -10.700 dB
+PASS  Ceiling Reduction with Ceiling On off = 0.000 dB
+PASS  Ceiling Reduction, Ceiling -12 dBFS with a -6 dBFS tone = -6.000 dB
+PASS  Output Level sits on the ceiling = -12.000 dBFS
+PASS  Input Level after 3 s of silence = -60.000 dBFS
+PASS  Input Level ignores a write from a host = -60.000 dBFS
+PASS  readings are not saved in state
+PASS  preset Neutral against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  preset Vocal Forward against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  preset Soft Consonants against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  preset Dry And Close against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  preset Longer Tails against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  preset Drum Snap against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  preset Parallel Weight against version 0.1.0: largest 10 ms level difference = 0.000 dB
+PASS  state saved by 0.1.0 with the Vocal Forward values: largest 10 ms level difference = 0.000 dB
+PASS  preset Even Lead: Ceiling On
+PASS  preset Even Lead: peak over its ceiling on hot material = -3.762 dB
+PASS  preset Even Lead: level change on a -30 dBFS tone = 9.600 dB
+PASS  preset Rap Upfront: Ceiling On
+PASS  preset Rap Upfront: peak over its ceiling on hot material = -3.864 dB
+PASS  preset Rap Upfront: level change on a -30 dBFS tone = 13.199 dB
+PASS  preset Quiet Take Lift: Ceiling On
+PASS  preset Quiet Take Lift: peak over its ceiling on hot material = -0.066 dB
+PASS  preset Quiet Take Lift: level change on a -30 dBFS tone = 20.281 dB
+PASS  preset Spoken Word: Ceiling On
+PASS  preset Spoken Word: peak over its ceiling on hot material = -1.956 dB
+PASS  preset Spoken Word: level change on a -30 dBFS tone = 10.800 dB
+PASS  preset Full Level Hook: Ceiling On
+PASS  preset Full Level Hook: peak over its ceiling on hot material = -4.406 dB
+PASS  preset Full Level Hook: level change on a -30 dBFS tone = 16.799 dB
+PASS  preset Parallel Impact: Ceiling On
+PASS  preset Parallel Impact: peak over its ceiling on hot material = -6.357 dB
+PASS  preset Parallel Impact: level change on a -30 dBFS tone = 14.034 dB
+PASS  preset Ceiling Only: Ceiling On
+PASS  preset Ceiling Only: peak over its ceiling on hot material = -7.063 dB
+PASS  preset Ceiling Only: level change on a -30 dBFS tone = 0.000 dB
+PASS  preset Lead Gentle: Ceiling On
+PASS  preset Lead Gentle: peak over its ceiling on hot material = -7.318 dB
+PASS  preset Lead Gentle: level change on a -30 dBFS tone = -0.022 dB
+PASS  preset Lead Upfront: Ceiling On
+PASS  preset Lead Upfront: peak over its ceiling on hot material = -3.353 dB
+PASS  preset Lead Upfront: level change on a -30 dBFS tone = 8.372 dB
+PASS  preset Lead Rap: Ceiling On
+PASS  preset Lead Rap: peak over its ceiling on hot material = -3.614 dB
+PASS  preset Lead Rap: level change on a -30 dBFS tone = 11.977 dB
+PASS  preset Lead Soft Consonants: Ceiling On
+PASS  preset Lead Soft Consonants: peak over its ceiling on hot material = -7.272 dB
+PASS  preset Lead Soft Consonants: level change on a -30 dBFS tone = -0.022 dB
+PASS  preset Lead Long Tails: Ceiling On
+PASS  preset Lead Long Tails: peak over its ceiling on hot material = -7.272 dB
+PASS  preset Lead Long Tails: level change on a -30 dBFS tone = -0.022 dB
+PASS  preset Lead Dry And Close: Ceiling On
+PASS  preset Lead Dry And Close: peak over its ceiling on hot material = -7.272 dB
+PASS  preset Lead Dry And Close: level change on a -30 dBFS tone = -0.022 dB
+PASS  pitch sense, 82 Hz: found after = 29.979 ms
+PASS  pitch sense, 82 Hz: lost after the end = 24.979 ms
+PASS  pitch sense, 110 Hz: found after = 24.979 ms
+PASS  pitch sense, 110 Hz: lost after the end = 24.979 ms
+PASS  pitch sense, 440 Hz: found after = 9.979 ms
+PASS  pitch sense, 440 Hz: lost after the end = 29.979 ms
+PASS  pitch sense, 880 Hz: found after = 9.979 ms
+PASS  pitch sense, 880 Hz: lost after the end = 29.979 ms
+PASS  pitch sense, white noise: share of the time it finds a pitch = 0.000 %
+PASS  pitch sense, silence: no pitch = 0.000 
+PASS  Steady Notes, Sustain 9 on a sung line: largest change of the held note = 0.000 dB
+PASS  Steady Notes, Sustain 9 on a sung line: the 20 to 150 ms after the voice stops = 7.743 dB
+PASS  Steady Notes, Sustain 9 on a sung line: first 15 ms of the next, quieter note = 0.001 dB
+PASS  Steady Notes, Sustain 9 on a sung line: a breath a quarter of a second after the note = 0.000 dB
+PASS  Steady Notes, Sustain 9 on a sung line: the room and its hum on their own = 0.000 dB
+INFO    without Steady Notes, the same: held note = 7.388 dB
+INFO    without Steady Notes, the same: after the voice stops = 9.000 dB
+INFO    without Steady Notes, the same: the breath = 9.000 dB
+PASS  Steady Notes, Sustain -9 on a sung line: largest change of the held note = 0.000 dB
+PASS  Steady Notes, Sustain -9 on a sung line: the 20 to 150 ms after the voice stops = -5.303 dB
+PASS  Steady Notes, Sustain -9 on a sung line: first 15 ms of the next, quieter note = -0.001 dB
+PASS  Steady Notes, Sustain -9 on a sung line: a breath a quarter of a second after the note = 0.000 dB
+PASS  Steady Notes, Sustain -9 on a sung line: the room and its hum on their own = 0.000 dB
+INFO    without Steady Notes, the same: held note = 7.388 dB
+INFO    without Steady Notes, the same: after the voice stops = -9.000 dB
+INFO    without Steady Notes, the same: the breath = -9.000 dB
+PASS  Steady Notes, Sustain 6 on a sung line: largest change of a syllable that is 5 dB quieter than the one before, on the same breath = 0.000 dB
+PASS  Steady Notes, Sustain 6 on a sung line: a breath a quarter of a second after the note = 0.000 dB
+PASS  Steady Notes, Sustain 6 on a sung line: a breath straight after the note, all of it = 0.110 dB
+PASS  Steady Notes, Sustain 6 on a sung line: a mouth sound between phrases = 0.000 dB
+PASS  Steady Notes, Sustain -6 on a sung line: largest change of a syllable that is 5 dB quieter than the one before, on the same breath = 0.000 dB
+PASS  Steady Notes, Sustain 9 at 44100 Hz: largest change of the held note = 0.000 dB
+PASS  Steady Notes, Sustain 9 at 44100 Hz: the 20 to 150 ms after the voice stops = 7.453 dB
+PASS  Steady Notes, Sustain 9 at 44100 Hz: a breath a quarter of a second after the note = 0.000 dB
+PASS  Steady Notes, Sustain 9 at 96000 Hz: largest change of the held note = 0.000 dB
+PASS  Steady Notes, Sustain 9 at 96000 Hz: the 20 to 150 ms after the voice stops = 4.639 dB
+PASS  Steady Notes, Sustain 9 at 96000 Hz: a breath a quarter of a second after the note = 0.000 dB
+PASS  Steady Notes on with every other control at its default: difference from the input = -219.350 dB
+PASS  Punch 50 with Steady Notes, a held note whose peaks move: level swing added = 0.121 dB
+PASS  Punch 50 with Steady Notes, a held note whose peaks move: level against the input = -0.150 dB
+INFO  Punch 50 without Steady Notes, a held note whose peaks move: level swing added = 1.331 dB
+INFO  Punch 50 without Steady Notes, a held note whose peaks move: level against the input = 0.064 dB
+PASS  Punch 100 with Steady Notes, a held note whose peaks move: level swing added = 0.140 dB
+PASS  Punch 100 with Steady Notes, a held note whose peaks move: level against the input = -0.184 dB
+INFO  Punch 100 without Steady Notes, a held note whose peaks move: level swing added = 1.518 dB
+INFO  Punch 100 without Steady Notes, a held note whose peaks move: level against the input = 0.059 dB
+INFO  a held note whose peaks jump: the jump of the peak = 2.751 dB
+INFO  a held note whose peaks jump: the jump of the level = 0.000 dB
+PASS  Attack 9 with Steady Notes, a held note whose peaks jump: largest change around the jump = 0.000 dB
+PASS  Attack 9 with Steady Notes, a held note whose peaks jump: first 3 ms of the note = 8.982 dB
+INFO  Attack 9 without Steady Notes, a held note whose peaks jump: largest change around the jump = 2.474 dB
+INFO  Attack 9 without Steady Notes, a held note whose peaks jump: first 3 ms of the note = 8.982 dB
+PASS  Attack -9 with Steady Notes, a held note whose peaks jump: largest change around the jump = 0.000 dB
+PASS  Attack -9 with Steady Notes, a held note whose peaks jump: first 3 ms of the note = -8.982 dB
+INFO  Attack -9 without Steady Notes, a held note whose peaks jump: largest change around the jump = 2.376 dB
+INFO  Attack -9 without Steady Notes, a held note whose peaks jump: first 3 ms of the note = -8.982 dB
+PASS  Steady Notes off: the detector's gain is 0.4.0's, sample for sample, at all 14 older presets and both extremes; samples that differ = 0.000 
+PASS  Steady Notes switched on and off again: 2.5 s later the gain is within 0.01 dB of a detector that never had it on; samples further off = 0.000 
+PASS  Steady Notes, Sustain 9 at 48000 Hz, a note that starts loud and settles 10 dB lower: largest change of the settled note, 10 ms at a time = 0.015 dB
+PASS  Steady Notes, Sustain 9 at 48000 Hz, a note that starts loud and settles 10 dB lower: level of the settled note = 0.000 dB
+PASS  Steady Notes, Sustain -9 at 48000 Hz, a note that starts loud and settles 10 dB lower: largest change of the settled note, 10 ms at a time = 0.014 dB
+PASS  Steady Notes, Sustain -9 at 48000 Hz, a note that starts loud and settles 10 dB lower: level of the settled note = -0.000 dB
+PASS  Steady Notes, Sustain 6 at 48000 Hz, a note that starts loud and settles 10 dB lower: largest change of the settled note, 10 ms at a time = 0.010 dB
+PASS  Steady Notes, Sustain 6 at 48000 Hz, a note that starts loud and settles 10 dB lower: level of the settled note = 0.000 dB
+PASS  Steady Notes, Sustain 9 at 44100 Hz, a note that starts loud and settles 10 dB lower: largest change of the settled note, 10 ms at a time = 0.017 dB
+PASS  Steady Notes, Sustain 9 at 44100 Hz, a note that starts loud and settles 10 dB lower: level of the settled note = 0.000 dB
+PASS  Steady Notes, Sustain 9 at 96000 Hz, a note that starts loud and settles 10 dB lower: largest change of the settled note, 10 ms at a time = 0.017 dB
+PASS  Steady Notes, Sustain 9 at 96000 Hz, a note that starts loud and settles 10 dB lower: level of the settled note = 0.000 dB
+PASS  a new instance has Steady Notes off
+PASS  a session saved before Steady Notes existed loads into a new instance with it off, and its other values
+PASS  the same session loaded into an instance that had it on: off
+PASS  a session saved with Steady Notes off loads with it off
+PASS  a session saved with Steady Notes on loads with it on
+PASS  a damaged Steady Notes value goes back to the default, off
+PASS  the default's sound with Steady Notes on against off, speech_daniel.wav: samples that differ = 0.000 
+PASS  the default's sound with Steady Notes on against off, speech_samantha.wav: samples that differ = 0.000 
+PASS  the default's sound with Steady Notes on against off, sung line: samples that differ = 0.000 
+PASS  Steady Notes on, Sustain 9, noise bursts with no pitch: with Steady Notes off the tails move at least = 9.000 dB
+PASS  Steady Notes on, Sustain 9, noise bursts with no pitch: largest difference of a tail from Steady Notes off = 0.000 dB
+PASS  Steady Notes on, Sustain -9, noise bursts with no pitch: with Steady Notes off the tails move at least = 9.000 dB
+PASS  Steady Notes on, Sustain -9, noise bursts with no pitch: largest difference of a tail from Steady Notes off = 0.000 dB
+PASS  Steady Notes on, Sustain 9, noise bursts with no pitch 2 s and more after a sung note: with Steady Notes off the tails move at least = 9.000 dB
+PASS  Steady Notes on, Sustain 9, noise bursts with no pitch 2 s and more after a sung note: largest difference of a tail from Steady Notes off = 0.000 dB
+PASS  Steady Notes on, Sustain -9, noise bursts with no pitch 2 s and more after a sung note: with Steady Notes off the tails move at least = 9.000 dB
+PASS  Steady Notes on, Sustain -9, noise bursts with no pitch 2 s and more after a sung note: largest difference of a tail from Steady Notes off = 0.000 dB
+PASS  there are 20 presets: the 14 from before and six for a lead vocal = 20.000 
+PASS  the 14 older presets keep their numbers and names
+PASS  preset 14 is Lead Gentle, with its values and Steady Notes on
+PASS  preset Lead Gentle: level swing added to the held note of the sung line = -0.682 dB
+PASS  preset Lead Gentle: peak of the sung line = -8.492 dBFS
+PASS  preset 15 is Lead Upfront, with its values and Steady Notes on
+PASS  preset Lead Upfront: level swing added to the held note of the sung line = -0.969 dB
+PASS  preset Lead Upfront: peak of the sung line = -3.276 dBFS
+PASS  preset 16 is Lead Rap, with its values and Steady Notes on
+PASS  preset Lead Rap: level swing added to the held note of the sung line = -0.904 dB
+PASS  preset Lead Rap: peak of the sung line = -2.531 dBFS
+PASS  preset 17 is Lead Soft Consonants, with its values and Steady Notes on
+PASS  preset Lead Soft Consonants: level swing added to the held note of the sung line = -0.524 dB
+PASS  preset Lead Soft Consonants: peak of the sung line = -8.492 dBFS
+PASS  preset 18 is Lead Long Tails, with its values and Steady Notes on
+PASS  preset Lead Long Tails: level swing added to the held note of the sung line = -0.524 dB
+PASS  preset Lead Long Tails: peak of the sung line = -8.492 dBFS
+PASS  preset 19 is Lead Dry And Close, with its values and Steady Notes on
+PASS  preset Lead Dry And Close: level swing added to the held note of the sung line = -0.524 dB
+PASS  preset Lead Dry And Close: peak of the sung line = -8.492 dBFS
+PASS  the display's before and after match exactly at neutral, so they line up in time = 0.000 
+PASS  Gain +6: after sits 6 dB over before in every bin, worst error = 0.000 dB
+PASS  about 2000 bins a second at 44100 Hz = 2004.000 
+PASS  about 2000 bins a second at 48000 Hz = 2000.000 
+PASS  about 2000 bins a second at 96000 Hz = 2000.000 
+PASS  the tap works in mono = 0.496 
+PASS  the tap goes round its ring and the newest bin is right = 24000.000 
+PASS  3 bursts make 3 hits
+PASS  Attack +9: the drawn start rises = 8.973 dB
+PASS  Attack +9: the drawn tail stays where it was = 0.000 dB
+PASS  Attack -9: the drawn start falls = -6.370 dB
+PASS  Sustain -9: the drawn tail falls = -9.000 dB
+PASS  Sustain -9: the drawn start stays where it was = -0.039 dB
+PASS  Sustain +9: the drawn tail rises = 9.000 dB
+PASS  5 bursts at -30 dBFS make 5 hits, so level does not matter
+PASS  a steady tone is one hit, when it starts
+PASS  silence makes no hits
+PASS  a tone at -60 dBFS makes no hits
+PASS  real speech makes a readable number of hits a second, no more than one per 350 ms = 2.055 
+PASS  the preview against the real result, Attack +9, average error = 0.111 dB
+PASS  the preview against the real result, Sustain -9, average error = 0.040 dB
+PASS  the preview against the real result, everything on, average error = 1.708 dB
+PASS  at neutral the example hit is left alone, worst = 0.000 dB
+PASS  with Bypass on the preview changes nothing, worst = 0.000 dB
+PASS  the time axis runs from 0 to 400 ms
+PASS  and it can be read both ways
+PASS  the first 30 ms take close to half the width = 0.443 
+PASS  the window is the custom one
+PASS  all 10 controls keep their ID, name, range and default
+PASS  all 10 controls have a place in the window
+PASS  and there are no others that can be set = 10.000 
+PASS  every hint fits on the hint line at the smallest window, widest in points = 450.354 
+PASS  the bars are found
+PASS  dragging Attack a quarter of its width moves it from where it was = 8.900 
+PASS  a drag is one gesture for automation, begins = 1.000 
+PASS  automation moves the bar = 7.500 
+PASS  the bar shows the value: +7.5 dB
+PASS  and a real minus sign below zero
+PASS  double-click resets to the default, as one gesture = 0.000 
+PASS  and it reads 0.0 dB, with no sign
+PASS  typing 42 % sets 42, as one gesture = 42.000 
+PASS  typing a word that means nothing leaves it alone = 42.000 
+PASS  typing too much stops at the top of the range = 100.000 
+PASS  the minus sign the window shows can be typed back = -5.000 
+PASS  so can a plus sign = 6.000 
+PASS  the buttons are found
+PASS  the button turns Ceiling On on, as one gesture
+PASS  double-click puts it back to its default, off
+PASS  the button turns Bypass on
+PASS  automation moves the button
+PASS  with the Ceiling off, its line can't be grabbed
+PASS  the line is drawn at the Ceiling's level on the plot's scale
+PASS  dragging the line 6 dB down moves the Ceiling to -12 = -12.000 
+PASS  as one gesture = 1.000 
+PASS  double-click on the line puts it back to -1 = -1.000 
+PASS  the preset box is found
+PASS  all 20 preset names fit in the preset box, edited or not; widest in points = 198.493 
+INFO    room for a name in the preset box = 240.000 points
+PASS  choosing a preset sets it and shows its name: Rap Upfront
+PASS  moving a control says so: Rap Upfront, edited
+PASS  and Neutral is the defaults
+PASS  a tone at -12 with Gain +6 reads In -12.0 and Out -6.0: −12.0 −6.0
+PASS  Impact reads 0.0 and the Ceiling reads Off
+PASS  Impact's number is the Impact Reduction reading: −10.7
+PASS  the Ceiling's number is the Ceiling Reduction reading: −7.3
+PASS  with the host stopped, the numbers fall back on their own
+PASS  the size and Advanced come back with the session = 1100.000 
+PASS  they stay out of the parameter tree
+PASS  a damaged size goes back in range = 1800.000 
+PASS  a session from before the window opens at the default size
+PASS  a window opens within limits from a damaged size = 670.000 
+PASS  the speech is there
+PASS  with speech going through, the display reports it is moving
+PASS  and it shows the real hit, not the example
+PASS  the window reading and painting writes no parameter and no automation = 0.000 
+PASS  with the host stopped, the display stops moving
+PASS  and no longer asks to be drawn again = 1.000 
+PASS  moving Attack while stopped redraws the hit in view
+PASS  and keeps the window lively for a moment while the control moves
+PASS  and its start rises = 11.317 dB
+PASS  putting it back shows what really happened again
+PASS  10 seconds of silence from the host moves nothing, frames = 0.000 
+PASS  with nothing played, it says it is an example
+PASS  and at neutral nothing is changed = 0.000 dB
+PASS  Attack moves its start = 11.970 dB
+PASS  Sustain moves its tail = -12.000 dB
+PASS  with Steady Notes on, Sustain moves the tail right after the hit's body = -12.000 dB
+PASS  with Steady Notes on, 0.3 s after the hit the tail is left alone = 0.000 dB
+PASS  60 windows opened, painted and closed, 30 of them with audio running = 60.000 
+PASS  a window opens and paints before the host has prepared the plug-in
+PASS  the null test has real audio in it, peak = 0.708 
+PASS  audio with the window open and painting nulls to exact zero against the window closed = 0.000 
+PASS  Punch 50 and 0, Steady Notes off, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.114 dB
+PASS  Punch 50 and 0, Steady Notes off, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.003 dB
+PASS  Punch 50 and 0, Steady Notes on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.286 dB
+PASS  Punch 50 and 0, Steady Notes on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.191 dB
+PASS  Punch 50 and 85, Steady Notes off, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.107 dB
+PASS  Punch 50 and 85, Steady Notes off, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.006 dB
+PASS  Punch 50 and 85, Steady Notes on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.258 dB
+PASS  Punch 50 and 85, Steady Notes on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.258 dB
+PASS  Punch 50 and 51, Steady Notes off, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.003 dB
+PASS  Punch 50 and 51, Steady Notes off, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.000 dB
+PASS  Punch 50 and 51, Steady Notes on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.002 dB
+PASS  Punch 50 and 51, Steady Notes on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.003 dB
+PASS  Attack +6 and -6, Steady Notes off, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.000 dB
+PASS  Attack +6 and -6, Steady Notes off, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.000 dB
+PASS  Attack +6 and -6, Steady Notes on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.001 dB
+PASS  Attack +6 and -6, Steady Notes on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.001 dB
+PASS  Sustain +6 and -6, Steady Notes off, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.000 dB
+PASS  Sustain +6 and -6, Steady Notes off, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.000 dB
+PASS  Sustain +6 and -6, Steady Notes on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.000 dB
+PASS  Sustain +6 and -6, Steady Notes on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.000 dB
+PASS  Mix 100 and 40, Steady Notes off, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.000 dB
+PASS  Mix 100 and 40, Steady Notes off, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.000 dB
+PASS  Mix 100 and 40, Steady Notes on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.001 dB
+PASS  Mix 100 and 40, Steady Notes on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.001 dB
+PASS  Gain 0 and +12, Steady Notes off, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.019 dB
+PASS  Gain 0 and +12, Steady Notes off, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.067 dB
+PASS  Gain 0 and +12, Steady Notes on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.047 dB
+PASS  Gain 0 and +12, Steady Notes on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.112 dB
+PASS  Impact 40 and 0, Steady Notes off, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.000 dB
+PASS  Impact 40 and 0, Steady Notes off, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.007 dB
+PASS  Impact 40 and 0, Steady Notes on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.137 dB
+PASS  Impact 40 and 0, Steady Notes on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.137 dB
+PASS  Impact 40 and 90, Steady Notes off, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.007 dB
+PASS  Impact 40 and 90, Steady Notes off, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.007 dB
+PASS  Impact 40 and 90, Steady Notes on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.001 dB
+PASS  Impact 40 and 90, Steady Notes on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.005 dB
+PASS  Ceiling -1 and -12, Steady Notes off, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.000 dB
+PASS  Ceiling -1 and -12, Steady Notes off, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.009 dB
+PASS  Ceiling -1 and -12, Steady Notes on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.000 dB
+PASS  Ceiling -1 and -12, Steady Notes on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.008 dB
+PASS  Ceiling On on and off, Ceiling -12, Steady Notes off, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.000 dB
+PASS  Ceiling On on and off, Ceiling -12, Steady Notes off, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.000 dB
+PASS  Ceiling On on and off, Ceiling -12, Steady Notes on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.000 dB
+PASS  Ceiling On on and off, Ceiling -12, Steady Notes on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.000 dB
+PASS  Bypass off and on, Steady Notes off, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.000 dB
+PASS  Bypass off and on, Steady Notes off, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.000 dB
+PASS  Bypass off and on, Steady Notes on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.000 dB
+PASS  Bypass off and on, Steady Notes on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.045 dB
+PASS  Steady Notes off and on, moved while playing (both ways, held note and pause): largest overshoot or dip past the two settings' own levels = 0.348 dB
+PASS  Steady Notes off and on, moved while playing (both ways, held note and pause): largest distance from the new setting's own level, 0.5 s on = 0.510 dB
+PASS  Parallel Weight to Neutral while a held note plays: largest overshoot or dip past the two presets' own levels = 0.140 dB
+PASS  Parallel Weight to Neutral while a held note plays: largest distance from the new preset's own level, 0.5 s on = 0.000 dB
+PASS  Neutral to Parallel Weight while a held note plays: largest overshoot or dip past the two presets' own levels = 0.128 dB
+PASS  Neutral to Parallel Weight while a held note plays: largest distance from the new preset's own level, 0.5 s on = 0.004 dB
+PASS  Lead Gentle to Lead Upfront while a held note plays: largest overshoot or dip past the two presets' own levels = 0.277 dB
+PASS  Lead Gentle to Lead Upfront while a held note plays: largest distance from the new preset's own level, 0.5 s on = 0.231 dB
+PASS  Lead Upfront to Lead Gentle while a held note plays: largest overshoot or dip past the two presets' own levels = 0.276 dB
+PASS  Lead Upfront to Lead Gentle while a held note plays: largest distance from the new preset's own level, 0.5 s on = 0.231 dB
+PASS  Rap Upfront to Neutral while a held note plays: largest overshoot or dip past the two presets' own levels = 0.036 dB
+PASS  Rap Upfront to Neutral while a held note plays: largest distance from the new preset's own level, 0.5 s on = 0.000 dB
+PASS  Neutral to Rap Upfront while a held note plays: largest overshoot or dip past the two presets' own levels = 0.011 dB
+PASS  Neutral to Rap Upfront while a held note plays: largest distance from the new preset's own level, 0.5 s on = 0.001 dB
+PASS  Lead Upfront to Neutral while a held note plays: largest overshoot or dip past the two presets' own levels = 0.388 dB
+PASS  Lead Upfront to Neutral while a held note plays: largest distance from the new preset's own level, 0.5 s on = 0.035 dB
+PASS  Neutral to Lead Upfront while a held note plays: largest overshoot or dip past the two presets' own levels = 0.627 dB
+PASS  Neutral to Lead Upfront while a held note plays: largest distance from the new preset's own level, 0.5 s on = 0.382 dB
+PASS  Steady Notes on, Punch 50 nudged to 51 on a held note: largest difference from the input, 30 ms at a time, 3.0 to 4.9 s = 0.144 dB
+PASS  Steady Notes, Sustain 9, the first note after 1.5 s of silence: largest gain move within 1 ms, 40 to 300 ms after it starts = 0.000 dB
+PASS  Steady Notes, Sustain 9, the first note after 1.5 s of silence: gain at 60 ms against 150 ms, both on the held part = 0.000 dB
+PASS  Steady Notes, Sustain -9, the first note after 1.5 s of silence: largest gain move within 1 ms, 40 to 300 ms after it starts = 0.000 dB
+PASS  Steady Notes, Sustain -9, the first note after 1.5 s of silence: gain at 60 ms against 150 ms, both on the held part = 0.000 dB
+PASS  Gain +12 into Ceiling -1, Bypass switched on during a tone: output peak over the ceiling and the input = 0.000 dB
+PASS  Gain +12 into Ceiling -1, Bypass switched off during a tone: output peak over the ceiling and the input = 0.000 dB
+PASS  Steady Notes on, Sustain 9, a soft noise hit 80 ms after a loud one, no pitch: with Steady Notes off the soft hits move at least = 9.000 dB
+PASS  Steady Notes on, Sustain 9, a soft noise hit 80 ms after a loud one, no pitch: largest difference from Steady Notes off = 0.000 dB
+PASS  Steady Notes on, Sustain -9, a soft noise hit 80 ms after a loud one, no pitch: with Steady Notes off the soft hits move at least = 9.000 dB
+PASS  Steady Notes on, Sustain -9, a soft noise hit 80 ms after a loud one, no pitch: largest difference from Steady Notes off = 0.000 dB
+PASS  Steady Notes on, Sustain 9, no pitch, a soft start 200 ms after a loud one, the level down to the room: with Steady Notes off the first 15 ms from the rise move at least = 9.000 dB
+PASS  Steady Notes on, Sustain 9, no pitch, a soft start 200 ms after a loud one, the level down to the room: with Steady Notes on, largest change over the first 15 ms from the rise = 0.001 dB
+PASS  Steady Notes on, Sustain -9, no pitch, a soft start 200 ms after a loud one, the level down to the room: with Steady Notes off the first 15 ms from the rise move at least = 9.000 dB
+PASS  Steady Notes on, Sustain -9, no pitch, a soft start 200 ms after a loud one, the level down to the room: with Steady Notes on, largest change over the first 15 ms from the rise = 0.001 dB
+PASS  a new instance names Neutral = 0.000 
+PASS  a session saved after choosing Lead Gentle reloads naming it, not edited = 14.000 
+PASS  the preset is not applied again on reload: Lead Upfront with Attack moved keeps Attack and reads edited
+PASS  a damaged preset number "99" is kept in range = 19.000 
+PASS  a damaged preset number "-5" is kept in range = 0.000 
+PASS  a damaged preset number "x" is kept in range = 0.000 
+PASS  a session saved by 0.6.1 names no preset = -1.000 
+PASS  and its window shows "Choose a preset": Choose a preset
+PASS  from no preset the right arrow goes to the first preset = 0.000 
+PASS  and the left arrow to the last = 19.000 
+PASS  a session saved on Lead Gentle reopens reading Lead Gentle: Lead Gentle
+PASS  the 0.6.1 baseline input is there = 288000.000 
+PASS  a session saved by 0.6.1, default: names no preset = -1.000 
+PASS  a session saved by 0.6.1, default: plays what choosing that preset here plays; samples that differ = 0.000 
+PASS  a session saved by 0.6.1, default: plays exactly what 0.6.1 played; samples that differ = 0.000 
+PASS  a session saved by 0.6.1, lead-gentle: names no preset = -1.000 
+PASS  a session saved by 0.6.1, lead-gentle: plays what choosing that preset here plays; samples that differ = 0.000 
+PASS  a session saved by 0.6.1, lead-gentle: plays what 0.6.1 played to float rounding; largest difference = -198.680 dBFS
+PASS  a session saved by 0.6.1, lead-upfront: names no preset = -1.000 
+PASS  a session saved by 0.6.1, lead-upfront: plays what choosing that preset here plays; samples that differ = 0.000 
+PASS  a session saved by 0.6.1, lead-upfront: plays what 0.6.1 played to float rounding; largest difference = -198.680 dBFS
+PASS  a session saved by 0.6.1, lead-rap: names no preset = -1.000 
+PASS  a session saved by 0.6.1, lead-rap: plays what choosing that preset here plays; samples that differ = 0.000 
+INFO  a session saved by 0.6.1, lead-rap: samples that differ from what 0.6.1 played = 4390.000 
+INFO  a session saved by 0.6.1, lead-rap: largest difference from what 0.6.1 played = -69.578 dBFS
+PASS  a session saved by 0.6.1, lead-soft-consonants: names no preset = -1.000 
+PASS  a session saved by 0.6.1, lead-soft-consonants: plays what choosing that preset here plays; samples that differ = 0.000 
+INFO  a session saved by 0.6.1, lead-soft-consonants: samples that differ from what 0.6.1 played = 4478.000 
+INFO  a session saved by 0.6.1, lead-soft-consonants: largest difference from what 0.6.1 played = -75.421 dBFS
+PASS  a session saved by 0.6.1, lead-long-tails: names no preset = -1.000 
+PASS  a session saved by 0.6.1, lead-long-tails: plays what choosing that preset here plays; samples that differ = 0.000 
+INFO  a session saved by 0.6.1, lead-long-tails: samples that differ from what 0.6.1 played = 4505.000 
+INFO  a session saved by 0.6.1, lead-long-tails: largest difference from what 0.6.1 played = -60.969 dBFS
+PASS  a session saved by 0.6.1, lead-dry-and-close: names no preset = -1.000 
+PASS  a session saved by 0.6.1, lead-dry-and-close: plays what choosing that preset here plays; samples that differ = 0.000 
+INFO  a session saved by 0.6.1, lead-dry-and-close: samples that differ from what 0.6.1 played = 4490.000 
+INFO  a session saved by 0.6.1, lead-dry-and-close: largest difference from what 0.6.1 played = -66.969 dBFS
+PASS  a state saved with Advanced open loaded while the window is open: the drawer and the window follow it at the next frame
+PASS  a state saved with Advanced closed loaded while the window is open: the drawer and the window follow it at the next frame
+PASS  and one click on the header then opens it
+PASS  at the smallest window the caption for the example hit fits beside the legend; its width in points against 319.52 = 277.601 
+PASS  at the smallest window the caption for a hit redrawn while stopped fits beside the legend; its width in points against 319.52 = 239.661 
+PASS  the example hit drawn with Attack +9: Steady Notes on against off at 10 ms = 0.000 dB
+PASS  the example hit drawn with Attack +9: Steady Notes on against off at 15 ms = 0.000 dB
+PASS  play, reset, play: the second part equals a new instance; samples that differ = 0.000 
+PASS  after a reset, silence in gives silence out
+PASS  a reset allocates nothing = 0.000 
+PASS  a reset before the first prepare is harmless
+PASS  the Reset that comes with host bypass switching on changes nothing; largest difference = 0.000 
+PASS  a Reset later on while bypassed is not left out
+PASS  link: the card lists all 14 parameters by their IDs, in order, with Attack, Sustain, Punch, Impact and Ceiling as the main controls
+PASS  link: the text command "6 dB" on Attack sets it and lands in done; Attack now = 6.000 dB
+RESULT PASS  0 failures

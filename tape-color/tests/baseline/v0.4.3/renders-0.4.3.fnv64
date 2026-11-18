@@ -1,0 +1,17 @@
+# FNV-1a 64 of what the installed 0.4.3 played with each state: 48 kHz, 512 sample blocks, input.f32 on both sides, left then right as 32 bit floats
+airy-encode c823f844b7cd82d9
+clean-reel 99fb11d199149ad5
+default fa4fae96c7e13ab5
+old-radio-voice 0fefe1999de7b78c
+parallel-body d86ecc47eb403cfd
+phone-call b87d7466d70b9c43
+pre040-age60 1091dee5d2575d41
+pre040-default fa4fae96c7e13ab5
+pre040-mix50 5474d97c5369460d
+saved043-old-mix50 5474d97c5369460d
+slow-reel-haze 3f46cdd37f682c1a
+starved-grit faf137bc0f9dad3f
+tape-start fa4fae96c7e13ab5
+vocal-glue 26203f75ad1d04a5
+warm-lead e35432b7f3873a99
+worn-cassette 49d0e0687d81cd51

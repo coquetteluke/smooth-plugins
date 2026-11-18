@@ -1,0 +1,49 @@
+Null of 1.2.8 against 1.2.7, both rendered through the real AU. s48b128: 48 kHz stereo, 128 frame blocks. s44b64: 44.1 kHz stereo, 64. s96b512: 96 kHz stereo, 512. m48b256: 48 kHz mono, 256. auto: random automation and preset changes. Input is speech, a sweep and silence. Earlier nulls are in git history.
+
+1. No host (no tempo, no transport, as before and as the real vocal checks run): all 63 files bit identical to 1.2.7. The hashes in tests/baseline/renders-1.2.7.sha256 still match.
+
+files 63  bit identical 63  worst none  over the -114 dBFS limit 0
+
+2. A host playing from bar 1 at 120 BPM in 4/4 (NullRender ... transport, new in 1.2.8): the default and the 10 presets without Tempo Sync are bit identical to 1.2.7 at every format (44 files). The synced presets, One Bar Swirl (preset4), Quarter Note Wobble (preset6) and Square Flip (preset11), and the random automation (which turns Sync on) differ: that is the fix, the sweep now sits one reported latency later against the song position. Hashes in tests/baseline/renders-transport-1.2.8.sha256.
+
+auto0_s48b128.raw                    peak    -6.0 dBFS  rms   -39.9 dBFS  signal peak 1.10
+auto1_s48b128.raw                    peak    -4.6 dBFS  rms   -40.1 dBFS  signal peak 2.13
+auto2_s48b128.raw                    peak    -6.2 dBFS  rms   -34.8 dBFS  signal peak 0.79
+auto3_s48b128.raw                    peak   -10.5 dBFS  rms   -43.2 dBFS  signal peak 1.07
+auto4_s44b64.raw                     peak    -8.7 dBFS  rms   -35.0 dBFS  signal peak 0.58
+auto5_s96b512.raw                    peak     2.1 dBFS  rms   -28.5 dBFS  signal peak 3.79
+auto6_m48b256.raw                    peak   -16.3 dBFS  rms   -50.1 dBFS  signal peak 1.10
+m48b256_preset11.raw                 peak    -6.9 dBFS  rms   -33.1 dBFS  signal peak 0.54
+m48b256_preset4.raw                  peak   -12.5 dBFS  rms   -32.9 dBFS  signal peak 0.47
+m48b256_preset6.raw                  peak   -12.1 dBFS  rms   -31.3 dBFS  signal peak 0.42
+s44b64_preset11.raw                  peak    -7.6 dBFS  rms   -33.5 dBFS  signal peak 0.59
+s44b64_preset4.raw                   peak   -11.4 dBFS  rms   -31.4 dBFS  signal peak 0.46
+s44b64_preset6.raw                   peak   -12.0 dBFS  rms   -31.1 dBFS  signal peak 0.44
+s48b128_preset11.raw                 peak    -6.9 dBFS  rms   -33.1 dBFS  signal peak 0.54
+s48b128_preset4.raw                  peak   -11.6 dBFS  rms   -31.8 dBFS  signal peak 0.47
+s48b128_preset6.raw                  peak   -11.8 dBFS  rms   -31.3 dBFS  signal peak 0.44
+s96b512_preset11.raw                 peak    -7.3 dBFS  rms   -32.9 dBFS  signal peak 0.55
+s96b512_preset4.raw                  peak   -11.3 dBFS  rms   -30.1 dBFS  signal peak 0.44
+s96b512_preset6.raw                  peak   -12.2 dBFS  rms   -30.1 dBFS  signal peak 0.43
+
+3. The same host, but 1.2.8 given a song position one reported latency later (NullRender ... transport+latency) against 1.2.7 in 2: every file within -150 dBFS peak, 44 bit identical. So 1.2.8 against 1.2.7 is exactly that shift of the sweep and nothing else.
+
+auto0_s48b128.raw                    peak  -168.6 dBFS  rms  -222.2 dBFS  signal peak 1.10
+auto1_s48b128.raw                    peak  -168.6 dBFS  rms  -227.2 dBFS  signal peak 2.13
+auto2_s48b128.raw                    peak  -156.5 dBFS  rms  -209.9 dBFS  signal peak 0.79
+auto3_s48b128.raw                    peak  -162.6 dBFS  rms  -214.1 dBFS  signal peak 1.07
+auto4_s44b64.raw                     peak  -156.5 dBFS  rms  -205.3 dBFS  signal peak 0.58
+auto5_s96b512.raw                    peak  -150.5 dBFS  rms  -207.1 dBFS  signal peak 3.79
+auto6_m48b256.raw                    peak  -210.7 dBFS  rms  -268.9 dBFS  signal peak 1.10
+m48b256_preset11.raw                 peak  -150.5 dBFS  rms  -198.6 dBFS  signal peak 0.54
+m48b256_preset4.raw                  peak  -156.5 dBFS  rms  -203.4 dBFS  signal peak 0.47
+m48b256_preset6.raw                  peak  -156.5 dBFS  rms  -209.3 dBFS  signal peak 0.42
+s44b64_preset11.raw                  peak  -162.6 dBFS  rms  -217.4 dBFS  signal peak 0.59
+s44b64_preset4.raw                   peak  -150.5 dBFS  rms  -208.3 dBFS  signal peak 0.46
+s44b64_preset6.raw                   peak  -156.5 dBFS  rms  -207.8 dBFS  signal peak 0.44
+s48b128_preset11.raw                 peak  -150.5 dBFS  rms  -200.0 dBFS  signal peak 0.54
+s48b128_preset4.raw                  peak  -156.5 dBFS  rms  -205.6 dBFS  signal peak 0.47
+s48b128_preset6.raw                  peak  -156.5 dBFS  rms  -211.5 dBFS  signal peak 0.44
+s96b512_preset11.raw                 peak  -156.5 dBFS  rms  -209.2 dBFS  signal peak 0.55
+s96b512_preset4.raw                  peak  -156.5 dBFS  rms  -208.8 dBFS  signal peak 0.44
+s96b512_preset6.raw                  peak  -162.6 dBFS  rms  -216.8 dBFS  signal peak 0.43
